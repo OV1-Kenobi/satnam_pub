@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "*": ["*"]
+    },
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "checkJs": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": [
+    "src/**/*",
+    "api/**/*",
+    "config/**/*",
+    "services/**/*",
+    "types/**/*",
+    "utils/**/*",
+    "middleware/**/*",
+    "lib/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
