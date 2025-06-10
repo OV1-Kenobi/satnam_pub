@@ -1,10 +1,10 @@
 /**
  * User API Endpoints
- * 
+ *
  * This file contains all user-related API endpoints.
  */
 
-import { UserProfile } from '../../types';
+import { UserProfile } from "../../types";
 
 /**
  * Fetches the user profile for the currently authenticated user.
@@ -13,9 +13,9 @@ import { UserProfile } from '../../types';
 export const fetchUserProfile = async (): Promise<UserProfile> => {
   // This would be replaced with an actual API call
   return {
-    id: '1',
-    name: 'John Doe',
-    email: 'john@example.com',
-    familyId: 'family-1',
+    id: "1",
+    name: "John Doe",
+    email: "john@example.com",
+    familyId: "family-1",
   };
 };

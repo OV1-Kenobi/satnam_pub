@@ -1,53 +1,99 @@
-import React, { useState } from 'react';
-import { Zap, Users, Bitcoin, ExternalLink, Menu, X, ArrowRight, ChevronDown, BookOpen, Network } from 'lucide-react';
-import IdentityForge from './components/IdentityForge';
-import FamilyDashboard from './components/FamilyDashboard';
-import FamilyOnboarding from './components/FamilyOnboarding';
-import EducationPlatform from './components/EducationPlatform';
-import FamilyCoordination from './components/FamilyCoordination';
-import NostrEcosystem from './components/NostrEcosystem';
-import SignInModal from './components/SignInModal';
+import React, { useState } from "react";
+import {
+  Zap,
+  Users,
+  Bitcoin,
+  ExternalLink,
+  Menu,
+  X,
+  ArrowRight,
+  ChevronDown,
+  BookOpen,
+  Network,
+} from "lucide-react";
+import IdentityForge from "./components/IdentityForge";
+import FamilyDashboard from "./components/FamilyDashboard";
+import FamilyOnboarding from "./components/FamilyOnboarding";
+import EducationPlatform from "./components/EducationPlatform";
+import FamilyCoordination from "./components/FamilyCoordination";
+import NostrEcosystem from "./components/NostrEcosystem";
+import SignInModal from "./components/SignInModal";
 
 function App() {
-  const [currentView, setCurrentView] = useState<'landing' | 'forge' | 'dashboard' | 'onboarding' | 'education' | 'coordination' | 'recovery' | 'nostr-ecosystem'>('landing');
+  const [currentView, setCurrentView] = useState<
+    | "landing"
+    | "forge"
+    | "dashboard"
+    | "onboarding"
+    | "education"
+    | "coordination"
+    | "recovery"
+    | "nostr-ecosystem"
+  >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
 
-  if (currentView === 'forge') {
-    return <IdentityForge onComplete={() => setCurrentView('nostr-ecosystem')} onBack={() => setCurrentView('landing')} />;
+  if (currentView === "forge") {
+    return (
+      <IdentityForge
+        onComplete={() => setCurrentView("nostr-ecosystem")}
+        onBack={() => setCurrentView("landing")}
+      />
+    );
   }
 
-  if (currentView === 'dashboard') {
-    return <FamilyDashboard onBack={() => setCurrentView('landing')} />;
+  if (currentView === "dashboard") {
+    return <FamilyDashboard onBack={() => setCurrentView("landing")} />;
   }
 
-  if (currentView === 'onboarding') {
-    return <FamilyOnboarding familyName="Johnson\" onComplete={() => setCurrentView('dashboard')} onBack={() => setCurrentView('landing')} />;
+  if (currentView === "onboarding") {
+    return (
+      <FamilyOnboarding
+        familyName="Johnson\"
+        onComplete={() => setCurrentView("dashboard")}
+        onBack={() => setCurrentView("landing")}
+      />
+    );
   }
 
-  if (currentView === 'education') {
-    return <EducationPlatform onBack={() => setCurrentView('landing')} />;
+  if (currentView === "education") {
+    return <EducationPlatform onBack={() => setCurrentView("landing")} />;
   }
 
-  if (currentView === 'coordination') {
-    return <FamilyCoordination onBack={() => setCurrentView('landing')} />;
+  if (currentView === "coordination") {
+    return <FamilyCoordination onBack={() => setCurrentView("landing")} />;
   }
 
-  if (currentView === 'nostr-ecosystem') {
-    return <NostrEcosystem onBack={() => setCurrentView('landing')} />;
+  if (currentView === "nostr-ecosystem") {
+    return <NostrEcosystem onBack={() => setCurrentView("landing")} />;
   }
 
-  if (currentView === 'recovery') {
+  if (currentView === "recovery") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center max-w-2xl border border-white/20">
-          <img src="/Citadel Academy Logo.png\" alt="Citadel Academy\" className="h-16 w-16 mx-auto mb-6" />
-          <h2 className="text-3xl font-bold text-white mb-4">Account Recovery</h2>
-          <p className="text-purple-100 mb-8">Recover your sovereign identity using your backup phrase or recovery keys.</p>
+          <img
+            src="/Citadel Academy Logo.png\"
+            alt="Citadel Academy\"
+            className="h-16 w-16 mx-auto mb-6"
+          />
+          <h2 className="text-3xl font-bold text-white mb-4">
+            Account Recovery
+          </h2>
+          <p className="text-purple-100 mb-8">
+            Recover your sovereign identity using your backup phrase or recovery
+            keys.
+          </p>
           <div className="bg-white/10 rounded-lg p-6 mb-8">
-            <img src="/SatNam.Pub logo.png" alt="SatNam.Pub" className="h-12 w-12 mx-auto mb-4 rounded-full" />
-            <p className="text-purple-200 mb-4">Enter your 12 or 24-word recovery phrase to restore your identity</p>
-            <textarea 
+            <img
+              src="/SatNam.Pub logo.png"
+              alt="SatNam.Pub"
+              className="h-12 w-12 mx-auto mb-4 rounded-full"
+            />
+            <p className="text-purple-200 mb-4">
+              Enter your 12 or 24-word recovery phrase to restore your identity
+            </p>
+            <textarea
               className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white placeholder-purple-200 resize-none"
               rows={3}
               placeholder="Enter your recovery phrase here..."
@@ -57,8 +103,8 @@ function App() {
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300">
               Recover Identity
             </button>
-            <button 
-              onClick={() => setCurrentView('landing')}
+            <button
+              onClick={() => setCurrentView("landing")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
             >
               Back to Home
@@ -70,12 +116,22 @@ function App() {
   }
 
   const navigationItems = [
-    { label: 'Family Dashboard', action: () => setCurrentView('dashboard') },
-    { label: 'Bitcoin Education', action: () => setCurrentView('education') },
-    { label: 'Nostr Resources', action: () => setCurrentView('nostr-ecosystem') },
-    { label: 'Advanced Coordination', action: () => setCurrentView('coordination') },
-    { label: 'Recovery Help', action: () => setCurrentView('recovery') },
-    { label: 'Citadel Academy', action: () => window.open('https://citadel.academy', '_blank'), external: true }
+    { label: "Family Dashboard", action: () => setCurrentView("dashboard") },
+    { label: "Bitcoin Education", action: () => setCurrentView("education") },
+    {
+      label: "Nostr Resources",
+      action: () => setCurrentView("nostr-ecosystem"),
+    },
+    {
+      label: "Advanced Coordination",
+      action: () => setCurrentView("coordination"),
+    },
+    { label: "Recovery Help", action: () => setCurrentView("recovery") },
+    {
+      label: "Citadel Academy",
+      action: () => window.open("https://citadel.academy", "_blank"),
+      external: true,
+    },
   ];
 
   return (
@@ -87,17 +143,62 @@ function App() {
         <div className="absolute bottom-32 left-40 w-3 h-3 bg-yellow-300 rounded-full animate-pulse"></div>
         <div className="absolute top-60 left-1/2 w-1 h-1 bg-orange-300 rounded-full animate-ping"></div>
         <div className="absolute bottom-40 right-20 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-        
+
         {/* Connection Lines */}
-        <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-          <line x1="80" y1="80" x2="200" y2="160" stroke="#FFD700" strokeWidth="1" opacity="0.3" strokeDasharray="5,5">
-            <animate attributeName="stroke-dashoffset" values="0;10" dur="2s" repeatCount="indefinite"/>
+        <svg
+          className="absolute inset-0 w-full h-full"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <line
+            x1="80"
+            y1="80"
+            x2="200"
+            y2="160"
+            stroke="#FFD700"
+            strokeWidth="1"
+            opacity="0.3"
+            strokeDasharray="5,5"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              values="0;10"
+              dur="2s"
+              repeatCount="indefinite"
+            />
           </line>
-          <line x1="200" y1="160" x2="50%" y2="240" stroke="#F7931A" strokeWidth="1" opacity="0.3" strokeDasharray="5,5">
-            <animate attributeName="stroke-dashoffset" values="0;10" dur="3s" repeatCount="indefinite"/>
+          <line
+            x1="200"
+            y1="160"
+            x2="50%"
+            y2="240"
+            stroke="#F7931A"
+            strokeWidth="1"
+            opacity="0.3"
+            strokeDasharray="5,5"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              values="0;10"
+              dur="3s"
+              repeatCount="indefinite"
+            />
           </line>
-          <line x1="50%" y1="240" x2="80%" y2="200" stroke="#FFD700" strokeWidth="1" opacity="0.3" strokeDasharray="5,5">
-            <animate attributeName="stroke-dashoffset" values="0;10" dur="2.5s" repeatCount="indefinite"/>
+          <line
+            x1="50%"
+            y1="240"
+            x2="80%"
+            y2="200"
+            stroke="#FFD700"
+            strokeWidth="1"
+            opacity="0.3"
+            strokeDasharray="5,5"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              values="0;10"
+              dur="2.5s"
+              repeatCount="indefinite"
+            />
           </line>
         </svg>
       </div>
@@ -108,14 +209,18 @@ function App() {
           <div className="flex justify-between items-center h-16">
             {/* Logo with SatNam.Pub Custom Logo */}
             <div className="flex items-center space-x-3">
-              <img src="/SatNam.Pub logo.png" alt="SatNam.Pub" className="h-10 w-auto" />
+              <img
+                src="/SatNam.Pub logo.png"
+                alt="SatNam.Pub"
+                className="h-10 w-auto"
+              />
               <span className="text-white text-xl font-bold">Satnam.pub</span>
             </div>
 
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center space-x-6">
               {/* Sign In Button */}
-              <button 
+              <button
                 onClick={() => setSignInModalOpen(true)}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
               >
@@ -123,8 +228,8 @@ function App() {
               </button>
 
               {/* Primary CTA */}
-              <button 
-                onClick={() => setCurrentView('forge')}
+              <button
+                onClick={() => setCurrentView("forge")}
                 className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
               >
                 <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
@@ -132,42 +237,46 @@ function App() {
               </button>
 
               {/* Navigation Links */}
-              <button 
-                onClick={() => setCurrentView('dashboard')}
+              <button
+                onClick={() => setCurrentView("dashboard")}
                 className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium"
               >
                 Family Dashboard
               </button>
-              
-              <button 
-                onClick={() => setCurrentView('education')}
+
+              <button
+                onClick={() => setCurrentView("education")}
                 className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
               >
                 <BookOpen className="h-4 w-4" />
                 <span>Bitcoin Education</span>
               </button>
 
-              <button 
-                onClick={() => setCurrentView('nostr-ecosystem')}
+              <button
+                onClick={() => setCurrentView("nostr-ecosystem")}
                 className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
               >
                 <Network className="h-4 w-4" />
                 <span>Nostr Resources</span>
               </button>
 
-              <a 
+              <a
                 href="https://citadel.academy"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
               >
-                <img src="/Citadel Academy Logo.png" alt="Citadel Academy" className="h-4 w-4" />
+                <img
+                  src="/Citadel Academy Logo.png"
+                  alt="Citadel Academy"
+                  className="h-4 w-4"
+                />
                 <span>Enter Citadel Academy</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
 
-              <button 
-                onClick={() => setCurrentView('recovery')}
+              <button
+                onClick={() => setCurrentView("recovery")}
                 className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium"
               >
                 Recovery
@@ -179,7 +288,11 @@ function App() {
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="lg:hidden p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all duration-300"
             >
-              {mobileMenuOpen ? <X className="h-6 w-6 text-white" /> : <Menu className="h-6 w-6 text-white" />}
+              {mobileMenuOpen ? (
+                <X className="h-6 w-6 text-white" />
+              ) : (
+                <Menu className="h-6 w-6 text-white" />
+              )}
             </button>
           </div>
 
@@ -187,7 +300,7 @@ function App() {
           {mobileMenuOpen && (
             <div className="lg:hidden bg-purple-800 rounded-lg mt-2 p-4 border border-white/20">
               <div className="space-y-3">
-                <button 
+                <button
                   onClick={() => {
                     setSignInModalOpen(true);
                     setMobileMenuOpen(false);
@@ -197,17 +310,21 @@ function App() {
                   <span>Sign In</span>
                 </button>
 
-                <button 
+                <button
                   onClick={() => {
-                    setCurrentView('forge');
+                    setCurrentView("forge");
                     setMobileMenuOpen(false);
                   }}
                   className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
                 >
-                  <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
+                  <img
+                    src="/ID forge icon.png"
+                    alt="Forge"
+                    className="h-4 w-4"
+                  />
                   <span>Forge Identity</span>
                 </button>
-                
+
                 {navigationItems.map((item, index) => (
                   <button
                     key={index}
@@ -237,64 +354,73 @@ function App() {
             Own Your Digital Dynasty
           </h2>
           <p className="text-xl text-purple-100 mb-12 max-w-4xl mx-auto leading-relaxed">
-            Create decentralized interoperable identities and human-readable bitcoin addresses for your family. 
-            No custodians, no compromises, pure Bitcoin sovereignty.
+            Create decentralized interoperable identities and human-readable
+            bitcoin addresses for your family. No custodians, no compromises,
+            pure Bitcoin sovereignty.
           </p>
-          
+
           {/* Primary CTA */}
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
-            <button 
+            <button
               onClick={() => setSignInModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
             >
               <span>Sign In</span>
             </button>
-            <button 
-              onClick={() => setCurrentView('forge')}
+            <button
+              onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
             >
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
-            <button 
-              onClick={() => setCurrentView('onboarding')}
+            <button
+              onClick={() => setCurrentView("onboarding")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2"
             >
-              <img src="/Rebuilding_Camelot_logo__transparency_v3.png" alt="Rebuilding Camelot" className="h-5 w-5" />
+              <img
+                src="/Rebuilding_Camelot_logo__transparency_v3.png"
+                alt="Rebuilding Camelot"
+                className="h-5 w-5"
+              />
               <span>Family Onboarding</span>
             </button>
           </div>
 
           {/* Secondary Navigation Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <button 
-              onClick={() => setCurrentView('dashboard')}
+            <button
+              onClick={() => setCurrentView("dashboard")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
             >
               <Users className="h-4 w-4" />
               <span>View Family Dashboard</span>
             </button>
-            <button 
-              onClick={() => setCurrentView('education')}
+            <button
+              onClick={() => setCurrentView("education")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
             >
               <BookOpen className="h-4 w-4" />
               <span>Start Learning Bitcoin</span>
             </button>
-            <button 
-              onClick={() => setCurrentView('nostr-ecosystem')}
+            <button
+              onClick={() => setCurrentView("nostr-ecosystem")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
             >
               <Network className="h-4 w-4" />
               <span>Explore Nostr Ecosystem</span>
             </button>
-            <a 
+            <a
               href="https://citadel.academy"
               target="_blank"
               rel="noopener noreferrer"
               className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
             >
-              <img src="/Citadel Academy Logo.png" alt="Citadel Academy" className="h-4 w-4" />
+              <img
+                src="/Citadel Academy Logo.png"
+                alt="Citadel Academy"
+                className="h-4 w-4"
+              />
               <span>Access Advanced Training</span>
               <ExternalLink className="h-3 w-3" />
             </a>
@@ -303,20 +429,30 @@ function App() {
       </div>
 
       {/* Enhanced Features Grid - Clickable Navigation Cards */}
-      <div id="features" className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
+      <div
+        id="features"
+        className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32"
+      >
         <div className="grid md:grid-cols-3 gap-8">
           {/* Decentralized Interoperable Identities Card */}
-          <div 
+          <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group"
-            onClick={() => setCurrentView('forge')}
+            onClick={() => setCurrentView("forge")}
           >
             <div className="w-16 h-16 mx-auto mb-6 relative">
-              <img src="/SatNam.Pub logo.png" alt="SatNam.Pub" className="h-16 w-16 rounded-full" />
+              <img
+                src="/SatNam.Pub logo.png"
+                alt="SatNam.Pub"
+                className="h-16 w-16 rounded-full"
+              />
               <div className="absolute inset-0 border-2 border-yellow-400 rounded-full group-hover:animate-pulse"></div>
             </div>
-            <h3 className="text-2xl font-bold text-white mb-4">Decentralized Interoperable Identities</h3>
+            <h3 className="text-2xl font-bold text-white mb-4">
+              Decentralized Interoperable Identities
+            </h3>
             <p className="text-purple-100 leading-relaxed mb-6">
-              Create your True Name using Nostr's open source protocols with cryptographic verification that no one can take, fake, or censor.
+              Create your True Name using Nostr's open source protocols with
+              cryptographic verification that no one can take, fake, or censor.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
               <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
@@ -325,16 +461,23 @@ function App() {
           </div>
 
           {/* Human-Readable Bitcoin Addresses Card */}
-          <div 
+          <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group"
-            onClick={() => setCurrentView('dashboard')}
+            onClick={() => setCurrentView("dashboard")}
           >
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-6 relative">
-              <img src="/LN Bitcoin icon.png" alt="Lightning Bitcoin" className="h-14 w-14" />
+              <img
+                src="/LN Bitcoin icon.png"
+                alt="Lightning Bitcoin"
+                className="h-14 w-14"
+              />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-4">Human-Readable Bitcoin Addresses</h3>
+            <h3 className="text-2xl font-bold text-white mb-4">
+              Human-Readable Bitcoin Addresses
+            </h3>
             <p className="text-purple-100 leading-relaxed mb-6">
-              Receive bitcoin instantly with reusable human-readable addresses. No more complex invoice management or payment friction.
+              Receive bitcoin instantly with reusable human-readable addresses.
+              No more complex invoice management or payment friction.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
               <Zap className="h-4 w-4" />
@@ -343,16 +486,25 @@ function App() {
           </div>
 
           {/* Family Federation Card */}
-          <div 
+          <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group"
-            onClick={() => setCurrentView('education')}
+            onClick={() => setCurrentView("education")}
           >
             <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6">
-              <img src="/Rebuilding_Camelot_logo__transparency_v3.png" alt="Rebuilding Camelot" className="h-8 w-8" />
+              <img
+                src="/Rebuilding_Camelot_logo__transparency_v3.png"
+                alt="Rebuilding Camelot"
+                className="h-8 w-8"
+              />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-4">Family Federation</h3>
+            <h3 className="text-2xl font-bold text-white mb-4">
+              Family Federation
+            </h3>
             <p className="text-purple-100 leading-relaxed mb-6">
-              Create connected identities for your entire family that YOU control. Unify your tribe, establish your family 'round table council', aligning with us as we Rebuild Camelot to robustly grow our cooperative of sovereign family dynasties together.
+              Create connected identities for your entire family that YOU
+              control. Unify your tribe, establish your family 'round table
+              council', aligning with us as we Rebuild Camelot to robustly grow
+              our cooperative of sovereign family dynasties together.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
               <BookOpen className="h-4 w-4" />
@@ -363,21 +515,35 @@ function App() {
       </div>
 
       {/* Sovereignty Section */}
-      <div id="sovereignty" className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
+      <div
+        id="sovereignty"
+        className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32"
+      >
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center border border-white/20">
-          <h2 className="text-4xl font-bold text-white mb-8">Forge Dynastic Sovereignty</h2>
+          <h2 className="text-4xl font-bold text-white mb-8">
+            Forge Dynastic Sovereignty
+          </h2>
           <div className="grid md:grid-cols-3 gap-8 text-lg text-purple-100">
             <div>
               <h3 className="font-bold text-white mb-3">100% Self-Sovereign</h3>
-              <p>You control your keys, your identity, and your dynasty. No intermediaries, no dependencies.</p>
+              <p>
+                You control your keys, your identity, and your dynasty. No
+                intermediaries, no dependencies.
+              </p>
             </div>
             <div>
               <h3 className="font-bold text-white mb-3">Bitcoin-Only</h3>
-              <p>Built on the most secure and decentralized network. No gambling, no compromise.</p>
+              <p>
+                Built on the most secure and decentralized network. No gambling,
+                no compromise.
+              </p>
             </div>
             <div>
               <h3 className="font-bold text-white mb-3">Family-First</h3>
-              <p>Designed to decentralize identity, cultivate multigenerational wealth, and preserve cognitive capital.</p>
+              <p>
+                Designed to decentralize identity, cultivate multigenerational
+                wealth, and preserve cognitive capital.
+              </p>
             </div>
           </div>
         </div>
@@ -391,31 +557,31 @@ function App() {
             <div>
               <h3 className="text-white font-bold mb-4">Quick Links</h3>
               <div className="space-y-2">
-                <button 
-                  onClick={() => setCurrentView('dashboard')}
+                <button
+                  onClick={() => setCurrentView("dashboard")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Family Dashboard
                 </button>
-                <button 
-                  onClick={() => setCurrentView('education')}
+                <button
+                  onClick={() => setCurrentView("education")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Education Portal
                 </button>
-                <button 
-                  onClick={() => setCurrentView('nostr-ecosystem')}
+                <button
+                  onClick={() => setCurrentView("nostr-ecosystem")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Nostr Resources
                 </button>
-                <button 
-                  onClick={() => setCurrentView('recovery')}
+                <button
+                  onClick={() => setCurrentView("recovery")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Recovery Help
                 </button>
-                <a 
+                <a
                   href="https://citadel.academy"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -430,20 +596,20 @@ function App() {
             <div>
               <h3 className="text-white font-bold mb-4">Features</h3>
               <div className="space-y-2">
-                <button 
-                  onClick={() => setCurrentView('forge')}
+                <button
+                  onClick={() => setCurrentView("forge")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Identity Forge
                 </button>
-                <button 
-                  onClick={() => setCurrentView('coordination')}
+                <button
+                  onClick={() => setCurrentView("coordination")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Advanced Coordination
                 </button>
-                <button 
-                  onClick={() => setCurrentView('onboarding')}
+                <button
+                  onClick={() => setCurrentView("onboarding")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Family Onboarding
@@ -454,13 +620,19 @@ function App() {
             <div>
               <h3 className="text-white font-bold mb-4">Resources</h3>
               <div className="space-y-2">
-                <a href="#features" className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">
+                <a
+                  href="#features"
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
                   Features Overview
                 </a>
-                <a href="#sovereignty" className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">
+                <a
+                  href="#sovereignty"
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
                   Dynastic Sovereignty
                 </a>
-                <a 
+                <a
                   href="https://citadel.academy"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -474,7 +646,7 @@ function App() {
             <div>
               <h3 className="text-white font-bold mb-4">Connect</h3>
               <div className="space-y-2">
-                <a 
+                <a
                   href="https://iris.to/npub1p9a5sclpw5prjhx0c0u4ufjnwmnt2pxcvpa4lxnf4wn53vawuatqkmzxyt"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -483,7 +655,7 @@ function App() {
                   <span>Follow us on Nostr</span>
                   <ExternalLink className="h-3 w-3" />
                 </a>
-                <a 
+                <a
                   href="https://t.me/rebuilding_camelot"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -492,7 +664,7 @@ function App() {
                   <span>Join the conversation on Telegram</span>
                   <ExternalLink className="h-3 w-3" />
                 </a>
-                <a 
+                <a
                   href="https://iris.to/npub1qq50zturtx4ns2uf2adt26pcpmez47ur9ds6a4fwaax5u5evr3nsnu2qvm"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -509,22 +681,30 @@ function App() {
           <div className="text-center border-t border-white/20 pt-8">
             <div className="flex items-center justify-center space-x-2 mb-6">
               <span className="text-purple-200">Powered by</span>
-              <a 
-                href="https://citadel.academy" 
-                target="_blank" 
+              <a
+                href="https://citadel.academy"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-yellow-400 hover:text-yellow-300 font-bold flex items-center space-x-1 transition-colors duration-200"
               >
-                <img src="/Citadel Academy Logo.png" alt="Citadel Academy" className="h-4 w-4" />
+                <img
+                  src="/Citadel Academy Logo.png"
+                  alt="Citadel Academy"
+                  className="h-4 w-4"
+                />
                 <span>Citadel Academy</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
             </div>
-            
+
             {/* Tagline */}
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200">
               <span className="flex items-center space-x-2">
-                <img src="/Citadel Academy Logo.png" alt="Citadel Academy" className="h-4 w-4" />
+                <img
+                  src="/Citadel Academy Logo.png"
+                  alt="Citadel Academy"
+                  className="h-4 w-4"
+                />
                 <span>100% Self-Sovereign</span>
               </span>
               <span className="flex items-center space-x-2">
@@ -532,7 +712,11 @@ function App() {
                 <span>Bitcoin-Only</span>
               </span>
               <span className="flex items-center space-x-2">
-                <img src="/Rebuilding_Camelot_logo__transparency_v3.png" alt="Rebuilding Camelot" className="h-4 w-4" />
+                <img
+                  src="/Rebuilding_Camelot_logo__transparency_v3.png"
+                  alt="Rebuilding Camelot"
+                  className="h-4 w-4"
+                />
                 <span>Family-First</span>
               </span>
             </div>
@@ -546,11 +730,11 @@ function App() {
         onClose={() => setSignInModalOpen(false)}
         onSignInSuccess={() => {
           setSignInModalOpen(false);
-          setCurrentView('dashboard');
+          setCurrentView("dashboard");
         }}
         onCreateNew={() => {
           setSignInModalOpen(false);
-          setCurrentView('forge');
+          setCurrentView("forge");
         }}
       />
     </div>

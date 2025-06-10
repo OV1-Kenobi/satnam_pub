@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { 
-  X, 
-  Wallet, 
-  MessageCircle, 
-  Key, 
-  ArrowRight, 
-  Send, 
+import React, { useState } from "react";
+import {
+  X,
+  Wallet,
+  MessageCircle,
+  Key,
+  ArrowRight,
+  Send,
   RefreshCw,
   Info,
   CheckCircle,
-  AlertTriangle
-} from 'lucide-react';
+  AlertTriangle,
+} from "lucide-react";
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -19,10 +19,15 @@ interface SignInModalProps {
   onCreateNew: () => void;
 }
 
-const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSuccess, onCreateNew }) => {
+const SignInModal: React.FC<SignInModalProps> = ({
+  isOpen,
+  onClose,
+  onSignInSuccess,
+  onCreateNew,
+}) => {
   const [showOTPFlow, setShowOTPFlow] = useState(false);
-  const [nipOrNpub, setNipOrNpub] = useState('');
-  const [otpCode, setOtpCode] = useState('');
+  const [nipOrNpub, setNipOrNpub] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
@@ -33,12 +38,12 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
     setIsLoading(true);
     try {
       // Placeholder for NWC implementation
-      console.log('Initiating Nostr Wallet Connect sign-in...');
+      console.log("Initiating Nostr Wallet Connect sign-in...");
       // This would integrate with NWC protocol
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API call
       onSignInSuccess();
     } catch (error) {
-      console.error('NWC sign-in failed:', error);
+      console.error("NWC sign-in failed:", error);
     } finally {
       setIsLoading(false);
     }
@@ -46,16 +51,16 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
 
   const handleSendOTP = async () => {
     if (!nipOrNpub.trim()) return;
-    
+
     setIsLoading(true);
     try {
       // Placeholder for OTP sending implementation
-      console.log('Sending OTP to:', nipOrNpub);
+      console.log("Sending OTP to:", nipOrNpub);
       // This would send a DM via Nostr relay
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API call
       setOtpSent(true);
     } catch (error) {
-      console.error('Failed to send OTP:', error);
+      console.error("Failed to send OTP:", error);
     } finally {
       setIsLoading(false);
     }
@@ -63,16 +68,16 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
 
   const handleOTPSubmit = async () => {
     if (!otpCode.trim()) return;
-    
+
     setIsLoading(true);
     try {
       // Placeholder for OTP verification implementation
-      console.log('Verifying OTP:', otpCode);
+      console.log("Verifying OTP:", otpCode);
       // This would verify the OTP code
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
       onSignInSuccess();
     } catch (error) {
-      console.error('OTP verification failed:', error);
+      console.error("OTP verification failed:", error);
     } finally {
       setIsLoading(false);
     }
@@ -80,8 +85,8 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
 
   const resetOTPFlow = () => {
     setShowOTPFlow(false);
-    setNipOrNpub('');
-    setOtpCode('');
+    setNipOrNpub("");
+    setOtpCode("");
     setOtpSent(false);
   };
 
@@ -99,18 +104,26 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <img src="/SatNam.Pub logo.png" alt="SatNam.Pub" className="h-10 w-10 rounded-full" />
+            <img
+              src="/SatNam.Pub logo.png"
+              alt="SatNam.Pub"
+              className="h-10 w-10 rounded-full"
+            />
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-          <p className="text-purple-200">Sign in with your existing Nostr account or create a new identity</p>
+          <p className="text-purple-200">
+            Sign in with your existing Nostr account or create a new identity
+          </p>
         </div>
 
         {!showOTPFlow ? (
           <>
             {/* Existing User Sign-in Options */}
             <div className="space-y-6 mb-8">
-              <h3 className="text-white font-bold text-xl mb-4">Sign in with your existing Nostr account</h3>
-              
+              <h3 className="text-white font-bold text-xl mb-4">
+                Sign in with your existing Nostr account
+              </h3>
+
               {/* Nostr Wallet Connect Option */}
               <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
                 <div className="flex items-start space-x-4 mb-4">
@@ -118,9 +131,12 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                     <Wallet className="h-6 w-6 text-white" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="text-white font-bold text-lg mb-2">Sign in with Nostr Wallet Connect</h4>
+                    <h4 className="text-white font-bold text-lg mb-2">
+                      Sign in with Nostr Wallet Connect
+                    </h4>
                     <p className="text-purple-200 text-sm mb-4">
-                      Fast and secure authentication using your compatible Nostr wallet. Perfect for users with NWC-enabled wallets.
+                      Fast and secure authentication using your compatible Nostr
+                      wallet. Perfect for users with NWC-enabled wallets.
                     </p>
                   </div>
                 </div>
@@ -134,7 +150,11 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                   ) : (
                     <Wallet className="h-5 w-5" />
                   )}
-                  <span>{isLoading ? 'Connecting...' : 'Sign in with Nostr Wallet Connect'}</span>
+                  <span>
+                    {isLoading
+                      ? "Connecting..."
+                      : "Sign in with Nostr Wallet Connect"}
+                  </span>
                 </button>
               </div>
 
@@ -145,9 +165,12 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                     <MessageCircle className="h-6 w-6 text-white" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="text-white font-bold text-lg mb-2">Sign in with One-Time Password (OTP) via Nostr DM</h4>
+                    <h4 className="text-white font-bold text-lg mb-2">
+                      Sign in with One-Time Password (OTP) via Nostr DM
+                    </h4>
                     <p className="text-purple-200 text-sm mb-4">
-                      Receive a secure code via direct message on Nostr. Works with any Nostr client that supports DMs.
+                      Receive a secure code via direct message on Nostr. Works
+                      with any Nostr client that supports DMs.
                     </p>
                   </div>
                 </div>
@@ -169,11 +192,14 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                   <Info className="h-4 w-4" />
                   <span className="text-sm">Why two sign-in options?</span>
                 </button>
-                
+
                 {showTooltip && (
                   <div className="absolute top-8 left-0 bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20 max-w-md z-10">
                     <p className="text-purple-100 text-sm">
-                      Nostr Wallet Connect is fast and secure for users with compatible wallets. One-Time Password via Nostr DM lets you sign in using any Nostr client that supports direct messages.
+                      Nostr Wallet Connect is fast and secure for users with
+                      compatible wallets. One-Time Password via Nostr DM lets
+                      you sign in using any Nostr client that supports direct
+                      messages.
                     </p>
                   </div>
                 )}
@@ -189,9 +215,12 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
 
             {/* New User Section */}
             <div className="text-center">
-              <h3 className="text-white font-bold text-xl mb-4">New to Nostr?</h3>
+              <h3 className="text-white font-bold text-xl mb-4">
+                New to Nostr?
+              </h3>
               <p className="text-purple-200 mb-6">
-                Forge your identity and join the decentralized future with Satnam.pub.
+                Forge your identity and join the decentralized future with
+                Satnam.pub.
               </p>
               <button
                 onClick={onCreateNew}
@@ -213,7 +242,9 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
               >
                 <ArrowRight className="h-5 w-5 text-white rotate-180" />
               </button>
-              <h3 className="text-white font-bold text-xl">Sign in with Nostr DM</h3>
+              <h3 className="text-white font-bold text-xl">
+                Sign in with Nostr DM
+              </h3>
             </div>
 
             {!otpSent ? (
@@ -231,7 +262,8 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300"
                   />
                   <p className="text-purple-200 text-sm mt-2">
-                    We'll send a secure one-time code to your Nostr account via direct message.
+                    We'll send a secure one-time code to your Nostr account via
+                    direct message.
                   </p>
                 </div>
 
@@ -245,7 +277,7 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                   ) : (
                     <Send className="h-5 w-5" />
                   )}
-                  <span>{isLoading ? 'Sending...' : 'Send One-Time Code'}</span>
+                  <span>{isLoading ? "Sending..." : "Send One-Time Code"}</span>
                 </button>
               </div>
             ) : (
@@ -257,7 +289,9 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                     <div>
                       <p className="text-green-400 font-semibold">Code Sent!</p>
                       <p className="text-green-200 text-sm">
-                        We've sent a one-time code to your Nostr account via DM. Please check your favorite Nostr client and enter the code below.
+                        We've sent a one-time code to your Nostr account via DM.
+                        Please check your favorite Nostr client and enter the
+                        code below.
                       </p>
                     </div>
                   </div>
@@ -276,7 +310,8 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                     maxLength={6}
                   />
                   <p className="text-purple-200 text-sm mt-2">
-                    Use any Nostr app that supports DMs (like Amethyst, Damus, Iris.to, or Snort.social) to retrieve your code.
+                    Use any Nostr app that supports DMs (like Amethyst, Damus,
+                    Iris.to, or Snort.social) to retrieve your code.
                   </p>
                 </div>
 
@@ -291,13 +326,13 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                     ) : (
                       <CheckCircle className="h-5 w-5" />
                     )}
-                    <span>{isLoading ? 'Verifying...' : 'Submit'}</span>
+                    <span>{isLoading ? "Verifying..." : "Submit"}</span>
                   </button>
-                  
+
                   <button
                     onClick={() => {
                       setOtpSent(false);
-                      setOtpCode('');
+                      setOtpCode("");
                     }}
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2"
                   >
@@ -310,9 +345,12 @@ const SignInModal: React.FC<SignInModalProps> = ({ isOpen, onClose, onSignInSucc
                   <div className="flex items-start space-x-3">
                     <Info className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-blue-400 font-semibold">Didn't receive the code?</p>
+                      <p className="text-blue-400 font-semibold">
+                        Didn't receive the code?
+                      </p>
                       <p className="text-blue-200 text-sm">
-                        Make sure your Nostr client is connected and can receive direct messages. You can also try requesting a new code.
+                        Make sure your Nostr client is connected and can receive
+                        direct messages. You can also try requesting a new code.
                       </p>
                     </div>
                   </div>

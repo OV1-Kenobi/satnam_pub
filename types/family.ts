@@ -8,7 +8,7 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: 'parent' | 'child' | 'guardian' | 'other';
+  role: "parent" | "child" | "guardian" | "other";
   avatar?: string;
 }
 
