@@ -6,7 +6,10 @@ export const userSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(100),
   displayName: z.string().min(1).max(100).optional(),
-  nostrPublicKey: z.string().optional(),
+  nostrPublicKey: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, "Invalid Nostr public key format")
+    .optional(),
 });
 
 // Family validation schema
@@ -26,7 +29,9 @@ export const lightningAddressSchema = z.object({
 // NIP-05 verification schema
 export const nip05Schema = z.object({
   name: z.string().min(1).max(100),
-  pubkey: z.string(),
+  pubkey: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, "Invalid Nostr public key format"),
 });
 
 // Validate request data against a schema

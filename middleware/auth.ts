@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
 import { config } from "../config";
 import { rateLimitMiddleware } from "./rateLimit";
 import { z } from "zod";
+
+/**
+ * Helper function to get the parsed body from a request
+ * This should be used in route handlers after middleware has parsed the body
+ */
+export function getParsedBody<T = unknown>(req: NextRequest): T {
+  // Use a safer type assertion pattern
+  return (req as unknown as { _parsedBody: T })._parsedBody;
+}
 
 export interface AuthenticatedRequest extends NextRequest {
   user?: {
@@ -69,13 +78,16 @@ export async function authMiddleware(
 
         // Add user info to request
         const authenticatedReq = req as AuthenticatedRequest;
-        authenticatedReq.user = decoded;
+        // Ensure the user object has all required properties
+        authenticatedReq.user = {
+          id: decoded.id,
+          npub: decoded.npub,
+          role: decoded.role,
+        };
 
         // Call the handler with the authenticated request
         return handler(authenticatedReq);
       } catch (error) {
-        console.error("Authentication error:", error);
-
         // Provide more specific error message for validation failures
         const errorMessage =
           error instanceof Error &&
@@ -140,6 +152,9 @@ export async function nostrSignatureMiddleware(
     // Parse request body
     const body = await req.json();
 
+    // Attach the parsed body to the request so downstream handlers can access it
+    (req as unknown as { _parsedBody: unknown })._parsedBody = body;
+
     // Check if body contains a signed Nostr event
     if (!body.signed_event) {
       return NextResponse.json(
@@ -188,13 +203,11 @@ export async function nostrSignatureMiddleware(
       );
     }
 
-    // In Next.js, we don't need to clone the request as NextRequest is already
-    // properly typed and has all the necessary properties
-
-    // Call the handler with the original NextRequest
+    // Call the handler with the modified request that has the parsed body attached
+    // Since we've attached _parsedBody to the request, it's safe to pass it to the handler
     return handler(req);
   } catch (error) {
-    console.error("Nostr signature verification error:", error);
+    // Return a generic error for any parsing or verification failures
     return NextResponse.json(
       { error: "Bad Request - Invalid request format" },
       { status: 400 },

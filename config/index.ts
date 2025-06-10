@@ -3,8 +3,9 @@
  *
  * This file exports all configuration settings for use throughout the application.
  */
-import dotenv from "dotenv";
+import * as dotenv from "dotenv";
 import { z } from "zod";
+import { randomBytes } from "crypto";
 
 // Load environment variables
 dotenv.config();
@@ -42,14 +43,14 @@ export const authConfig = {
           "JWT_SECRET environment variable is required in production",
         );
       }
-      console.warn("No JWT_SECRET provided, using a random secret for development only");
-      // Generate a random secret for development instead of using a hardcoded one
-      const crypto = require('crypto');
-      return crypto.randomBytes(32).toString('hex');
+      // Generate a random secret for development environments only
+      return randomBytes(32).toString("hex");
     })(),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   nostrAuthKind: 27235, // Custom event kind for authentication
-  nostrAuthChallenge: process.env.NOSTR_AUTH_CHALLENGE || "satnam_auth_" + Math.floor(Date.now() / 1000).toString(),
+  nostrAuthChallenge:
+    process.env.NOSTR_AUTH_CHALLENGE ||
+    "satnam_auth_" + Math.floor(Date.now() / 1000).toString(),
   otpExpiryMinutes: 10,
   maxOtpAttempts: 3,
 };
@@ -81,7 +82,7 @@ export const nostrConfig = {
         process.env.NODE_ENV === "production" &&
         !process.env.NOSTR_RELAY_URL
       ) {
-        console.warn("NOSTR_RELAY_URL not set, using default:", defaultUrl);
+        // Fall back to default relay URL in non-production environments
       }
       return defaultUrl;
     })(),

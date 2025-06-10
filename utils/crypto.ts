@@ -1,6 +1,10 @@
+// secp256k1 will be used in future implementations
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import * as secp256k1 from "@noble/secp256k1";
+/* eslint-enable @typescript-eslint/no-unused-vars */
 import {
   createHash,
+  createHmac,
   randomBytes,
   createCipheriv,
   createDecipheriv,
@@ -158,7 +162,61 @@ export function decryptData(encryptedData: string, password: string): string {
 }
 
 /**
+ * Decode a Base32 string to a buffer
+ * This is used for TOTP/HOTP secrets which are commonly Base32-encoded
+ */
+export function decodeBase32(base32: string): Buffer {
+  // Remove spaces and convert to uppercase
+  const sanitized = base32.replace(/\s+/g, "").toUpperCase();
+
+  // Base32 character set (RFC 4648)
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+  // Prepare output buffer
+  const length = Math.floor((sanitized.length * 5) / 8);
+  const result = Buffer.alloc(length);
+
+  let bits = 0;
+  let value = 0;
+  let index = 0;
+
+  for (let i = 0; i < sanitized.length; i++) {
+    const char = sanitized[i];
+    if (char === "=") continue; // Skip padding
+
+    const charValue = charset.indexOf(char);
+    if (charValue === -1) {
+      throw new Error(`Invalid Base32 character: ${char}`);
+    }
+
+    // Add 5 bits from each character
+    value = (value << 5) | charValue;
+    bits += 5;
+
+    // When we have at least 8 bits, write a byte
+    if (bits >= 8) {
+      bits -= 8;
+      result[index++] = (value >> bits) & 0xff;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Determine if a string is Base32-encoded
+ */
+export function isBase32(str: string): boolean {
+  const sanitized = str.replace(/\s+/g, "").toUpperCase();
+  // Base32 uses A-Z and 2-7, and may end with padding (=)
+  return /^[A-Z2-7]+=*$/.test(sanitized);
+}
+
+/**
  * Generate a time-based one-time password (TOTP)
+ * @param secret - The secret key (UTF-8 string or Base32-encoded string)
+ * @param window - Time window offset (default: 0)
+ * @returns 6-digit TOTP code
  */
 export function generateTOTP(secret: string, window = 0): string {
   const counter = Math.floor(Date.now() / 30000) + window;
@@ -168,6 +226,9 @@ export function generateTOTP(secret: string, window = 0): string {
 /**
  * Generate an HMAC-based one-time password (HOTP)
  * Implementation follows RFC 4226
+ * @param secret - The secret key (UTF-8 string or Base32-encoded string)
+ * @param counter - The counter value
+ * @returns 6-digit HOTP code
  */
 export function generateHOTP(secret: string, counter: number): string {
   // Convert counter to buffer
@@ -177,12 +238,17 @@ export function generateHOTP(secret: string, counter: number): string {
     counter = counter >> 8;
   }
 
+  // Determine if the secret is Base32-encoded
+  let secretBuffer: Buffer;
+  if (isBase32(secret)) {
+    secretBuffer = decodeBase32(secret);
+  } else {
+    secretBuffer = Buffer.from(secret, "utf-8");
+  }
+
   // Create HMAC using SHA-1 as specified in RFC 4226
   // Note: While SHA-1 is generally deprecated, it's still the standard for HOTP
-  const hmac = createHash("sha1")
-    .update(Buffer.from(secret, "utf-8"))
-    .update(counterBuffer)
-    .digest();
+  const hmac = createHmac("sha1", secretBuffer).update(counterBuffer).digest();
 
   // Generate OTP
   const offset = hmac[hmac.length - 1] & 0xf;
@@ -199,6 +265,10 @@ export function generateHOTP(secret: string, counter: number): string {
 
 /**
  * Verify a time-based one-time password (TOTP)
+ * @param token - The TOTP code to verify
+ * @param secret - The secret key (UTF-8 string or Base32-encoded string)
+ * @param window - Time window to check before and after current time (default: 1)
+ * @returns Boolean indicating if the token is valid
  */
 export function verifyTOTP(token: string, secret: string, window = 1): boolean {
   // Check current window and surrounding windows
@@ -212,20 +282,79 @@ export function verifyTOTP(token: string, secret: string, window = 1): boolean {
 }
 
 /**
+ * Encode a buffer to Base32
+ * This is used for TOTP/HOTP secrets to be compatible with authenticator apps
+ */
+export function encodeBase32(buffer: Buffer): string {
+  // Base32 character set (RFC 4648)
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+  let result = "";
+  let bits = 0;
+  let value = 0;
+
+  for (let i = 0; i < buffer.length; i++) {
+    value = (value << 8) | buffer[i];
+    bits += 8;
+
+    while (bits >= 5) {
+      bits -= 5;
+      result += charset[(value >> bits) & 0x1f];
+    }
+  }
+
+  // If we have remaining bits
+  if (bits > 0) {
+    result += charset[(value << (5 - bits)) & 0x1f];
+  }
+
+  // Add padding to make length a multiple of 8
+  while (result.length % 8 !== 0) {
+    result += "=";
+  }
+
+  return result;
+}
+
+/**
+ * Generate a random Base32-encoded secret for TOTP
+ * @param length - Length of the secret in bytes (default: 20, recommended by RFC 6238)
+ * @returns Base32-encoded secret string
+ */
+export function generateTOTPSecret(length: number = 20): string {
+  const buffer = randomBytes(length);
+  return encodeBase32(buffer);
+}
+
+/**
  * Sign a message with a Nostr private key
  * @param event - The Nostr event to sign
  * @param privateKey - The private key to sign with
  * @returns The signed Nostr event
  */
 export function signNostrEvent(
-  event: { kind: number; pubkey: string; created_at: number; tags: string[][]; content: string },
-  privateKey: string
-): { id: string; kind: number; pubkey: string; created_at: number; tags: string[][]; content: string; sig: string } {
+  event: {
+    kind: number;
+    pubkey: string;
+    created_at: number;
+    tags: string[][];
+    content: string;
+  },
+  privateKey: string,
+): {
+  id: string;
+  kind: number;
+  pubkey: string;
+  created_at: number;
+  tags: string[][];
+  content: string;
+  sig: string;
+} {
   // Create a new object with the event properties
   const signedEvent = {
     ...event,
     id: getEventHash(event),
-    sig: signEvent(event, privateKey)
+    sig: signEvent(event, privateKey),
   };
 
   return signedEvent;
@@ -244,7 +373,15 @@ export function createNostrEvent(
   content: string,
   tags: string[][] = [],
   privateKey: string,
-): { id: string; kind: number; pubkey: string; created_at: number; tags: string[][]; content: string; sig: string } {
+): {
+  id: string;
+  kind: number;
+  pubkey: string;
+  created_at: number;
+  tags: string[][];
+  content: string;
+  sig: string;
+} {
   const publicKey = getPublicKey(privateKey);
 
   const event = {

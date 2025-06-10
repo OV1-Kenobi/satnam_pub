@@ -1,6 +1,5 @@
 import { db } from "../lib";
 import { lightning } from "../lib";
-import { config } from "../config";
 
 interface LightningAddress {
   id: string;

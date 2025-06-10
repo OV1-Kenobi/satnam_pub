@@ -110,7 +110,7 @@ export async function updateFamily(
 
   // Build update query
   let updateQuery = "UPDATE families SET updated_at = NOW()";
-  const queryParams: any[] = [];
+  const queryParams: (string | null)[] = [];
   let paramIndex = 1;
 
   if (name) {
@@ -308,6 +308,12 @@ export async function transferFamilyAdmin(
     await client.query(
       "UPDATE family_members SET role = $1 WHERE family_id = $2 AND user_id = $3",
       ["admin", familyId, newAdminId],
+    );
+
+    // Demote previous admin
+    await client.query(
+      "UPDATE family_members SET role = $1 WHERE family_id = $2 AND user_id != $3 AND role = 'admin'",
+      ["member", familyId, newAdminId],
     );
 
     await client.query("COMMIT");

@@ -61,7 +61,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
         "Understanding digital money and why it matters for your family",
       completed: false,
       icon: (
-        <img src="/LN Bitcoin icon.png\" alt="Bitcoin\" className="h-6 w-6" />
+        <img src="/LN Bitcoin icon.png" alt="Bitcoin" className="h-6 w-6" />
       ),
     },
     {
@@ -80,8 +80,8 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
       completed: false,
       icon: (
         <img
-          src="/Rebuilding_Camelot_logo__transparency_v3.png\"
-          alt="Rebuilding Camelot\"
+          src="/Rebuilding_Camelot_logo__transparency_v3.png"
+          alt="Rebuilding Camelot"
           className="h-6 w-6"
         />
       ),
@@ -94,8 +94,8 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
       completed: false,
       icon: (
         <img
-          src="/Citadel Academy Logo.png\"
-          alt="Citadel Academy\"
+          src="/Citadel Academy Logo.png"
+          alt="Citadel Academy"
           className="h-6 w-6"
         />
       ),
@@ -206,8 +206,8 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
               <div className="relative">
                 <div className="w-32 h-32 mx-auto mb-6 flex items-center justify-center transform rotate-3 shadow-2xl">
                   <img
-                    src="/SatNam.Pub logo.png\"
-                    alt="SatNam.Pub\"
+                    src="/SatNam.Pub logo.png"
+                    alt="SatNam.Pub"
                     className="h-32 w-32 rounded-2xl"
                   />
                   <div className="absolute -top-2 -right-2 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">

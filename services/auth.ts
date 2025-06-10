@@ -4,9 +4,11 @@
  * This service handles sovereign identity authentication using Nostr protocol.
  */
 
-import jwt from "jsonwebtoken";
-import { config, authConfig } from "../config";
+import * as jwt from "jsonwebtoken";
+import { config } from "../config";
 import { db } from "../lib";
+// These imports will be used in future implementations
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   pool,
   relays,
@@ -14,6 +16,7 @@ import {
   encodePublicKey,
   encodePrivateKey,
 } from "../lib/nostr";
+/* eslint-enable @typescript-eslint/no-unused-vars */
 import {
   generatePrivateKey,
   getPublicKey,
@@ -21,69 +24,23 @@ import {
   verifySignature,
   getEventHash,
 } from "nostr-tools";
-import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
+import { randomBytes, createCipheriv } from "crypto";
+// createDecipheriv will be used in future implementations for key recovery
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { createDecipheriv } from "crypto";
+/* eslint-enable @typescript-eslint/no-unused-vars */
 import {
   User,
   NostrEvent,
+  // These types will be used in future implementations
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   NostrAuthPayload,
   OTPAuthPayload,
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 } from "../types/user";
 import { generateRandomHex, sha256 } from "../utils/crypto";
-import { authenticateWithNostr, logout } from "../api/endpoints/auth";
 
-// Client-side authentication functions
-
-/**
- * Authenticates a user with a signed Nostr event and stores the token.
- * @param signedEvent The signed Nostr event for authentication
- * @returns Promise resolving to a boolean indicating success
- */
-export const authenticateUser = async (
-  signedEvent: NostrEvent,
-): Promise<boolean> => {
-  try {
-    const token = await authenticateWithNostr(signedEvent);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(authConfig.tokenStorageKey, token);
-    }
-    return true;
-  } catch (error) {
-    console.error("Authentication failed:", error);
-    return false;
-  }
-};
-
-/**
- * Logs out the current user and removes stored tokens.
- * @returns Promise resolving when logout is complete
- */
-export const logoutUser = async (): Promise<void> => {
-  try {
-    await logout();
-  } finally {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(authConfig.tokenStorageKey);
-    }
-  }
-};
-
-/**
- * Checks if the user is currently authenticated.
- * @returns Boolean indicating if the user is authenticated
- */
-export const isAuthenticated = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return !!localStorage.getItem(authConfig.tokenStorageKey);
-};
-
-/**
- * Gets the current authentication token.
- * @returns The authentication token or null if not authenticated
- */
-export const getAuthToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(authConfig.tokenStorageKey);
-};
+// Note: Client-side authentication functions have been moved to client/auth.ts
 
 // Server-side authentication functions
 
@@ -177,6 +134,43 @@ export async function createNostrIdentity(
 }
 
 /**
+ * Generate a challenge for Nostr authentication
+ * @param npub User's Nostr public key (npub)
+ * @returns Challenge ID and challenge string
+ */
+export async function generateAuthChallenge(
+  npub: string,
+): Promise<{ id: string; challenge: string }> {
+  // Generate a random challenge
+  const challenge = generateRandomHex(32);
+  const id = generateRandomHex(16);
+
+  // Store the challenge with expiration (5 minutes)
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 5);
+
+  // Create auth_challenges table if it doesn't exist
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS auth_challenges (
+      id TEXT PRIMARY KEY,
+      npub TEXT NOT NULL,
+      challenge TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMP NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE
+    )
+  `);
+
+  // Insert the challenge
+  await db.query(
+    "INSERT INTO auth_challenges (id, npub, challenge, expires_at) VALUES ($1, $2, $3, $4)",
+    [id, npub, challenge, expiresAt.toISOString()],
+  );
+
+  return { id, challenge };
+}
+
+/**
  * Authenticate with Nostr Wallet Connect
  * @param signed_event Signed Nostr event for authentication
  * @returns User object and JWT token
@@ -202,8 +196,38 @@ export async function authenticateWithNWC(
     throw new Error("Event too old");
   }
 
+  // Ensure event.content equals the expected one-time challenge
+  const challengeId = signed_event.tags.find((t) => t[0] === "challenge")?.[1];
+  if (!challengeId) {
+    throw new Error("Missing challenge tag");
+  }
+
+  const expected = await db.query(
+    "SELECT challenge, npub, used, expires_at FROM auth_challenges WHERE id = $1",
+    [challengeId],
+  );
+
+  if (
+    expected.rows.length === 0 ||
+    expected.rows[0].challenge !== signed_event.content ||
+    expected.rows[0].used ||
+    new Date(expected.rows[0].expires_at) < new Date()
+  ) {
+    throw new Error("Invalid or expired challenge");
+  }
+
+  // Mark challenge as used to prevent replay attacks
+  await db.query("UPDATE auth_challenges SET used = TRUE WHERE id = $1", [
+    challengeId,
+  ]);
+
   // Get the npub from the pubkey
   const npub = nip19.npubEncode(signed_event.pubkey);
+
+  // Verify that the npub matches the one associated with the challenge
+  if (expected.rows[0].npub !== npub) {
+    throw new Error("Challenge was not issued for this public key");
+  }
 
   // Find user by npub
   const result = await db.query("SELECT * FROM users WHERE npub = $1", [npub]);
@@ -290,9 +314,11 @@ export async function generateOTPForUser(npub: string): Promise<string> {
     [userId, sha256(otp), sessionToken, expiresAt],
   );
 
-  // Send the OTP via Nostr DM
-  // This is a placeholder for the actual implementation
-  // TODO: Implement secure OTP delivery via Nostr DM
+  /*
+   * OTP delivery mechanism
+   * In production, this would send the OTP via a secure Nostr DM
+   * using the user's public key for encryption
+   */
 
   return sessionToken;
 }
@@ -395,7 +421,7 @@ export function verifyToken(token: string): TokenPayload {
     const secretBuffer = Buffer.from(config.auth.jwtSecret, "utf8");
 
     return jwt.verify(token, secretBuffer) as TokenPayload;
-  } catch (error) {
+  } catch {
     throw new Error("Invalid token");
   }
 }

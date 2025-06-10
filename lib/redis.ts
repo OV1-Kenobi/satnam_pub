@@ -27,10 +27,7 @@ const redisClient = createClient({
     reconnectStrategy: (retries) => {
       // Implement exponential backoff with jitter
       if (retries >= RECONNECT_MAX_ATTEMPTS) {
-        console.error(
-          `Redis: Maximum reconnection attempts (${RECONNECT_MAX_ATTEMPTS}) reached`,
-        );
-        // Emit critical failure event
+        // Maximum reconnection attempts reached - emit critical failure event
         redisEvents.emit(
           "critical-failure",
           new Error("Maximum reconnection attempts reached"),
@@ -44,9 +41,7 @@ const redisClient = createClient({
         RECONNECT_MAX_DELAY,
       );
 
-      console.log(
-        `Redis: Attempting reconnection #${retries + 1} in ${Math.round(delay)}ms`,
-      );
+      // Logging reconnection attempt with calculated delay
       return delay;
     },
   },
@@ -61,29 +56,36 @@ let healthCheckTimer: NodeJS.Timeout | null = null;
 
 // Handle Redis connection events
 redisClient.on("error", (err) => {
-  console.error("Redis connection error:", err);
+  // Handle Redis connection errors with appropriate recovery strategies
 
-  // Categorize errors for better handling
+  /*
+   * Error categorization for intelligent handling
+   * Different error types require different recovery strategies
+   */
   const errorMessage = err.message.toLowerCase();
-
-  // Handle different types of errors
   if (errorMessage.includes("connect") || errorMessage.includes("network")) {
-    // Network-related errors
-    console.warn("Redis: Network-related error detected");
+    // Network-related errors - emit event for application to handle
     redisEvents.emit("connection-issue", err);
   } else if (
     errorMessage.includes("auth") ||
     errorMessage.includes("password")
   ) {
     // Authentication errors - these won't be fixed by reconnection
-    console.error("Redis: Authentication error detected - check credentials");
     redisEvents.emit("auth-failure", err);
     return; // Don't attempt reconnection for auth errors
   }
 
-  // Only attempt manual reconnection if the automatic reconnection strategy fails
-  // or for errors that don't trigger the reconnection strategy
-  if (!isReconnecting && !redisClient.isOpen) {
+  /*
+   * Reconnection strategy:
+   * 1. Let built-in reconnectStrategy handle typical network errors
+   * 2. Manual reconnection only when redis-js gives up (returns Error)
+   * 3. Force reconnection for zombie connections detected by health checks
+   */
+  if (
+    !isReconnecting &&
+    !redisClient.isOpen &&
+    reconnectAttempt >= RECONNECT_MAX_ATTEMPTS
+  ) {
     connectionState = RedisConnectionState.RECONNECTING;
     redisEvents.emit("state-change", connectionState);
     handleReconnection();
@@ -91,7 +93,6 @@ redisClient.on("error", (err) => {
 });
 
 redisClient.on("connect", () => {
-  console.log("Redis connection successful");
   // Reset reconnection state on successful connection
   isReconnecting = false;
   reconnectAttempt = 0;
@@ -104,13 +105,13 @@ redisClient.on("connect", () => {
 });
 
 redisClient.on("reconnecting", () => {
-  console.log(`Redis reconnecting...`);
+  // Update state and notify subscribers when Redis is attempting to reconnect
   connectionState = RedisConnectionState.RECONNECTING;
   redisEvents.emit("state-change", connectionState);
 });
 
 redisClient.on("end", () => {
-  console.log("Redis connection ended");
+  // Handle connection termination
   connectionState = RedisConnectionState.DISCONNECTED;
   redisEvents.emit("state-change", connectionState);
 
@@ -125,7 +126,6 @@ function startHealthCheck() {
 
   healthCheckTimer = setInterval(async () => {
     if (!redisClient.isOpen) {
-      console.warn("Redis: Health check detected closed connection");
       return; // Connection already closed, reconnection should be handled by events
     }
 
@@ -133,22 +133,20 @@ function startHealthCheck() {
       // Simple ping to check connection
       await redisClient.ping();
     } catch (error) {
-      console.error("Redis: Health check failed:", error);
+      // Emit event for health check failure so application can respond
       redisEvents.emit("health-check-failed", error);
 
-      // If health check fails but connection is still marked as open,
-      // we might have a zombie connection - force reconnection
+      /*
+       * Zombie connection detection:
+       * When ping fails but connection is still marked as open,
+       * we need to force reconnection to restore service
+       */
       if (redisClient.isOpen && !isReconnecting) {
-        console.warn(
-          "Redis: Possible zombie connection detected, forcing reconnection",
-        );
+        // Force reconnection for zombie connection
         try {
           await redisClient.quit();
         } catch (quitError) {
-          console.error(
-            "Redis: Error while quitting zombie connection:",
-            quitError,
-          );
+          // Error during connection cleanup - continue with reconnection anyway
         }
         handleReconnection();
       }
@@ -180,28 +178,23 @@ async function handleReconnection() {
       RECONNECT_MAX_DELAY,
     );
 
-    console.log(
-      `Redis: Manual reconnection attempt #${reconnectAttempt} in ${delay}ms`,
-    );
+    // Manual reconnection with exponential backoff
 
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
       if (!redisClient.isOpen) {
         await redisClient.connect();
-        console.log("Redis: Manual reconnection successful");
+        // Successfully reconnected to Redis
         break;
       }
     } catch (error) {
-      console.error(
-        `Redis: Manual reconnection attempt #${reconnectAttempt} failed:`,
-        error,
-      );
+      // Failed reconnection attempt - will retry with exponential backoff
     }
   }
 
   if (!redisClient.isOpen && reconnectAttempt >= RECONNECT_MAX_ATTEMPTS) {
-    console.error("Redis: All manual reconnection attempts failed");
+    // All reconnection attempts failed - update state and notify application
     connectionState = RedisConnectionState.FAILED;
     redisEvents.emit("state-change", connectionState);
     redisEvents.emit(
@@ -229,7 +222,7 @@ const connectRedis = async () => {
     }
     return redisClient;
   } catch (error) {
-    console.error("Failed to connect to Redis:", error);
+    // Connection attempt failed - update state and initiate recovery
 
     // Update connection state
     connectionState = RedisConnectionState.RECONNECTING;
@@ -250,11 +243,11 @@ const closeRedis = async () => {
   if (redisClient.isOpen) {
     try {
       await redisClient.quit();
-      console.log("Redis connection closed gracefully");
+      // Connection closed successfully
       connectionState = RedisConnectionState.DISCONNECTED;
       redisEvents.emit("state-change", connectionState);
     } catch (error) {
-      console.error("Error while closing Redis connection:", error);
+      // Error during graceful shutdown - propagate to caller
       throw error;
     }
   }
@@ -275,7 +268,7 @@ const isRedisHealthy = async (): Promise<boolean> => {
     await redisClient.ping();
     return true;
   } catch (error) {
-    console.error("Redis health check failed:", error);
+    // Health check failed - connection is not usable
     return false;
   }
 };

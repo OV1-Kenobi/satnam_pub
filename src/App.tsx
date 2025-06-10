@@ -49,7 +49,7 @@ function App() {
   if (currentView === "onboarding") {
     return (
       <FamilyOnboarding
-        familyName="Johnson\"
+        familyName="Nakamoto"
         onComplete={() => setCurrentView("dashboard")}
         onBack={() => setCurrentView("landing")}
       />
@@ -73,8 +73,8 @@ function App() {
       <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center max-w-2xl border border-white/20">
           <img
-            src="/Citadel Academy Logo.png\"
-            alt="Citadel Academy\"
+            src="/Citadel Academy Logo.png"
+            alt="Citadel Academy"
             className="h-16 w-16 mx-auto mb-6"
           />
           <h2 className="text-3xl font-bold text-white mb-4">
@@ -585,7 +585,7 @@ function App() {
                   href="https://citadel.academy"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
+                  className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
                 >
                   <span>Citadel Academy</span>
                   <ExternalLink className="h-3 w-3" />
@@ -650,7 +650,7 @@ function App() {
                   href="https://iris.to/npub1p9a5sclpw5prjhx0c0u4ufjnwmnt2pxcvpa4lxnf4wn53vawuatqkmzxyt"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
+                  className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
                 >
                   <span>Follow us on Nostr</span>
                   <ExternalLink className="h-3 w-3" />
@@ -659,7 +659,7 @@ function App() {
                   href="https://t.me/rebuilding_camelot"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
+                  className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
                 >
                   <span>Join the conversation on Telegram</span>
                   <ExternalLink className="h-3 w-3" />
@@ -668,7 +668,7 @@ function App() {
                   href="https://iris.to/npub1qq50zturtx4ns2uf2adt26pcpmez47ur9ds6a4fwaax5u5evr3nsnu2qvm"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
+                  className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"
                 >
                   <span>Follow the Founder, Ov1, on Nostr</span>
                   <ExternalLink className="h-3 w-3" />

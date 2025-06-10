@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { redisClient, connectRedis } from "../lib";
+import { connectRedis } from "../lib";
 
 interface RateLimitOptions {
   limit: number; // Maximum number of requests
@@ -18,11 +18,13 @@ export async function rateLimitMiddleware(
 ): Promise<NextResponse> {
   const { limit, window, keyGenerator } = options;
 
-  // Default key generator uses IP address
+  /**
+   * Default key generator uses IP address with fallbacks
+   * Handles various proxy headers to get the real client IP
+   */
   const getKey =
     keyGenerator ||
     ((req: NextRequest) => {
-      // Handle multiple proxy headers in order of preference
       const ip =
         req.ip ||
         req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -71,7 +73,7 @@ export async function rateLimitMiddleware(
 
     return response;
   } catch (error) {
-    console.error("Rate limiting error:", error);
+    // Redis connection or operation failed
     // In production, you might want to fail closed or use a fallback strategy
     if (process.env.NODE_ENV === "production") {
       return NextResponse.json(
