@@ -45,3 +45,5 @@ coverage/
 *.tmp
 *.temp
 test_file.txt
+.next
+next-env.d.ts

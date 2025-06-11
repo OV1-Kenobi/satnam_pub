@@ -1,9 +1,9 @@
 import React from "react";
-import "../src/index.css"; // Assuming this contains your Tailwind CSS imports
+import "../styles/globals.css"; // Tailwind CSS imports
 
 export const metadata = {
-  title: "Sovereign Bitcoin Identity Forge",
-  description: "A platform for managing sovereign Bitcoin identity",
+  title: "Satnam.pub Identity Forge",
+  description: "Your sovereign Bitcoin identity platform",
 };
 
 export default function RootLayout({
