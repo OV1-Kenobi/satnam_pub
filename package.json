@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "test": "jest",
     "verify-frontend": "node scripts/verify-frontend.js",
-    "frontend-protection-check": "node -e \"const fs = require('fs'); const { execSync } = require('child_process'); try { const protectedFiles = fs.readFileSync('.frontend-protected-files', 'utf8').split('\\n').filter(line => line.trim()); const files = execSync('git diff --cached --name-only').toString().split('\\n'); const modifiedProtectedFiles = files.filter(file => protectedFiles.some(protectedFile => file.includes(protectedFile))); if (modifiedProtectedFiles.length > 0) { console.error('WARNING: You are modifying protected frontend files:\\n' + modifiedProtectedFiles.join('\\n')); process.exit(1); } } catch (e) { console.error(e); process.exit(1); }\""
+    "frontend-protection-check": "node --input-type=module -e \"import fs from 'fs'; import { execSync } from 'child_process'; try { const protectedFiles = fs.readFileSync('.frontend-protected-files', 'utf8').split('\\n').filter(line => line.trim()); const files = execSync('git diff --cached --name-only').toString().split('\\n'); const modifiedProtectedFiles = files.filter(file => protectedFiles.some(protectedFile => file.includes(protectedFile))); if (modifiedProtectedFiles.length > 0) { console.error('WARNING: You are modifying protected frontend files:\\n' + modifiedProtectedFiles.join('\\n')); process.exit(1); } } catch (e) { console.error(e); process.exit(1); }\""
   },
   "pre-commit": [
     "frontend-protection-check"
