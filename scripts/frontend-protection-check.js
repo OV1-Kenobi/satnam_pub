@@ -34,8 +34,28 @@ stagedFiles.forEach(file => console.log(`  - ${file}`));
 const modifiedProtectedFiles = [];
 for (const stagedFile of stagedFiles) {
   for (const protectedFile of protectedFiles) {
-    if (stagedFile === protectedFile || stagedFile.includes(protectedFile)) {
-      console.log(`⚠️ Match found: ${stagedFile} matches protected pattern: ${protectedFile}`);
+    // Exact match
+    if (stagedFile === protectedFile) {
+      console.log(`⚠️ Exact match found: ${stagedFile} matches protected file: ${protectedFile}`);
+      modifiedProtectedFiles.push(stagedFile);
+      break;
+    }
+    
+    // Check if the staged file is a protected file (with or without directory prefix)
+    const stagedFileParts = stagedFile.split('/');
+    const protectedFileParts = protectedFile.split('/');
+    const stagedFileName = stagedFileParts[stagedFileParts.length - 1];
+    const protectedFileName = protectedFileParts[protectedFileParts.length - 1];
+    
+    if (stagedFileName === protectedFileName) {
+      console.log(`⚠️ Filename match found: ${stagedFile} matches protected file: ${protectedFile}`);
+      modifiedProtectedFiles.push(stagedFile);
+      break;
+    }
+    
+    // Check if the staged file is in a protected directory
+    if (protectedFile.includes('/') && stagedFile.includes(protectedFile.split('/')[0])) {
+      console.log(`⚠️ Directory match found: ${stagedFile} is in protected directory: ${protectedFile.split('/')[0]}`);
       modifiedProtectedFiles.push(stagedFile);
       break;
     }
