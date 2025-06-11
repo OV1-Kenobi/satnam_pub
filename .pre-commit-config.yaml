@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: frontend-protection
+        name: Frontend Protection Check
+        entry: bash -c 'if git diff --cached --name-only | grep -E "(src/components/|src/App.tsx|package.json|vite.config.ts)"; then echo "WARNING: You are modifying protected frontend files!"; exit 1; fi'
+        language: system
+        pass_filenames: false
