@@ -1,20 +1,46 @@
 import fs from 'fs';
 import { execSync } from 'child_process';
+import path from 'path';
+
+// Debug information
+console.log('🔍 Starting frontend protection check...');
 
 // Read the list of protected files
-const protectedFiles = fs.readFileSync('.frontend-protected-files', 'utf8')
+const protectedFilesPath = path.resolve('.frontend-protected-files');
+console.log(`📋 Reading protected files from: ${protectedFilesPath}`);
+
+if (!fs.existsSync(protectedFilesPath)) {
+  console.error(`❌ Protected files list not found at: ${protectedFilesPath}`);
+  process.exit(1);
+}
+
+const protectedFiles = fs.readFileSync(protectedFilesPath, 'utf8')
   .split('\n')
   .filter(line => line.trim());
+
+console.log(`📋 Protected files (${protectedFiles.length}):`);
+protectedFiles.forEach(file => console.log(`  - ${file}`));
 
 // Get the list of files that are staged for commit
-const stagedFiles = execSync('git diff --cached --name-only').toString()
+const stagedFilesOutput = execSync('git diff --cached --name-only').toString();
+const stagedFiles = stagedFilesOutput
   .split('\n')
   .filter(line => line.trim());
 
+console.log(`📋 Staged files (${stagedFiles.length}):`);
+stagedFiles.forEach(file => console.log(`  - ${file}`));
+
 // Check if any of the staged files match the protected files
-const modifiedProtectedFiles = stagedFiles.filter(file => 
-  protectedFiles.some(protectedFile => file.includes(protectedFile))
-);
+const modifiedProtectedFiles = [];
+for (const stagedFile of stagedFiles) {
+  for (const protectedFile of protectedFiles) {
+    if (stagedFile === protectedFile || stagedFile.includes(protectedFile)) {
+      console.log(`⚠️ Match found: ${stagedFile} matches protected pattern: ${protectedFile}`);
+      modifiedProtectedFiles.push(stagedFile);
+      break;
+    }
+  }
+}
 
 // If there are protected files being modified, exit with an error
 if (modifiedProtectedFiles.length > 0) {
