@@ -1,0 +1,279 @@
+"""
+Domain Management GraphQL Schema
+"""
+
+type DomainRecord {
+  id: ID!
+  domainName: String!
+  domainType: DomainType!
+  familyId: ID!
+  family: Family
+  pubkyPublicKey: String
+  dnsRecords: [DNSRecord!]
+  signedZoneData: String
+  sovereigntyScore: Int
+  sovereigntyDetails: JSON
+  status: DomainStatus!
+  members: [DomainMember!]
+  verifications: [DomainVerification!]
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum DomainType {
+  TRADITIONAL
+  PUBKY
+  HANDSHAKE
+  ENS
+}
+
+enum DomainStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+  TRANSFERRING
+}
+
+type DNSRecord {
+  id: ID!
+  type: String!
+  name: String!
+  value: String!
+  ttl: Int
+  priority: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type DomainMember {
+  id: ID!
+  domainRecordId: ID!
+  domain: DomainRecord!
+  userId: ID!
+  user: User!
+  role: DomainMemberRole!
+  permissions: [String!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum DomainMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+type DomainVerification {
+  id: ID!
+  domainRecordId: ID!
+  domain: DomainRecord!
+  verificationType: VerificationType!
+  verificationData: String!
+  verifiedAt: DateTime
+  expiresAt: DateTime
+}
+
+enum VerificationType {
+  TXT_RECORD
+  PUBKY_SIGNATURE
+  DNS_CHALLENGE
+}
+
+type DomainTransferRequest {
+  id: ID!
+  domainRecordId: ID!
+  domain: DomainRecord!
+  sourceProvider: String!
+  targetProvider: String!
+  status: TransferStatus!
+  transferData: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum TransferStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+type DomainInheritance {
+  id: ID!
+  domainRecordId: ID!
+  domain: DomainRecord!
+  heirUserId: ID!
+  heirUser: User!
+  activationConditions: JSON!
+  activatedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DomainFederation {
+  id: ID!
+  familyId: ID!
+  family: Family!
+  domainRecordId: ID!
+  domain: DomainRecord!
+  federationData: JSON!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DomainAuditLog {
+  id: ID!
+  domainRecordId: ID!
+  domain: DomainRecord!
+  userId: ID
+  user: User
+  action: String!
+  details: JSON
+  createdAt: DateTime!
+}
+
+type DomainOperationResult {
+  success: Boolean!
+  message: String!
+  data: JSON
+}
+
+input DNSRecordInput {
+  type: String!
+  name: String!
+  value: String!
+  ttl: Int
+  priority: Int
+}
+
+# Queries
+type Query {
+  # Get a domain by ID
+  domain(id: ID!): DomainRecord
+  
+  # Get all domains for a family
+  familyDomains(familyId: ID!): [DomainRecord!]!
+  
+  # Get all domains for the current user
+  myDomains: [DomainRecord!]!
+  
+  # Check if a domain is available
+  checkDomainAvailability(domainName: String!, providerType: DomainType!): Boolean!
+  
+  # Get verification instructions for a domain
+  domainVerificationInstructions(domainId: ID!): String!
+  
+  # Get DNS records for a domain
+  domainDNSRecords(domainId: ID!): [DNSRecord!]!
+  
+  # Get domain members
+  domainMembers(domainId: ID!): [DomainMember!]!
+  
+  # Get domain sovereignty score
+  domainSovereigntyScore(domainId: ID!): Int!
+  
+  # Get domain transfer requests
+  domainTransferRequests(domainId: ID!): [DomainTransferRequest!]!
+  
+  # Get domain inheritance
+  domainInheritance(domainId: ID!): DomainInheritance
+  
+  # Get domain federation
+  domainFederation(familyId: ID!): [DomainFederation!]!
+  
+  # Get domain audit log
+  domainAuditLog(domainId: ID!, limit: Int, offset: Int): [DomainAuditLog!]!
+}
+
+# Mutations
+type Mutation {
+  # Register a new domain
+  registerDomain(
+    domainName: String!,
+    familyId: ID!,
+    providerType: DomainType!,
+    providerConfig: JSON,
+    options: JSON
+  ): DomainOperationResult!
+  
+  # Verify domain ownership
+  verifyDomain(domainId: ID!): DomainOperationResult!
+  
+  # Add a DNS record
+  addDNSRecord(domainId: ID!, record: DNSRecordInput!): DomainOperationResult!
+  
+  # Update a DNS record
+  updateDNSRecord(domainId: ID!, recordId: ID!, record: DNSRecordInput!): DomainOperationResult!
+  
+  # Delete a DNS record
+  deleteDNSRecord(domainId: ID!, recordId: ID!): DomainOperationResult!
+  
+  # Configure NIP-05
+  configureNIP05(domainId: ID!, username: String!, pubkey: String!): DomainOperationResult!
+  
+  # Configure Lightning address
+  configureLightningAddress(domainId: ID!, username: String!, lnurlOrAddress: String!): DomainOperationResult!
+  
+  # Initiate domain transfer
+  initiateDomainTransfer(
+    domainId: ID!,
+    targetProviderType: DomainType!,
+    targetProviderConfig: JSON
+  ): DomainOperationResult!
+  
+  # Complete domain transfer
+  completeDomainTransfer(transferId: ID!): DomainOperationResult!
+  
+  # Add domain member
+  addDomainMember(
+    domainId: ID!,
+    userId: ID!,
+    role: DomainMemberRole,
+    permissions: [String!]
+  ): DomainMember!
+  
+  # Update domain member
+  updateDomainMember(
+    domainId: ID!,
+    userId: ID!,
+    role: DomainMemberRole,
+    permissions: [String!]
+  ): DomainMember!
+  
+  # Remove domain member
+  removeDomainMember(domainId: ID!, userId: ID!): Boolean!
+  
+  # Transfer domain ownership
+  transferDomainOwnership(domainId: ID!, newOwnerId: ID!): DomainMember!
+  
+  # Set up domain inheritance
+  setupDomainInheritance(
+    domainId: ID!,
+    heirUserId: ID!,
+    activationConditions: JSON!
+  ): DomainOperationResult!
+  
+  # Federate family domains
+  federateFamilyDomains(familyId: ID!): DomainOperationResult!
+}
+
+# Subscriptions
+type Subscription {
+  # Subscribe to domain events
+  domainEvents(domainId: ID!): DomainEvent!
+  
+  # Subscribe to family domain events
+  familyDomainEvents(familyId: ID!): DomainEvent!
+}
+
+type DomainEvent {
+  event: String!
+  domainId: ID!
+  familyId: ID!
+  details: JSON
+  timestamp: DateTime!
+}
+
+# Scalar types
+scalar DateTime
+scalar JSON
