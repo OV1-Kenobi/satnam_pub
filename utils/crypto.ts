@@ -8,14 +8,15 @@ import {
   randomBytes,
   createCipheriv,
   createDecipheriv,
-  pbkdf2Sync,
+  pbkdf2,
 } from "crypto";
+import { promisify } from "util";
 import {
-  generatePrivateKey,
+  generateSecretKey,
   getPublicKey,
   nip19,
   getEventHash,
-  signEvent,
+  finalizeEvent,
 } from "nostr-tools";
 import * as bip39 from "bip39";
 import { HDKey } from "@scure/bip32";
@@ -46,23 +47,28 @@ export function generateNostrKeyPair(
   recoveryPhrase?: string,
   account: number = 0,
 ) {
-  let privateKey: string;
+  let privateKeyBytes: Uint8Array;
 
   if (recoveryPhrase) {
     // Derive private key from recovery phrase using NIP-06 standard
-    privateKey = privateKeyFromPhraseWithAccount(recoveryPhrase, account);
+    const derivedKey = privateKeyFromPhraseWithAccount(recoveryPhrase, account);
+    privateKeyBytes =
+      typeof derivedKey === "string"
+        ? Buffer.from(derivedKey, "hex")
+        : derivedKey;
   } else {
     // Generate a random private key
-    privateKey = generatePrivateKey();
+    privateKeyBytes = generateSecretKey();
   }
 
-  const publicKey = getPublicKey(privateKey);
+  const privateKey = Buffer.from(privateKeyBytes).toString("hex");
+  const publicKey = getPublicKey(privateKeyBytes);
 
   return {
     privateKey,
     publicKey,
     npub: nip19.npubEncode(publicKey),
-    nsec: nip19.nsecEncode(privateKey),
+    nsec: nip19.nsecEncode(privateKeyBytes),
   };
 }
 
@@ -123,12 +129,15 @@ export function privateKeyFromPhraseWithAccount(
 /**
  * Encrypt data with a password
  */
-export function encryptData(data: string, password: string): string {
+export async function encryptData(
+  data: string,
+  password: string,
+): Promise<string> {
   const iv = randomBytes(16);
   const salt = randomBytes(16);
 
   // Use PBKDF2 for secure key derivation
-  const key = pbkdf2Sync(password, salt, 100000, 32, "sha256");
+  const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
 
   const cipher = createCipheriv("aes-256-cbc", key, iv);
   let encrypted = cipher.update(data, "utf8", "hex");
@@ -141,7 +150,10 @@ export function encryptData(data: string, password: string): string {
 /**
  * Decrypt data with a password
  */
-export function decryptData(encryptedData: string, password: string): string {
+export async function decryptData(
+  encryptedData: string,
+  password: string,
+): Promise<string> {
   const parts = encryptedData.split(":");
   if (parts.length !== 3) {
     throw new Error("Invalid encrypted data format");
@@ -152,13 +164,45 @@ export function decryptData(encryptedData: string, password: string): string {
   const encrypted = parts[2];
 
   // Use PBKDF2 for secure key derivation (same as in encryption)
-  const key = pbkdf2Sync(password, salt, 100000, 32, "sha256");
+  const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
 
   const decipher = createDecipheriv("aes-256-cbc", key, iv);
   let decrypted = decipher.update(encrypted, "hex", "utf8");
   decrypted += decipher.final("utf8");
 
   return decrypted;
+}
+
+/**
+ * Derive a cryptographic key from password and salt using PBKDF2
+ * @param password - The password to derive from
+ * @param salt - The salt (as hex string or Buffer)
+ * @param iterations - Number of PBKDF2 iterations (default: 100000)
+ * @param keyLength - Length of derived key in bytes (default: 32)
+ * @returns Promise<Buffer> - The derived key
+ */
+export async function deriveKey(
+  password: string,
+  salt: string | Buffer,
+  iterations: number = 100000,
+  keyLength: number = 32,
+): Promise<Buffer> {
+  const saltBuffer = typeof salt === "string" ? Buffer.from(salt, "hex") : salt;
+
+  return new Promise((resolve, reject) => {
+    // Use async pbkdf2 for better performance in production
+    require("crypto").pbkdf2(
+      password,
+      saltBuffer,
+      iterations,
+      keyLength,
+      "sha256",
+      (err: Error | null, derivedKey: Buffer) => {
+        if (err) reject(err);
+        else resolve(derivedKey);
+      },
+    );
+  });
 }
 
 /**
@@ -350,11 +394,16 @@ export function signNostrEvent(
   content: string;
   sig: string;
 } {
-  // Create a new object with the event properties
-  const signedEvent = {
-    ...event,
-    id: getEventHash(event),
-    sig: signEvent(event, privateKey),
+  // Use finalizeEvent to create a properly signed event
+  const privateKeyBytes = Buffer.from(privateKey, "hex");
+  const signedEvent = finalizeEvent(event, privateKeyBytes) as {
+    id: string;
+    kind: number;
+    pubkey: string;
+    created_at: number;
+    tags: string[][];
+    content: string;
+    sig: string;
   };
 
   return signedEvent;
@@ -382,7 +431,7 @@ export function createNostrEvent(
   content: string;
   sig: string;
 } {
-  const publicKey = getPublicKey(privateKey);
+  const publicKey = getPublicKey(Buffer.from(privateKey, "hex"));
 
   const event = {
     kind,

@@ -10,6 +10,7 @@ import {
   Info,
   CheckCircle,
   AlertTriangle,
+  Shield,
 } from "lucide-react";
 
 interface SignInModalProps {
@@ -37,13 +38,33 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const handleNWCSignIn = async () => {
     setIsLoading(true);
     try {
-      // Placeholder for NWC implementation
-      console.log("Initiating Nostr Wallet Connect sign-in...");
-      // This would integrate with NWC protocol
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API call
-      onSignInSuccess();
+      // Get NWC URI from user (would typically come from a wallet app)
+      const nwcUri = prompt("Enter your Nostr Wallet Connect URI:");
+      if (!nwcUri) {
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch("/api/auth/nwc", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ nwcUri }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log("NWC authentication successful:", result.data);
+        onSignInSuccess();
+      } else {
+        console.error("NWC authentication failed:", result.error);
+        alert(`NWC sign-in failed: ${result.error}`);
+      }
     } catch (error) {
       console.error("NWC sign-in failed:", error);
+      alert("NWC sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -54,13 +75,29 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
     setIsLoading(true);
     try {
-      // Placeholder for OTP sending implementation
-      console.log("Sending OTP to:", nipOrNpub);
-      // This would send a DM via Nostr relay
-      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API call
-      setOtpSent(true);
+      const response = await fetch("/api/auth/otp/initiate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          npub: nipOrNpub.startsWith("npub") ? nipOrNpub : undefined,
+          pubkey: !nipOrNpub.startsWith("npub") ? nipOrNpub : undefined,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log("OTP sent successfully:", result.data.message);
+        setOtpSent(true);
+      } else {
+        console.error("Failed to send OTP:", result.error);
+        alert(`Failed to send OTP: ${result.error}`);
+      }
     } catch (error) {
       console.error("Failed to send OTP:", error);
+      alert("Failed to send OTP. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -71,13 +108,37 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
     setIsLoading(true);
     try {
-      // Placeholder for OTP verification implementation
-      console.log("Verifying OTP:", otpCode);
-      // This would verify the OTP code
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
-      onSignInSuccess();
+      // Convert npub to pubkey for verification
+      let pubkey = nipOrNpub;
+      if (nipOrNpub.startsWith("npub")) {
+        // Would need to import nip19 and convert
+        // For now, assuming backend handles both formats
+        pubkey = nipOrNpub;
+      }
+
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pubkey: pubkey,
+          otp_code: otpCode,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log("OTP verification successful:", result.data);
+        onSignInSuccess();
+      } else {
+        console.error("OTP verification failed:", result.error);
+        alert(`OTP verification failed: ${result.error}`);
+      }
     } catch (error) {
       console.error("OTP verification failed:", error);
+      alert("OTP verification failed. Please try again.");
     } finally {
       setIsLoading(false);
     }

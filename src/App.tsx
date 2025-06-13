@@ -1,21 +1,19 @@
-import React, { useState } from "react";
 import {
-  Zap,
-  Users,
-  Bitcoin,
-  ExternalLink,
-  Menu,
-  X,
-  ArrowRight,
-  ChevronDown,
-  BookOpen,
-  Network,
+    Bitcoin,
+    BookOpen,
+    ExternalLink,
+    Menu,
+    Network,
+    Users,
+    X,
+    Zap,
 } from "lucide-react";
-import IdentityForge from "./components/IdentityForge";
-import FamilyDashboard from "./components/FamilyDashboard";
-import FamilyOnboarding from "./components/FamilyOnboarding";
+import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
 import FamilyCoordination from "./components/FamilyCoordination";
+import FamilyDashboard from "./components/FamilyDashboard";
+import FamilyOnboarding from "./components/FamilyOnboarding";
+import IdentityForge from "./components/IdentityForge";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
 

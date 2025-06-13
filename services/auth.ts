@@ -18,10 +18,10 @@ import {
 } from "../lib/nostr";
 /* eslint-enable @typescript-eslint/no-unused-vars */
 import {
-  generatePrivateKey,
+  generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
-  verifySignature,
+  verifyEvent,
   getEventHash,
 } from "nostr-tools";
 import { randomBytes, createCipheriv } from "crypto";
@@ -75,8 +75,9 @@ export async function createNostrIdentity(
   }
 
   // Generate Nostr keypair
-  const privateKey = generatePrivateKey();
-  const publicKey = getPublicKey(privateKey);
+  const privateKeyBytes = generatePrivateKey();
+  const privateKey = Buffer.from(privateKeyBytes).toString("hex");
+  const publicKey = getPublicKey(privateKeyBytes);
   const npub = nip19.npubEncode(publicKey);
 
   // Create NIP-05 identifier and lightning address
@@ -93,7 +94,7 @@ export async function createNostrIdentity(
     "hex",
   );
   const cipher = createCipheriv("aes-256-cbc", key, iv);
-  let encrypted_backup = cipher.update(privateKey, "hex", "hex");
+  let encrypted_backup: string = cipher.update(privateKey, "hex", "hex");
   encrypted_backup += cipher.final("hex");
   encrypted_backup = iv.toString("hex") + ":" + encrypted_backup;
 
@@ -179,7 +180,7 @@ export async function authenticateWithNWC(
   signed_event: NostrEvent,
 ): Promise<{ user: User; token: string }> {
   // Verify the event signature
-  const isValid = verifySignature(signed_event);
+  const isValid = verifyEvent(signed_event);
   if (!isValid) {
     throw new Error("Invalid signature");
   }

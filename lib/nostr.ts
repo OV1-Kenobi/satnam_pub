@@ -1,11 +1,11 @@
 import {
-  generatePrivateKey,
+  generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
   SimplePool,
-  verifySignature,
+  verifyEvent,
   getEventHash,
-  signEvent,
+  finalizeEvent,
   Filter,
 } from "nostr-tools";
 import { config, authConfig } from "../config";
@@ -40,8 +40,13 @@ let cachedKeys: { privateKey: string; publicKey: string } | null = null;
  */
 const getKeys = () => {
   if (!cachedKeys) {
-    const privateKey = config.nostr.privateKey || generatePrivateKey();
-    cachedKeys = { privateKey, publicKey: getPublicKey(privateKey) };
+    const privateKeyBytes = config.nostr.privateKey
+      ? typeof config.nostr.privateKey === "string"
+        ? Buffer.from(config.nostr.privateKey, "hex")
+        : config.nostr.privateKey
+      : generatePrivateKey();
+    const privateKey = Buffer.from(privateKeyBytes).toString("hex");
+    cachedKeys = { privateKey, publicKey: getPublicKey(privateKeyBytes) };
   }
   return cachedKeys;
 };
@@ -61,7 +66,7 @@ const encodePublicKey = (publicKey: string): string => {
  * @returns Bech32-encoded nsec
  */
 const encodePrivateKey = (privateKey: string): string => {
-  return nip19.nsecEncode(privateKey);
+  return nip19.nsecEncode(Buffer.from(privateKey, "hex"));
 };
 
 /**
@@ -73,10 +78,10 @@ const encodePrivateKey = (privateKey: string): string => {
 const decodePublicKey = (npub: string): string => {
   try {
     const { data } = nip19.decode(npub);
-    if (typeof data !== "string") {
-      throw new Error("Decoded npub is not a string");
+    if (!(data instanceof Uint8Array)) {
+      throw new Error("Decoded npub is not a Uint8Array");
     }
-    return data;
+    return Buffer.from(data).toString("hex");
   } catch {
     throw new Error("Invalid npub format");
   }
@@ -91,10 +96,10 @@ const decodePublicKey = (npub: string): string => {
 const decodePrivateKey = (nsec: string): string => {
   try {
     const { data } = nip19.decode(nsec);
-    if (typeof data !== "string") {
-      throw new Error("Decoded nsec is not a string");
+    if (!(data instanceof Uint8Array)) {
+      throw new Error("Decoded nsec is not a Uint8Array");
     }
-    return data;
+    return Buffer.from(data).toString("hex");
   } catch {
     throw new Error("Invalid nsec format");
   }
@@ -148,7 +153,7 @@ const createAuthChallengeEvent = (pubkey: string): NostrEvent => {
  */
 const verifyAuthEvent = (event: NostrEvent): boolean => {
   // Verify signature
-  if (!verifySignature(event)) {
+  if (!verifyEvent(event)) {
     return false;
   }
 
@@ -207,23 +212,19 @@ const createSignedEvent = (
   tags: string[][] = [],
   privateKey: string,
 ): NostrEvent => {
-  const pubkey = getPublicKey(privateKey);
+  const privateKeyBytes = Buffer.from(privateKey, "hex");
+  const pubkey = getPublicKey(privateKeyBytes);
 
-  const event: NostrEvent = {
-    id: "",
+  const eventTemplate = {
     pubkey,
     created_at: Math.floor(Date.now() / 1000),
     kind,
     tags,
     content,
-    sig: "",
   };
 
-  // Calculate the event hash
-  event.id = getEventHash(event);
-
-  // Sign the event
-  event.sig = signEvent(event, privateKey);
+  // Use finalizeEvent to calculate hash and sign
+  const event = finalizeEvent(eventTemplate, privateKeyBytes) as NostrEvent;
 
   return event;
 };
@@ -272,15 +273,10 @@ const subscribeToEvents = (
   onEose?: () => void,
   relayUrls = relays,
 ) => {
-  const sub = pool.sub(relayUrls, filters);
-
-  sub.on("event", (event: NostrEvent) => {
-    onEvent(event);
+  const sub = pool.subscribeMany(relayUrls, filters, {
+    onevent: onEvent,
+    oneose: onEose,
   });
-
-  if (onEose) {
-    sub.on("eose", onEose);
-  }
 
   return sub;
 };
