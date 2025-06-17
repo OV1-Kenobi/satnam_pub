@@ -137,21 +137,34 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   if (isComplete) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center max-w-2xl border border-white/20">
+      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
+        {/* Energized Bitcoin Background */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: `url('/Energized Bitcoin.jpg')`,
+          }}
+        >
+          {/* Dark overlay for better text readability */}
+          <div className="absolute inset-0 bg-black/60"></div>
+          {/* Additional gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/70 via-purple-800/50 to-purple-600/40"></div>
+        </div>
+
+        <div className="relative z-10 bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center max-w-2xl border border-white/20 shadow-2xl">
           <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
             <Sparkles className="h-12 w-12 text-white" />
           </div>
-          <h2 className="text-4xl font-bold text-white mb-6">
+          <h2 className="text-4xl font-bold text-white mb-6 drop-shadow-lg">
             Identity Forged Successfully!
           </h2>
-          <p className="text-xl text-purple-100 mb-8">
+          <p className="text-xl text-purple-100 mb-8 drop-shadow-md">
             Welcome to true digital sovereignty,{" "}
             <span className="font-bold text-yellow-400">
               {formData.username}
             </span>
           </p>
-          <div className="bg-white/10 rounded-lg p-6 mb-8">
+          <div className="bg-white/10 rounded-lg p-6 mb-8 backdrop-blur-sm">
             <p className="text-purple-100 mb-2">Your sovereign identity:</p>
             <p className="text-white font-mono text-lg">
               {formData.username}@satnam.pub
@@ -160,13 +173,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           <div className="flex space-x-4 justify-center">
             <button
               onClick={onComplete}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
             >
               Explore Nostr Ecosystem
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
             >
               Forge Another
             </button>
@@ -177,8 +190,21 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 p-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen relative overflow-hidden p-4">
+      {/* Energized Bitcoin Background */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: `url('/Energized Bitcoin.jpg')`,
+        }}
+      >
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-black/50"></div>
+        {/* Additional gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/60 via-purple-800/40 to-purple-600/30"></div>
+      </div>
+
+      <div className="relative z-10 max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12 pt-8">
           <div className="flex items-center justify-center space-x-3 mb-6">
@@ -186,10 +212,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               src="/ID forge icon.png"
               alt="Identity Forge"
               className="h-10 w-10"
+              loading="lazy"
             />
-            <h1 className="text-4xl font-bold text-white">Identity Forge</h1>
+            <h1 className="text-4xl font-bold text-white drop-shadow-lg">Identity Forge</h1>
           </div>
-          <p className="text-purple-100 text-lg">
+          <p className="text-purple-100 text-lg drop-shadow-md">
             Forge your sovereign digital identity
           </p>
         </div>
@@ -227,15 +254,15 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         </div>
 
         {/* Form Content */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-2xl">
           {/* Step 1: Choose Your True Name */}
           {currentStep === 1 && (
             <div className="space-y-8">
               <div className="text-center">
-                <h2 className="text-3xl font-bold text-white mb-4">
+                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
                   Choose Your True Name
                 </h2>
-                <p className="text-purple-100">
+                <p className="text-purple-100 drop-shadow-md">
                   This will be your sovereign identity across the Bitcoin
                   network
                 </p>
@@ -253,7 +280,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       }))
                     }
                     placeholder="Enter your username"
-                    className="w-full px-6 py-4 text-xl bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300"
+                    className="w-full px-6 py-4 text-xl bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300 backdrop-blur-sm"
                   />
                   {formData.username && (
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
@@ -269,7 +296,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 </div>
 
                 {formData.username && (
-                  <div className="bg-white/10 rounded-lg p-4">
+                  <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
                     <p className="text-purple-100 mb-2">
                       Your identity will be:
                     </p>
@@ -290,7 +317,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 )}
               </div>
 
-              <div className="bg-purple-900/50 rounded-lg p-6">
+              <div className="bg-purple-900/50 rounded-lg p-6 backdrop-blur-sm">
                 <h3 className="text-white font-bold mb-2">
                   Your keys, your identity
                 </h3>
@@ -306,10 +333,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             <div className="space-y-8">
               <div className="text-center">
                 <Key className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-                <h2 className="text-3xl font-bold text-white mb-4">
+                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
                   Generate Your Keys
                 </h2>
-                <p className="text-purple-100">
+                <p className="text-purple-100 drop-shadow-md">
                   Creating your cryptographic identity
                 </p>
               </div>
@@ -321,7 +348,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     <p className="text-white font-semibold">{generationStep}</p>
                   </div>
 
-                  <div className="bg-white/10 rounded-lg p-4">
+                  <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
                     <div className="flex justify-between text-sm text-purple-100 mb-2">
                       <span>Progress</span>
                       <span>{generationProgress}%</span>
@@ -345,7 +372,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     </p>
                   </div>
 
-                  <div className="bg-white/10 rounded-lg p-6">
+                  <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
                     <h3 className="text-white font-bold mb-3">
                       Your Public Key
                     </h3>
@@ -355,7 +382,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     </p>
                   </div>
 
-                  <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6">
+                  <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6 backdrop-blur-sm">
                     <div className="flex items-start space-x-3">
                       <AlertTriangle className="h-6 w-6 text-red-400 flex-shrink-0 mt-1" />
                       <div>
@@ -384,19 +411,20 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       src="/LN Bitcoin icon.png"
                       alt="Lightning Bitcoin"
                       className="h-12 w-12"
+                      loading="lazy"
                     />
                   </div>
                 </div>
-                <h2 className="text-3xl font-bold text-white mb-4">
+                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
                   Lightning Address Setup
                 </h2>
-                <p className="text-purple-100">
+                <p className="text-purple-100 drop-shadow-md">
                   Receive Bitcoin payments instantly
                 </p>
               </div>
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between bg-white/10 rounded-lg p-6">
+                <div className="flex items-center justify-between bg-white/10 rounded-lg p-6 backdrop-blur-sm">
                   <div>
                     <h3 className="text-white font-bold mb-2">
                       Enable Lightning Address
@@ -430,7 +458,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
                 {formData.lightningEnabled && (
                   <>
-                    <div className="bg-white/10 rounded-lg p-6">
+                    <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
                       <h3 className="text-white font-bold mb-3">
                         Your Lightning Address
                       </h3>
@@ -442,7 +470,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       </p>
                     </div>
 
-                    <div className="bg-white/10 rounded-lg p-6 text-center">
+                    <div className="bg-white/10 rounded-lg p-6 text-center backdrop-blur-sm">
                       <QrCode className="h-24 w-24 text-white mx-auto mb-4 opacity-50" />
                       <p className="text-purple-100">
                         QR code will be generated after setup
@@ -462,17 +490,18 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   src="/Rebuilding_Camelot_logo__transparency_v3.png"
                   alt="Rebuilding Camelot"
                   className="h-16 w-16 mx-auto mb-4"
+                  loading="lazy"
                 />
-                <h2 className="text-3xl font-bold text-white mb-4">
+                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
                   Family Federation
                 </h2>
-                <p className="text-purple-100">
+                <p className="text-purple-100 drop-shadow-md">
                   Connect to your family's private network
                 </p>
               </div>
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between bg-white/10 rounded-lg p-6">
+                <div className="flex items-center justify-between bg-white/10 rounded-lg p-6 backdrop-blur-sm">
                   <div>
                     <h3 className="text-white font-bold mb-2">
                       Use Citadel Academy Public Relay
@@ -518,10 +547,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           }))
                         }
                         placeholder="wss://relay.yourfamily.com"
-                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300 backdrop-blur-sm"
                       />
                     </div>
-                    <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4">
+                    <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 backdrop-blur-sm">
                       <div className="flex items-start space-x-3">
                         <Wifi className="h-5 w-5 text-blue-400 flex-shrink-0 mt-1" />
                         <div>
@@ -538,7 +567,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   </div>
                 )}
 
-                <div className="bg-white/10 rounded-lg p-6">
+                <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
                   <h3 className="text-white font-bold mb-3">
                     Family Federation Benefits
                   </h3>
@@ -565,7 +594,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           <div className="flex justify-between mt-12">
             <button
               onClick={prevStep}
-              className="flex items-center space-x-2 px-6 py-3 rounded-lg font-bold transition-all duration-300 bg-purple-700 hover:bg-purple-800 text-white"
+              className="flex items-center space-x-2 px-6 py-3 rounded-lg font-bold transition-all duration-300 bg-purple-700 hover:bg-purple-800 text-white shadow-lg hover:shadow-xl"
             >
               <ArrowLeft className="h-5 w-5" />
               <span>Back</span>
@@ -576,7 +605,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               disabled={!canContinue()}
               className={`flex items-center space-x-2 px-8 py-3 rounded-lg font-bold transition-all duration-300 ${
                 canContinue()
-                  ? "bg-purple-700 hover:bg-purple-800 text-white transform hover:scale-105"
+                  ? "bg-purple-700 hover:bg-purple-800 text-white transform hover:scale-105 shadow-lg hover:shadow-xl"
                   : "bg-white/10 text-purple-300 cursor-not-allowed"
               }`}
             >
@@ -594,6 +623,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 src="/Citadel Academy Logo.png"
                 alt="Citadel Academy"
                 className="h-4 w-4"
+                loading="lazy"
               />
               <span>Your keys, your identity</span>
             </span>
