@@ -10,6 +10,12 @@ export interface FamilyMember {
   name: string;
   role: "parent" | "child" | "guardian" | "other";
   avatar?: string;
+  username?: string;
+  spendingLimits?: {
+    daily: number;
+    weekly?: number;
+    monthly?: number;
+  };
 }
 
 /**
