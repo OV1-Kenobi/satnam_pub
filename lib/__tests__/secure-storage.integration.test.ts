@@ -1,4 +1,4 @@
-// lib/__tests__/secure-storage.test.ts
+// lib/__tests__/secure-storage.integration.test.ts
 
 import { decryptData, encryptData } from "../../utils/crypto";
 import { SecureStorage } from "../secure-storage";
@@ -160,24 +160,68 @@ describe("SecureStorage Integration Tests", () => {
   });
 
   describe("SecureBuffer memory management", () => {
-    it("should handle SecureBuffer creation and cleanup", () => {
-      // Test SecureBuffer functionality without database dependency
-      const testData = "test-sensitive-data";
+    it("should return SecureBuffer from retrieveDecryptedNsec", async () => {
+      const testUserId = TestDbHelper.generateTestUserId();
+      const testNsec =
+        "nsec1test1234567890abcdef1234567890abcdef1234567890abcdef123456789";
+      const password = "TestPassword123!";
 
-      // Use the private method via reflection for testing
-      const secureBuffer = (SecureStorage as any).createSecureBuffer(testData);
+      // Create test user
+      const encryptedNsec = await encryptData(testNsec, password);
+      await TestDbHelper.createTestUser(testUserId, encryptedNsec);
 
-      expect(secureBuffer).toBeDefined();
-      expect(secureBuffer.toString()).toBe(testData);
-      expect(secureBuffer.size).toBe(new TextEncoder().encode(testData).length);
-      expect(secureBuffer.cleared).toBe(false);
-
-      // Test clearing
-      secureBuffer.clear();
-      expect(secureBuffer.cleared).toBe(true);
-      expect(() => secureBuffer.toString()).toThrow(
-        "SecureBuffer has been cleared",
+      // Retrieve decrypted nsec
+      const result = await SecureStorage.retrieveDecryptedNsec(
+        testUserId,
+        password,
       );
+
+      expect(result).toBeDefined();
+      expect(result).not.toBeNull();
+
+      if (result) {
+        // Should be able to get the decrypted value
+        expect(result.toString()).toBe(testNsec);
+
+        // Should be able to clear the buffer
+        result.clear();
+        expect(result.cleared).toBe(true);
+
+        // Should throw when trying to access cleared buffer
+        expect(() => result.toString()).toThrow(
+          "SecureBuffer has been cleared",
+        );
+      }
+    });
+
+    it("should return null for non-existent user", async () => {
+      const nonExistentUserId = "non-existent-user-id";
+      const password = "TestPassword123!";
+
+      const result = await SecureStorage.retrieveDecryptedNsec(
+        nonExistentUserId,
+        password,
+      );
+      expect(result).toBeNull();
+    });
+
+    it("should return null for incorrect password", async () => {
+      const testUserId = TestDbHelper.generateTestUserId();
+      const testNsec =
+        "nsec1test1234567890abcdef1234567890abcdef1234567890abcdef123456789";
+      const correctPassword = "CorrectPassword123!";
+      const wrongPassword = "WrongPassword456!";
+
+      // Create test user
+      const encryptedNsec = await encryptData(testNsec, correctPassword);
+      await TestDbHelper.createTestUser(testUserId, encryptedNsec);
+
+      // Try to retrieve with wrong password
+      const result = await SecureStorage.retrieveDecryptedNsec(
+        testUserId,
+        wrongPassword,
+      );
+      expect(result).toBeNull();
     });
   });
 
@@ -193,6 +237,91 @@ describe("SecureStorage Integration Tests", () => {
       // Verify the format
       expect(keyPair.nsec.startsWith("nsec")).toBe(true);
       expect(keyPair.npub.startsWith("npub")).toBe(true);
+
+      // Verify hex keys are valid hex strings
+      expect(keyPair.hexPrivateKey).toMatch(/^[0-9a-f]{64}$/);
+      expect(keyPair.hexPublicKey).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it("should generate unique key pairs each time", () => {
+      const keyPair1 = SecureStorage.generateNewAccountKeyPair();
+      const keyPair2 = SecureStorage.generateNewAccountKeyPair();
+
+      expect(keyPair1.nsec).not.toBe(keyPair2.nsec);
+      expect(keyPair1.npub).not.toBe(keyPair2.npub);
+      expect(keyPair1.hexPrivateKey).not.toBe(keyPair2.hexPrivateKey);
+      expect(keyPair1.hexPublicKey).not.toBe(keyPair2.hexPublicKey);
+    });
+  });
+
+  describe("Store and retrieve operations", () => {
+    it("should store and retrieve encrypted nsec successfully", async () => {
+      const testUserId = TestDbHelper.generateTestUserId();
+      const keyPair = SecureStorage.generateNewAccountKeyPair();
+      const password = "TestPassword123!";
+
+      // Store the nsec
+      const storeResult = await SecureStorage.storeEncryptedNsec(
+        testUserId,
+        keyPair.nsec,
+        password,
+      );
+      expect(storeResult).toBe(true);
+
+      // Retrieve and verify
+      const retrievedBuffer = await SecureStorage.retrieveDecryptedNsec(
+        testUserId,
+        password,
+      );
+      expect(retrievedBuffer).toBeDefined();
+      expect(retrievedBuffer).not.toBeNull();
+
+      if (retrievedBuffer) {
+        expect(retrievedBuffer.toString()).toBe(keyPair.nsec);
+        retrievedBuffer.clear();
+      }
+    });
+
+    it("should check if user has stored nsec", async () => {
+      const testUserId = TestDbHelper.generateTestUserId();
+      const keyPair = SecureStorage.generateNewAccountKeyPair();
+      const password = "TestPassword123!";
+
+      // Initially should not have stored nsec
+      const hasBefore = await SecureStorage.hasStoredNsec(testUserId);
+      expect(hasBefore).toBe(false);
+
+      // Store the nsec
+      await SecureStorage.storeEncryptedNsec(
+        testUserId,
+        keyPair.nsec,
+        password,
+      );
+
+      // Now should have stored nsec
+      const hasAfter = await SecureStorage.hasStoredNsec(testUserId);
+      expect(hasAfter).toBe(true);
+    });
+
+    it("should delete stored nsec successfully", async () => {
+      const testUserId = TestDbHelper.generateTestUserId();
+      const keyPair = SecureStorage.generateNewAccountKeyPair();
+      const password = "TestPassword123!";
+
+      // Store the nsec
+      await SecureStorage.storeEncryptedNsec(
+        testUserId,
+        keyPair.nsec,
+        password,
+      );
+      expect(await SecureStorage.hasStoredNsec(testUserId)).toBe(true);
+
+      // Delete the nsec
+      const deleteResult = await SecureStorage.deleteStoredNsec(testUserId);
+      expect(deleteResult).toBe(true);
+
+      // Should no longer have stored nsec
+      expect(await SecureStorage.hasStoredNsec(testUserId)).toBe(false);
     });
   });
 });
