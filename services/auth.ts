@@ -9,36 +9,20 @@ import { config } from "../config";
 import { db } from "../lib";
 // These imports will be used in future implementations
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  pool,
-  relays,
-  getKeys,
-  encodePublicKey,
-  encodePrivateKey,
-} from "../lib/nostr";
 /* eslint-enable @typescript-eslint/no-unused-vars */
+import { createCipheriv, randomBytes } from "crypto";
 import {
   generateSecretKey as generatePrivateKey,
+  getEventHash,
   getPublicKey,
   nip19,
   verifyEvent,
-  getEventHash,
 } from "nostr-tools";
-import { randomBytes, createCipheriv } from "crypto";
 // createDecipheriv will be used in future implementations for key recovery
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { createDecipheriv } from "crypto";
 /* eslint-enable @typescript-eslint/no-unused-vars */
-import {
-  User,
-  NostrEvent,
-  // These types will be used in future implementations
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  NostrAuthPayload,
-  OTPAuthPayload,
-  /* eslint-enable @typescript-eslint/no-unused-vars */
-} from "../types/user";
-import { generateRandomHex, sha256 } from "../utils/crypto";
+import { NostrEvent, User } from "../types/user";
+import { constantTimeEquals, generateRandomHex, sha256 } from "../utils/crypto";
 
 // Note: Client-side authentication functions have been moved to client/auth.ts
 
@@ -210,7 +194,7 @@ export async function authenticateWithNWC(
 
   if (
     expected.rows.length === 0 ||
-    expected.rows[0].challenge !== signed_event.content ||
+    !constantTimeEquals(expected.rows[0].challenge, signed_event.content) ||
     expected.rows[0].used ||
     new Date(expected.rows[0].expires_at) < new Date()
   ) {
@@ -225,8 +209,8 @@ export async function authenticateWithNWC(
   // Get the npub from the pubkey
   const npub = nip19.npubEncode(signed_event.pubkey);
 
-  // Verify that the npub matches the one associated with the challenge
-  if (expected.rows[0].npub !== npub) {
+  // Verify that the npub matches the one associated with the challenge using constant-time comparison
+  if (!constantTimeEquals(expected.rows[0].npub, npub)) {
     throw new Error("Challenge was not issued for this public key");
   }
 
@@ -359,8 +343,8 @@ export async function authenticateWithOTP(
 
   const otpRecord = otpResult.rows[0];
 
-  // Verify OTP
-  if (sha256(otp_code) !== otpRecord.otp_hash) {
+  // Verify OTP using constant-time comparison to prevent timing attacks
+  if (!constantTimeEquals(sha256(otp_code), otpRecord.otp_hash)) {
     // Increment failed attempts
     await db.query(
       "UPDATE otp_codes SET failed_attempts = failed_attempts + 1 WHERE id = $1",

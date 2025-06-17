@@ -1,16 +1,16 @@
 // lib/hybrid-auth.ts
-import { supabase } from "./supabase";
-import {
-  verifyEvent,
-  generateSecretKey as generatePrivateKey,
-  getPublicKey,
-  finalizeEvent as finishEvent,
-  SimplePool,
-  nip19,
-} from "nostr-tools";
 import { webcrypto } from "crypto";
 import type { Event as NostrEvent } from "nostr-tools";
-import { validateNWCUri, sanitizeNWCData } from "../utils/nwc-validation";
+import {
+  finalizeEvent as finishEvent,
+  generateSecretKey as generatePrivateKey,
+  getPublicKey,
+  nip19,
+  SimplePool,
+  verifyEvent,
+} from "nostr-tools";
+import { sanitizeNWCData, validateNWCUri } from "../utils/nwc-validation";
+import { supabase } from "./supabase";
 
 // Types for our hybrid auth system
 export interface NostrProfile {
@@ -21,10 +21,27 @@ export interface NostrProfile {
   lightning_address?: string;
 }
 
+export interface SupabaseSession {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  expires_in: number;
+  token_type: string;
+  user: {
+    id: string;
+    email?: string;
+    phone?: string;
+    created_at: string;
+    updated_at: string;
+    user_metadata: Record<string, unknown>;
+    app_metadata: Record<string, unknown>;
+  };
+}
+
 export interface AuthSession {
   user_id: string;
   npub: string;
-  supabase_session: any;
+  supabase_session: SupabaseSession;
   nostr_verified: boolean;
   auth_method: "nostr" | "nostr_nwc" | "nostr_dm_otp";
 }

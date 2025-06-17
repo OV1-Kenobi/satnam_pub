@@ -34,6 +34,59 @@ export const nip05Schema = z.object({
     .regex(/^[0-9a-f]{64}$/i, "Invalid Nostr public key format"),
 });
 
+// Federation validation schemas
+export const createFederationSchema = z.object({
+  action: z.literal("create"),
+  name: z
+    .string()
+    .min(1, "Federation name is required")
+    .max(100, "Federation name must be 100 characters or less"),
+  description: z
+    .string()
+    .max(500, "Description must be 500 characters or less")
+    .optional(),
+  guardianUrls: z
+    .array(z.string().url("Invalid guardian URL format"))
+    .min(1, "At least one guardian URL is required")
+    .max(10, "Maximum 10 guardian URLs allowed"),
+  threshold: z
+    .number()
+    .int("Threshold must be an integer")
+    .min(1, "Threshold must be at least 1")
+    .refine((val, ctx) => {
+      const guardianCount = ctx.parent?.guardianUrls?.length;
+      if (guardianCount && val > guardianCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Threshold cannot exceed the number of guardians",
+        });
+        return false;
+      }
+      return true;
+    }),
+});
+
+export const joinFederationSchema = z.object({
+  action: z.literal("join"),
+  inviteCode: z.string().min(1, "Invite code is required"),
+});
+
+export const connectFederationSchema = z.object({
+  action: z.literal("connect"),
+  federationId: z.string().min(1, "Federation ID is required"),
+});
+
+export const federationActionSchema = z.discriminatedUnion("action", [
+  createFederationSchema,
+  joinFederationSchema,
+  connectFederationSchema,
+]);
+
+// GET federation query schema
+export const getFederationQuerySchema = z.object({
+  id: z.string().min(1, "Federation ID is required").optional(),
+});
+
 // Validate request data against a schema
 export function validateData<T>(
   schema: z.ZodType<T>,
@@ -52,4 +105,25 @@ export function validateData<T>(
     }
     throw error;
   }
+}
+
+// Helper function to format Zod errors for API responses
+export function formatValidationErrors(error: z.ZodError): {
+  message: string;
+  errors: Record<string, string[]>;
+} {
+  const errors: Record<string, string[]> = {};
+
+  error.errors.forEach((err) => {
+    const path = err.path.join(".");
+    if (!errors[path]) {
+      errors[path] = [];
+    }
+    errors[path].push(err.message);
+  });
+
+  return {
+    message: "Validation failed",
+    errors,
+  };
 }

@@ -1,7 +1,8 @@
 // lib/api/identity-endpoints.ts
-import { CitadelDatabase, supabase } from "../supabase";
+import { nip19 } from "nostr-tools";
 import { HybridAuth } from "../hybrid-auth";
 import { SecureStorage } from "../secure-storage";
+import { CitadelDatabase, supabase } from "../supabase";
 import type { APIResponse } from "./auth-endpoints";
 
 // Helper function to safely extract error message
@@ -429,8 +430,12 @@ export class IdentityAPI {
       const response = await fetch(`https://${domain}/.well-known/nostr.json`);
       const nostrJson = await response.json();
 
-      // Verify the pubkey matches
-      const expectedPubkey = session.npub.replace("npub", "");
+      // Decode npub to get the hex public key
+      const { type, data } = nip19.decode(session.npub);
+      if (type !== "npub") {
+        throw new Error("Invalid npub format in session");
+      }
+      const expectedPubkey = data as string;
       if (nostrJson.names[localPart] !== expectedPubkey) {
         throw new Error("NIP-05 verification failed: pubkey mismatch");
       }

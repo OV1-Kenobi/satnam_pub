@@ -5,5 +5,6 @@
  */
 
 export * from "./auth";
-export * from "./user";
+export * from "./control-board";
 export * from "./family";
+export * from "./user";

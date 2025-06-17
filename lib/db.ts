@@ -1,14 +1,18 @@
-import { Pool, PoolClient } from "pg";
-import { config } from "../config";
 import * as fs from "fs";
 import * as path from "path";
+import { Pool, PoolClient } from "pg";
+import { config } from "../config";
 
 /**
  * PostgreSQL connection pool configuration
  * Manages database connections with appropriate timeouts and SSL settings
  */
 const pool = new Pool({
-  connectionString: config.database.url,
+  host: config.database.host,
+  port: config.database.port,
+  database: config.database.name,
+  user: config.database.user,
+  password: config.database.password,
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
   connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
@@ -67,14 +71,14 @@ const migrations = {
       for (const file of migrationFiles) {
         const { rows } = await client.query(
           "SELECT filename FROM migrations WHERE filename = $1",
-          [file],
+          [file]
         );
 
         if (rows.length === 0) {
           console.log(`Running migration: ${file}`);
           const migrationSql = fs.readFileSync(
             path.join(migrationsDir, file),
-            "utf8",
+            "utf8"
           );
 
           await client.query("BEGIN");
@@ -82,7 +86,7 @@ const migrations = {
             await client.query(migrationSql);
             await client.query(
               "INSERT INTO migrations (filename) VALUES ($1)",
-              [file],
+              [file]
             );
             await client.query("COMMIT");
             console.log(`✓ Migration ${file} completed`);
@@ -105,10 +109,10 @@ const migrations = {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(
-        "SELECT filename FROM migrations ORDER BY executed_at",
+        "SELECT filename FROM migrations ORDER BY executed_at"
       );
       return rows.map((row) => row.filename);
-    } catch (error) {
+    } catch {
       // If migrations table doesn't exist, return empty array
       return [];
     } finally {
@@ -149,7 +153,7 @@ const models = {
           profile.nip05,
           profile.lightning_address,
           profile.family_id,
-        ],
+        ]
       );
       return result.rows[0];
     },
@@ -170,7 +174,7 @@ const models = {
     getByUsername: async (username: string) => {
       const result = await pool.query(
         "SELECT * FROM profiles WHERE username = $1",
-        [username],
+        [username]
       );
       return result.rows[0];
     },
@@ -186,7 +190,7 @@ const models = {
         nip05: string;
         lightning_address: string;
         family_id: string;
-      }>,
+      }>
     ) => {
       const fields = Object.keys(updates);
       const values = Object.values(updates);
@@ -200,7 +204,7 @@ const models = {
         WHERE id = $1
         RETURNING *
       `,
-        [id, ...values],
+        [id, ...values]
       );
       return result.rows[0];
     },
@@ -230,7 +234,7 @@ const models = {
           family.domain,
           family.relay_url,
           family.federation_id,
-        ],
+        ]
       );
       return result.rows[0];
     },
@@ -255,7 +259,7 @@ const models = {
         WHERE p.family_id = $1
         ORDER BY p.created_at
       `,
-        [familyId],
+        [familyId]
       );
       return result.rows;
     },
@@ -287,7 +291,7 @@ const models = {
           data.btcpay_store_id,
           data.voltage_node_id,
           data.active ?? true,
-        ],
+        ]
       );
       return result.rows[0];
     },
@@ -298,7 +302,7 @@ const models = {
     getByUserId: async (userId: string) => {
       const result = await pool.query(
         "SELECT * FROM lightning_addresses WHERE user_id = $1 ORDER BY created_at",
-        [userId],
+        [userId]
       );
       return result.rows;
     },
@@ -309,7 +313,7 @@ const models = {
     getActiveByUserId: async (userId: string) => {
       const result = await pool.query(
         "SELECT * FROM lightning_addresses WHERE user_id = $1 AND active = true LIMIT 1",
-        [userId],
+        [userId]
       );
       return result.rows[0];
     },
@@ -339,7 +343,7 @@ const models = {
           data.event_id,
           data.relay_url || "wss://relay.citadel.academy",
           data.backup_hash,
-        ],
+        ]
       );
       return result.rows[0];
     },
@@ -350,7 +354,7 @@ const models = {
     getByUserId: async (userId: string) => {
       const result = await pool.query(
         "SELECT * FROM nostr_backups WHERE user_id = $1 ORDER BY created_at DESC",
-        [userId],
+        [userId]
       );
       return result.rows;
     },
@@ -361,7 +365,7 @@ const models = {
     getLatestByUserId: async (userId: string) => {
       const result = await pool.query(
         "SELECT * FROM nostr_backups WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
-        [userId],
+        [userId]
       );
       return result.rows[0];
     },
@@ -380,7 +384,7 @@ export default {
    */
   query: async (
     text: string,
-    params?: (string | number | boolean | null)[],
+    params?: (string | number | boolean | null)[]
   ) => {
     try {
       return await pool.query(text, params);
@@ -405,7 +409,7 @@ export default {
    * @returns Promise with callback result
    */
   transaction: async <T>(
-    callback: (client: PoolClient) => Promise<T>,
+    callback: (client: PoolClient) => Promise<T>
   ): Promise<T> => {
     const client = await pool.connect();
     try {

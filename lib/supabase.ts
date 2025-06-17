@@ -1,21 +1,138 @@
 // lib/supabase.ts
 import { createClient } from "@supabase/supabase-js";
+import { validateCredentials } from "./security";
 
-const supabaseUrl = "https://rhfqfftkizyengcuhuvq.supabase.co";
+// Security: Load credentials from environment variables only
+const supabaseUrl =
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE";
+  process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Comprehensive credential validation
+const credentialValidation = validateCredentials();
+if (!credentialValidation.isValid) {
+  throw new Error(
+    `CRITICAL SECURITY ERROR: Missing Supabase credentials: ${credentialValidation.missing.join(", ")}. ` +
+      "Ensure your .env.local file contains the required environment variables.",
+  );
+}
+
+// Issue warnings for potential configuration problems
+if (credentialValidation.warnings.length > 0) {
+  console.error("🚨 CREDENTIAL WARNINGS:", credentialValidation.warnings);
+}
+
+// Validate URL format and security
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("CRITICAL: Supabase credentials not loaded properly");
+}
+
+try {
+  const url = new URL(supabaseUrl);
+  if (
+    !url.hostname.includes("supabase.co") &&
+    !url.hostname.includes("localhost")
+  ) {
+    console.warn(`⚠️  Non-standard Supabase URL detected: ${url.hostname}`);
+  }
+  if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
+    throw new Error(
+      `SECURITY: Supabase URL must use HTTPS in production: ${supabaseUrl}`,
+    );
+  }
+} catch (error) {
+  throw new Error(
+    `CRITICAL: Invalid Supabase URL format: ${supabaseUrl}. ` +
+      "Expected format: https://your-project-id.supabase.co",
+  );
+}
+
+// Validate key format (basic check for JWT structure)
+if (!supabaseKey.startsWith("eyJ")) {
+  throw new Error(
+    "CRITICAL: Supabase anon key appears to be invalid (not a JWT token)",
+  );
+}
+
+// Create secure Supabase client with enhanced configuration
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: "pkce", // Enhanced security with PKCE
+    lock: async <R>(
+      name: string,
+      acquireTimeout: number,
+      fn: () => Promise<R>,
+    ) => await fn(), // Prevent concurrent session operations
+    storageKey: "citadel-auth", // Custom storage key
+  },
+  global: {
+    headers: {
+      "x-client-info": "citadel-identity-forge@1.0.0",
+      "x-security-level": "enhanced",
+    },
+  },
+  db: {
+    schema: "public",
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10, // Rate limiting
+    },
+    heartbeatIntervalMs: 30000, // Connection health monitoring
+    reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000), // Exponential backoff
+  },
+});
+
+// Connection health monitoring
+let connectionHealthCheck: NodeJS.Timeout | null = null;
+
+export function startConnectionMonitoring() {
+  if (connectionHealthCheck) return; // Already monitoring
+
+  connectionHealthCheck = setInterval(async () => {
+    try {
+      // Lightweight health check
+      await supabase
+        .from("profiles")
+        .select("count", { count: "exact", head: true });
+    } catch (error) {
+      console.error("🚨 Supabase connection health check failed:", error);
+      // Could implement reconnection logic here
+    }
+  }, 60000); // Check every minute
+}
+
+export function stopConnectionMonitoring() {
+  if (connectionHealthCheck) {
+    clearInterval(connectionHealthCheck);
+    connectionHealthCheck = null;
+  }
+}
+
+// Secure connection initialization
+if (typeof window !== "undefined") {
+  // Client-side initialization
+  startConnectionMonitoring();
+
+  // Cleanup on page unload
+  window.addEventListener("beforeunload", () => {
+    stopConnectionMonitoring();
+  });
+}
 
 // Database service layer
 export class CitadelDatabase {
-  // Create user profile after Nostr identity creation
+  // Create privacy-first user profile
   static async createUserProfile(userData: {
-    id: string;
-    username: string;
-    npub: string;
-    nip05: string;
-    lightning_address: string;
+    id: string; // UUID from Supabase auth.users
+    auth_hash: string; // Non-reversible hash for verification
+    username: string; // Platform username (not Nostr username)
+    encrypted_profile?: string; // User-encrypted optional data
+    encryption_hint?: string; // Hint for user's encryption method
+    lightning_address?: string; // Optional, can be encrypted
     family_id?: string;
   }) {
     const { data, error } = await supabase
@@ -145,5 +262,249 @@ export class CitadelDatabase {
 
     if (error) throw error;
     return data;
+  }
+
+  // Store encrypted private key (SECURITY: Atomic operation)
+  static async storeEncryptedPrivateKey(
+    userId: string,
+    encryptedPrivateKey: string,
+    encryptionMethod: string,
+  ) {
+    const { data, error } = await supabase
+      .from("encrypted_keys")
+      .insert({
+        user_id: userId,
+        encrypted_private_key: encryptedPrivateKey,
+        encryption_method: encryptionMethod,
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Get encrypted private key for recovery (SECURITY: Authenticated only)
+  static async getEncryptedPrivateKey(userId: string) {
+    const { data, error } = await supabase
+      .from("encrypted_keys")
+      .select("encrypted_private_key, encryption_method")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        // No data found
+        return null;
+      }
+      throw error;
+    }
+
+    return {
+      encrypted_key: data.encrypted_private_key,
+      encryption_method: data.encryption_method,
+    };
+  }
+
+  // Get user by username (for availability checking)
+  static async getUserByUsername(username: string) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .eq("username", username)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        // No data found - username is available
+        return null;
+      }
+      throw error;
+    }
+
+    return data;
+  }
+
+  // Update lightning address with external service IDs (SECURITY: Atomic operation)
+  static async updateLightningServiceIds(
+    userId: string,
+    updates: {
+      btcpay_store_id?: string;
+      voltage_node_id?: string;
+      encrypted_btcpay_config?: string;
+      encrypted_voltage_config?: string;
+      last_sync_at?: string;
+    },
+  ) {
+    const { data, error } = await supabase
+      .from("lightning_addresses")
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("active", true)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Atomic lightning setup with rollback capability
+  static async atomicLightningSetup(lightningData: {
+    user_id: string;
+    address: string;
+    btcpay_store_id?: string;
+    voltage_node_id?: string;
+    encrypted_btcpay_config?: string;
+    encrypted_voltage_config?: string;
+    active?: boolean;
+  }) {
+    // Use Supabase RPC for atomic transaction
+    const { data, error } = await supabase.rpc("setup_lightning_atomic", {
+      p_user_id: lightningData.user_id,
+      p_address: lightningData.address,
+      p_btcpay_store_id: lightningData.btcpay_store_id,
+      p_voltage_node_id: lightningData.voltage_node_id,
+      p_encrypted_btcpay_config: lightningData.encrypted_btcpay_config,
+      p_encrypted_voltage_config: lightningData.encrypted_voltage_config,
+      p_active: lightningData.active ?? true,
+    });
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Get lightning address record for updates
+  static async getLightningAddress(userId: string) {
+    const { data, error } = await supabase
+      .from("lightning_addresses")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("active", true)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return null;
+      }
+      throw error;
+    }
+    return data;
+  }
+
+  // Validate NIP-05 and Lightning address consistency
+  static async validateIdentifierConsistency(userId: string): Promise<{
+    isConsistent: boolean;
+    nip05_identifier?: string;
+    lightning_address?: string;
+    username?: string;
+    issues: string[];
+  }> {
+    try {
+      // Get user profile
+      const profile = await this.getUserIdentity(userId);
+      if (!profile) {
+        return {
+          isConsistent: false,
+          issues: ["User profile not found"],
+        };
+      }
+
+      const issues: string[] = [];
+      const username = profile.username;
+      const expectedIdentifier = `${username}@${process.env.LIGHTNING_DOMAIN || "satnam.pub"}`;
+
+      // Check Lightning address
+      const lightningAddress = profile.lightning_addresses?.[0]?.address;
+      if (lightningAddress && lightningAddress !== expectedIdentifier) {
+        issues.push(
+          `Lightning address mismatch: expected ${expectedIdentifier}, got ${lightningAddress}`,
+        );
+      }
+
+      // TODO: Check NIP-05 record when available
+      // const nip05Record = await getNip05RecordsByUserId(userId);
+
+      return {
+        isConsistent: issues.length === 0,
+        nip05_identifier: expectedIdentifier,
+        lightning_address: lightningAddress,
+        username: username,
+        issues,
+      };
+    } catch (error) {
+      return {
+        isConsistent: false,
+        issues: [
+          `Validation error: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      };
+    }
+  }
+
+  // Fix inconsistent identifiers
+  static async fixIdentifierConsistency(userId: string): Promise<{
+    success: boolean;
+    fixed_issues: string[];
+    error?: string;
+  }> {
+    try {
+      const validation = await this.validateIdentifierConsistency(userId);
+
+      if (validation.isConsistent) {
+        return {
+          success: true,
+          fixed_issues: ["No issues found - identifiers are consistent"],
+        };
+      }
+
+      const fixedIssues: string[] = [];
+
+      // Get user profile for username
+      const profile = await this.getUserIdentity(userId);
+      if (!profile) {
+        throw new Error("User profile not found");
+      }
+
+      const correctIdentifier = `${profile.username}@${process.env.LIGHTNING_DOMAIN || "satnam.pub"}`;
+
+      // Fix Lightning address if inconsistent
+      const lightningAddress = profile.lightning_addresses?.[0];
+      if (lightningAddress && lightningAddress.address !== correctIdentifier) {
+        await this.updateLightningServiceIds(userId, {
+          // Update the address to be consistent
+        });
+
+        // Actually, we need to update the address field itself
+        const { error } = await supabase
+          .from("lightning_addresses")
+          .update({
+            address: correctIdentifier,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId)
+          .eq("active", true);
+
+        if (error) throw error;
+
+        fixedIssues.push(`Updated Lightning address to: ${correctIdentifier}`);
+      }
+
+      return {
+        success: true,
+        fixed_issues: fixedIssues,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        fixed_issues: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 }

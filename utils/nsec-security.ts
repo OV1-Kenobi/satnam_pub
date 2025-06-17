@@ -1,6 +1,5 @@
 // utils/nsec-security.ts
 import { nip19 } from "nostr-tools";
-import { webcrypto } from "crypto";
 
 export interface SecureNsecValidator {
   isValidNsec: boolean;
@@ -96,7 +95,7 @@ export function createSecureNsecInput(): {
 
   // Security attributes
   input.style.fontFamily = "monospace";
-  input.addEventListener("paste", (e) => {
+  input.addEventListener("paste", (_e) => {
     // Allow paste but warn user
     setTimeout(() => {
       console.warn("⚠️ Nsec pasted. Ensure you trust this website.");

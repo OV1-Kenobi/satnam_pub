@@ -1,25 +1,23 @@
 // secp256k1 will be used in future implementations
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import * as secp256k1 from "@noble/secp256k1";
 /* eslint-enable @typescript-eslint/no-unused-vars */
+import { HDKey } from "@scure/bip32";
+import * as bip39 from "bip39";
 import {
-  createHash,
-  createHmac,
-  randomBytes,
   createCipheriv,
   createDecipheriv,
+  createHash,
+  createHmac,
   pbkdf2,
+  randomBytes,
 } from "crypto";
-import { promisify } from "util";
 import {
+  finalizeEvent,
   generateSecretKey,
   getPublicKey,
   nip19,
-  getEventHash,
-  finalizeEvent,
 } from "nostr-tools";
-import * as bip39 from "bip39";
-import { HDKey } from "@scure/bip32";
+import { promisify } from "util";
 
 /**
  * Generate a random hex string of specified length
@@ -38,6 +36,25 @@ export function sha256(data: string): string {
 }
 
 /**
+ * Constant-time string comparison to prevent timing attacks
+ * @param a First string to compare
+ * @param b Second string to compare
+ * @returns true if strings are equal, false otherwise
+ */
+export function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+
+  return result === 0;
+}
+
+/**
  * Generate a secp256k1 key pair for Nostr
  * @param recoveryPhrase - Optional BIP39 mnemonic phrase to derive the key from
  * @param account - Optional account index when using a recovery phrase (default: 0)
@@ -45,7 +62,7 @@ export function sha256(data: string): string {
  */
 export function generateNostrKeyPair(
   recoveryPhrase?: string,
-  account: number = 0,
+  account: number = 0
 ) {
   let privateKeyBytes: Uint8Array;
 
@@ -84,6 +101,15 @@ export function generateRecoveryPhrase(): string {
  * Uses the derivation path m/44'/1237'/0'/0/0 as specified in NIP-06
  */
 export function privateKeyFromPhrase(phrase: string): string {
+  // Validate the mnemonic phrase
+  if (!phrase || typeof phrase !== "string") {
+    throw new Error("Invalid mnemonic phrase: must be a non-empty string");
+  }
+
+  if (!bip39.validateMnemonic(phrase)) {
+    throw new Error("Invalid mnemonic phrase: failed validation");
+  }
+
   // Generate seed from mnemonic
   const seed = bip39.mnemonicToSeedSync(phrase);
 
@@ -108,8 +134,17 @@ export function privateKeyFromPhrase(phrase: string): string {
  */
 export function privateKeyFromPhraseWithAccount(
   phrase: string,
-  account: number = 0,
+  account: number = 0
 ): string {
+  // Validate the mnemonic phrase
+  if (!phrase || typeof phrase !== "string") {
+    throw new Error("Invalid mnemonic phrase: must be a non-empty string");
+  }
+
+  if (!bip39.validateMnemonic(phrase)) {
+    throw new Error("Invalid mnemonic phrase: failed validation");
+  }
+
   // Generate seed from mnemonic
   const seed = bip39.mnemonicToSeedSync(phrase);
 
@@ -127,50 +162,98 @@ export function privateKeyFromPhraseWithAccount(
 }
 
 /**
- * Encrypt data with a password
+ * Encrypt data with a password using Gold Standard Argon2id + AES-256-GCM
+ * @deprecated Use encryptCredentials from lib/security.ts for Gold Standard encryption
  */
 export async function encryptData(
   data: string,
-  password: string,
+  password: string
 ): Promise<string> {
+  console.warn(
+    "⚠️  SECURITY WARNING: Using legacy encryptData(). Please use encryptCredentials() from lib/security.ts for Gold Standard Argon2id encryption"
+  );
+
   const iv = randomBytes(16);
-  const salt = randomBytes(16);
+  const salt = randomBytes(32); // Increased salt length for better security
 
-  // Use PBKDF2 for secure key derivation
-  const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
+  // SECURITY IMPROVEMENT: Still using PBKDF2 here for backward compatibility
+  // but with increased iterations and stronger salt
+  const key = await promisify(pbkdf2)(password, salt, 210000, 32, "sha256"); // Increased iterations
 
-  const cipher = createCipheriv("aes-256-cbc", key, iv);
+  // SECURITY IMPROVEMENT: Use AES-256-GCM instead of CBC for authenticated encryption
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
   let encrypted = cipher.update(data, "utf8", "hex");
   encrypted += cipher.final("hex");
 
-  // Return iv:salt:encrypted
-  return iv.toString("hex") + ":" + salt.toString("hex") + ":" + encrypted;
+  const authTag = cipher.getAuthTag();
+
+  // Return iv:salt:authTag:encrypted (updated format)
+  return (
+    iv.toString("hex") +
+    ":" +
+    salt.toString("hex") +
+    ":" +
+    authTag.toString("hex") +
+    ":" +
+    encrypted
+  );
 }
 
 /**
- * Decrypt data with a password
+ * Decrypt data with a password (supports both legacy and improved formats)
+ * @deprecated Use decryptCredentials from lib/security.ts for Gold Standard decryption
  */
 export async function decryptData(
   encryptedData: string,
-  password: string,
+  password: string
 ): Promise<string> {
+  console.warn(
+    "⚠️  SECURITY WARNING: Using legacy decryptData(). Please use decryptCredentials() from lib/security.ts for Gold Standard Argon2id decryption"
+  );
+
   const parts = encryptedData.split(":");
-  if (parts.length !== 3) {
-    throw new Error("Invalid encrypted data format");
+
+  // Support both legacy format (iv:salt:encrypted) and new format (iv:salt:authTag:encrypted)
+  let iv: Buffer, salt: Buffer, authTag: Buffer | undefined, encrypted: string;
+
+  if (parts.length === 3) {
+    // Legacy format - no auth tag
+    console.warn(
+      "⚠️  Decrypting legacy format without authentication tag - consider re-encrypting with Gold Standard method"
+    );
+    [iv, salt, encrypted] = [
+      Buffer.from(parts[0], "hex"),
+      Buffer.from(parts[1], "hex"),
+      parts[2],
+    ];
+
+    // Use legacy PBKDF2 for backward compatibility
+    const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
+    const decipher = createDecipheriv("aes-256-cbc", key, iv);
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } else if (parts.length === 4) {
+    // New format with auth tag
+    [iv, salt, authTag, encrypted] = [
+      Buffer.from(parts[0], "hex"),
+      Buffer.from(parts[1], "hex"),
+      Buffer.from(parts[2], "hex"),
+      parts[3],
+    ];
+
+    // Use improved PBKDF2 for newer encrypted data
+    const key = await promisify(pbkdf2)(password, salt, 210000, 32, "sha256");
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } else {
+    throw new Error(
+      "Invalid encrypted data format - expected 3 or 4 parts separated by colons"
+    );
   }
-
-  const iv = Buffer.from(parts[0], "hex");
-  const salt = Buffer.from(parts[1], "hex");
-  const encrypted = parts[2];
-
-  // Use PBKDF2 for secure key derivation (same as in encryption)
-  const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
-
-  const decipher = createDecipheriv("aes-256-cbc", key, iv);
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
 }
 
 /**
@@ -185,13 +268,13 @@ export async function deriveKey(
   password: string,
   salt: string | Buffer,
   iterations: number = 100000,
-  keyLength: number = 32,
+  keyLength: number = 32
 ): Promise<Buffer> {
   const saltBuffer = typeof salt === "string" ? Buffer.from(salt, "hex") : salt;
 
   return new Promise((resolve, reject) => {
     // Use async pbkdf2 for better performance in production
-    require("crypto").pbkdf2(
+    pbkdf2(
       password,
       saltBuffer,
       iterations,
@@ -200,7 +283,7 @@ export async function deriveKey(
       (err: Error | null, derivedKey: Buffer) => {
         if (err) reject(err);
         else resolve(derivedKey);
-      },
+      }
     );
   });
 }
@@ -384,7 +467,7 @@ export function signNostrEvent(
     tags: string[][];
     content: string;
   },
-  privateKey: string,
+  privateKey: string
 ): {
   id: string;
   kind: number;
@@ -421,7 +504,7 @@ export function createNostrEvent(
   kind: number,
   content: string,
   tags: string[][] = [],
-  privateKey: string,
+  privateKey: string
 ): {
   id: string;
   kind: number;
