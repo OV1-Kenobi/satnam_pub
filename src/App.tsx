@@ -133,9 +133,22 @@ function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 relative overflow-hidden">
-      {/* Bitcoin Network Background */}
-      <div className="absolute inset-0 opacity-10">
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Hero Background Image with Overlay */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: `url('/Bitcoin Citadel Valley.jpg')`,
+        }}
+      >
+        {/* Gradient overlay for better text readability */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-purple-800/70 to-purple-600/60"></div>
+        {/* Additional overlay for enhanced contrast */}
+        <div className="absolute inset-0 bg-black/20"></div>
+      </div>
+
+      {/* Bitcoin Network Background Animation */}
+      <div className="absolute inset-0 opacity-20 z-10">
         <div className="absolute top-20 left-20 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
         <div className="absolute top-40 right-32 w-1 h-1 bg-orange-400 rounded-full animate-ping"></div>
         <div className="absolute bottom-32 left-40 w-3 h-3 bg-yellow-300 rounded-full animate-pulse"></div>
@@ -202,7 +215,7 @@ function App() {
       </div>
 
       {/* Enhanced Navigation */}
-      <nav className="relative z-10 bg-purple-900 border-b border-yellow-400 shadow-lg">
+      <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo with SatNam.Pub Custom Logo */}
@@ -211,6 +224,7 @@ function App() {
                 src="/SatNam.Pub logo.png"
                 alt="SatNam.Pub"
                 className="h-10 w-auto"
+                loading="lazy"
               />
               <span className="text-white text-xl font-bold">Satnam.pub</span>
             </div>
@@ -296,7 +310,7 @@ function App() {
 
           {/* Mobile Navigation Menu */}
           {mobileMenuOpen && (
-            <div className="lg:hidden bg-purple-800 rounded-lg mt-2 p-4 border border-white/20">
+            <div className="lg:hidden bg-purple-800/95 backdrop-blur-sm rounded-lg mt-2 p-4 border border-white/20">
               <div className="space-y-3">
                 <button
                   onClick={() => {
@@ -345,13 +359,13 @@ function App() {
       {/* Enhanced Hero Section */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-32">
         <div className="text-center">
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
+          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-2xl">
             Forge Your True Name
           </h1>
-          <h2 className="text-2xl md:text-3xl font-semibold text-purple-100 mb-8">
+          <h2 className="text-2xl md:text-3xl font-semibold text-purple-100 mb-8 drop-shadow-lg">
             Own Your Digital Dynasty
           </h2>
-          <p className="text-xl text-purple-100 mb-12 max-w-4xl mx-auto leading-relaxed">
+          <p className="text-xl text-purple-100 mb-12 max-w-4xl mx-auto leading-relaxed drop-shadow-lg">
             Create decentralized interoperable identities and human-readable
             bitcoin addresses for your family. No custodians, no compromises,
             pure Bitcoin sovereignty.
@@ -361,20 +375,20 @@ function App() {
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
             <button
               onClick={() => setSignInModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
             >
               <span>Sign In</span>
             </button>
             <button
               onClick={() => setCurrentView("forge")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
             >
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
             <button
               onClick={() => setCurrentView("onboarding")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <img
                 src="/Rebuilding_Camelot_logo__transparency_v3.png"
@@ -389,21 +403,21 @@ function App() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
               onClick={() => setCurrentView("dashboard")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <Users className="h-4 w-4" />
               <span>View Family Dashboard</span>
             </button>
             <button
               onClick={() => setCurrentView("education")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <BookOpen className="h-4 w-4" />
               <span>Start Learning Bitcoin</span>
             </button>
             <button
               onClick={() => setCurrentView("nostr-ecosystem")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <Network className="h-4 w-4" />
               <span>Explore Nostr Ecosystem</span>
@@ -412,7 +426,7 @@ function App() {
               href="https://citadel.academy"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <img
                 src="/Citadel Academy Logo.png"
@@ -434,7 +448,7 @@ function App() {
         <div className="grid md:grid-cols-3 gap-8">
           {/* Decentralized Interoperable Identities Card */}
           <div
-            className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
             onClick={() => setCurrentView("forge")}
           >
             <div className="w-16 h-16 mx-auto mb-6 relative">
@@ -442,6 +456,7 @@ function App() {
                 src="/SatNam.Pub logo.png"
                 alt="SatNam.Pub"
                 className="h-16 w-16 rounded-full"
+                loading="lazy"
               />
               <div className="absolute inset-0 border-2 border-yellow-400 rounded-full group-hover:animate-pulse"></div>
             </div>
@@ -460,7 +475,7 @@ function App() {
 
           {/* Human-Readable Bitcoin Addresses Card */}
           <div
-            className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
             onClick={() => setCurrentView("dashboard")}
           >
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-6 relative">
@@ -468,6 +483,7 @@ function App() {
                 src="/LN Bitcoin icon.png"
                 alt="Lightning Bitcoin"
                 className="h-14 w-14"
+                loading="lazy"
               />
             </div>
             <h3 className="text-2xl font-bold text-white mb-4">
@@ -485,7 +501,7 @@ function App() {
 
           {/* Family Federation Card */}
           <div
-            className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
             onClick={() => setCurrentView("education")}
           >
             <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -493,6 +509,7 @@ function App() {
                 src="/Rebuilding_Camelot_logo__transparency_v3.png"
                 alt="Rebuilding Camelot"
                 className="h-8 w-8"
+                loading="lazy"
               />
             </div>
             <h3 className="text-2xl font-bold text-white mb-4">
@@ -517,7 +534,7 @@ function App() {
         id="sovereignty"
         className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32"
       >
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center border border-white/20">
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center border border-white/20 shadow-lg">
           <h2 className="text-4xl font-bold text-white mb-8">
             Forge Dynastic Sovereignty
           </h2>
@@ -548,7 +565,7 @@ function App() {
       </div>
 
       {/* Enhanced Footer with Navigation */}
-      <footer className="relative z-10 bg-purple-900/50 backdrop-blur-sm border-t border-yellow-400/50">
+      <footer className="relative z-10 bg-purple-900/80 backdrop-blur-sm border-t border-yellow-400/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           {/* Quick Links Section */}
           <div className="grid md:grid-cols-4 gap-8 mb-8">
@@ -689,6 +706,7 @@ function App() {
                   src="/Citadel Academy Logo.png"
                   alt="Citadel Academy"
                   className="h-4 w-4"
+                  loading="lazy"
                 />
                 <span>Citadel Academy</span>
                 <ExternalLink className="h-4 w-4" />
@@ -702,6 +720,7 @@ function App() {
                   src="/Citadel Academy Logo.png"
                   alt="Citadel Academy"
                   className="h-4 w-4"
+                  loading="lazy"
                 />
                 <span>100% Self-Sovereign</span>
               </span>
@@ -714,6 +733,7 @@ function App() {
                   src="/Rebuilding_Camelot_logo__transparency_v3.png"
                   alt="Rebuilding Camelot"
                   className="h-4 w-4"
+                  loading="lazy"
                 />
                 <span>Family-First</span>
               </span>
