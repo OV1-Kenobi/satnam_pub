@@ -187,7 +187,7 @@ If you lose access, use the recovery system:
 const recoveredIdentity = await recoverIdentity(
   username,
   recoveryPassword,
-  encryptedBackup
+  encryptedBackup,
 );
 ```
 

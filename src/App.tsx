@@ -1,12 +1,12 @@
 import {
-    Bitcoin,
-    BookOpen,
-    ExternalLink,
-    Menu,
-    Network,
-    Users,
-    X,
-    Zap,
+  Bitcoin,
+  BookOpen,
+  ExternalLink,
+  Menu,
+  Network,
+  Users,
+  X,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";

@@ -6,17 +6,17 @@
  * and integration with the existing domain sovereignty system.
  */
 
-import {
-  createHash,
-  randomBytes,
-  createCipheriv,
-  createDecipheriv,
-} from "crypto";
 import * as ed25519 from "@noble/ed25519";
 import axios from "axios";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "crypto";
+import * as sss from "shamirs-secret-sharing";
 import { v4 as uuidv4 } from "uuid";
 import * as z32 from "z32";
-import * as sss from "shamirs-secret-sharing";
 import db from "./db";
 
 // Type definitions
@@ -421,7 +421,7 @@ export class EnhancedPubkyClient {
             familyKeypair.public_key,
             "completed",
             true,
-            new Date(),
+            new Date().toISOString(),
           ],
         );
       }
@@ -539,7 +539,7 @@ export class EnhancedPubkyClient {
             uuidv4(),
             oldKeypair.public_key,
             newKeypair.public_key,
-            new Date(),
+            new Date().toISOString(),
             await this.signContent(
               { new_public_key: newKeypair.public_key, timestamp: Date.now() },
               oldKeypair.private_key,
@@ -872,7 +872,9 @@ export class EnhancedPubkyClient {
             metadata.pubky_url.replace("pubky://", "").split("/")[0],
             JSON.stringify(metadata.domain_records),
             JSON.stringify(metadata.pkarr_relays),
-            metadata.registration_time,
+            metadata.registration_time instanceof Date
+              ? metadata.registration_time.toISOString()
+              : metadata.registration_time,
             metadata.sovereignty_score,
           ],
         );
@@ -906,7 +908,7 @@ export class EnhancedPubkyClient {
             metadata.pubky_url,
             metadata.content_hash,
             metadata.content_type,
-            new Date(metadata.timestamp),
+            new Date(metadata.timestamp).toISOString(),
             metadata.public_key,
           ],
         );
@@ -1010,7 +1012,7 @@ export class EnhancedPubkyClient {
       shares,
       threshold,
     });
-    return splitShares.map((share) => share.toString("hex"));
+    return splitShares.map((share: Buffer) => share.toString("hex"));
   }
 
   /**

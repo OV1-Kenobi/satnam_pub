@@ -53,15 +53,50 @@ if (error) {
 
 ### 4. Secure Memory Cleanup
 
-Added proper cleanup of sensitive data using try/finally blocks:
+Implemented proper secure memory handling using `SecureBuffer` class that actually zeros memory:
 
 ```typescript
-finally {
-  // Always clear sensitive data from memory, even on error
-  if (decryptedNsec) {
-    this.secureClearString(decryptedNsec)
-    decryptedNsec = null
+/**
+ * SecureBuffer uses Uint8Array with fill(0) for real memory zeroization
+ * JavaScript strings are immutable - setting to null only drops references
+ */
+class SecureBuffer {
+  clear(): void {
+    if (this.buffer) {
+      // Overwrite memory with zeros multiple times for extra security
+      this.buffer.fill(0);
+      this.buffer.fill(0xff);
+      this.buffer.fill(0);
+      this.buffer = null;
+    }
   }
+}
+
+// Usage in secure operations
+const nsecBuffer = this.createSecureBuffer(nsec);
+const passwordBuffer = this.createSecureBuffer(userPassword);
+
+try {
+  // ... crypto operations using buffers
+} finally {
+  // Always clear sensitive data from memory, even on error
+  nsecBuffer.clear();
+  passwordBuffer.clear();
+}
+```
+
+### 5. Secure Memory Management
+
+All methods now use `SecureBuffer` for proper memory management:
+
+```typescript
+// Retrieve decrypted nsec securely
+const secureNsec = await SecureStorage.retrieveDecryptedNsec(userId, password);
+try {
+  const nsecString = secureNsec.toString();
+  // Use nsecString...
+} finally {
+  secureNsec.clear(); // Properly zero memory
 }
 ```
 
@@ -70,19 +105,34 @@ finally {
 1. **Atomicity**: Either the entire operation succeeds or fails completely
 2. **Consistency**: No partial state where old password works but new password doesn't
 3. **Race condition prevention**: Optimistic locking ensures concurrent updates don't interfere
-4. **Memory safety**: Sensitive data is always cleared from memory
+4. **Memory safety**: Sensitive data is actually zeroed from memory using Uint8Array.fill(0)
 5. **Transaction rollback**: Database changes are rolled back on failure
+6. **Real memory zeroization**: Unlike JavaScript strings, Uint8Array allows actual memory overwriting
+7. **Multiple overwrite passes**: Enhanced security with multiple zero/0xFF/zero passes
+8. **Clean API**: All methods now use secure memory management by default
 
 ## Usage
 
-The API remains the same - existing code continues to work:
+The API is clean and secure by default:
 
 ```typescript
+// Update password
 const success = await SecureStorage.updatePasswordAndReencryptNsec(
   userId,
   oldPassword,
   newPassword,
 );
+
+// Retrieve nsec securely
+const secureNsec = await SecureStorage.retrieveDecryptedNsec(userId, password);
+try {
+  // Use the nsec
+  const nsecString = secureNsec.toString();
+  // ... do something with nsecString
+} finally {
+  // Always clear from memory
+  secureNsec.clear();
+}
 ```
 
 ## Database Migration

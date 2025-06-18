@@ -3,23 +3,66 @@
  *
  * This file exports all configuration settings for use throughout the application.
  */
+import { randomBytes } from "crypto";
 import * as dotenv from "dotenv";
 import { z } from "zod";
-import { randomBytes } from "crypto";
 
 // Load environment variables
 dotenv.config();
 
 // Validate critical environment variables
 const envSchema = z.object({
+  // core
   JWT_SECRET: z.string().min(32).optional(),
   DATABASE_URL: z.string().url().optional(),
   REDIS_URL: z.string().url().optional(),
+  NODE_ENV: z.enum(["development", "production", "test"]).optional(),
+
+  // api
+  API_BASE_URL: z.string().url().optional(),
+
+  // auth
+  JWT_EXPIRES_IN: z.string().optional(),
+  NOSTR_AUTH_CHALLENGE: z.string().optional(),
+
+  // database
+  DATABASE_SSL: z.coerce.boolean().optional(),
+
+  // nostr
+  NOSTR_RELAY_URL: z.string().url().optional(),
+  NOSTR_PRIVATE_KEY: z.string().optional(),
+
+  // lightning
+  LIGHTNING_NODE_URL: z.string().url().optional(),
+  LIGHTNING_MACAROON: z.string().optional(),
+  LIGHTNING_CERT_PATH: z.string().optional(),
+
+  // nip-05
+  NIP05_DOMAIN: z.string().optional(),
+
+  // server
+  PORT: z.coerce.number().int().positive().optional(),
+
+  // supabase
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
+
+  // pubky / pkarr
+  PUBKY_HOMESERVER_URL: z.string().url().optional(),
+  PUBKY_PKARR_RELAYS: z.string().optional(),
+  PUBKY_ENABLE_MIGRATION: z.coerce.boolean().optional(),
+  PUBKY_SOVEREIGNTY_TRACKING: z.coerce.boolean().optional(),
+  PKARR_RELAY_TIMEOUT: z.coerce.number().int().nonnegative().optional(),
+  PKARR_RECORD_TTL: z.coerce.number().int().nonnegative().optional(),
+  PKARR_BACKUP_RELAYS: z.coerce.number().int().nonnegative().optional(),
+  PKARR_PUBLISH_RETRIES: z.coerce.number().int().nonnegative().optional(),
 });
 
 const envValidation = envSchema.safeParse(process.env);
-if (!envValidation.success && process.env.NODE_ENV === "production") {
+if (!envValidation.success) {
   console.error("Environment validation failed:", envValidation.error.format());
+  process.exit(1); // ensure container / PM2 restarts with correct env
 }
 
 /**
@@ -60,7 +103,7 @@ export const authConfig = {
  */
 export const dbConfig = {
   url: process.env.DATABASE_URL || "postgres://localhost:5432/identity_forge",
-  ssl: process.env.DATABASE_SSL === "true",
+  ssl: process.env.DATABASE_SSL || false,
 };
 
 /**
@@ -114,6 +157,39 @@ export const serverConfig = {
 };
 
 /**
+ * Pubky configuration
+ */
+export const pubkyConfig = {
+  homeserverUrl:
+    process.env.PUBKY_HOMESERVER_URL || "https://homeserver.pubky.app",
+  pkarrRelays: (
+    process.env.PUBKY_PKARR_RELAYS ||
+    "https://relay1.pubky.app,https://relay2.pubky.app"
+  ).split(","),
+  enableMigration: process.env.PUBKY_ENABLE_MIGRATION || false,
+  sovereigntyTracking: process.env.PUBKY_SOVEREIGNTY_TRACKING || false,
+};
+
+/**
+ * Pkarr configuration
+ */
+export const pkarrConfig = {
+  relayTimeout: process.env.PKARR_RELAY_TIMEOUT || 5000,
+  recordTtl: process.env.PKARR_RECORD_TTL || 3600,
+  backupRelays: process.env.PKARR_BACKUP_RELAYS || 3,
+  publishRetries: process.env.PKARR_PUBLISH_RETRIES || 3,
+};
+
+/**
+ * Supabase configuration
+ */
+export const supabaseConfig = {
+  url: process.env.SUPABASE_URL,
+  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  anonKey: process.env.SUPABASE_ANON_KEY,
+};
+
+/**
  * Feature flags
  */
 export const featureFlags = {
@@ -133,5 +209,8 @@ export const config = {
   lightning: lightningConfig,
   nip05: nip05Config,
   server: serverConfig,
+  pubky: pubkyConfig,
+  pkarr: pkarrConfig,
+  supabase: supabaseConfig,
   features: featureFlags,
 };
