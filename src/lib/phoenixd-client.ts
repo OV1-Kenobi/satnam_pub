@@ -81,10 +81,11 @@ interface PhoenixdLiquidityResponse {
   channelId: string;
 }
 
-interface PhoenixdError {
-  error: string;
-  reason: string;
-}
+// Note: PhoenixdError interface reserved for future error handling enhancement
+// interface PhoenixdError {
+//   error: string;
+//   reason: string;
+// }
 
 interface FamilyChannelConfig {
   username: string;

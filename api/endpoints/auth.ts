@@ -3,8 +3,8 @@
  *
  * This file contains all Nostr-based authentication API endpoints.
  */
-import { NostrEvent, User } from "../../types/user";
 import { config } from "../../config";
+import { NostrEvent, User } from "../../types/user";
 
 /**
  * Authenticates a user with a signed Nostr event.
@@ -12,7 +12,7 @@ import { config } from "../../config";
  * @returns Promise resolving to an authentication token
  */
 export const authenticateWithNostr = async (
-  signedEvent: NostrEvent,
+  signedEvent: NostrEvent
 ): Promise<string> => {
   try {
     // Make API call to authenticate with the signed event
@@ -53,7 +53,7 @@ export const generateOTP = async (npub: string): Promise<string> => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ npub }),
-      },
+      }
     );
 
     if (!response.ok) {
@@ -79,7 +79,7 @@ export const generateOTP = async (npub: string): Promise<string> => {
 export const authenticateWithOTP = async (
   npub: string,
   otpCode: string,
-  sessionToken: string,
+  sessionToken: string
 ): Promise<string> => {
   try {
     // Make API call to authenticate with OTP
@@ -116,7 +116,7 @@ export const authenticateWithOTP = async (
  */
 export const createIdentity = async (
   username: string,
-  recoveryPassword: string,
+  recoveryPassword: string
 ): Promise<{
   user: User;
   encrypted_backup: string;
@@ -135,7 +135,7 @@ export const createIdentity = async (
           username,
           recovery_password: recoveryPassword,
         }),
-      },
+      }
     );
 
     if (!response.ok) {
@@ -159,6 +159,7 @@ export const logout = async (): Promise<void> => {
     // Make API call to logout
     const response = await fetch(`${config.api.baseUrl}/api/auth/logout`, {
       method: "POST",
+      credentials: "include", // Include HttpOnly cookies
     });
 
     if (!response.ok) {
@@ -168,5 +169,79 @@ export const logout = async (): Promise<void> => {
   } catch (error) {
     console.error("Logout error:", error);
     // We don't throw here to ensure the client-side logout still happens
+  }
+};
+
+/**
+ * Gets current session information from HttpOnly cookies
+ * @returns Promise resolving to session info
+ */
+export const getSessionInfo = async (): Promise<{
+  isAuthenticated: boolean;
+  user?: {
+    npub: string;
+    nip05?: string;
+    federationRole: "parent" | "child" | "guardian";
+    authMethod: "otp" | "nwc";
+    isWhitelisted: boolean;
+    votingPower: number;
+    guardianApproved: boolean;
+  };
+}> => {
+  try {
+    const response = await fetch(`${config.api.baseUrl}/api/auth/session`, {
+      method: "GET",
+      credentials: "include", // Include HttpOnly cookies
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return { isAuthenticated: false };
+    }
+
+    const data = await response.json();
+    return data.success ? data.data : { isAuthenticated: false };
+  } catch (error) {
+    console.error("Session info error:", error);
+    return { isAuthenticated: false };
+  }
+};
+
+/**
+ * Refreshes the current session using refresh token
+ * @returns Promise resolving to updated session info
+ */
+export const refreshSession = async (): Promise<{
+  isAuthenticated: boolean;
+  user?: {
+    npub: string;
+    nip05?: string;
+    federationRole: "parent" | "child" | "guardian";
+    authMethod: "otp" | "nwc";
+    isWhitelisted: boolean;
+    votingPower: number;
+    guardianApproved: boolean;
+  };
+}> => {
+  try {
+    const response = await fetch(`${config.api.baseUrl}/api/auth/refresh`, {
+      method: "POST",
+      credentials: "include", // Include HttpOnly cookies
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return { isAuthenticated: false };
+    }
+
+    const data = await response.json();
+    return data.success ? data.data : { isAuthenticated: false };
+  } catch (error) {
+    console.error("Session refresh error:", error);
+    return { isAuthenticated: false };
   }
 };

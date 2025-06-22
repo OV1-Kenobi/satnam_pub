@@ -7,6 +7,7 @@
  * @fileoverview Lightning Address implementation for Satnam.pub family banking
  */
 
+import { AppError, ErrorAnalyzer, ErrorCode } from "../../lib/error-handler";
 import { getFamilyMember, type FamilyMember } from "../../lib/family-api";
 
 interface LNURLPayResponse {
@@ -27,13 +28,18 @@ interface LNURLPayResponse {
  * @returns LNURL-pay response or error
  */
 export default async function handler(req: Request): Promise<Response> {
+  const requestId = crypto.randomUUID();
+
   try {
     // Only allow GET requests for LNURL discovery
     if (req.method !== "GET") {
-      return new Response("Method not allowed", {
-        status: 405,
-        headers: { Allow: "GET" },
-      });
+      throw new AppError(
+        ErrorCode.VALIDATION_INVALID_FORMAT,
+        `Method ${req.method} not allowed for Lightning Address lookup`,
+        "Only GET requests are allowed for Lightning Address discovery.",
+        { method: req.method, allowedMethods: ["GET"] },
+        requestId
+      );
     }
 
     // Extract username from URL path (e.g., /api/lnurl/daughter -> "daughter")
@@ -42,18 +48,24 @@ export default async function handler(req: Request): Promise<Response> {
     const username = pathParts[pathParts.length - 1];
 
     if (!username || username === "[username]") {
-      return new Response("Username required", {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      throw new AppError(
+        ErrorCode.VALIDATION_REQUIRED_FIELD_MISSING,
+        "Username parameter is required for Lightning Address lookup",
+        "Please provide a valid username in the URL path.",
+        { providedUsername: username, urlPath: url.pathname },
+        requestId
+      );
     }
 
     // Validate username format (alphanumeric, underscore, hyphen only)
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-      return new Response("Invalid username format", {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      throw new AppError(
+        ErrorCode.VALIDATION_INVALID_FORMAT,
+        `Invalid username format: ${username}. Only alphanumeric characters, underscores, and hyphens are allowed`,
+        "Username can only contain letters, numbers, underscores, and hyphens.",
+        { providedUsername: username, allowedPattern: "^[a-zA-Z0-9_-]+$" },
+        requestId
+      );
     }
 
     console.log(`🔍 Lightning Address lookup for: ${username}@satnam.pub`);
@@ -63,14 +75,20 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!familyMember) {
       console.log(`❌ Family member not found: ${username}`);
-      return new Response("Family member not found", {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+      throw new AppError(
+        ErrorCode.FAMILY_MEMBER_NOT_FOUND,
+        `Family member '${username}' not found in the system`,
+        `Lightning Address ${username}@satnam.pub is not registered.`,
+        {
+          requestedUsername: username,
+          lightningAddress: `${username}@satnam.pub`,
+        },
+        requestId
+      );
     }
 
     console.log(
-      `✅ Found family member: ${familyMember.name} (${familyMember.role})`,
+      `✅ Found family member: ${familyMember.name} (${familyMember.role})`
     );
 
     // Calculate payment limits based on family member role and settings
@@ -99,7 +117,7 @@ export default async function handler(req: Request): Promise<Response> {
     };
 
     console.log(
-      `🔧 Generated LNURL response for ${username} with limits: ${limits.minSendable / 1000}-${limits.maxSendable / 1000} sats`,
+      `🔧 Generated LNURL response for ${username} with limits: ${limits.minSendable / 1000}-${limits.maxSendable / 1000} sats`
     );
 
     return new Response(JSON.stringify(lnurlResponse), {
@@ -115,15 +133,56 @@ export default async function handler(req: Request): Promise<Response> {
   } catch (error) {
     console.error("❌ Lightning Address error:", error);
 
+    // Use enhanced error handling
+    if (error instanceof AppError) {
+      const statusCode =
+        error.code === ErrorCode.FAMILY_MEMBER_NOT_FOUND
+          ? 404
+          : error.code === ErrorCode.VALIDATION_REQUIRED_FIELD_MISSING ||
+              error.code === ErrorCode.VALIDATION_INVALID_FORMAT
+            ? 400
+            : 500;
+
+      return new Response(
+        JSON.stringify({
+          status: "ERROR",
+          reason: error.userMessage || error.message,
+          code: error.code,
+          details: error.details,
+          requestId: error.requestId,
+        }),
+        {
+          status: statusCode,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": error.requestId || requestId,
+          },
+        }
+      );
+    }
+
+    // Handle unexpected errors
+    const analyzedError = ErrorAnalyzer.analyzeError(
+      error,
+      "Lightning Address lookup",
+      requestId
+    );
     return new Response(
       JSON.stringify({
         status: "ERROR",
-        reason: "Internal server error",
+        reason:
+          analyzedError.userMessage ||
+          "Lightning Address service temporarily unavailable",
+        code: analyzedError.code,
+        requestId: analyzedError.requestId,
       }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": analyzedError.requestId || requestId,
+        },
+      }
     );
   }
 }

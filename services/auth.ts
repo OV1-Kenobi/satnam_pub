@@ -10,7 +10,6 @@ import { db } from "../lib";
 // These imports will be used in future implementations
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-enable @typescript-eslint/no-unused-vars */
-import { createCipheriv, randomBytes } from "crypto";
 import {
   generateSecretKey as generatePrivateKey,
   getEventHash,
@@ -22,7 +21,11 @@ import {
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-enable @typescript-eslint/no-unused-vars */
 import { NostrEvent, User } from "../types/user";
-import { constantTimeEquals, generateRandomHex, sha256 } from "../utils/crypto";
+import {
+  constantTimeEquals,
+  generateRandomHex,
+  sha256,
+} from "../utils/crypto-factory";
 
 // Note: Client-side authentication functions have been moved to client/auth.ts
 
@@ -42,7 +45,7 @@ interface TokenPayload {
  */
 export async function createNostrIdentity(
   username: string,
-  recovery_password: string,
+  recovery_password: string
 ): Promise<{
   user: User;
   encrypted_backup: string;
@@ -51,7 +54,7 @@ export async function createNostrIdentity(
   // Check if username already exists
   const existingUser = await db.query(
     "SELECT * FROM users WHERE username = $1",
-    [username],
+    [username]
   );
 
   if (existingUser.rows.length > 0) {
@@ -75,7 +78,7 @@ export async function createNostrIdentity(
   const iv = randomBytes(16);
   const key = Buffer.from(
     sha256(recovery_password + recovery_code).slice(0, 32),
-    "hex",
+    "hex"
   );
   const cipher = createCipheriv("aes-256-cbc", key, iv);
   let encrypted_backup: string = cipher.update(privateKey, "hex", "hex");
@@ -100,7 +103,7 @@ export async function createNostrIdentity(
       lightning_address,
       "user",
       Math.floor(Date.now() / 1000),
-    ],
+    ]
   );
 
   const user = result.rows[0];
@@ -108,7 +111,7 @@ export async function createNostrIdentity(
   // Store recovery code hash (not the code itself)
   await db.query(
     "INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)",
-    [user.id, sha256(recovery_code)],
+    [user.id, sha256(recovery_code)]
   );
 
   return {
@@ -124,7 +127,7 @@ export async function createNostrIdentity(
  * @returns Challenge ID and challenge string
  */
 export async function generateAuthChallenge(
-  npub: string,
+  npub: string
 ): Promise<{ id: string; challenge: string }> {
   // Generate a random challenge
   const challenge = generateRandomHex(32);
@@ -149,7 +152,7 @@ export async function generateAuthChallenge(
   // Insert the challenge
   await db.query(
     "INSERT INTO auth_challenges (id, npub, challenge, expires_at) VALUES ($1, $2, $3, $4)",
-    [id, npub, challenge, expiresAt.toISOString()],
+    [id, npub, challenge, expiresAt.toISOString()]
   );
 
   return { id, challenge };
@@ -161,7 +164,7 @@ export async function generateAuthChallenge(
  * @returns User object and JWT token
  */
 export async function authenticateWithNWC(
-  signed_event: NostrEvent,
+  signed_event: NostrEvent
 ): Promise<{ user: User; token: string }> {
   // Verify the event signature
   const isValid = verifyEvent(signed_event);
@@ -189,7 +192,7 @@ export async function authenticateWithNWC(
 
   const expected = await db.query(
     "SELECT challenge, npub, used, expires_at FROM auth_challenges WHERE id = $1",
-    [challengeId],
+    [challengeId]
   );
 
   if (
@@ -245,7 +248,7 @@ export async function authenticateWithNWC(
         lightning_address,
         "user",
         Math.floor(Date.now() / 1000),
-      ],
+      ]
     );
 
     user = newUserResult.rows[0];
@@ -296,7 +299,7 @@ export async function generateOTPForUser(npub: string): Promise<string> {
 
   await db.query(
     "INSERT INTO otp_codes (user_id, otp_hash, session_token, expires_at) VALUES ($1, $2, $3, $4)",
-    [userId, sha256(otp), sessionToken, expiresAt],
+    [userId, sha256(otp), sessionToken, expiresAt]
   );
 
   /*
@@ -318,7 +321,7 @@ export async function generateOTPForUser(npub: string): Promise<string> {
 export async function authenticateWithOTP(
   npub: string,
   otp_code: string,
-  session_token: string,
+  session_token: string
 ): Promise<{ user: User; token: string }> {
   // Find user by npub
   const userResult = await db.query("SELECT * FROM users WHERE npub = $1", [
@@ -334,7 +337,7 @@ export async function authenticateWithOTP(
   // Find OTP record
   const otpResult = await db.query(
     "SELECT * FROM otp_codes WHERE user_id = $1 AND session_token = $2 AND expires_at > NOW()",
-    [user.id, session_token],
+    [user.id, session_token]
   );
 
   if (otpResult.rows.length === 0) {
@@ -348,7 +351,7 @@ export async function authenticateWithOTP(
     // Increment failed attempts
     await db.query(
       "UPDATE otp_codes SET failed_attempts = failed_attempts + 1 WHERE id = $1",
-      [otpRecord.id],
+      [otpRecord.id]
     );
 
     // If too many failed attempts, invalidate the OTP

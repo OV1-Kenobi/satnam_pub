@@ -1,7 +1,7 @@
 // lib/__tests__/secure-storage.integration.test.ts
 
-import { decryptData, encryptData } from "../../utils/crypto";
 import { SecureStorage } from "../secure-storage";
+import { decryptCredentials, encryptCredentials } from "../security";
 import { TestDbHelper } from "./test-db-helper";
 
 describe("SecureStorage Integration Tests", () => {
@@ -10,7 +10,7 @@ describe("SecureStorage Integration Tests", () => {
     const isConnected = await TestDbHelper.checkConnection();
     if (!isConnected) {
       throw new Error(
-        "Cannot connect to test database. Please check your .env.test configuration.",
+        "Cannot connect to test database. Please check your .env.test configuration."
       );
     }
   });
@@ -37,9 +37,9 @@ describe("SecureStorage Integration Tests", () => {
       const newPassword = "NewPassword456!";
 
       // First, create a test user with encrypted nsec
-      const originalEncryptedNsec = await encryptData(
+      const originalEncryptedNsec = await encryptCredentials(
         testNsec,
-        originalPassword,
+        originalPassword
       );
       await TestDbHelper.createTestUser(testUserId, originalEncryptedNsec);
 
@@ -52,7 +52,7 @@ describe("SecureStorage Integration Tests", () => {
       const result = await SecureStorage.updatePasswordAndReencryptNsec(
         testUserId,
         "WrongPassword",
-        newPassword,
+        newPassword
       );
 
       // Should return false due to decryption failure
@@ -63,9 +63,9 @@ describe("SecureStorage Integration Tests", () => {
       expect(unchangedData.encrypted_nsec).toBe(originalEncryptedNsec);
 
       // Verify we can still decrypt with the original password
-      const decryptedData = await decryptData(
+      const decryptedData = await decryptCredentials(
         unchangedData.encrypted_nsec,
-        originalPassword,
+        originalPassword
       );
       expect(decryptedData).toBe(testNsec);
     });
@@ -81,9 +81,9 @@ describe("SecureStorage Integration Tests", () => {
       const newPassword = "NewPassword456!";
 
       // Create a test user with encrypted nsec
-      const originalEncryptedNsec = await encryptData(
+      const originalEncryptedNsec = await encryptCredentials(
         testNsec,
-        originalPassword,
+        originalPassword
       );
       await TestDbHelper.createTestUser(testUserId, originalEncryptedNsec);
 
@@ -91,7 +91,7 @@ describe("SecureStorage Integration Tests", () => {
       const result = await SecureStorage.updatePasswordAndReencryptNsec(
         testUserId,
         originalPassword,
-        newPassword,
+        newPassword
       );
 
       // Should return true for successful update
@@ -103,15 +103,15 @@ describe("SecureStorage Integration Tests", () => {
       expect(updatedData.updated_at).not.toBe(updatedData.created_at);
 
       // Verify we can decrypt with the new password
-      const decryptedWithNewPassword = await decryptData(
+      const decryptedWithNewPassword = await decryptCredentials(
         updatedData.encrypted_nsec,
-        newPassword,
+        newPassword
       );
       expect(decryptedWithNewPassword).toBe(testNsec);
 
       // Verify we cannot decrypt with the old password
       await expect(
-        decryptData(updatedData.encrypted_nsec, originalPassword),
+        decryptCredentials(updatedData.encrypted_nsec, originalPassword)
       ).rejects.toThrow();
     });
 
@@ -127,9 +127,9 @@ describe("SecureStorage Integration Tests", () => {
       const newPassword2 = "NewPassword2_789!";
 
       // Create a test user with encrypted nsec
-      const originalEncryptedNsec = await encryptData(
+      const originalEncryptedNsec = await encryptCredentials(
         testNsec,
-        originalPassword,
+        originalPassword
       );
       await TestDbHelper.createTestUser(testUserId, originalEncryptedNsec);
 
@@ -137,7 +137,7 @@ describe("SecureStorage Integration Tests", () => {
       const result1 = await SecureStorage.updatePasswordAndReencryptNsec(
         testUserId,
         originalPassword,
-        newPassword1,
+        newPassword1
       );
       expect(result1).toBe(true);
 
@@ -145,15 +145,15 @@ describe("SecureStorage Integration Tests", () => {
       const result2 = await SecureStorage.updatePasswordAndReencryptNsec(
         testUserId,
         originalPassword, // Using old password again
-        newPassword2,
+        newPassword2
       );
       expect(result2).toBe(false);
 
       // Verify the data corresponds to the first successful update
       const finalData = await TestDbHelper.getTestUser(testUserId);
-      const decryptedFinal = await decryptData(
+      const decryptedFinal = await decryptCredentials(
         finalData.encrypted_nsec,
-        newPassword1,
+        newPassword1
       );
       expect(decryptedFinal).toBe(testNsec);
     });
@@ -167,13 +167,13 @@ describe("SecureStorage Integration Tests", () => {
       const password = "TestPassword123!";
 
       // Create test user
-      const encryptedNsec = await encryptData(testNsec, password);
+      const encryptedNsec = await encryptCredentials(testNsec, password);
       await TestDbHelper.createTestUser(testUserId, encryptedNsec);
 
       // Retrieve decrypted nsec
       const result = await SecureStorage.retrieveDecryptedNsec(
         testUserId,
-        password,
+        password
       );
 
       expect(result).toBeDefined();
@@ -189,7 +189,7 @@ describe("SecureStorage Integration Tests", () => {
 
         // Should throw when trying to access cleared buffer
         expect(() => result.toString()).toThrow(
-          "SecureBuffer has been cleared",
+          "SecureBuffer has been cleared"
         );
       }
     });
@@ -200,7 +200,7 @@ describe("SecureStorage Integration Tests", () => {
 
       const result = await SecureStorage.retrieveDecryptedNsec(
         nonExistentUserId,
-        password,
+        password
       );
       expect(result).toBeNull();
     });
@@ -219,7 +219,7 @@ describe("SecureStorage Integration Tests", () => {
       // Try to retrieve with wrong password
       const result = await SecureStorage.retrieveDecryptedNsec(
         testUserId,
-        wrongPassword,
+        wrongPassword
       );
       expect(result).toBeNull();
     });
@@ -264,14 +264,14 @@ describe("SecureStorage Integration Tests", () => {
       const storeResult = await SecureStorage.storeEncryptedNsec(
         testUserId,
         keyPair.nsec,
-        password,
+        password
       );
       expect(storeResult).toBe(true);
 
       // Retrieve and verify
       const retrievedBuffer = await SecureStorage.retrieveDecryptedNsec(
         testUserId,
-        password,
+        password
       );
       expect(retrievedBuffer).toBeDefined();
       expect(retrievedBuffer).not.toBeNull();
@@ -295,7 +295,7 @@ describe("SecureStorage Integration Tests", () => {
       await SecureStorage.storeEncryptedNsec(
         testUserId,
         keyPair.nsec,
-        password,
+        password
       );
 
       // Now should have stored nsec
@@ -312,7 +312,7 @@ describe("SecureStorage Integration Tests", () => {
       await SecureStorage.storeEncryptedNsec(
         testUserId,
         keyPair.nsec,
-        password,
+        password
       );
       expect(await SecureStorage.hasStoredNsec(testUserId)).toBe(true);
 

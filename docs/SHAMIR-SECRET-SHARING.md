@@ -110,8 +110,8 @@ POST /api/family/initialize-sss
 // 3-of-5 Configuration (Medium Family)
 POST /api/family/initialize-sss
 {
-  "familyId": "johnson_family_2024",
-  "familyName": "Johnson Family",
+  "familyId": "nakamoto_family_2024",
+  "familyName": "Nakamoto Family",
   "guardians": [
     { "id": "mom", "role": "parent", "trustLevel": 5 },
     { "id": "dad", "role": "parent", "trustLevel": 5 },
@@ -150,7 +150,7 @@ POST /api/family/initialize-sss
 // Family Announcement requiring guardian consensus
 POST /api/sss-federated/create-event
 {
-  "familyId": "johnson_family_2024",
+  "familyId": "nakamoto_family_2024",
   "eventType": "family_announcement",
   "content": "We're planning to move to a new city. This affects our family's financial arrangements and Nostr account management.",
   "requiredGuardianApprovals": 3, // Majority of 5 guardians
@@ -170,7 +170,7 @@ POST /api/sss-federated/guardian-approval
 }
 
 // Get pending events for guardian
-GET /api/sss-federated/pending/johnson_family_2024
+GET /api/sss-federated/pending/nakamoto_family_2024
 ```
 
 ### Step 4: Share Provision for Signing
@@ -191,7 +191,7 @@ POST /api/sss-federated/provide-share
 // Lower threshold for emergency situations
 POST /api/sss-federated/request-key-reconstruction
 {
-  "familyId": "johnson_family_2024",
+  "familyId": "nakamoto_family_2024",
   "reason": "emergency",
   "expiresInHours": 6 // Short window for security
 }
@@ -205,7 +205,7 @@ Emergency configurations automatically use a lower threshold (typically threshol
 // Automatic key rotation every 6 months
 POST /api/sss-federated/request-key-reconstruction
 {
-  "familyId": "johnson_family_2024",
+  "familyId": "nakamoto_family_2024",
   "reason": "key_rotation",
   "expiresInHours": 48 // Longer window for coordination
 }
@@ -219,7 +219,7 @@ The system can automatically initiate key rotation based on configured intervals
 // Family member inheritance/recovery
 POST /api/sss-federated/request-key-reconstruction
 {
-  "familyId": "johnson_family_2024",
+  "familyId": "nakamoto_family_2024",
   "reason": "inheritance",
   "expiresInHours": 72 // Extended window for family coordination
 }

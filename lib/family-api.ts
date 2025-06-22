@@ -1,29 +1,5 @@
 // Vite-compatible family API client
-import { createClient } from "@supabase/supabase-js";
-
-// Create Supabase client with environment variables (Vite and Node.js compatible)
-const getEnvVar = (key: string): string => {
-  // Try Vite environment first, then Node.js process.env
-  if (typeof import.meta !== "undefined" && import.meta.env) {
-    return import.meta.env[key] || "";
-  }
-  return process.env[key] || "";
-};
-
-// SECURITY FIX: Only use service role key on server-side
-const isServer = typeof window === "undefined";
-const supabaseKey = isServer
-  ? getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || ""
-  : getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("SUPABASE_ANON_KEY") || "";
-
-if (isServer && !getEnvVar("SUPABASE_SERVICE_ROLE_KEY")) {
-  console.error("🚨 CRITICAL: SUPABASE_SERVICE_ROLE_KEY missing on server");
-}
-
-const supabase = createClient(
-  getEnvVar("VITE_SUPABASE_URL") || getEnvVar("SUPABASE_URL") || "",
-  supabaseKey
-);
+import { supabase } from "./supabase.js";
 
 // SECURITY FIX: Encrypted family member interface
 export interface FamilyMember {

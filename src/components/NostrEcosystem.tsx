@@ -1,27 +1,25 @@
-import React from "react";
 import {
-  ArrowLeft,
-  ExternalLink,
-  Smartphone,
-  Globe,
-  Image,
-  FileText,
-  Radio,
-  Music,
-  Newspaper,
-  Users,
-  Zap,
-  Key,
-  Copy,
-  CheckCircle,
-  Download,
-  Camera,
-  Mic,
-  BookOpen,
-  MessageCircle,
-  Video,
-  Headphones,
+    ArrowLeft,
+    BookOpen,
+    Camera,
+    CheckCircle,
+    Copy,
+    Download,
+    ExternalLink,
+    FileText,
+    Globe,
+    Headphones,
+    Image,
+    Key,
+    MessageCircle,
+    Music,
+    Newspaper,
+    Smartphone,
+    Users,
+    Video,
+    Zap
 } from "lucide-react";
+import React from "react";
 
 interface NostrEcosystemProps {
   onBack: () => void;
@@ -206,7 +204,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
     <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-purple-900 rounded-2xl p-6 mb-8 border border-yellow-400/20">
+        <div className="bg-purple-900 rounded-2xl p-6 mb-8 border border-purple-400/20">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
@@ -219,6 +217,12 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
                 <h1 className="text-3xl font-bold text-white">
                   Next Steps: Use Your New Decentralized Identity
                 </h1>
+                <div className="flex items-center space-x-2 mb-2">
+                  <div className="bg-purple-800 text-purple-200 px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1">
+                    <span>🆔</span>
+                    <span>Identity</span>
+                  </div>
+                </div>
                 <p className="text-purple-200">
                   Explore the Nostr ecosystem with your sovereign identity
                 </p>
@@ -288,19 +292,25 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
         </div>
 
         {/* Essential Tool - nos2x Extension */}
-        <div className="bg-gradient-to-r from-yellow-400/20 to-orange-500/20 rounded-2xl p-8 mb-8 border border-yellow-400/50">
+        <div className="bg-gradient-to-r from-purple-600/20 to-purple-800/20 rounded-2xl p-8 mb-8 border border-purple-400/50">
           <div className="flex items-start space-x-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center flex-shrink-0">
               <Key className="h-8 w-8 text-white" />
             </div>
             <div className="flex-1">
-              <h3 className="text-yellow-400 font-bold text-xl mb-3">
-                Essential: Browser Key Management
-              </h3>
+              <div className="flex items-center space-x-2 mb-3">
+                <h3 className="text-purple-300 font-bold text-xl">
+                  Essential: Browser Key Management
+                </h3>
+                <div className="bg-purple-800 text-purple-200 px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1">
+                  <span>🆔</span>
+                  <span>Identity</span>
+                </div>
+              </div>
               <h4 className="text-white font-bold text-lg mb-2">
                 nos2x (Browser Extension)
               </h4>
-              <p className="text-yellow-100 mb-4">
+              <p className="text-purple-100 mb-4">
                 Securely manage your Nostr private key (nsec) in your browser.
                 Lets you sign events and log in to Nostr web apps without
                 exposing your private key, supporting NIP-07 and recommended by
@@ -310,7 +320,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
                 href="https://chrome.google.com/webstore/detail/nos2x/npjnlnbmhklpajfaoolpmpicclnpoiah"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 inline-flex items-center space-x-2"
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 inline-flex items-center space-x-2"
               >
                 <Download className="h-5 w-5" />
                 <span>Install nos2x Extension</span>

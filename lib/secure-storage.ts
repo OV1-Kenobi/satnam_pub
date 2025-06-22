@@ -1,6 +1,6 @@
 // lib/secure-storage.ts
 import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
-import { decryptData, encryptData } from "../utils/crypto";
+import { decryptCredentials, encryptCredentials } from "./security";
 import { supabase } from "./supabase";
 
 export interface EncryptedKeyData {
@@ -100,7 +100,7 @@ export class SecureStorage {
    */
   private static async executeWithTransaction<T>(
     operation: () => Promise<T>,
-    fallbackOperation?: () => Promise<T>,
+    fallbackOperation?: () => Promise<T>
   ): Promise<T | null> {
     try {
       // Try to begin transaction
@@ -162,17 +162,17 @@ export class SecureStorage {
   static async storeEncryptedNsec(
     userId: string,
     nsec: string,
-    userPassword: string,
+    userPassword: string
   ): Promise<boolean> {
     const nsecBuffer = this.createSecureBuffer(nsec);
     const passwordBuffer = this.createSecureBuffer(userPassword);
     let encryptedNsecBuffer: SecureBuffer | null = null;
 
     try {
-      // Encrypt the nsec using proper PBKDF2 key derivation (handled internally by encryptData)
-      const encryptedNsec = await encryptData(
+      // Encrypt the nsec using Gold Standard Argon2id key derivation
+      const encryptedNsec = await encryptCredentials(
         nsecBuffer.toString(),
-        passwordBuffer.toString(),
+        passwordBuffer.toString()
       );
       encryptedNsecBuffer = this.createSecureBuffer(encryptedNsec);
 
@@ -211,7 +211,7 @@ export class SecureStorage {
    */
   static async retrieveDecryptedNsec(
     userId: string,
-    userPassword: string,
+    userPassword: string
   ): Promise<SecureBuffer | null> {
     const passwordBuffer = this.createSecureBuffer(userPassword);
 
@@ -228,11 +228,11 @@ export class SecureStorage {
         return null;
       }
 
-      // Decrypt the nsec using proper PBKDF2 key derivation (handled internally by decryptData)
+      // Decrypt the nsec using Gold Standard Argon2id key derivation
       try {
-        const decryptedNsec = await decryptData(
+        const decryptedNsec = await decryptCredentials(
           data.encrypted_nsec,
-          passwordBuffer.toString(),
+          passwordBuffer.toString()
         );
         return this.createSecureBuffer(decryptedNsec);
       } catch (decryptError) {
@@ -256,7 +256,7 @@ export class SecureStorage {
   static async updatePasswordAndReencryptNsec(
     userId: string,
     oldPassword: string,
-    newPassword: string,
+    newPassword: string
   ): Promise<boolean> {
     try {
       // Try database-level transaction first (if available)
@@ -267,7 +267,7 @@ export class SecureStorage {
             p_user_id: userId,
             p_old_password: oldPassword,
             p_new_password: newPassword,
-          },
+          }
         );
 
         if (!error && data === true) {
@@ -282,7 +282,7 @@ export class SecureStorage {
       return await this.updatePasswordAndReencryptNsecAtomic(
         userId,
         oldPassword,
-        newPassword,
+        newPassword
       );
     } catch (error) {
       console.error("Error updating password and re-encrypting nsec:", error);
@@ -300,7 +300,7 @@ export class SecureStorage {
   static async updatePasswordAndReencryptNsecAtomic(
     userId: string,
     oldPassword: string,
-    newPassword: string,
+    newPassword: string
   ): Promise<boolean> {
     const oldPasswordBuffer = this.createSecureBuffer(oldPassword);
     const newPasswordBuffer = this.createSecureBuffer(newPassword);
@@ -314,12 +314,12 @@ export class SecureStorage {
 
       if (transactionError) {
         console.log(
-          "Transaction not available, using optimistic locking fallback",
+          "Transaction not available, using optimistic locking fallback"
         );
         return await this.updatePasswordWithOptimisticLocking(
           userId,
           oldPassword,
-          newPassword,
+          newPassword
         );
       }
 
@@ -335,16 +335,16 @@ export class SecureStorage {
           await supabase.rpc("rollback_transaction");
           console.error(
             "Failed to retrieve current encrypted nsec:",
-            fetchError,
+            fetchError
           );
           return false;
         }
 
         // Decrypt with old password
         try {
-          const decryptedNsec = await decryptData(
+          const decryptedNsec = await decryptCredentials(
             currentData.encrypted_nsec,
-            oldPasswordBuffer.toString(),
+            oldPasswordBuffer.toString()
           );
           decryptedNsecBuffer = this.createSecureBuffer(decryptedNsec);
         } catch (decryptError) {
@@ -354,9 +354,9 @@ export class SecureStorage {
         }
 
         // Re-encrypt with new password
-        const newEncryptedNsec = await encryptData(
+        const newEncryptedNsec = await encryptCredentials(
           decryptedNsecBuffer.toString(),
-          newPasswordBuffer.toString(),
+          newPasswordBuffer.toString()
         );
         newEncryptedNsecBuffer = this.createSecureBuffer(newEncryptedNsec);
 
@@ -414,7 +414,7 @@ export class SecureStorage {
   private static async updatePasswordWithOptimisticLocking(
     userId: string,
     oldPassword: string,
-    newPassword: string,
+    newPassword: string
   ): Promise<boolean> {
     const oldPasswordBuffer = this.createSecureBuffer(oldPassword);
     const newPasswordBuffer = this.createSecureBuffer(newPassword);
@@ -436,7 +436,7 @@ export class SecureStorage {
           if (fetchError || !currentData) {
             console.error(
               "Failed to retrieve current encrypted nsec:",
-              fetchError,
+              fetchError
             );
             return false;
           }
@@ -445,7 +445,7 @@ export class SecureStorage {
           try {
             const decryptedNsec = await decryptData(
               currentData.encrypted_nsec,
-              oldPasswordBuffer.toString(),
+              oldPasswordBuffer.toString()
             );
             decryptedNsecBuffer = this.createSecureBuffer(decryptedNsec);
           } catch (decryptError) {
@@ -456,7 +456,7 @@ export class SecureStorage {
           // Re-encrypt with new password
           const newEncryptedNsec = await encryptData(
             decryptedNsecBuffer.toString(),
-            newPasswordBuffer.toString(),
+            newPasswordBuffer.toString()
           );
           newEncryptedNsecBuffer = this.createSecureBuffer(newEncryptedNsec);
 
@@ -478,14 +478,14 @@ export class SecureStorage {
               updateError.message?.includes("conflict")
             ) {
               console.log(
-                `Optimistic locking conflict, retrying attempt ${attempt + 1}/${maxRetries}`,
+                `Optimistic locking conflict, retrying attempt ${attempt + 1}/${maxRetries}`
               );
               // Clear sensitive data before retry happens in finally block
               continue;
             }
             console.error(
               "Failed to update encrypted nsec with optimistic locking:",
-              updateError,
+              updateError
             );
             return false;
           }
@@ -495,7 +495,7 @@ export class SecureStorage {
         } catch (error) {
           console.error(
             `Error in optimistic locking attempt ${attempt}:`,
-            error,
+            error
           );
           if (attempt === maxRetries) {
             return false;
@@ -565,7 +565,7 @@ export class SecureStorage {
           if (commitError) {
             console.error(
               "Failed to commit deletion transaction:",
-              commitError,
+              commitError
             );
             return false;
           }

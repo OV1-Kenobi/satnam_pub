@@ -5,7 +5,13 @@ import { z } from "zod";
 export const nwcUriSchema = z.object({
   protocol: z.literal("nostr+walletconnect"),
   pubkey: z.string().regex(/^[0-9a-f]{64}$/i, "Invalid pubkey format"),
-  relay: z.string().url("Invalid relay URL"),
+  relay: z
+    .string()
+    .url("Invalid relay URL")
+    .refine(
+      (url) => url.startsWith("wss://") || url.startsWith("ws://"),
+      "Relay must be a WebSocket URL (wss:// or ws://)"
+    ),
   secret: z.string().min(64, "Invalid secret length"),
   permissions: z.array(z.string()).optional(),
 });
@@ -88,7 +94,7 @@ export function validateNWCUri(nwcUri: string): {
 }
 
 export function sanitizeNWCData(
-  connectionInfo: NWCConnectionInfo,
+  connectionInfo: NWCConnectionInfo
 ): NWCConnectionInfo {
   return {
     pubkey: connectionInfo.pubkey.toLowerCase(),

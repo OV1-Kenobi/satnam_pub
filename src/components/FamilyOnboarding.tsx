@@ -1,28 +1,26 @@
-import React, { useState, useEffect } from "react";
 import {
-  Zap,
-  Users,
-  Bitcoin,
-  BookOpen,
-  Key,
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle,
-  Play,
-  Clock,
-  Sparkles,
-  Heart,
-  Home,
-  Lock,
-  Eye,
-  EyeOff,
-  QrCode,
-  Gift,
-  Star,
-  Lightbulb,
-  Target,
-  Award,
+    ArrowLeft,
+    ArrowRight,
+    Award,
+    Bitcoin,
+    BookOpen,
+    CheckCircle,
+    Clock,
+    Eye,
+    EyeOff,
+    Gift,
+    Heart,
+    Key,
+    Lightbulb,
+    Lock,
+    Play,
+    QrCode,
+    Sparkles,
+    Star,
+    Target,
+    Zap
 } from "lucide-react";
+import React, { useState } from "react";
 
 interface OnboardingProps {
   familyName: string;
@@ -789,7 +787,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                           className="h-8 w-8 mx-auto"
                         />
                         <p className="text-white font-semibold">
-                          Join Family Dashboard
+                          Join Family Financials
                         </p>
                         <p className="text-purple-200 text-sm">
                           Manage your family's Bitcoin together

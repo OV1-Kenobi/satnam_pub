@@ -31,7 +31,7 @@ import {
   encryptSensitiveData,
 } from "../lib/privacy/encryption";
 import { AuthAuditLog, OnboardingSession, User } from "../types/user";
-import { generateRandomHex, sha256 } from "../utils/crypto";
+import { generateRandomHex, sha256 } from "../utils/crypto-factory";
 import { generateToken } from "./auth";
 
 /**

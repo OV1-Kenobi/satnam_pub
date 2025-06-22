@@ -40,6 +40,10 @@ const envSchema = z.object({
   // nip-05
   NIP05_DOMAIN: z.string().optional(),
 
+  // family
+  FAMILY_DOMAIN: z.string().optional(),
+  FAMILY_USERNAME_MAX_LENGTH: z.coerce.number().int().positive().optional(),
+
   // server
   PORT: z.coerce.number().int().positive().optional(),
 
@@ -83,7 +87,7 @@ export const authConfig = {
     (() => {
       if (process.env.NODE_ENV === "production") {
         throw new Error(
-          "JWT_SECRET environment variable is required in production",
+          "JWT_SECRET environment variable is required in production"
         );
       }
       // Generate a random secret for development environments only
@@ -104,6 +108,44 @@ export const authConfig = {
 export const dbConfig = {
   url: process.env.DATABASE_URL || "postgres://localhost:5432/identity_forge",
   ssl: process.env.DATABASE_SSL || false,
+  // Parse DATABASE_URL into individual components for pg Pool
+  ...(() => {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return {
+        host: "localhost",
+        port: 5432,
+        database: "identity_forge",
+        user: "postgres",
+        password: "",
+        ssl: false,
+      };
+    }
+
+    try {
+      const parsed = new URL(url);
+      return {
+        host: parsed.hostname,
+        port: parseInt(parsed.port) || 5432,
+        database: parsed.pathname.slice(1), // Remove leading slash
+        user: parsed.username,
+        password: parsed.password,
+        ssl:
+          parsed.hostname.includes("supabase.co") ||
+          process.env.DATABASE_SSL === "true",
+      };
+    } catch (error) {
+      console.warn("Failed to parse DATABASE_URL, using localhost defaults");
+      return {
+        host: "localhost",
+        port: 5432,
+        database: "identity_forge",
+        user: "postgres",
+        password: "",
+        ssl: false,
+      };
+    }
+  })(),
 };
 
 /**
@@ -149,6 +191,14 @@ export const nip05Config = {
 };
 
 /**
+ * Family member configuration
+ */
+export const familyConfig = {
+  domain: process.env.FAMILY_DOMAIN || "satnam.pub",
+  usernameMaxLength: process.env.FAMILY_USERNAME_MAX_LENGTH || 20,
+};
+
+/**
  * Server configuration
  */
 export const serverConfig = {
@@ -184,9 +234,10 @@ export const pkarrConfig = {
  * Supabase configuration
  */
 export const supabaseConfig = {
-  url: process.env.SUPABASE_URL,
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
   serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  anonKey: process.env.SUPABASE_ANON_KEY,
+  anonKey:
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
 };
 
 /**
@@ -208,6 +259,7 @@ export const config = {
   nostr: nostrConfig,
   lightning: lightningConfig,
   nip05: nip05Config,
+  family: familyConfig,
   server: serverConfig,
   pubky: pubkyConfig,
   pkarr: pkarrConfig,

@@ -1,4 +1,9 @@
 // lib/server.ts
+// Load environment variables first
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
@@ -12,7 +17,7 @@ import {
 } from "./startup-validator.js";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 // ===========================================
 // MIDDLEWARE SETUP
@@ -39,17 +44,22 @@ app.use(
     origin:
       process.env.NODE_ENV === "production"
         ? ["https://yourdomain.com"] // Replace with your domain
-        : ["http://localhost:3000", "http://localhost:5173"], // Dev origins
+        : [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://localhost:5173",
+          ], // Dev origins
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 
-// Rate limiting
+// Rate limiting - Relaxed for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: process.env.NODE_ENV === "production" ? 100 : 1000, // Higher limit for dev
   message: {
     success: false,
     error: "Too many requests, please try again later",
@@ -60,10 +70,10 @@ const limiter = rateLimit({
 
 app.use("/api/", limiter);
 
-// Stricter rate limiting for auth endpoints
+// Stricter rate limiting for auth endpoints - Relaxed for development
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit auth attempts
+  max: process.env.NODE_ENV === "production" ? 10 : 100, // Much higher limit for dev
   message: {
     success: false,
     error: "Too many authentication attempts, please try again later",
@@ -71,6 +81,9 @@ const authLimiter = rateLimit({
 });
 
 app.use("/api/auth/", authLimiter);
+
+// Cookie parsing (required for secure session management)
+app.use(cookieParser());
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
@@ -130,7 +143,7 @@ async function startServer() {
     console.log("🔐 GOLD STANDARD SECURITY VALIDATION STARTING...\n");
 
     // 1. Validate Argon2 parameters are being used (fixes the original issue)
-    const argon2Valid = validateArgon2Usage();
+    const argon2Valid = await validateArgon2Usage();
     if (!argon2Valid) {
       console.error(
         "❌ Argon2 validation failed - this was the critical issue identified"

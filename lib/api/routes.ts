@@ -192,9 +192,9 @@ router.post("/auth/otp/verify", async (req, res) => {
       });
     }
 
-    const result = await AuthAPI.verifyOTP(pubkey, otp_code);
-    const statusCode = result.success ? 200 : 400;
+    const result = await AuthAPI.verifyOTP(pubkey, otp_code, res);
 
+    const statusCode = result.success ? 200 : 400;
     res.status(statusCode).json(result);
   } catch (error) {
     res.status(500).json({
@@ -207,7 +207,7 @@ router.post("/auth/otp/verify", async (req, res) => {
 // Get current session
 router.get("/auth/session", async (req, res) => {
   try {
-    const result = await AuthAPI.getSession();
+    const result = await AuthAPI.getSession(req);
     const statusCode = result.success ? 200 : 401;
 
     res.status(statusCode).json(result);
@@ -222,7 +222,7 @@ router.get("/auth/session", async (req, res) => {
 // Logout
 router.post("/auth/logout", async (req, res) => {
   try {
-    const result = await AuthAPI.logout();
+    const result = await AuthAPI.logout(res);
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({
@@ -235,7 +235,7 @@ router.post("/auth/logout", async (req, res) => {
 // Refresh session
 router.post("/auth/refresh", async (req, res) => {
   try {
-    const result = await AuthAPI.refreshSession();
+    const result = await AuthAPI.refreshSession(req, res);
     const statusCode = result.success ? 200 : 401;
 
     res.status(statusCode).json(result);
@@ -1734,5 +1734,115 @@ router.post(
     }
   })
 );
+
+// ===========================================
+// PHOENIXD LIGHTNING NODE ROUTES
+// ===========================================
+
+/**
+ * Get PhoenixD Lightning node status
+ * @route GET /api/phoenixd/status
+ * @description Returns comprehensive PhoenixD node status including connection health,
+ * balance information, channel status, and automated liquidity management status
+ */
+router.get("/phoenixd/status", async (req, res) => {
+  try {
+    // Import the status handler dynamically to avoid circular dependencies
+    const statusHandler = await import("../../api/phoenixd/status");
+
+    // Create a Request object from Express request
+    const request = new Request(
+      `${req.protocol}://${req.get("host")}${req.originalUrl}`,
+      {
+        method: req.method,
+        headers: req.headers as HeadersInit,
+      }
+    );
+
+    // Call the handler
+    const response = await statusHandler.default(request);
+
+    // Convert Response to Express response
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ===========================================
+// INDIVIDUAL WALLET API ENDPOINTS
+// ===========================================
+
+// Import individual wallet handlers
+import individualCashuBearer from "../../api/individual/cashu/bearer";
+import individualCashuWallet from "../../api/individual/cashu/wallet";
+import individualLightningWallet from "../../api/individual/lightning/wallet";
+import individualLightningZap from "../../api/individual/lightning/zap";
+import individualWallet from "../../api/individual/wallet";
+
+// Individual wallet main endpoint
+router.get("/individual/wallet", async (req, res) => {
+  try {
+    await individualWallet(req, res);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+    });
+  }
+});
+
+// Lightning wallet data endpoint
+router.get("/individual/lightning/wallet", async (req, res) => {
+  try {
+    await individualLightningWallet(req, res);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+    });
+  }
+});
+
+// Lightning zap endpoint
+router.post("/individual/lightning/zap", async (req, res) => {
+  try {
+    await individualLightningZap(req, res);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+    });
+  }
+});
+
+// Cashu wallet data endpoint
+router.get("/individual/cashu/wallet", async (req, res) => {
+  try {
+    await individualCashuWallet(req, res);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+    });
+  }
+});
+
+// Cashu bearer note creation endpoint
+router.post("/individual/cashu/bearer", async (req, res) => {
+  try {
+    await individualCashuBearer(req, res);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+    });
+  }
+});
 
 export default router;

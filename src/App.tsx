@@ -1,35 +1,53 @@
 import {
-  Bitcoin,
-  BookOpen,
-  ExternalLink,
-  Menu,
-  Network,
-  Users,
-  X,
-  Zap,
+    Bitcoin,
+    BookOpen,
+    ExternalLink,
+    Menu,
+    Network,
+    Users,
+    X,
+    Zap,
 } from "lucide-react";
 import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
+import FamilyAuthModal from "./components/FamilyAuthModal";
 import FamilyCoordination from "./components/FamilyCoordination";
-import FamilyDashboard from "./components/FamilyDashboard";
+import FamilyFinancialsDashboard from "./components/FamilyFinancialsDashboard";
 import FamilyOnboarding from "./components/FamilyOnboarding";
+import FamilyWalletDemo from "./components/FamilyWalletDemo";
 import IdentityForge from "./components/IdentityForge";
+import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import NostrEcosystem from "./components/NostrEcosystem";
+import ServerStatus from "./components/ServerStatus";
 import SignInModal from "./components/SignInModal";
+import useAuth from "./hooks/useAuth";
+import { FamilyFederationUser } from "./types/auth";
 
 function App() {
   const [currentView, setCurrentView] = useState<
     | "landing"
     | "forge"
     | "dashboard"
+    | "financials"
+    | "individual-wallet"
     | "onboarding"
     | "education"
     | "coordination"
     | "recovery"
     | "nostr-ecosystem"
+    | "family-wallets"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
+  const [familyAuthModalOpen, setFamilyAuthModalOpen] = useState(false);
+  
+  // Authentication state
+  const auth = useAuth();
+
+  const handleFamilyAuthSuccess = (user: FamilyFederationUser) => {
+    // Authentication successful - redirect to enhanced financials dashboard
+    setCurrentView("financials");
+  };
 
   if (currentView === "forge") {
     return (
@@ -41,7 +59,29 @@ function App() {
   }
 
   if (currentView === "dashboard") {
-    return <FamilyDashboard onBack={() => setCurrentView("landing")} />;
+    return <FamilyFinancialsDashboard onBack={() => setCurrentView("landing")} />;
+  }
+
+  if (currentView === "financials") {
+    return <FamilyFinancialsDashboard onBack={() => setCurrentView("landing")} />;
+  }
+
+  if (currentView === "individual-wallet") {
+    return (
+      <IndividualFinancesDashboard 
+        memberId="demo-user-123"
+        memberData={{
+          username: "demo_user",
+          role: "child",
+          lightningAddress: "demo_user@satnam.pub",
+          spendingLimits: {
+            daily: 10000,
+            weekly: 50000,
+            requiresApproval: 100000
+          }
+        }}
+      />
+    );
   }
 
   if (currentView === "onboarding") {
@@ -65,6 +105,12 @@ function App() {
   if (currentView === "nostr-ecosystem") {
     return <NostrEcosystem onBack={() => setCurrentView("landing")} />;
   }
+
+  if (currentView === "family-wallets") {
+    return <FamilyWalletDemo />;
+  }
+
+
 
   if (currentView === "recovery") {
     return (
@@ -114,7 +160,9 @@ function App() {
   }
 
   const navigationItems = [
-    { label: "Family Dashboard", action: () => setCurrentView("dashboard") },
+    { label: "Family Financials", action: () => setFamilyAuthModalOpen(true) },
+    { label: "Individual Wallet", action: () => setCurrentView("individual-wallet") },
+    { label: "Family Wallets", action: () => setCurrentView("family-wallets") },
     { label: "Bitcoin Education", action: () => setCurrentView("education") },
     {
       label: "Nostr Resources",
@@ -217,9 +265,9 @@ function App() {
       {/* Enhanced Navigation */}
       <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Logo with SatNam.Pub Custom Logo */}
-            <div className="flex items-center space-x-3">
+          <div className="flex items-center h-16">
+            {/* Logo with SatNam.Pub Custom Logo - Protected Brand Section */}
+            <div className="flex items-center space-x-3 flex-shrink-0 mr-8 lg:mr-12">
               <img
                 src="/SatNam.Pub logo.png"
                 alt="SatNam.Pub"
@@ -229,44 +277,43 @@ function App() {
               <span className="text-white text-xl font-bold">Satnam.pub</span>
             </div>
 
-            {/* Desktop Navigation */}
-            <div className="hidden lg:flex items-center space-x-6">
-              {/* Sign In Button */}
-              <button
-                onClick={() => setSignInModalOpen(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
-              >
-                <span>Sign In</span>
-              </button>
+            {/* Server Status - Development Helper */}
+            <div className="hidden lg:block mr-4">
+              <ServerStatus className="text-white" />
+            </div>
 
+            {/* Desktop Navigation - Properly Spaced */}
+            <div className="hidden lg:flex items-center space-x-4 xl:space-x-6 flex-1 justify-end">
               {/* Primary CTA */}
               <button
                 onClick={() => setCurrentView("forge")}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
+                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
               >
                 <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
-                <span>Forge Identity</span>
+                <span>New ID Forge</span>
               </button>
 
               {/* Navigation Links */}
               <button
-                onClick={() => setCurrentView("dashboard")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium"
+                onClick={() => setFamilyAuthModalOpen(true)}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
               >
-                Family Dashboard
+                Family Financials
               </button>
 
               <button
-                onClick={() => setCurrentView("education")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
+                onClick={() => setCurrentView("individual-wallet")}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
               >
-                <BookOpen className="h-4 w-4" />
-                <span>Bitcoin Education</span>
+                <Zap className="h-4 w-4" />
+                <span>Individual Wallet</span>
               </button>
+
+
 
               <button
                 onClick={() => setCurrentView("nostr-ecosystem")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
+                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
               >
                 <Network className="h-4 w-4" />
                 <span>Nostr Resources</span>
@@ -286,6 +333,14 @@ function App() {
                 <span>Enter Citadel Academy</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
+
+              {/* Nostrich Sign-in Button - Positioned Before Recovery */}
+              <button
+                onClick={() => setSignInModalOpen(true)}
+                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg border-2 border-black"
+              >
+                <span>Nostrich Sign-in</span>
+              </button>
 
               <button
                 onClick={() => setCurrentView("recovery")}
@@ -317,9 +372,9 @@ function App() {
                     setSignInModalOpen(true);
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                  className="w-full bg-purple-800 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 border-2 border-black"
                 >
-                  <span>Sign In</span>
+                  <span>Nostrich Sign-in</span>
                 </button>
 
                 <button
@@ -375,9 +430,9 @@ function App() {
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
             <button
               onClick={() => setSignInModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
-              <span>Sign In</span>
+              <span>Nostrich Sign-in</span>
             </button>
             <button
               onClick={() => setCurrentView("forge")}
@@ -402,11 +457,11 @@ function App() {
           {/* Secondary Navigation Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
-              onClick={() => setCurrentView("dashboard")}
-              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              onClick={() => setFamilyAuthModalOpen(true)}
+              className="bg-orange-500/90 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               <Users className="h-4 w-4" />
-              <span>View Family Dashboard</span>
+              <span>View Family Financials</span>
             </button>
             <button
               onClick={() => setCurrentView("education")}
@@ -473,10 +528,10 @@ function App() {
             </button>
           </div>
 
-          {/* Human-Readable Bitcoin Addresses Card */}
+          {/* Enhanced Family Financials Card */}
           <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
-            onClick={() => setCurrentView("dashboard")}
+            onClick={() => setCurrentView("financials")}
           >
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-6 relative">
               <img
@@ -487,15 +542,15 @@ function App() {
               />
             </div>
             <h3 className="text-2xl font-bold text-white mb-4">
-              Human-Readable Bitcoin Addresses
+              Enhanced Family Financials
             </h3>
             <p className="text-purple-100 leading-relaxed mb-6">
-              Receive bitcoin instantly with reusable human-readable addresses.
-              No more complex invoice management or payment friction.
+              Dual-protocol sovereign banking with Lightning Network + Fedimint eCash.
+              Smart routing, guardian consensus, and automated liquidity management.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
               <Zap className="h-4 w-4" />
-              <span>Manage Payments</span>
+              <span>Family Banking</span>
             </button>
           </div>
 
@@ -573,10 +628,10 @@ function App() {
               <h3 className="text-white font-bold mb-4">Quick Links</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => setCurrentView("dashboard")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  onClick={() => setFamilyAuthModalOpen(true)}
+                  className="block text-orange-300 hover:text-orange-400 font-semibold transition-colors duration-200"
                 >
-                  Family Dashboard
+                  Family Financials
                 </button>
                 <button
                   onClick={() => setCurrentView("education")}
@@ -754,6 +809,15 @@ function App() {
           setSignInModalOpen(false);
           setCurrentView("forge");
         }}
+      />
+
+      {/* Family Federation Authentication Modal */}
+      <FamilyAuthModal
+        isOpen={familyAuthModalOpen}
+        onClose={() => setFamilyAuthModalOpen(false)}
+        onSuccess={handleFamilyAuthSuccess}
+        title="Family Federation Access Required"
+        description="Please authenticate with your Family Federation credentials to access Family Financials"
       />
     </div>
   );

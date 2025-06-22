@@ -5,38 +5,79 @@
 
 import * as dotenv from "dotenv";
 
-// Load environment variables
+// Load environment variables from .env.local first, then .env
+dotenv.config({ path: ".env.local" });
 dotenv.config();
+
+// Parse DATABASE_URL if provided
+function parseDatabaseUrl(url?: string) {
+  if (!url) {
+    return {
+      host: "localhost",
+      port: 5432,
+      name: "satnam_recovery",
+      user: "postgres",
+      password: "",
+      ssl: false,
+    };
+  }
+
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port) || 5432,
+      name: parsed.pathname.slice(1), // Remove leading slash
+      user: parsed.username,
+      password: parsed.password,
+      ssl:
+        parsed.hostname.includes("supabase.co") ||
+        process.env.DB_SSL === "true",
+    };
+  } catch (error) {
+    console.warn("Failed to parse DATABASE_URL, using individual env vars");
+    return {
+      host: process.env.DB_HOST || "localhost",
+      port: parseInt(process.env.DB_PORT || "5432"),
+      name: process.env.DB_NAME || "satnam_recovery",
+      user: process.env.DB_USER || "postgres",
+      password: process.env.DB_PASSWORD || "",
+      ssl: process.env.DB_SSL === "true",
+    };
+  }
+}
 
 export const config = {
   // Database Configuration
-  database: {
-    host: process.env.DB_HOST || "localhost",
-    port: parseInt(process.env.DB_PORT || "5432"),
-    name: process.env.DB_NAME || "satnam_recovery",
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "",
-    ssl: process.env.DB_SSL === "true",
-  },
+  database: parseDatabaseUrl(process.env.DATABASE_URL),
 
   // Supabase Configuration
   supabase: {
-    url: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "",
     serviceRoleKey:
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       process.env.SUPABASE_SERVICE_KEY ||
       "",
     anonKey:
-      process.env.SUPABASE_ANON_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
       "",
   },
 
   // Server Configuration
   server: {
-    port: parseInt(process.env.PORT || "3000"),
+    port: parseInt(process.env.PORT || "8000"),
     host: process.env.HOST || "localhost",
     environment: process.env.NODE_ENV || "development",
+  },
+
+  // API Configuration
+  api: {
+    baseUrl:
+      process.env.API_BASE_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://api.satnam.pub"
+        : "http://localhost:8000"),
   },
 
   // Privacy & Security Configuration
@@ -61,7 +102,18 @@ export const config = {
     relays: (
       process.env.NOSTR_RELAYS || "wss://relay.damus.io,wss://nos.lol"
     ).split(","),
+    privateKey: process.env.NOSTR_PRIVATE_KEY || "",
     defaultPrivateKey: process.env.NOSTR_PRIVATE_KEY || "",
+  },
+
+  // Authentication Configuration
+  auth: {
+    tokenStorageKey: "satnam_auth_token",
+    jwtSecret: process.env.JWT_SECRET || "dev-jwt-secret-change-in-production",
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    nostrAuthKind: 27235, // Custom event kind for authentication
+    nostrAuthChallenge:
+      process.env.NOSTR_AUTH_CHALLENGE || "satnam-auth-challenge",
   },
 
   // Feature Flags
@@ -112,6 +164,8 @@ export function validateConfig(): { valid: boolean; missing: string[] } {
 export const db = config.database;
 export const supabase = config.supabase;
 export const server = config.server;
+export const api = config.api;
+export const authConfig = config.auth;
 export const privacy = config.privacy;
 export const redis = config.redis;
 export const nostr = config.nostr;

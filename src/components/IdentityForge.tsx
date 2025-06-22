@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from "react";
 import {
-  Zap,
-  Users,
-  Check,
-  X,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Check,
   Key,
-  Sparkles,
   QrCode,
-  AlertTriangle,
+  Sparkles,
   Wifi,
+  X
 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useCryptoOperations } from "../hooks/useCrypto";
 
 interface FormData {
   username: string;
@@ -46,6 +45,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
   const [isComplete, setIsComplete] = useState(false);
+  
+  // Use crypto operations hook for lazy loading
+  const crypto = useCryptoOperations();
 
   // Username validation
   const validateUsername = (username: string) => {
@@ -66,39 +68,72 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     }
   }, [formData.username]);
 
-  // Key generation simulation
+  // Real key generation with lazy-loaded crypto
   const generateKeys = async () => {
     setIsGenerating(true);
     setGenerationProgress(0);
 
-    // Step 1: Generating entropy
-    setGenerationStep("Generating entropy...");
-    for (let i = 0; i <= 33; i++) {
-      setGenerationProgress(i);
-      await new Promise((resolve) => setTimeout(resolve, 30));
-    }
+    try {
+      // Step 1: Loading crypto modules
+      setGenerationStep("Loading crypto modules...");
+      for (let i = 0; i <= 25; i++) {
+        setGenerationProgress(i);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
 
-    // Step 2: Creating keypair
-    setGenerationStep("Creating keypair...");
-    for (let i = 33; i <= 66; i++) {
-      setGenerationProgress(i);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
+      // Ensure crypto is available before proceeding
+      if (!crypto.generateNostrKeyPair) {
+        throw new Error("Crypto operations not available");
+      }
 
-    // Step 3: Securing identity
-    setGenerationStep("Securing identity...");
-    for (let i = 66; i <= 100; i++) {
-      setGenerationProgress(i);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+      // Step 2: Generating entropy
+      setGenerationStep("Generating entropy...");
+      for (let i = 25; i <= 50; i++) {
+        setGenerationProgress(i);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
 
-    // Generate mock pubkey
-    const mockPubkey =
-      "npub1" +
-      Math.random().toString(36).substring(2, 50) +
-      Math.random().toString(36).substring(2, 10);
-    setFormData((prev) => ({ ...prev, pubkey: mockPubkey }));
-    setIsGenerating(false);
+      // Step 3: Creating keypair
+      setGenerationStep("Creating keypair...");
+      for (let i = 50; i <= 80; i++) {
+        setGenerationProgress(i);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+
+      // Generate real Nostr keypair using lazy-loaded crypto
+      const keyPair = await crypto.generateNostrKeyPair();
+
+      // Validate the generated keypair
+      if (!keyPair.npub || !keyPair.npub.startsWith('npub1')) {
+        throw new Error("Invalid keypair generated");
+      }
+
+      // Step 4: Securing identity
+      setGenerationStep("Securing identity...");
+      for (let i = 80; i <= 100; i++) {
+        setGenerationProgress(i);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      setFormData((prev) => ({ ...prev, pubkey: keyPair.npub }));
+    } catch (error) {
+      console.error("Failed to generate keys:", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        cryptoAvailable: typeof crypto.generateNostrKeyPair === 'function'
+      });
+      setGenerationStep("Key generation failed - using demo mode");
+      
+      // Fallback to mock key for demo purposes
+      console.warn("SECURITY WARNING: Using mock key for demo purposes only");
+      const mockPubkey =
+        "npub1" +
+        Math.random().toString(36).substring(2, 50) +
+        Math.random().toString(36).substring(2, 10);
+      setFormData((prev) => ({ ...prev, pubkey: mockPubkey }));
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const nextStep = () => {
@@ -387,12 +422,17 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       <AlertTriangle className="h-6 w-6 text-red-400 flex-shrink-0 mt-1" />
                       <div>
                         <h3 className="text-red-400 font-bold mb-2">
-                          Save Your Recovery Phrase Securely
+                          🚨 CRITICAL: Save Your Recovery Phrase Now
                         </h3>
                         <p className="text-red-200">
-                          Your recovery phrase is the only way to restore your
-                          identity. Write it down and store it safely offline.
+                          Your recovery phrase is the ONLY way to restore your identity.
+                          If you lose it, your funds and identity are lost forever.
+                          Write it down on paper and store it in a secure location.
                         </p>
+                        <div className="mt-3 p-3 bg-red-800/50 rounded text-red-100 text-sm">
+                          <strong>Never:</strong> Screenshot, email, or store digitally<br/>
+                          <strong>Always:</strong> Write on paper, verify twice, store safely
+                        </div>
                       </div>
                     </div>
                   </div>

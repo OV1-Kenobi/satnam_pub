@@ -1,17 +1,20 @@
-import React, { useState } from "react";
 import {
-  X,
-  Wallet,
-  MessageCircle,
-  Key,
   ArrowRight,
-  Send,
-  RefreshCw,
-  Info,
   CheckCircle,
-  AlertTriangle,
-  Shield,
+  Copy,
+  ExternalLink,
+  Info,
+  Key,
+  MessageCircle,
+  QrCode,
+  RefreshCw,
+  Send,
+  Wallet,
+  X
 } from "lucide-react";
+import * as QRCode from "qrcode";
+import React, { useEffect, useState } from "react";
+import type { NWCAuthResponse } from "../types/auth";
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -32,15 +35,56 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const [otpSent, setOtpSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showNWCModal, setShowNWCModal] = useState(false);
+  const [nwcUri, setNwcUri] = useState("");
+  const [nwcMethod, setNwcMethod] = useState<'qr' | 'input'>('qr');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('modal-open');
+      return () => {
+        document.body.classList.remove('modal-open');
+      };
+    }
+  }, [isOpen]);
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('keydown', handleEscape);
+      };
+    }
+  }, [isOpen, onClose]);
+
+  // Handle backdrop click to close modal
+  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
 
   if (!isOpen) return null;
 
-  const handleNWCSignIn = async () => {
+  const handleNWCSignIn = async (): Promise<void> => {
+    setShowNWCModal(true);
+  };
+
+  const handleNWCConnect = async (uri: string): Promise<void> => {
     setIsLoading(true);
     try {
-      // Get NWC URI from user (would typically come from a wallet app)
-      const nwcUri = prompt("Enter your Nostr Wallet Connect URI:");
-      if (!nwcUri) {
+      if (!uri.startsWith('nostr+walletconnect://')) {
+        alert("Invalid NWC URI format. It should start with 'nostr+walletconnect://'");
         setIsLoading(false);
         return;
       }
@@ -50,21 +94,23 @@ const SignInModal: React.FC<SignInModalProps> = ({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ nwcUri }),
+        body: JSON.stringify({ nwcUri: uri }),
       });
 
-      const result = await response.json();
+      const result: NWCAuthResponse = await response.json();
 
-      if (result.success) {
+      if (result.success && result.data) {
         console.log("NWC authentication successful:", result.data);
+        setShowNWCModal(false);
         onSignInSuccess();
       } else {
-        console.error("NWC authentication failed:", result.error);
-        alert(`NWC sign-in failed: ${result.error}`);
+        const errorMessage = result.error || "Unknown authentication error";
+        console.error("NWC authentication failed:", errorMessage);
+        alert(`NWC sign-in failed: ${errorMessage}\n\nPlease check your NWC URI and try again.`);
       }
     } catch (error) {
       console.error("NWC sign-in failed:", error);
-      alert("NWC sign-in failed. Please try again.");
+      alert("NWC sign-in failed. Please check your internet connection and try again.");
     } finally {
       setIsLoading(false);
     }
@@ -151,9 +197,43 @@ const SignInModal: React.FC<SignInModalProps> = ({
     setOtpSent(false);
   };
 
+  const generateQRCode = async (text: string) => {
+    try {
+      const dataUrl = await QRCode.toDataURL(text, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      setQrCodeDataUrl(dataUrl);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  };
+
+  const resetNWCModal = () => {
+    setShowNWCModal(false);
+    setNwcUri("");
+    setNwcMethod('qr');
+    setQrCodeDataUrl("");
+    setCopied(false);
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-purple-900 rounded-2xl p-8 max-w-2xl w-full border border-yellow-400/20 relative">
+    <div className="modal-overlay" onClick={handleBackdropClick}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -421,6 +501,221 @@ const SignInModal: React.FC<SignInModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* NWC Modal */}
+      {showNWCModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
+            {/* Close Button */}
+            <button
+              onClick={resetNWCModal}
+              className="absolute top-4 right-4 p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all duration-300"
+            >
+              <X className="h-5 w-5 text-white" />
+            </button>
+
+            {/* Header */}
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Wallet className="h-8 w-8 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-2">Nostr Wallet Connect</h2>
+              <p className="text-purple-200">
+                Connect your Lightning wallet to sign in securely
+              </p>
+            </div>
+
+            {/* Method Selection */}
+            <div className="flex space-x-4 mb-8">
+              <button
+                onClick={() => setNwcMethod('qr')}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all duration-300 ${
+                  nwcMethod === 'qr'
+                    ? 'border-orange-500 bg-orange-500/20'
+                    : 'border-white/20 bg-white/10 hover:bg-white/20'
+                }`}
+              >
+                <QrCode className="h-6 w-6 text-white mx-auto mb-2" />
+                <p className="text-white font-semibold">Scan QR Code</p>
+                <p className="text-purple-200 text-sm">Use Breez or compatible wallet</p>
+              </button>
+              <button
+                onClick={() => setNwcMethod('input')}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all duration-300 ${
+                  nwcMethod === 'input'
+                    ? 'border-orange-500 bg-orange-500/20'
+                    : 'border-white/20 bg-white/10 hover:bg-white/20'
+                }`}
+              >
+                <Key className="h-6 w-6 text-white mx-auto mb-2" />
+                <p className="text-white font-semibold">Enter NWC URI</p>
+                <p className="text-purple-200 text-sm">For Alby Hub users</p>
+              </button>
+            </div>
+
+            {nwcMethod === 'qr' ? (
+              /* QR Code Method */
+              <div className="space-y-6">
+                <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                  <h3 className="text-white font-bold text-lg mb-4 flex items-center space-x-2">
+                    <QrCode className="h-5 w-5" />
+                    <span>Scan with your Lightning Wallet</span>
+                  </h3>
+                  
+                  <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-6">
+                    <div className="flex items-start space-x-3">
+                      <Info className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-blue-400 font-semibold mb-2">Recommended: Breez Wallet</p>
+                        <p className="text-blue-200 text-sm mb-3">
+                          For the best experience, we recommend using Breez Wallet, which has excellent NWC support.
+                        </p>
+                        <a
+                          href="https://breez.technology/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-2 text-blue-300 hover:text-blue-200 transition-colors"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span>Download Breez Wallet</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <div className="bg-white rounded-lg p-4 inline-block mb-4">
+                      {qrCodeDataUrl ? (
+                        <img src={qrCodeDataUrl} alt="NWC QR Code" className="w-64 h-64" />
+                      ) : (
+                        <div className="w-64 h-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                          <p className="text-gray-500">Generate QR code below</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <input
+                        type="text"
+                        value={nwcUri}
+                        onChange={(e) => setNwcUri(e.target.value)}
+                        placeholder="Enter your NWC URI to generate QR code"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-orange-400 transition-all duration-300"
+                      />
+                      
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => generateQRCode(nwcUri)}
+                          disabled={!nwcUri.trim()}
+                          className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                        >
+                          <QrCode className="h-5 w-5" />
+                          <span>Generate QR Code</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => copyToClipboard(nwcUri)}
+                          disabled={!nwcUri.trim()}
+                          className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2"
+                        >
+                          {copied ? <CheckCircle className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
+                          <span>{copied ? 'Copied!' : 'Copy'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <p className="text-purple-200 text-sm mb-4">
+                    After scanning, your wallet will handle the connection automatically.
+                  </p>
+                  <button
+                    onClick={() => handleNWCConnect(nwcUri)}
+                    disabled={!nwcUri.trim() || isLoading}
+                    className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 mx-auto"
+                  >
+                    {isLoading ? (
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-5 w-5" />
+                    )}
+                    <span>{isLoading ? "Connecting..." : "Complete Connection"}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Input Method */
+              <div className="space-y-6">
+                <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                  <h3 className="text-white font-bold text-lg mb-4 flex items-center space-x-2">
+                    <Key className="h-5 w-5" />
+                    <span>Enter Your NWC URI</span>
+                  </h3>
+                  
+                  <div className="bg-yellow-900/30 border border-yellow-500/50 rounded-lg p-4 mb-6">
+                    <div className="flex items-start space-x-3">
+                      <Info className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-yellow-400 font-semibold mb-2">For Alby Hub Users</p>
+                        <p className="text-yellow-200 text-sm">
+                          If you're running your own Alby Hub, you can paste your NWC connection string directly here.
+                          Your NWC URI should start with "nostr+walletconnect://".
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-white font-semibold mb-2">
+                        Nostr Wallet Connect URI
+                      </label>
+                      <textarea
+                        value={nwcUri}
+                        onChange={(e) => setNwcUri(e.target.value)}
+                        placeholder="nostr+walletconnect://..."
+                        rows={4}
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-orange-400 transition-all duration-300 resize-none"
+                      />
+                      <p className="text-purple-200 text-sm mt-2">
+                        Paste your complete NWC connection string from your wallet or Alby Hub.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => handleNWCConnect(nwcUri)}
+                      disabled={!nwcUri.trim() || isLoading}
+                      className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                    >
+                      {isLoading ? (
+                        <RefreshCw className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Wallet className="h-5 w-5" />
+                      )}
+                      <span>{isLoading ? "Connecting..." : "Connect Wallet"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <Info className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-blue-400 font-semibold mb-2">Need help finding your NWC URI?</p>
+                      <ul className="text-blue-200 text-sm space-y-1">
+                        <li>• <strong>Alby Hub:</strong> Go to Wallet → Connections → Create new connection</li>
+                        <li>• <strong>Other wallets:</strong> Look for "Nostr Wallet Connect" or "NWC" in settings</li>
+                        <li>• The URI should start with "nostr+walletconnect://"</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

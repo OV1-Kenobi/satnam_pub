@@ -153,7 +153,7 @@ export function FamilyApp() {
 
   return (
     <NostrLightningControlBoard
-      familyId="johnson_family_001"
+      familyId="nakamoto_family_001"
       currentUserId="user_123"
       onBack={handleBack}
     />

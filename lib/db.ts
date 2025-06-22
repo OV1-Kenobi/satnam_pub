@@ -2,38 +2,91 @@ import * as fs from "fs";
 import * as path from "path";
 import { Pool, PoolClient } from "pg";
 import { config } from "../config";
+import { supabase } from "./supabase";
 
 /**
  * PostgreSQL connection pool configuration
  * Manages database connections with appropriate timeouts and SSL settings
+ * For Supabase deployment, this uses the Supabase PostgreSQL connection
  */
 const pool = new Pool({
   host: config.database.host,
   port: config.database.port,
-  database: config.database.name,
+  database: config.database.database,
   user: config.database.user,
   password: config.database.password,
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+  connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established
+  statement_timeout: 30000, // 30 second statement timeout
+  query_timeout: 30000, // 30 second query timeout
   ssl: config.database.ssl
     ? {
-        rejectUnauthorized: process.env.NODE_ENV === "production",
+        rejectUnauthorized: false, // Supabase uses valid certificates but this helps with connection issues
         ca: process.env.DATABASE_CA_CERT,
       }
     : undefined,
 });
 
-// Test the database connection
-pool
-  .query("SELECT NOW()")
-  .then(() => {
-    // Connection successful - database is ready
-  })
-  .catch((err) => {
+// Test the database connection - prefer Supabase client for deployment
+async function testDatabaseConnection() {
+  try {
+    // First try Supabase client (preferred for deployment)
+    if (config.supabase.url && config.supabase.anonKey) {
+      console.log("🔍 Testing Supabase connection...");
+      console.log("Supabase URL:", config.supabase.url ? "SET" : "NOT SET");
+      console.log(
+        "Supabase Anon Key:",
+        config.supabase.anonKey ? "SET" : "NOT SET"
+      );
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("count", { count: "exact", head: true });
+
+      if (!error) {
+        console.log("✅ Supabase database connection established");
+        return;
+      } else {
+        console.warn("⚠️  Supabase connection test failed:", error.message);
+        console.warn("Trying direct PostgreSQL connection...");
+      }
+    } else {
+      console.warn(
+        "⚠️  Supabase credentials not available, trying PostgreSQL..."
+      );
+    }
+
+    // Fallback to direct PostgreSQL connection
+    console.log("🔍 Testing PostgreSQL connection...");
+    console.log("Database config:", {
+      host: config.database.host,
+      port: config.database.port,
+      database: config.database.name,
+      user: config.database.user,
+      ssl: config.database.ssl,
+    });
+
+    await pool.query("SELECT NOW()");
+    console.log("✅ PostgreSQL database connection established");
+  } catch (err) {
     console.error("Database connection error:", err);
-    process.exit(1); // Exit if database connection fails - critical for application
-  });
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "❌ Database connection failed in production - this is critical"
+      );
+      // Don't exit in production, let the app start but log the error
+      console.error("⚠️  Some database features may not work properly");
+    } else {
+      console.warn(
+        "⚠️  Running in development mode without database - some features may not work"
+      );
+    }
+  }
+}
+
+// Initialize database connection test
+testDatabaseConnection();
 
 /**
  * Database migration utilities

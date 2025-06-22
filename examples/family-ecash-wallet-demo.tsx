@@ -11,10 +11,10 @@ import { FamilyMember } from "../types/family";
 const exampleFamilyMembers: FamilyMember[] = [
   {
     id: "member_1",
-    name: "David Johnson",
-    username: "david@satnam.pub",
+    name: "Satoshi Nakamoto",
+    username: "satoshi@satnam.pub",
     role: "parent",
-    avatar: "D",
+    avatar: "S",
     spendingLimits: {
       daily: 1000000, // 1M sats daily limit for parents
       weekly: 5000000,
@@ -23,10 +23,10 @@ const exampleFamilyMembers: FamilyMember[] = [
   },
   {
     id: "member_2",
-    name: "Sarah Johnson",
-    username: "sarah@satnam.pub",
+    name: "Hal Finney",
+    username: "hal@satnam.pub",
     role: "parent",
-    avatar: "S",
+    avatar: "H",
     spendingLimits: {
       daily: 1000000,
       weekly: 5000000,
@@ -35,10 +35,10 @@ const exampleFamilyMembers: FamilyMember[] = [
   },
   {
     id: "member_3",
-    name: "Emma Johnson",
-    username: "emma@satnam.pub",
+    name: "Alice Nakamoto",
+    username: "alice@satnam.pub",
     role: "child",
-    avatar: "E",
+    avatar: "A",
     spendingLimits: {
       daily: 10000, // 10K sats daily limit for children
       weekly: 50000,
@@ -47,10 +47,10 @@ const exampleFamilyMembers: FamilyMember[] = [
   },
   {
     id: "member_4",
-    name: "Luke Johnson",
-    username: "luke@satnam.pub",
+    name: "Bob Nakamoto",
+    username: "bob@satnam.pub",
     role: "child",
-    avatar: "L",
+    avatar: "B",
     spendingLimits: {
       daily: 5000, // 5K sats daily limit for younger children
       weekly: 25000,

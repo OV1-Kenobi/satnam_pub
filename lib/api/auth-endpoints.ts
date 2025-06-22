@@ -1,7 +1,9 @@
 // lib/api/auth-endpoints.ts
-import { HybridAuth } from "../hybrid-auth";
-import { CitadelDatabase } from "../supabase";
+import type { Request, Response } from "express";
 import type { Event as NostrEvent } from "nostr-tools";
+import { HybridAuth } from "../hybrid-auth";
+import { SecureSessionManager } from "../security/session-manager";
+import { CitadelDatabase } from "../supabase";
 
 // Helper function to safely extract error message
 function getErrorMessage(error: unknown): string {
@@ -31,7 +33,7 @@ export class AuthAPI {
    * Authenticate with a signed Nostr event
    */
   static async authenticateNostr(
-    signedEvent: NostrEvent,
+    signedEvent: NostrEvent
   ): Promise<APIResponse> {
     try {
       const session = await HybridAuth.authenticateWithNostr(signedEvent);
@@ -121,15 +123,34 @@ export class AuthAPI {
   static async verifyOTP(
     pubkey: string,
     otp_code: string,
+    res: Response
   ): Promise<APIResponse> {
     try {
       const session = await HybridAuth.verifyNostrDMOTP(pubkey, otp_code);
+      const user = await CitadelDatabase.getUserIdentity(session.user_id);
+
+      // Create user data for HttpOnly cookie session
+      const userData = {
+        npub: session.npub,
+        nip05: user?.nip05,
+        federationRole: (user?.federationRole || "child") as
+          | "parent"
+          | "child"
+          | "guardian",
+        authMethod: "otp" as const,
+        isWhitelisted: user?.isWhitelisted || false,
+        votingPower: user?.votingPower || 0,
+        guardianApproved: user?.guardianApproved || false,
+      };
+
+      // Create secure session with HttpOnly cookies
+      SecureSessionManager.createSession(res, userData);
 
       return {
         success: true,
         data: {
           session,
-          user: await CitadelDatabase.getUserIdentity(session.user_id),
+          user,
         },
         message: "OTP verification successful",
       };
@@ -149,11 +170,11 @@ export class AuthAPI {
    * GET /api/auth/session
    * Get current session information
    */
-  static async getSession(): Promise<APIResponse> {
+  static async getSession(req: Request): Promise<APIResponse> {
     try {
-      const session = await HybridAuth.validateSession();
+      const sessionInfo = SecureSessionManager.getSessionInfo(req);
 
-      if (!session) {
+      if (!sessionInfo.isAuthenticated) {
         return {
           success: false,
           error: "No active session",
@@ -162,10 +183,7 @@ export class AuthAPI {
 
       return {
         success: true,
-        data: {
-          session,
-          user: await CitadelDatabase.getUserIdentity(session.user_id),
-        },
+        data: sessionInfo,
       };
     } catch (error) {
       return {
@@ -179,13 +197,16 @@ export class AuthAPI {
    * POST /api/auth/logout
    * Logout and invalidate session
    */
-  static async logout(): Promise<APIResponse> {
+  static async logout(res: Response): Promise<APIResponse> {
     try {
-      await HybridAuth.logout();
+      // Clear HttpOnly cookies
+      SecureSessionManager.clearSession(res);
 
       return {
         success: true,
-        message: "Logged out successfully",
+        data: {
+          message: "Successfully logged out",
+        },
       };
     } catch (error) {
       return {
@@ -199,24 +220,36 @@ export class AuthAPI {
    * POST /api/auth/refresh
    * Refresh authentication session
    */
-  static async refreshSession(): Promise<APIResponse> {
+  static async refreshSession(
+    req: Request,
+    res: Response
+  ): Promise<APIResponse> {
     try {
-      const session = await HybridAuth.validateSession();
+      const refreshedSession = SecureSessionManager.refreshSession(req, res);
 
-      if (!session) {
+      if (!refreshedSession) {
         return {
           success: false,
-          error: "No session to refresh",
+          error: "Unable to refresh session",
         };
       }
 
+      const sessionInfo = {
+        isAuthenticated: true,
+        user: {
+          npub: refreshedSession.npub,
+          nip05: refreshedSession.nip05,
+          federationRole: refreshedSession.federationRole,
+          authMethod: refreshedSession.authMethod,
+          isWhitelisted: refreshedSession.isWhitelisted,
+          votingPower: refreshedSession.votingPower,
+          guardianApproved: refreshedSession.guardianApproved,
+        },
+      };
+
       return {
         success: true,
-        data: {
-          session,
-          user: await CitadelDatabase.getUserIdentity(session.user_id),
-        },
-        message: "Session refreshed",
+        data: sessionInfo,
       };
     } catch (error) {
       return {

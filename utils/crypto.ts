@@ -29,6 +29,13 @@ export function generateRandomHex(length: number): string {
 }
 
 /**
+ * Generate a secure token for session management
+ */
+export function generateSecureToken(length: number = 64): string {
+  return randomBytes(length).toString("base64url");
+}
+
+/**
  * Hash a string using SHA-256
  */
 export function sha256(data: string): string {

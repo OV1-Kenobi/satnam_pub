@@ -22,7 +22,7 @@
 
 ## Overview
 
-Satnam.pub is a sovereign Bitcoin identity platform that empowers families and individuals to create and manage decentralized digital identities without relying on custodial services. Built on Bitcoin and the Nostr protocol, the platform provides a comprehensive suite of tools for identity forging, education, family coordination, and account recovery.
+Satnam.pub is a sovereign Bitcoin identity platform that empowers families and individuals to create and manage decentralized digital identities without relying on custodial services. Built on Bitcoin and the Nostr protocols, the platform provides a comprehensive suite of tools for identity forging, education, family coordination, and account recovery.
 
 The project combines the security and sovereignty of Bitcoin with the interoperability of Nostr to create human-readable addresses, family dashboards, and educational resources - all while maintaining complete user control over private keys and identity data.
 
@@ -33,29 +33,33 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 ### 🔨 **Identity Forge**
 
 - Create sovereign digital identities with no custodians
-- Generate human-readable Bitcoin addresses
-- Nostr-native authentication using cryptographic signatures
+- Generate human-readable reusable social media & wallet accounts
+- Customizable usernames and family names
+- Secure recovery system with encrypted backups
+- Multi-factor authentication with OTP via Nostr DMs
+- Seamless integration with Nostr ecosystem w/curated Nostr client apps
+- Nostr-native authentication NWC/OTP using cryptographic signatures
 - Secure private key management and backup systems
 
 ### 👨‍👩‍👧‍👦 **Family Coordination**
 
-- Family dashboard for coordinated Bitcoin management
+- Family dashboard for coordinated Nostr account, LN Bitcoin, & eCash management
 - Multi-generational onboarding and education
 - Shared security practices and recovery protocols
-- Family-wide Lightning Network integration
+- Family-wide Lightning Network & Nostr account integration
 
-### 📚 **Bitcoin Education Platform**
+### 📚 **Bitcoin Education Platform Integration**
 
 - Comprehensive Bitcoin education for all skill levels
 - Interactive learning modules and tutorials
 - Security best practices and hands-on exercises
-- Integration with Citadel Academy resources
+- Integration with Citadel Academy Nostr-based educational resources
 
 ### 🌐 **Nostr Ecosystem Integration**
 
 - Native Nostr protocol implementation
 - NIP-05 verification system (username@satnam.pub)
-- Lightning addresses for seamless payments
+- Lightning addresses for seamless 'Zap'payments
 - Cross-platform identity portability
 
 ### 🔐 **Advanced Security**
@@ -69,8 +73,9 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 ### ⚡ **Lightning Network Support**
 
 - Lightning address provisioning
-- Nostr Wallet Connect (NWC) integration
-- QR code generation for payments
+- Voltage, BTCPayserver, and LN Bits integration
+- Family-wide Lightning Network invoices and payments
+- Multi-signature setup for enhanced security
 - Real-time transaction monitoring
 
 ## Installation
@@ -84,42 +89,37 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 
 ### Development Setup
 
-1. **Clone the repository**
+For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+**Quick Start:**
+
+1. **Clone and install**
 
    ```bash
-   git clone https://github.com/your-username/satnam-recovery.git
-   cd satnam-recovery
-   ```
-
-2. **Install dependencies**
-
-   ```bash
+   git clone https://github.com/OV1_kenobi/satnam.git
+   cd satnam
    npm install
    ```
 
-3. **Environment Configuration**
+2. **Setup environment**
 
    ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
+   cp .env.development .env.local
    ```
 
-4. **Database Setup**
+3. **Start servers**
 
    ```bash
-   # Run database migrations
-   npm run db:setup
-   ```
-
-5. **Start development servers**
-
-   ```bash
-   # Frontend development server (port 3000)
-   npm run dev
-
-   # Backend API server (port 8000)
+   # Terminal 1 - Backend
    npm run server:dev
+
+   # Terminal 2 - Frontend
+   npm run dev
    ```
+
+4. **Access application**
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
 
 ### Production Deployment
 
@@ -133,6 +133,43 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
    ```bash
    npm run server
    ```
+
+### Testing
+
+The project uses Vitest for fast, reliable testing with TypeScript support.
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run specific test file
+npm test -- zeus-lsp-client.test.ts
+
+# Run tests with UI
+npm run test:ui
+```
+
+**Test Structure:**
+
+- Unit tests: `**/*.test.ts`
+- Integration tests: `**/__tests__/**/*.test.ts`
+- Component tests: `**/*.test.tsx`
+
+**Zeus LSP Testing:**
+The Zeus LSP client includes mock implementations for testing without real LSP connections.
+
+```typescript
+import { LSPClient } from "./lib/zeus-lsp-client";
+
+// Create mock client for testing
+const mockClient = LSPClient.createMock();
+```
 
 ## Quick Start
 
@@ -187,7 +224,7 @@ If you lose access, use the recovery system:
 const recoveredIdentity = await recoverIdentity(
   username,
   recoveryPassword,
-  encryptedBackup,
+  encryptedBackup
 );
 ```
 
@@ -284,8 +321,8 @@ Please review our comprehensive [Security Guidelines](SECURITY_GUIDELINES.md) be
 
 If you discover a security vulnerability, please report it to our security team immediately:
 
-- Email: security@satnam.pub
-- For sensitive issues, use our PGP key: [Coming Soon]
+- Email: ov1_kenobi@mailfence.com
+- For sensitive issues, use our Nostr ID: ov1@satnam.pub [Coming Soon, once deployed]
 
 ## API Documentation
 
@@ -478,7 +515,6 @@ copies or substantial portions of the Software.
 
 - **Citadel Academy**: [https://citadel.academy](https://citadel.academy)
 - **Nostr Protocol**: [https://nostr.com](https://nostr.com)
-- **Bitcoin Resources**: [https://bitcoin.org](https://bitcoin.org)
 
 ### Emergency Recovery
 

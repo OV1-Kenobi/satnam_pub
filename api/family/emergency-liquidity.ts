@@ -65,44 +65,45 @@ interface RiskAssessment {
   score: number;
 }
 
-interface EmergencyProtocolCheck {
-  allowed: boolean;
-  reason?: string;
-  conditions: string[];
-}
+// Note: These interfaces are defined for future use in emergency protocol expansion
+// interface EmergencyProtocolCheck {
+//   allowed: boolean;
+//   reason?: string;
+//   conditions: string[];
+// }
 
-interface EmergencyRecord {
-  emergencyId: string;
-  familyId: string;
-  memberId: string;
-  requestDetails: {
-    requiredAmount: number;
-    urgency: string;
-    reason?: string;
-  };
-  result: {
-    success: boolean;
-    providedAmount: number;
-    fee: number;
-    source: string;
-  };
-  metadata: {
-    timestamp: string;
-    encryptedMemberId: string;
-    encryptedDetails: string;
-  };
-}
+// interface EmergencyRecord {
+//   emergencyId: string;
+//   familyId: string;
+//   memberId: string;
+//   requestDetails: {
+//     requiredAmount: number;
+//     urgency: string;
+//     reason?: string;
+//   };
+//   result: {
+//     success: boolean;
+//     providedAmount: number;
+//     fee: number;
+//     source: string;
+//   };
+//   metadata: {
+//     timestamp: string;
+//     encryptedMemberId: string;
+//     encryptedDetails: string;
+//   };
+// }
 
-interface EmergencyStatistics {
-  totalRequests: number;
-  successfulRequests: number;
-  averageAmount: number;
-  totalVolume: number;
-  successRate: number;
-  averageResponseTime: number;
-  commonReasons: Array<{ reason: string; count: number }>;
-  peakUsageTimes: Array<{ hour: number; count: number }>;
-}
+// interface EmergencyStatistics {
+//   totalRequests: number;
+//   successfulRequests: number;
+//   averageAmount: number;
+//   totalVolume: number;
+//   successRate: number;
+//   averageResponseTime: number;
+//   commonReasons: Array<{ reason: string; count: number }>;
+//   peakUsageTimes: Array<{ hour: number; count: number }>;
+// }
 
 interface EmergencyLiquidityRequest {
   action: "request" | "status" | "history" | "configure" | "protocols";
@@ -485,15 +486,7 @@ async function handleEmergencyRequest(
       throw new Error("Missing required fields: memberId and requestDetails");
     }
 
-    const {
-      requiredAmount,
-      urgency,
-      reason,
-      maxAcceptableFee,
-      maxWaitTime,
-      preferredSource,
-      allowPartialFulfillment,
-    } = request.requestDetails;
+    const { requiredAmount, urgency, reason } = request.requestDetails;
 
     console.log(
       `🚨 Processing emergency liquidity request: ${requiredAmount} sats for ${request.memberId} (${urgency})`
@@ -920,7 +913,7 @@ async function handleProtocolsManagement(
     );
 
     // Get encrypted protocols
-    const { data: encryptedProtocols, error } = await supabase
+    const { data: _encryptedProtocols, error } = await supabase
       .from("secure_emergency_protocols")
       .select("*")
       .eq("active", true)
@@ -1035,7 +1028,7 @@ function assessEmergencyRisk(
 
 function assessCurrentLiquidityRisk(
   liquidityStatus: LiquidityStatus,
-  metrics: LiquidityMetrics
+  _metrics: LiquidityMetrics
 ): RiskAssessment {
   let riskLevel: "low" | "medium" | "high" | "critical" = "low";
   const factors: string[] = [];
@@ -1274,7 +1267,7 @@ async function storeEncryptedProtocolConfig(
   console.log(`💾 Storing protocol configuration: ${protocolId}`);
 }
 
-async function getActiveProtocolCount(familyId: string): Promise<number> {
+async function getActiveProtocolCount(_familyId: string): Promise<number> {
   // Mock implementation
   return 2;
 }

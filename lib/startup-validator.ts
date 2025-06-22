@@ -237,12 +237,13 @@ export async function developmentStartupValidation(): Promise<void> {
  * Validate that Argon2 parameters are actually being used in crypto operations
  * This addresses the specific issue mentioned in the code review
  */
-export function validateArgon2Usage(): boolean {
+export async function validateArgon2Usage(): Promise<boolean> {
   console.log("🔍 Validating Argon2 Parameter Usage...");
 
   try {
     // Import the security module to check if Argon2 config is accessible
-    const argon2 = require("argon2");
+    const argon2Module = await import("argon2");
+    const argon2 = argon2Module.default || argon2Module;
 
     // Verify Argon2 is installed and working
     if (!argon2 || !argon2.argon2id) {

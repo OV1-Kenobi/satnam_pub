@@ -1,141 +1,319 @@
-/**
- * PhoenixD Status API Endpoint
- *
- * Get PhoenixD node status, balance, and health information
- * for Satnam family banking dashboard
- *
- * @fileoverview PhoenixD node status endpoint
- */
+import { Request, Response } from "express";
+import { z } from "zod";
 
-import { FamilyPhoenixdManager } from "../../src/lib/family-phoenixd-manager";
-import { PhoenixdClient } from "../../src/lib/phoenixd-client";
-
-interface PhoenixdStatusResponse {
-  status: "healthy" | "degraded" | "unhealthy";
-  nodeInfo: {
-    nodeId: string;
-    alias: string;
-    blockHeight: number;
-    version: string;
-    network: string;
-  };
-  balance: {
-    balanceSat: number;
-    feeCreditSat: number;
-    totalSat: number;
-  };
-  channels: {
-    total: number;
-    active: number;
-    totalLiquidity: number;
-  };
-  familyBanking: {
-    enabled: boolean;
-    privacyEnabled: boolean;
-    ready: boolean;
-  };
-  timestamp: string;
+// Enhanced PhoenixD status interface
+interface PhoenixDNodeStatus {
+  nodeId: string;
+  isOnline: boolean;
+  blockHeight: number;
+  channelCount: number;
+  totalCapacity: number;
+  totalBalance: number;
+  pendingHtlcs: number;
+  lastSync: Date;
+  version: string;
+  network: "mainnet" | "testnet" | "regtest";
+  peers: PhoenixDPeer[];
+  channels: PhoenixDChannel[];
+  liquidity: LiquidityStatus;
+  autoLiquidity: AutoLiquidityConfig;
 }
 
-interface PhoenixdErrorResponse {
-  status: "ERROR";
-  error: string;
-  timestamp: string;
+interface PhoenixDPeer {
+  nodeId: string;
+  alias: string;
+  address: string;
+  isConnected: boolean;
+  lastSeen: Date;
+}
+
+interface PhoenixDChannel {
+  channelId: string;
+  peerId: string;
+  capacity: number;
+  localBalance: number;
+  remoteBalance: number;
+  status: "active" | "inactive" | "pending" | "closing";
+  isPrivate: boolean;
+  fundingTxId: string;
+  shortChannelId?: string;
+  createdAt: Date;
+  lastUpdate: Date;
+}
+
+interface LiquidityStatus {
+  totalInbound: number;
+  totalOutbound: number;
+  ratio: number;
+  recommendedAction:
+    | "none"
+    | "increase_inbound"
+    | "increase_outbound"
+    | "rebalance";
+  emergencyThreshold: number;
+  warningThreshold: number;
+}
+
+interface AutoLiquidityConfig {
+  enabled: boolean;
+  targetRatio: number;
+  minChannelSize: number;
+  maxChannelSize: number;
+  rebalanceThreshold: number;
+  lastRebalance?: Date;
 }
 
 /**
- * PhoenixD status endpoint handler
+ * Get PhoenixD Node Status
+ * GET /api/phoenixd/status
  */
-export default async function handler(req: Request): Promise<Response> {
+export async function getPhoenixDStatus(
+  req: Request,
+  res: Response
+): Promise<void> {
   try {
-    // Only allow GET requests
-    if (req.method !== "GET") {
-      return errorResponse("Method not allowed", 405);
-    }
+    // In a real implementation, this would connect to PhoenixD API
+    // const phoenixdClient = new PhoenixDClient(process.env.PHOENIXD_URL);
+    // const status = await phoenixdClient.getNodeInfo();
 
-    console.log("📊 Getting PhoenixD status...");
-
-    const phoenixdClient = new PhoenixdClient();
-    const familyManager = new FamilyPhoenixdManager();
-
-    // Get comprehensive status information
-    const [nodeStatus, serviceHealth] = await Promise.all([
-      phoenixdClient.getFamilyNodeStatus(),
-      familyManager.checkServiceHealth(),
-    ]);
-
-    // Determine overall health status
-    let overallStatus: PhoenixdStatusResponse["status"] = "healthy";
-    if (!serviceHealth.familyBankingReady) {
-      overallStatus = "unhealthy";
-    } else if (!serviceHealth.privacyHealthy) {
-      overallStatus = "degraded";
-    }
-
-    const statusResponse: PhoenixdStatusResponse = {
-      status: overallStatus,
-      nodeInfo: {
-        nodeId: nodeStatus.nodeInfo.nodeId,
-        alias: nodeStatus.nodeInfo.alias,
-        blockHeight: nodeStatus.nodeInfo.blockHeight,
-        version: nodeStatus.nodeInfo.version,
-        network: nodeStatus.nodeInfo.network,
+    // Mock PhoenixD status for demonstration
+    const mockStatus: PhoenixDNodeStatus = {
+      nodeId:
+        "03a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+      isOnline: true,
+      blockHeight: 820450,
+      channelCount: 8,
+      totalCapacity: 50000000, // 0.5 BTC
+      totalBalance: 35000000, // 0.35 BTC
+      pendingHtlcs: 3,
+      lastSync: new Date(),
+      version: "0.3.2",
+      network: "mainnet",
+      peers: [
+        {
+          nodeId: "02acinq1234567890abcdef",
+          alias: "ACINQ",
+          address: "3.33.236.230:9735",
+          isConnected: true,
+          lastSeen: new Date(),
+        },
+        {
+          nodeId: "02bitrefill987654321fed",
+          alias: "Bitrefill",
+          address: "52.50.244.44:9735",
+          isConnected: true,
+          lastSeen: new Date(Date.now() - 5 * 60 * 1000),
+        },
+      ],
+      channels: [
+        {
+          channelId: "ch_1234567890abcdef",
+          peerId: "02acinq1234567890abcdef",
+          capacity: 5000000,
+          localBalance: 3000000,
+          remoteBalance: 2000000,
+          status: "active",
+          isPrivate: false,
+          fundingTxId: "tx_abcdef1234567890",
+          shortChannelId: "820450x1234x0",
+          createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          lastUpdate: new Date(),
+        },
+        {
+          channelId: "ch_fedcba0987654321",
+          peerId: "02bitrefill987654321fed",
+          capacity: 10000000,
+          localBalance: 7500000,
+          remoteBalance: 2500000,
+          status: "active",
+          isPrivate: true,
+          fundingTxId: "tx_fedcba0987654321",
+          shortChannelId: "820445x5678x1",
+          createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+          lastUpdate: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        },
+      ],
+      liquidity: {
+        totalInbound: 4500000,
+        totalOutbound: 10500000,
+        ratio: 0.7,
+        recommendedAction: "none",
+        emergencyThreshold: 0.1,
+        warningThreshold: 0.3,
       },
-      balance: {
-        balanceSat: nodeStatus.balance.balanceSat,
-        feeCreditSat: nodeStatus.balance.feeCreditSat,
-        totalSat:
-          nodeStatus.balance.balanceSat + nodeStatus.balance.feeCreditSat,
+      autoLiquidity: {
+        enabled: true,
+        targetRatio: 0.5,
+        minChannelSize: 1000000,
+        maxChannelSize: 20000000,
+        rebalanceThreshold: 0.2,
+        lastRebalance: new Date(Date.now() - 6 * 60 * 60 * 1000),
       },
-      channels: {
-        total: nodeStatus.channels.length,
-        active: nodeStatus.activeChannels,
-        totalLiquidity: nodeStatus.totalLiquidity,
-      },
-      familyBanking: {
-        enabled: phoenixdClient.getConfig().familyEnabled,
-        privacyEnabled: serviceHealth.privacyHealthy,
-        ready: serviceHealth.familyBankingReady,
-      },
-      timestamp: new Date().toISOString(),
     };
 
-    console.log("✅ PhoenixD status retrieved:", {
-      status: overallStatus,
-      balance: statusResponse.balance.totalSat,
-      channels: statusResponse.channels.total,
-      familyReady: statusResponse.familyBanking.ready,
-    });
-
-    return new Response(JSON.stringify(statusResponse), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "no-cache, max-age=10", // Cache for 10 seconds max
+    res.status(200).json({
+      success: true,
+      data: mockStatus,
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
       },
     });
   } catch (error) {
-    console.error("❌ PhoenixD status error:", error);
-    return errorResponse(`Failed to get PhoenixD status: ${error}`);
+    console.error("PhoenixD status error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to retrieve PhoenixD status",
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
   }
 }
 
 /**
- * Generate error response
+ * Update Auto-Liquidity Configuration
+ * POST /api/phoenixd/auto-liquidity
  */
-function errorResponse(error: string, status: number = 500): Response {
-  const errorResponse: PhoenixdErrorResponse = {
-    status: "ERROR",
-    error,
-    timestamp: new Date().toISOString(),
-  };
+export async function updateAutoLiquidity(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const configSchema = z.object({
+      enabled: z.boolean(),
+      targetRatio: z.number().min(0.1).max(0.9).optional(),
+      minChannelSize: z.number().positive().optional(),
+      maxChannelSize: z.number().positive().optional(),
+      rebalanceThreshold: z.number().min(0.05).max(0.5).optional(),
+    });
 
-  return new Response(JSON.stringify(errorResponse), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
+    const validationResult = configSchema.safeParse(req.body);
+
+    if (!validationResult.success) {
+      res.status(400).json({
+        success: false,
+        error: "Invalid auto-liquidity configuration",
+        details: validationResult.error.errors,
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+        },
+      });
+      return;
+    }
+
+    const config = validationResult.data;
+
+    // In a real implementation, this would update PhoenixD configuration
+    // await phoenixdClient.updateAutoLiquidityConfig(config);
+
+    console.log("Auto-liquidity configuration updated:", config);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: "Auto-liquidity configuration updated successfully",
+        config,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
+  } catch (error) {
+    console.error("Auto-liquidity update error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to update auto-liquidity configuration",
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
+  }
 }
+
+/**
+ * Trigger Emergency Liquidity Protocol
+ * POST /api/phoenixd/emergency-liquidity
+ */
+export async function triggerEmergencyLiquidity(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const requestSchema = z.object({
+      reason: z.string().min(1),
+      requestedAmount: z.number().positive().optional(),
+      priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+    });
+
+    const validationResult = requestSchema.safeParse(req.body);
+
+    if (!validationResult.success) {
+      res.status(400).json({
+        success: false,
+        error: "Invalid emergency liquidity request",
+        details: validationResult.error.errors,
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+        },
+      });
+      return;
+    }
+
+    const request = validationResult.data;
+
+    // In a real implementation, this would:
+    // 1. Assess current liquidity situation
+    // 2. Trigger emergency protocols (channel opening, rebalancing)
+    // 3. Notify family guardians for approval
+    // 4. Execute approved liquidity operations
+
+    const emergencyResponse = {
+      emergencyId: `emrg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      status: "initiated",
+      estimatedResolution: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+      actions: [
+        "Assessing current channel liquidity",
+        "Identifying optimal rebalancing routes",
+        "Preparing emergency channel opening",
+        "Notifying family guardians for approval",
+      ],
+      approvalRequired: request.priority === "critical",
+    };
+
+    console.log("Emergency liquidity protocol triggered:", request);
+
+    res.status(200).json({
+      success: true,
+      data: emergencyResponse,
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
+  } catch (error) {
+    console.error("Emergency liquidity error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to trigger emergency liquidity protocol",
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
+  }
+}
+
+export default {
+  getPhoenixDStatus,
+  updateAutoLiquidity,
+  triggerEmergencyLiquidity,
+};

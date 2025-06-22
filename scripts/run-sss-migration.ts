@@ -261,7 +261,7 @@ async function runSSSMigration(): Promise<void> {
       config = configModule.config || configModule.default || configModule;
     } catch {
       console.log(
-        "ℹ️  No config file found, using environment variables directly",
+        "ℹ️  No config file found, using environment variables directly"
       );
       config = {};
     }
@@ -280,7 +280,7 @@ async function runSSSMigration(): Promise<void> {
     console.log("🔧 Supabase Configuration Check:");
     console.log(`   URL: ${supabaseUrl ? "✅ Found" : "❌ Missing"}`);
     console.log(
-      `   Service Key: ${supabaseServiceKey ? "✅ Found" : "❌ Missing"}`,
+      `   Service Key: ${supabaseServiceKey ? "✅ Found" : "❌ Missing"}`
     );
     console.log("");
 
@@ -334,7 +334,7 @@ async function runSSSMigration(): Promise<void> {
         if (error) {
           console.warn(
             `⚠️  Statement ${i + 1} failed with RPC:`,
-            error.message,
+            error.message
           );
           failureCount++;
 
@@ -396,7 +396,7 @@ async function runSSSMigration(): Promise<void> {
     console.log("");
     console.log("🚀 Next Steps:");
     console.log(
-      "   1. Initialize family with guardians using /family/initialize-sss",
+      "   1. Initialize family with guardians using /family/initialize-sss"
     );
     console.log("   2. Configure guardian roles and trust levels");
     console.log("   3. Test event creation and guardian approval workflow");
@@ -441,7 +441,7 @@ async function runSSSHealthCheck() {
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error("❌ Missing Supabase configuration for health check!");
       console.error(
-        "   Please ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.",
+        "   Please ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set."
       );
       return;
     }
@@ -562,25 +562,25 @@ async function runSSSHealthCheck() {
     console.log("");
     if (failedChecks === 0 && warnChecks === 0) {
       console.log(
-        "🎉 All SSS checks passed! System is ready for family key management.",
+        "🎉 All SSS checks passed! System is ready for family key management."
       );
       console.log("");
       console.log("🔐 You can now:");
       console.log(
-        "   • Initialize families with 2-of-2 to 5-of-7 configurations",
+        "   • Initialize families with 2-of-2 to 5-of-7 configurations"
       );
       console.log("   • Create federated events requiring guardian consensus");
       console.log(
-        "   • Perform threshold-based key reconstruction for signing",
+        "   • Perform threshold-based key reconstruction for signing"
       );
       console.log("   • Use emergency recovery procedures");
     } else if (failedChecks === 0) {
       console.log(
-        `⚠️  ${warnChecks} warning(s) found. System should work but consider addressing them.`,
+        `⚠️  ${warnChecks} warning(s) found. System should work but consider addressing them.`
       );
     } else {
       console.log(
-        `🚨 ${failedChecks} critical issue(s) found. Please fix before using SSS features!`,
+        `🚨 ${failedChecks} critical issue(s) found. Please fix before using SSS features!`
       );
     }
   } catch (error) {
@@ -625,8 +625,8 @@ POST /api/family/initialize-sss
 ## 2. Initialize a 3-of-5 Family (Medium Family)
 POST /api/family/initialize-sss
 {
-  "familyId": "johnson_family_2024",
-  "familyName": "Johnson Family",
+  "familyId": "nakamoto_family_2024",
+  "familyName": "Nakamoto Family",
   "guardians": [
     { "id": "parent1", "role": "parent", "trustLevel": 5 },
     { "id": "parent2", "role": "parent", "trustLevel": 5 },
@@ -660,7 +660,7 @@ POST /api/family/initialize-sss
 ## 4. Create Family Event Requiring Guardian Consensus
 POST /api/sss-federated/create-event
 {
-  "familyId": "johnson_family_2024",
+  "familyId": "nakamoto_family_2024",
   "eventType": "family_announcement",
   "content": "We're planning to move to a new city next year. This affects our family Nostr account and requires updating our recovery procedures.",
   "requiredGuardianApprovals": 3
@@ -683,7 +683,7 @@ POST /api/sss-federated/provide-share
 ## 7. Emergency Key Reconstruction
 POST /api/sss-federated/request-key-reconstruction
 {
-  "familyId": "johnson_family_2024",
+  "familyId": "nakamoto_family_2024",
   "reason": "emergency",
   "expiresInHours": 6
 }
@@ -726,7 +726,7 @@ POST /api/sss-federated/request-key-reconstruction
     __dirname,
     "..",
     "docs",
-    "SSS-USAGE-EXAMPLES.md",
+    "SSS-USAGE-EXAMPLES.md"
   );
   fs.writeFileSync(examplesPath, examples);
 
@@ -756,7 +756,7 @@ async function main() {
     console.log("  npm run migrate:sss              # Run SSS migration");
     console.log("  npm run migrate:sss -- --health  # Run SSS health check");
     console.log(
-      "  npm run migrate:sss -- --examples # Generate usage examples",
+      "  npm run migrate:sss -- --examples # Generate usage examples"
     );
     console.log("  npm run migrate:sss -- --help    # Show this help");
     console.log("");
