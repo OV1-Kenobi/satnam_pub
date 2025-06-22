@@ -93,7 +93,10 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // ROUTES
 // ===========================================
 
-// Health check
+// API routes
+app.use("/api", apiRoutes);
+
+// Health check - also available at root for direct backend access
 app.get("/health", (req, res) => {
   res.json({
     success: true,
@@ -102,9 +105,6 @@ app.get("/health", (req, res) => {
     version: "1.0.0",
   });
 });
-
-// API routes
-app.use("/api", apiRoutes);
 
 // 404 handler
 app.use("*", (req, res) => {

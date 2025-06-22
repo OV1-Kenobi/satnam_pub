@@ -28,6 +28,24 @@ const router = express.Router();
 router.use(generateCSRFToken); // Generate CSRF token for all requests
 router.use(apiRateLimit); // General API rate limiting
 
+// ===========================================
+// HEALTH CHECK ENDPOINT
+// ===========================================
+
+/**
+ * Health check endpoint
+ * @route GET /api/health
+ * @description Returns server health status
+ */
+router.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    message: "Identity Forge API is healthy",
+    timestamp: new Date().toISOString(),
+    version: "1.0.0",
+  });
+});
+
 /**
  * Safely extracts error message from unknown error types
  * @param error - The error object to extract message from

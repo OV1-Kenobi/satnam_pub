@@ -42,19 +42,67 @@ export class ApiClient {
 
     try {
       const response = await fetch(url, { ...defaultOptions, ...options });
-      const data = await response.json();
+
+      // Always try to get response text first
+      const text = await response.text();
+
+      // Check if response has content
+      let data: any = null;
+      if (text.trim()) {
+        // Check if it looks like JSON
+        const contentType = response.headers.get("content-type");
+        const hasJsonContent =
+          contentType && contentType.includes("application/json");
+
+        if (
+          hasJsonContent ||
+          text.trim().startsWith("{") ||
+          text.trim().startsWith("[")
+        ) {
+          try {
+            data = JSON.parse(text);
+          } catch (parseError) {
+            console.error("Failed to parse JSON response:", text);
+            return {
+              success: false,
+              error: "Invalid JSON response from server",
+            };
+          }
+        } else {
+          // Non-JSON response
+          console.warn("Non-JSON response received:", text);
+          return {
+            success: false,
+            error: "Server returned non-JSON response",
+          };
+        }
+      }
 
       if (!response.ok) {
         return {
           success: false,
           error:
-            data.error || `HTTP ${response.status}: ${response.statusText}`,
+            data?.error || `HTTP ${response.status}: ${response.statusText}`,
         };
       }
 
-      return data;
+      // If no data was parsed but response was ok, return success with empty data
+      return data || { success: true };
     } catch (error) {
       console.error("API Request failed:", error);
+
+      // Provide more specific error messages
+      if (
+        error instanceof TypeError &&
+        error.message.includes("Failed to fetch")
+      ) {
+        return {
+          success: false,
+          error:
+            "Cannot connect to server. Make sure the backend is running and accessible.",
+        };
+      }
+
       return {
         success: false,
         error: error instanceof Error ? error.message : "Network error",
@@ -224,12 +272,9 @@ export const cashuAPI = {
 // HEALTH CHECK API
 // ===========================================
 
-// Create a separate client for health checks that calls backend directly
-const healthClient = new ApiClient("http://localhost:8000");
-
 export const healthAPI = {
-  // Check server health
-  check: () => healthClient.get("/health"),
+  // Check server health - use the main client to go through proxy
+  check: () => apiClient.get("/health"),
 };
 
 // ===========================================
@@ -250,7 +295,11 @@ export async function checkServerHealth(): Promise<boolean> {
   try {
     const response = await healthAPI.check();
     return response.success;
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Health check failed:",
+      error instanceof Error ? error.message : "Unknown error"
+    );
     return false;
   }
 }
@@ -271,7 +320,11 @@ export async function getAuthStatus(): Promise<{
       };
     }
     return { authenticated: false };
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Auth status check failed:",
+      error instanceof Error ? error.message : "Unknown error"
+    );
     return { authenticated: false };
   }
 }
