@@ -63,7 +63,9 @@
     "vault:setup": "tsx scripts/setup-vault.ts",
     "vault:init": "tsx scripts/setup-vault.ts",
     "start:dev": "tsx scripts/start-dev.ts",
-    "start:dev:auto": "tsx scripts/start-dev.ts --auto"
+    "start:dev:auto": "tsx scripts/start-dev.ts --auto",
+    "start": "node server.js",
+    "build:full": "npm run build && npm run start"
   },
   "dependencies": {
     "@noble/ed25519": "^2.3.0",

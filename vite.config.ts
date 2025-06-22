@@ -6,35 +6,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3002, // Frontend runs on 3002
-    proxy: {
-      // Proxy API calls to backend server
-      "/api": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-        secure: false,
-        configure: (proxy, _options) => {
-          proxy.on("error", (err, _req, _res) => {
-            console.log("proxy error", err);
-          });
-          proxy.on("proxyReq", (proxyReq, req, _res) => {
-            console.log("Sending Request to the Target:", req.method, req.url);
-          });
-          proxy.on("proxyRes", (proxyRes, req, _res) => {
-            console.log(
-              "Received Response from the Target:",
-              proxyRes.statusCode,
-              req.url
-            );
-          });
-        },
-      },
-    },
   },
   build: {
     outDir: "dist",
     sourcemap: true,
     // Optimize chunk size limits
     chunkSizeWarningLimit: 1000,
+    // Handle dynamic imports
+    dynamicImportVarsOptions: {
+      warnOnError: false,
+    },
     // Additional build optimizations
     minify: "terser",
     terserOptions: {
@@ -55,19 +36,11 @@ export default defineConfig({
         // Manual chunking strategy for better code splitting
         manualChunks: (id) => {
           // React and core dependencies
-          if (id.includes("react") || id.includes("react-dom")) {
-            return "react-vendor";
-          }
-
-          // UI components and styling
           if (
-            id.includes("lucide-react") ||
-            id.includes("@radix-ui") ||
-            id.includes("class-variance-authority") ||
-            id.includes("clsx") ||
-            id.includes("tailwind-merge")
+            id.includes("node_modules") &&
+            (id.includes("react") || id.includes("react-dom"))
           ) {
-            return "ui-vendor";
+            return "react-vendor";
           }
 
           // Crypto dependencies - separate heavy crypto libraries
@@ -134,9 +107,12 @@ export default defineConfig({
             return "advanced-crypto";
           }
 
-          // Node.js polyfills
+          // Node.js polyfills - handle crypto-browserify specially
+          if (id.includes("crypto-browserify")) {
+            return "crypto-polyfill";
+          }
+
           if (
-            id.includes("crypto-browserify") ||
             id.includes("stream-browserify") ||
             id.includes("util") ||
             id.includes("buffer") ||

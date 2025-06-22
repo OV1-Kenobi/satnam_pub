@@ -61,36 +61,10 @@ async function loadHDKey(): Promise<{ HDKey: HDKey }> {
  * Generate a random hex string of specified length
  */
 export async function generateRandomHex(length: number): Promise<string> {
-  // Use Web Crypto API in browser, Node.js crypto in server
-  if (
-    typeof window !== "undefined" &&
-    window.crypto &&
-    window.crypto.getRandomValues
-  ) {
-    // Browser environment
-    const bytes = new Uint8Array(Math.ceil(length / 2));
-    window.crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
-      .join("")
-      .slice(0, length);
-  } else if (
-    typeof process !== "undefined" &&
-    process.versions &&
-    process.versions.node
-  ) {
-    // Node.js environment - use dynamic import to avoid bundling issues
-    try {
-      const crypto = await import("crypto");
-      return crypto
-        .randomBytes(Math.ceil(length / 2))
-        .toString("hex")
-        .slice(0, length);
-    } catch (_error) {
-      throw new Error("Node.js crypto module not available");
-    }
-  } else {
-    throw new Error("No secure random number generator available");
-  }
+  const { generateRandomHex: unifiedGenerateRandomHex } = await import(
+    "./crypto-unified"
+  );
+  return unifiedGenerateRandomHex(length);
 }
 
 /**
@@ -99,70 +73,18 @@ export async function generateRandomHex(length: number): Promise<string> {
 export async function generateSecureToken(
   length: number = 64
 ): Promise<string> {
-  // Use Web Crypto API in browser, Node.js crypto in server
-  if (
-    typeof window !== "undefined" &&
-    window.crypto &&
-    window.crypto.getRandomValues
-  ) {
-    // Browser environment
-    const bytes = new Uint8Array(length);
-    window.crypto.getRandomValues(bytes);
-    // Convert to base64url manually since btoa might not be available in all environments
-    if (typeof btoa === "undefined") {
-      // Manual base64 encoding for environments without btoa
-      return Buffer.from(bytes)
-        .toString("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
-    }
-    const base64 = btoa(String.fromCharCode(...bytes));
-    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-  } else if (
-    typeof process !== "undefined" &&
-    process.versions &&
-    process.versions.node
-  ) {
-    // Node.js environment - use dynamic import to avoid bundling issues
-    try {
-      const crypto = await import("crypto");
-      return crypto.randomBytes(length).toString("base64url");
-    } catch (_error) {
-      throw new Error("Node.js crypto module not available");
-    }
-  } else {
-    throw new Error("No secure random number generator available");
-  }
+  const { generateSecureToken: unifiedGenerateSecureToken } = await import(
+    "./crypto-unified"
+  );
+  return unifiedGenerateSecureToken(length);
 }
 
 /**
  * Hash a string using SHA-256
  */
 export async function sha256(data: string): Promise<string> {
-  // Use Web Crypto API in browser, Node.js crypto in server
-  if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-    // Browser environment
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await window.crypto.subtle.digest("SHA-256", dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  } else if (
-    typeof process !== "undefined" &&
-    process.versions &&
-    process.versions.node
-  ) {
-    // Node.js environment - use dynamic import to avoid bundling issues
-    try {
-      const crypto = await import("crypto");
-      return crypto.createHash("sha256").update(data).digest("hex");
-    } catch (_error) {
-      throw new Error("Node.js crypto module not available");
-    }
-  } else {
-    throw new Error("No crypto implementation available");
-  }
+  const { sha256: unifiedSha256 } = await import("./crypto-unified");
+  return unifiedSha256(data);
 }
 
 /**

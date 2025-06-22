@@ -1,4 +1,4 @@
-import { familyConfig } from "../config";
+import { familyConfig } from "../config/index";
 import { db } from "../lib";
 
 interface Family {
