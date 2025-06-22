@@ -24,12 +24,8 @@ import { SSSFederatedSigningAPI } from "./sss-federated-signing";
 
 const router = express.Router();
 
-// SECURITY FIX: Apply security middleware to all routes
-router.use(generateCSRFToken); // Generate CSRF token for all requests
-router.use(apiRateLimit); // General API rate limiting
-
 // ===========================================
-// HEALTH CHECK ENDPOINT
+// PUBLIC ENDPOINTS (No CSRF required for GET requests)
 // ===========================================
 
 /**
@@ -45,6 +41,29 @@ router.get("/health", (req, res) => {
     version: "1.0.0",
   });
 });
+
+/**
+ * Get current session status
+ * @route GET /api/auth/session
+ * @description Returns current authentication session status
+ */
+router.get("/auth/session", async (req, res) => {
+  try {
+    const result = await AuthAPI.getSession(req);
+    const statusCode = result.success ? 200 : 401;
+
+    res.status(statusCode).json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: getErrorMessage(error),
+    });
+  }
+});
+
+// SECURITY FIX: Apply security middleware to all routes (except public GET endpoints)
+router.use(generateCSRFToken); // Generate CSRF token for all requests
+router.use(apiRateLimit); // General API rate limiting
 
 /**
  * Safely extracts error message from unknown error types
@@ -213,21 +232,6 @@ router.post("/auth/otp/verify", async (req, res) => {
     const result = await AuthAPI.verifyOTP(pubkey, otp_code, res);
 
     const statusCode = result.success ? 200 : 400;
-    res.status(statusCode).json(result);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: getErrorMessage(error),
-    });
-  }
-});
-
-// Get current session
-router.get("/auth/session", async (req, res) => {
-  try {
-    const result = await AuthAPI.getSession(req);
-    const statusCode = result.success ? 200 : 401;
-
     res.status(statusCode).json(result);
   } catch (error) {
     res.status(500).json({

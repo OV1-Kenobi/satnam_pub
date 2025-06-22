@@ -4,8 +4,8 @@
  * This addresses the critical issue where Argon2 parameters were not validated during startup
  */
 
-import { enforceGoldStandardOnStartup } from "./crypto-validator.js";
-import { validateArgon2ConfigOnStartup } from "./security.js";
+import { enforceGoldStandardOnStartup } from "./crypto-validator";
+import { validateArgon2ConfigOnStartup } from "./security";
 
 /**
  * Startup validation configuration

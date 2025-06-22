@@ -43,15 +43,19 @@ export function useAuth(): AuthState & AuthActions {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      const { authenticated, user } = await getAuthStatus();
+      // Use single attempt for initial auth check to avoid multiple 401s in console
+      const { authenticated, user } = await getAuthStatus(1);
 
       setState((prev) => ({
         ...prev,
         authenticated,
         user: user || null,
         loading: false,
+        // Clear any previous errors since we got a valid response
+        error: null,
       }));
     } catch (error) {
+      // Only set error for actual network/server errors, not auth state
       setState((prev) => ({
         ...prev,
         authenticated: false,

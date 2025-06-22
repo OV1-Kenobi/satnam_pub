@@ -14,7 +14,7 @@ import apiRoutes from "./api/routes";
 import {
   validateArgon2Usage,
   validateSecurityOnStartup,
-} from "./startup-validator.js";
+} from "./startup-validator";
 
 const app = express();
 const PORT = process.env.PORT || 8000;

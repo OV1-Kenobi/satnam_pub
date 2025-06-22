@@ -1,12 +1,12 @@
 import {
-    Bitcoin,
-    BookOpen,
-    ExternalLink,
-    Menu,
-    Network,
-    Users,
-    X,
-    Zap,
+  Bitcoin,
+  BookOpen,
+  ExternalLink,
+  Menu,
+  Network,
+  Users,
+  X,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
@@ -277,10 +277,12 @@ function App() {
               <span className="text-white text-xl font-bold">Satnam.pub</span>
             </div>
 
-            {/* Server Status - Development Helper */}
-            <div className="hidden lg:block mr-4">
-              <ServerStatus className="text-white" />
-            </div>
+            {/* Server Status - Only show in development */}
+            {import.meta.env.DEV && (
+              <div className="hidden lg:block mr-4">
+                <ServerStatus className="text-white" />
+              </div>
+            )}
 
             {/* Desktop Navigation - Properly Spaced */}
             <div className="hidden lg:flex items-center space-x-4 xl:space-x-6 flex-1 justify-end">

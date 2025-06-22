@@ -4,7 +4,7 @@
  * for high-tech users who demand the absolute best in cryptographic protection
  */
 
-import { getArgon2Config, validateArgon2ConfigOnStartup } from "./security.js";
+import { getArgon2Config, validateArgon2ConfigOnStartup } from "./security";
 
 /**
  * Gold Standard Encryption Configuration Requirements

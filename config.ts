@@ -99,8 +99,11 @@ export const config = {
 
   // Nostr Configuration
   nostr: {
+    relayUrl: process.env.NOSTR_RELAY_URL || "wss://relay.damus.io",
     relays: (
-      process.env.NOSTR_RELAYS || "wss://relay.damus.io,wss://nos.lol"
+      process.env.NOSTR_RELAYS ||
+      process.env.NOSTR_RELAY_URL ||
+      "wss://relay.damus.io,wss://nos.lol"
     ).split(","),
     privateKey: process.env.NOSTR_PRIVATE_KEY || "",
     defaultPrivateKey: process.env.NOSTR_PRIVATE_KEY || "",

@@ -6,6 +6,8 @@
  * to check session status and handle authentication flows securely.
  */
 
+import { authManager } from "./authManager";
+
 export interface SessionInfo {
   isAuthenticated: boolean;
   user?: {
@@ -22,24 +24,17 @@ export interface SessionInfo {
 /**
  * Check current session status from server
  * This makes a request to the server to validate the HttpOnly cookie session
+ * Uses AuthManager to prevent multiple simultaneous requests
  */
 export async function getSessionInfo(): Promise<SessionInfo> {
   try {
-    const response = await fetch("/api/auth/session", {
-      method: "GET",
-      credentials: "include", // Important: include cookies in request
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      return { isAuthenticated: false };
-    }
-
-    const result = await response.json();
-    return result.success ? result.data : { isAuthenticated: false };
+    const result = await authManager.getAuthStatus();
+    return {
+      isAuthenticated: result.authenticated,
+      user: result.user,
+    };
   } catch (error) {
+    // Only log actual network errors, not auth failures
     console.error("Failed to get session info:", error);
     return { isAuthenticated: false };
   }
@@ -58,6 +53,11 @@ export async function secureLogout(): Promise<boolean> {
         "Content-Type": "application/json",
       },
     });
+
+    // Clear auth manager cache after logout
+    if (response.ok) {
+      authManager.clearCache();
+    }
 
     return response.ok;
   } catch (error) {
@@ -98,6 +98,11 @@ export async function refreshSession(): Promise<SessionInfo> {
       },
     });
 
+    // 401 is expected when refresh token is invalid/expired - don't treat as error
+    if (response.status === 401) {
+      return { isAuthenticated: false };
+    }
+
     if (!response.ok) {
       return { isAuthenticated: false };
     }
@@ -105,6 +110,7 @@ export async function refreshSession(): Promise<SessionInfo> {
     const result = await response.json();
     return result.success ? result.data : { isAuthenticated: false };
   } catch (error) {
+    // Only log actual network errors, not auth failures
     console.error("Session refresh error:", error);
     return { isAuthenticated: false };
   }

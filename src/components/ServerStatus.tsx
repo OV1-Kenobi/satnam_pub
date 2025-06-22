@@ -23,7 +23,8 @@ export const ServerStatus: React.FC<ServerStatusProps> = ({
   const checkStatus = async () => {
     setIsRefreshing(true);
     try {
-      const isHealthy = await checkServerHealth();
+      // Use retry logic for initial health check
+      const isHealthy = await checkServerHealth(3);
       setStatus(isHealthy ? 'online' : 'offline');
       setLastCheck(new Date());
     } catch {

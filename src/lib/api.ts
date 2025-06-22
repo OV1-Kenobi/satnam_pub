@@ -3,6 +3,8 @@
  * @description Centralized API client for communicating with the backend server
  */
 
+import { authManager } from "../utils/authManager";
+
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -38,6 +40,8 @@ export class ApiClient {
         ...options.headers,
       },
       credentials: "include", // Include cookies for session management
+      // Add timeout to prevent hanging requests
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     };
 
     try {
@@ -79,6 +83,14 @@ export class ApiClient {
       }
 
       if (!response.ok) {
+        // Special handling for auth endpoints - 401 is expected when not authenticated
+        if (endpoint.includes("/auth/session") && response.status === 401) {
+          return {
+            success: true,
+            data: { authenticated: false, user: null },
+          };
+        }
+
         return {
           success: false,
           error:
@@ -89,9 +101,19 @@ export class ApiClient {
       // If no data was parsed but response was ok, return success with empty data
       return data || { success: true };
     } catch (error) {
-      console.error("API Request failed:", error);
+      console.error(
+        `API Request failed [${options.method || "GET"} ${url}]:`,
+        error
+      );
 
       // Provide more specific error messages
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return {
+          success: false,
+          error: "Request timed out. The server may be slow to respond.",
+        };
+      }
+
       if (
         error instanceof TypeError &&
         error.message.includes("Failed to fetch")
@@ -289,37 +311,40 @@ export { atomicSwapAPI } from "./api/atomic-swap";
 // ===========================================
 
 /**
- * Check if the backend server is available
+ * Check if the backend server is available with retry logic
  */
-export async function checkServerHealth(): Promise<boolean> {
-  try {
-    const response = await healthAPI.check();
-    return response.success;
-  } catch (error) {
-    console.warn(
-      "Health check failed:",
-      error instanceof Error ? error.message : "Unknown error"
-    );
-    return false;
+export async function checkServerHealth(retries: number = 1): Promise<boolean> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await healthAPI.check();
+      if (response.success) {
+        return true;
+      }
+    } catch (error) {
+      console.warn(
+        `Health check failed (attempt ${attempt}/${retries}):`,
+        error instanceof Error ? error.message : "Unknown error"
+      );
+
+      // If not the last attempt, wait before retrying
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+      }
+    }
   }
+  return false;
 }
 
 /**
- * Get current authentication status
+ * Get current authentication status with retry logic
  */
-export async function getAuthStatus(): Promise<{
+export async function getAuthStatus(retries: number = 1): Promise<{
   authenticated: boolean;
   user?: any;
 }> {
+  // Use the auth manager to prevent multiple simultaneous requests
   try {
-    const response = await authAPI.getSession();
-    if (response.success && response.data) {
-      return {
-        authenticated: response.data.authenticated,
-        user: response.data.user,
-      };
-    }
-    return { authenticated: false };
+    return await authManager.getAuthStatus();
   } catch (error) {
     console.warn(
       "Auth status check failed:",
