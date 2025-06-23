@@ -5,8 +5,8 @@
 import React, { useState } from 'react';
 import { useFamilyAuth } from '../../hooks/useFamilyAuth';
 import { FamilyFederationUser } from '../../types/auth';
-import FamilyAuthModal from '../FamilyAuthModal';
 import ProtectedRoute from '../ProtectedRoute';
+import SignInModal from '../SignInModal';
 
 // Example 1: Button that triggers authentication modal
 export const AuthModalExample: React.FC = () => {
@@ -28,12 +28,12 @@ export const AuthModalExample: React.FC = () => {
         Access Family Financials
       </button>
       
-      <FamilyAuthModal
+      <SignInModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        onSuccess={handleAuthSuccess}
-        title="Family Financials Access"
-        description="Please authenticate to view family financial data"
+        onSignInSuccess={() => setShowModal(false)}
+        onCreateNew={() => setShowModal(false)}
+        destination="family"
       />
     </div>
   );
@@ -187,10 +187,12 @@ export const AuthenticatedNavExample: React.FC = () => {
         </div>
       </div>
 
-      <FamilyAuthModal
+      <SignInModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        onSuccess={handleAuthSuccess}
+        onSignInSuccess={() => setShowAuthModal(false)}
+        onCreateNew={() => setShowAuthModal(false)}
+        destination="family"
       />
     </nav>
   );

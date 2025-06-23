@@ -1,4 +1,3 @@
-import { Request, Response } from "express";
 import { z } from "zod";
 
 // Enhanced PhoenixD status interface
@@ -64,13 +63,77 @@ interface AutoLiquidityConfig {
 }
 
 /**
- * Get PhoenixD Node Status
- * GET /api/phoenixd/status
+ * Handle CORS for the API endpoint
  */
-export async function getPhoenixDStatus(
-  req: Request,
-  res: Response
-): Promise<void> {
+function setCorsHeaders(req: any, res: any) {
+  const allowedOrigins =
+    process.env.NODE_ENV === "production"
+      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
+      : [
+          "http://localhost:3000",
+          "http://localhost:5173",
+          "http://localhost:3002",
+        ];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+/**
+ * PhoenixD Status API Endpoint
+ * GET /api/phoenixd/status - Get PhoenixD node status
+ * POST /api/phoenixd/status - Update auto-liquidity configuration
+ */
+export default async function handler(req: any, res: any) {
+  // Set CORS headers
+  setCorsHeaders(req, res);
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
+  try {
+    if (req.method === "GET") {
+      await handleGetStatus(req, res);
+    } else if (req.method === "POST") {
+      await handleUpdateAutoLiquidity(req, res);
+    } else {
+      res.setHeader("Allow", ["GET", "POST"]);
+      res.status(405).json({
+        success: false,
+        error: "Method not allowed",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (error) {
+    console.error("PhoenixD status API error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
+  }
+}
+
+/**
+ * Get PhoenixD Node Status
+ */
+async function handleGetStatus(req: any, res: any): Promise<void> {
   try {
     // In a real implementation, this would connect to PhoenixD API
     // const phoenixdClient = new PhoenixDClient(process.env.PHOENIXD_URL);
@@ -175,12 +238,8 @@ export async function getPhoenixDStatus(
 
 /**
  * Update Auto-Liquidity Configuration
- * POST /api/phoenixd/auto-liquidity
  */
-export async function updateAutoLiquidity(
-  req: Request,
-  res: Response
-): Promise<void> {
+async function handleUpdateAutoLiquidity(req: any, res: any): Promise<void> {
   try {
     const configSchema = z.object({
       enabled: z.boolean(),
@@ -236,84 +295,3 @@ export async function updateAutoLiquidity(
     });
   }
 }
-
-/**
- * Trigger Emergency Liquidity Protocol
- * POST /api/phoenixd/emergency-liquidity
- */
-export async function triggerEmergencyLiquidity(
-  req: Request,
-  res: Response
-): Promise<void> {
-  try {
-    const requestSchema = z.object({
-      reason: z.string().min(1),
-      requestedAmount: z.number().positive().optional(),
-      priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
-    });
-
-    const validationResult = requestSchema.safeParse(req.body);
-
-    if (!validationResult.success) {
-      res.status(400).json({
-        success: false,
-        error: "Invalid emergency liquidity request",
-        details: validationResult.error.errors,
-        meta: {
-          timestamp: new Date().toISOString(),
-          demo: true,
-        },
-      });
-      return;
-    }
-
-    const request = validationResult.data;
-
-    // In a real implementation, this would:
-    // 1. Assess current liquidity situation
-    // 2. Trigger emergency protocols (channel opening, rebalancing)
-    // 3. Notify family guardians for approval
-    // 4. Execute approved liquidity operations
-
-    const emergencyResponse = {
-      emergencyId: `emrg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      status: "initiated",
-      estimatedResolution: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
-      actions: [
-        "Assessing current channel liquidity",
-        "Identifying optimal rebalancing routes",
-        "Preparing emergency channel opening",
-        "Notifying family guardians for approval",
-      ],
-      approvalRequired: request.priority === "critical",
-    };
-
-    console.log("Emergency liquidity protocol triggered:", request);
-
-    res.status(200).json({
-      success: true,
-      data: emergencyResponse,
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
-  } catch (error) {
-    console.error("Emergency liquidity error:", error);
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to trigger emergency liquidity protocol",
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
-  }
-}
-
-export default {
-  getPhoenixDStatus,
-  updateAutoLiquidity,
-  triggerEmergencyLiquidity,
-};

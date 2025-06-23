@@ -34,10 +34,21 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
 
   const checkExistingSession = async () => {
     try {
-      // Use secure session info from HttpOnly cookies
-      const sessionInfo = await getSessionInfo();
+      console.log('FamilyFederationAuth: Checking existing session');
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Session check timeout')), 5000)
+      );
+      
+      // Use secure session info from HttpOnly cookies with timeout
+      const sessionInfo = await Promise.race([
+        getSessionInfo(),
+        timeoutPromise
+      ]) as any;
       
       if (!sessionInfo.isAuthenticated || !sessionInfo.user) {
+        console.log('FamilyFederationAuth: No existing session found');
         setIsLoading(false);
         return;
       }
@@ -54,11 +65,14 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
         sessionToken: '', // Not needed with HttpOnly cookies
       };
 
+      console.log('FamilyFederationAuth: Existing session found, user authenticated');
       setUserAuth(userAuth);
       setIsAuthenticated(true);
       setIsLoading(false);
     } catch (error) {
       console.error("Session check error:", error);
+      // Don't block the UI if session check fails - just assume not authenticated
+      console.log('FamilyFederationAuth: Session check failed, proceeding as unauthenticated');
       setIsLoading(false);
     }
   };
@@ -106,20 +120,10 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
     checkSession,
   };
 
+  // Don't show loading screen for the entire app - let components handle their own loading states
+  // This prevents blocking modals and other UI components
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center">
-        <div className="bg-purple-900 rounded-2xl p-8 border border-yellow-400/20">
-          <div className="flex items-center space-x-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-400"></div>
-            <div>
-              <h3 className="text-white font-semibold">Checking Authentication</h3>
-              <p className="text-purple-200 text-sm">Verifying your Family Federation access...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    console.log('FamilyFederationAuth: Still loading, but not blocking UI');
   }
 
   return (

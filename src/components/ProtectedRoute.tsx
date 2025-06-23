@@ -5,8 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { FamilyFederationUser } from '../types/auth';
 import { useAuth } from './auth/FamilyFederationAuth';
-import FamilyAuthModal from './FamilyAuthModal';
-import FamilyFederationAuth from './FamilyFederationAuth';
+import SignInModal from './SignInModal';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -87,10 +86,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Not authenticated - show redirect page
   if (requireAuth && !isAuthenticated && shouldRedirect) {
     return (
-      <FamilyFederationAuth
-        mode="page"
-        redirectUrl={window.location.pathname}
-      />
+      <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
+        <SignInModal
+          isOpen={true}
+          onClose={() => {}}
+          onSignInSuccess={() => window.location.reload()}
+          onCreateNew={() => {}}
+          destination="family"
+        />
+      </div>
     );
   }
 
@@ -129,10 +133,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           </div>
         )}
         
-        <FamilyAuthModal
+        <SignInModal
           isOpen={showAuthModal}
           onClose={handleModalClose}
-          onSuccess={handleAuthSuccess}
+          onSignInSuccess={() => {
+            setShowAuthModal(false);
+            if (onAuthSuccess) {
+              // Note: SignInModal doesn't return user object, so we'll need to handle this differently
+              window.location.reload();
+            }
+          }}
+          onCreateNew={() => setShowAuthModal(false)}
+          destination="family"
         />
       </>
     );

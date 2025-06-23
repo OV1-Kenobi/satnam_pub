@@ -39,26 +39,26 @@ export default defineConfig({
 
     // Zeus LSP configuration
     "process.env.ZEUS_LSP_ENDPOINT": JSON.stringify(
-      process.env.ZEUS_LSP_ENDPOINT,
+      process.env.ZEUS_LSP_ENDPOINT
     ),
     "process.env.ZEUS_API_KEY": JSON.stringify(process.env.ZEUS_API_KEY),
     "process.env.ZEUS_LSP_ENABLED": JSON.stringify(
-      process.env.ZEUS_LSP_ENABLED,
+      process.env.ZEUS_LSP_ENABLED
     ),
 
     // Lightning infrastructure
     "process.env.VOLTAGE_NODE_ID": JSON.stringify(process.env.VOLTAGE_NODE_ID),
     "process.env.LNBITS_ADMIN_KEY": JSON.stringify(
-      process.env.LNBITS_ADMIN_KEY,
+      process.env.LNBITS_ADMIN_KEY
     ),
 
     // Test configuration
     "process.env.TEST_FAMILY_ID": JSON.stringify(process.env.TEST_FAMILY_ID),
     "process.env.TEST_PARENT_MEMBER_ID": JSON.stringify(
-      process.env.TEST_PARENT_MEMBER_ID,
+      process.env.TEST_PARENT_MEMBER_ID
     ),
     "process.env.TEST_CHILD_MEMBER_ID": JSON.stringify(
-      process.env.TEST_CHILD_MEMBER_ID,
+      process.env.TEST_CHILD_MEMBER_ID
     ),
   },
 });

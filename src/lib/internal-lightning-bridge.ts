@@ -1,6 +1,6 @@
 // Internal Lightning Bridge - Base Class and Configuration
 // File: src/lib/internal-lightning-bridge.ts
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../../lib/supabase";
 import { SatnamCrossMintCashuManager } from "./cross-mint-cashu-manager";
 import { FedimintClient } from "./fedimint-client";
 import { PhoenixdClient } from "./phoenixd-client";
@@ -58,11 +58,8 @@ class SatnamInternalLightningBridge {
 
     this.cashuManager = new SatnamCrossMintCashuManager();
 
-    // Handle test environment where env vars might not be set
-    const supabaseUrl = process.env.SUPABASE_URL || "https://test.supabase.co";
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "test-key";
-
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+    // Use the shared supabase client to prevent multiple GoTrueClient instances
+    this.supabase = supabase;
   }
 
   // Utility methods

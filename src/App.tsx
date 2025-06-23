@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
-import FamilyAuthModal from "./components/FamilyAuthModal";
 import FamilyCoordination from "./components/FamilyCoordination";
 import FamilyFinancialsDashboard from "./components/FamilyFinancialsDashboard";
 import FamilyOnboarding from "./components/FamilyOnboarding";
@@ -18,10 +17,8 @@ import FamilyWalletDemo from "./components/FamilyWalletDemo";
 import IdentityForge from "./components/IdentityForge";
 import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import NostrEcosystem from "./components/NostrEcosystem";
-import ServerStatus from "./components/ServerStatus";
 import SignInModal from "./components/SignInModal";
 import useAuth from "./hooks/useAuth";
-import { FamilyFederationUser } from "./types/auth";
 
 function App() {
   const [currentView, setCurrentView] = useState<
@@ -39,14 +36,25 @@ function App() {
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
-  const [familyAuthModalOpen, setFamilyAuthModalOpen] = useState(false);
+  const [signinDestination, setSigninDestination] = useState<'individual' | 'family' | null>(null);
   
   // Authentication state
   const auth = useAuth();
 
-  const handleFamilyAuthSuccess = (user: FamilyFederationUser) => {
-    // Authentication successful - redirect to enhanced financials dashboard
-    setCurrentView("financials");
+  const openSigninModal = (destination: 'individual' | 'family') => {
+    setSigninDestination(destination);
+    setSignInModalOpen(true);
+  };
+
+  const handleAuthenticationSuccess = (destination?: 'individual' | 'family') => {
+    setSignInModalOpen(false);
+    setSigninDestination(null);
+    
+    if (destination === 'individual') {
+      setCurrentView("individual-wallet");
+    } else if (destination === 'family') {
+      setCurrentView("financials");
+    }
   };
 
   if (currentView === "forge") {
@@ -69,16 +77,19 @@ function App() {
   if (currentView === "individual-wallet") {
     return (
       <IndividualFinancesDashboard 
-        memberId="demo-user-123"
+        memberId="demo-user"
         memberData={{
-          username: "demo_user",
-          role: "child",
-          lightningAddress: "demo_user@satnam.pub",
+          username: "user",
+          role: "parent",
+          lightningAddress: "user@satnam.pub",
           spendingLimits: {
-            daily: 10000,
-            weekly: 50000,
-            requiresApproval: 100000
+            daily: 100000,
+            weekly: 500000,
+            requiresApproval: 1000000
           }
+        }}
+        onBack={() => {
+          setCurrentView("landing");
         }}
       />
     );
@@ -160,8 +171,8 @@ function App() {
   }
 
   const navigationItems = [
-    { label: "Family Financials", action: () => setFamilyAuthModalOpen(true) },
-    { label: "Individual Wallet", action: () => setCurrentView("individual-wallet") },
+    { label: "Family Financials", action: () => openSigninModal('family') },
+    { label: "Individual Finances", action: () => openSigninModal('individual') },
     { label: "Family Wallets", action: () => setCurrentView("family-wallets") },
     { label: "Bitcoin Education", action: () => setCurrentView("education") },
     {
@@ -277,13 +288,6 @@ function App() {
               <span className="text-white text-xl font-bold">Satnam.pub</span>
             </div>
 
-            {/* Server Status - Only show in development */}
-            {import.meta.env.DEV && (
-              <div className="hidden lg:block mr-4">
-                <ServerStatus className="text-white" />
-              </div>
-            )}
-
             {/* Desktop Navigation - Properly Spaced */}
             <div className="hidden lg:flex items-center space-x-4 xl:space-x-6 flex-1 justify-end">
               {/* Primary CTA */}
@@ -297,18 +301,18 @@ function App() {
 
               {/* Navigation Links */}
               <button
-                onClick={() => setFamilyAuthModalOpen(true)}
+                onClick={() => openSigninModal('family')}
                 className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
               >
                 Family Financials
               </button>
 
               <button
-                onClick={() => setCurrentView("individual-wallet")}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
+                onClick={() => openSigninModal('individual')}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
               >
                 <Zap className="h-4 w-4" />
-                <span>Individual Wallet</span>
+                <span>Individual Finances</span>
               </button>
 
 
@@ -459,11 +463,18 @@ function App() {
           {/* Secondary Navigation Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
-              onClick={() => setFamilyAuthModalOpen(true)}
+              onClick={() => openSigninModal('family')}
               className="bg-orange-500/90 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               <Users className="h-4 w-4" />
               <span>View Family Financials</span>
+            </button>
+            <button
+              onClick={() => openSigninModal('individual')}
+              className="bg-orange-500/90 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
+            >
+              <Zap className="h-4 w-4" />
+              <span>Individual Finances</span>
             </button>
             <button
               onClick={() => setCurrentView("education")}
@@ -630,7 +641,7 @@ function App() {
               <h3 className="text-white font-bold mb-4">Quick Links</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => setFamilyAuthModalOpen(true)}
+                  onClick={() => openSigninModal('family')}
                   className="block text-orange-300 hover:text-orange-400 font-semibold transition-colors duration-200"
                 >
                   Family Financials
@@ -799,27 +810,20 @@ function App() {
         </div>
       </footer>
 
-      {/* Sign In Modal */}
+      {/* Unified Sign-in Modal */}
       <SignInModal
         isOpen={signInModalOpen}
-        onClose={() => setSignInModalOpen(false)}
-        onSignInSuccess={() => {
+        onClose={() => {
           setSignInModalOpen(false);
-          setCurrentView("dashboard");
+          setSigninDestination(null);
         }}
+        onSignInSuccess={handleAuthenticationSuccess}
         onCreateNew={() => {
           setSignInModalOpen(false);
+          setSigninDestination(null);
           setCurrentView("forge");
         }}
-      />
-
-      {/* Family Federation Authentication Modal */}
-      <FamilyAuthModal
-        isOpen={familyAuthModalOpen}
-        onClose={() => setFamilyAuthModalOpen(false)}
-        onSuccess={handleFamilyAuthSuccess}
-        title="Family Federation Access Required"
-        description="Please authenticate with your Family Federation credentials to access Family Financials"
+        destination={signinDestination}
       />
     </div>
   );

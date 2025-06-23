@@ -24,9 +24,7 @@ vi.mock('../components/IdentityForge', () => ({
   default: () => <div data-testid="identity-forge">Identity Forge</div>
 }));
 
-vi.mock('../components/FamilyAuthModal', () => ({
-  default: () => null
-}));
+
 
 vi.mock('../components/SignInModal', () => ({
   default: () => null

@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext", "ES2022"],
-    "types": ["node", "jest"],
+    "types": ["node", "vitest/globals"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -27,3 +27,5 @@
   "include": ["**/*.ts", "**/*.tsx", "types/**/*.d.ts"],
   "exclude": ["node_modules", "**/*.config.js", "**/*.secret.*"]
 }
+
+

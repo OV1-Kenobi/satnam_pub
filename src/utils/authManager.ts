@@ -64,20 +64,41 @@ class AuthManager {
         },
       });
 
-      // 401 is expected when not authenticated
+      // 401 is expected when not authenticated - don't treat as error
       if (response.status === 401) {
         return { authenticated: false };
       }
 
       if (!response.ok) {
+        // Only log unexpected HTTP errors (not 401)
+        console.warn(
+          `Auth check returned ${response.status}: ${response.statusText}`
+        );
         return { authenticated: false };
       }
 
       const result = await response.json();
-      return result.success ? result.data : { authenticated: false };
+
+      // Handle both old and new response formats
+      if (result.success) {
+        return result.data?.authenticated
+          ? result.data
+          : { authenticated: false };
+      } else {
+        return { authenticated: false };
+      }
     } catch (error) {
+      // Check if it's a JSON parsing error (which indicates API routing issues)
+      if (error instanceof SyntaxError && error.message.includes("JSON")) {
+        console.error(
+          "API routing issue - received non-JSON response:",
+          error.message
+        );
+        return { authenticated: false };
+      }
+
       // Only log actual network errors
-      console.error("Auth check failed:", error);
+      console.error("Auth check network error:", error);
       return { authenticated: false };
     }
   }

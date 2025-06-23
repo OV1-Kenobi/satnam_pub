@@ -1,33 +1,94 @@
-// Lightning Zap API
-// File: api/individual/lightning/zap.ts
-import { Request, Response } from "express";
+/**
+ * Handle CORS for the API endpoint
+ */
+function setCorsHeaders(req: any, res: any) {
+  const allowedOrigins =
+    process.env.NODE_ENV === "production"
+      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
+      : [
+          "http://localhost:3000",
+          "http://localhost:5173",
+          "http://localhost:3002",
+        ];
 
-export default async function handler(req: Request, res: Response) {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+/**
+ * Lightning Zap API Endpoint
+ * POST /api/individual/lightning/zap - Send a Lightning zap
+ */
+export default async function handler(req: any, res: any) {
+  // Set CORS headers
+  setCorsHeaders(req, res);
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const { memberId, amount, recipient, memo } = req.body;
-
-  // Validate required fields
-  if (!memberId || !amount || !recipient) {
-    return res.status(400).json({
-      error:
-        "Missing required fields: memberId, amount, and recipient are required",
+    res.setHeader("Allow", ["POST"]);
+    res.status(405).json({
+      success: false,
+      error: "Method not allowed",
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
-  }
-
-  // Validate amount
-  if (typeof amount !== "number" || amount <= 0) {
-    return res.status(400).json({ error: "Amount must be a positive number" });
-  }
-
-  // Validate recipient format (basic validation)
-  if (typeof recipient !== "string" || recipient.length < 10) {
-    return res.status(400).json({ error: "Invalid recipient format" });
+    return;
   }
 
   try {
+    const { memberId, amount, recipient, memo } = req.body;
+
+    // Validate required fields
+    if (!memberId || !amount || !recipient) {
+      res.status(400).json({
+        success: false,
+        error:
+          "Missing required fields: memberId, amount, and recipient are required",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Validate amount
+    if (typeof amount !== "number" || amount <= 0) {
+      res.status(400).json({
+        success: false,
+        error: "Amount must be a positive number",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Validate recipient format (basic validation)
+    if (typeof recipient !== "string" || recipient.length < 10) {
+      res.status(400).json({
+        success: false,
+        error: "Invalid recipient format",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
     // Process Lightning zap
     const zapResult = await processLightningZap({
       memberId,
@@ -36,10 +97,25 @@ export default async function handler(req: Request, res: Response) {
       memo: memo || "",
     });
 
-    return res.json(zapResult);
+    res.status(200).json({
+      success: true,
+      data: zapResult,
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
   } catch (error) {
     console.error("Zap processing failed:", error);
-    return res.status(500).json({ error: "Zap failed to process" });
+
+    res.status(500).json({
+      success: false,
+      error: "Zap failed to process",
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
   }
 }
 
@@ -65,7 +141,6 @@ async function processLightningZap(zapData: {
   const zapId = `zap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   return {
-    success: true,
     zapId,
     amount,
     recipient,

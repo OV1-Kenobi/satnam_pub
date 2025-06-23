@@ -22,18 +22,7 @@ vi.mock('../components/IdentityForge', () => ({
   )
 }));
 
-vi.mock('../components/FamilyAuthModal', () => ({
-  default: ({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess: (user: any) => void }) => 
-    isOpen ? (
-      <div data-testid="family-auth-modal">
-        <h2>Family Authentication</h2>
-        <button onClick={() => onSuccess({ name: 'Test User', role: 'guardian' })}>
-          Authenticate
-        </button>
-        <button onClick={onClose}>Close</button>
-      </div>
-    ) : null
-}));
+
 
 vi.mock('../components/SignInModal', () => ({
   default: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => 

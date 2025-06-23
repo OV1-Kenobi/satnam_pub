@@ -1,5 +1,4 @@
 import { randomBytes } from "crypto";
-import { NextApiRequest, NextApiResponse } from "next";
 
 /**
  * Generate a secure, unique ID for family members
@@ -170,21 +169,17 @@ const mockFamilyMembers: FamilyMember[] = [
 ];
 
 /**
- * API endpoint for family members
- * GET /api/family/members - Get all family members
- * POST /api/family/members - Create a new family member
- * PUT /api/family/members/:id - Update a family member
- * DELETE /api/family/members/:id - Delete a family member
+ * Handle CORS for the API endpoint
  */
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // Set CORS headers with environment-specific origins
+function setCorsHeaders(req: any, res: any) {
   const allowedOrigins =
     process.env.NODE_ENV === "production"
       ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : ["http://localhost:3000", "http://localhost:5173"];
+      : [
+          "http://localhost:3000",
+          "http://localhost:5173",
+          "http://localhost:3002",
+        ];
 
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
@@ -196,6 +191,18 @@ export default async function handler(
     "GET, POST, PUT, DELETE, OPTIONS"
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+/**
+ * Family Members API Endpoint
+ * GET /api/family/members - Get all family members
+ * POST /api/family/members - Create a new family member
+ * PUT /api/family/members - Update a family member (requires id in query)
+ * DELETE /api/family/members - Delete a family member (requires id in query)
+ */
+export default async function handler(req: any, res: any) {
+  // Set CORS headers
+  setCorsHeaders(req, res);
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {
@@ -219,13 +226,23 @@ export default async function handler(
         break;
       default:
         res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-        res.status(405).json({ error: "Method not allowed" });
+        res.status(405).json({
+          success: false,
+          error: "Method not allowed",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
     }
   } catch (error) {
     console.error("Family members API error:", error);
     res.status(500).json({
+      success: false,
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error",
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 }
@@ -233,7 +250,7 @@ export default async function handler(
 /**
  * Handle GET requests - Retrieve family members
  */
-async function handleGetMembers(req: NextApiRequest, res: NextApiResponse) {
+async function handleGetMembers(req: any, res: any) {
   const { familyId, role, verified } = req.query;
 
   let members = [...mockFamilyMembers];
@@ -272,22 +289,30 @@ async function handleGetMembers(req: NextApiRequest, res: NextApiResponse) {
 /**
  * Handle POST requests - Create a new family member
  */
-async function handleCreateMember(req: NextApiRequest, res: NextApiResponse) {
+async function handleCreateMember(req: any, res: any) {
   const { username, role, spendingLimits } = req.body;
 
   // Validate required fields
   if (!username || !role) {
     return res.status(400).json({
+      success: false,
       error: "Missing required fields",
       required: ["username", "role"],
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
   // Validate role
   if (!["parent", "child", "guardian"].includes(role)) {
     return res.status(400).json({
+      success: false,
       error: "Invalid role",
       validRoles: ["parent", "child", "guardian"],
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
@@ -297,8 +322,12 @@ async function handleCreateMember(req: NextApiRequest, res: NextApiResponse) {
   );
   if (existingMember) {
     return res.status(409).json({
+      success: false,
       error: "Username already exists",
       username,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
@@ -327,27 +356,38 @@ async function handleCreateMember(req: NextApiRequest, res: NextApiResponse) {
     success: true,
     data: newMember,
     message: "Family member created successfully",
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
   });
 }
 
 /**
  * Handle PUT requests - Update a family member
  */
-async function handleUpdateMember(req: NextApiRequest, res: NextApiResponse) {
+async function handleUpdateMember(req: any, res: any) {
   const { id } = req.query;
   const updates = req.body;
 
   if (!id || typeof id !== "string") {
     return res.status(400).json({
+      success: false,
       error: "Member ID is required",
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
   const memberIndex = mockFamilyMembers.findIndex((member) => member.id === id);
   if (memberIndex === -1) {
     return res.status(404).json({
+      success: false,
       error: "Family member not found",
       id,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
@@ -371,26 +411,37 @@ async function handleUpdateMember(req: NextApiRequest, res: NextApiResponse) {
     success: true,
     data: updatedMember,
     message: "Family member updated successfully",
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
   });
 }
 
 /**
  * Handle DELETE requests - Delete a family member
  */
-async function handleDeleteMember(req: NextApiRequest, res: NextApiResponse) {
+async function handleDeleteMember(req: any, res: any) {
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
     return res.status(400).json({
+      success: false,
       error: "Member ID is required",
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
   const memberIndex = mockFamilyMembers.findIndex((member) => member.id === id);
   if (memberIndex === -1) {
     return res.status(404).json({
+      success: false,
       error: "Family member not found",
       id,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
     });
   }
 
@@ -404,8 +455,8 @@ async function handleDeleteMember(req: NextApiRequest, res: NextApiResponse) {
     success: true,
     data: deletedMember,
     message: "Family member deleted successfully",
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
   });
 }
-
-// Export the FamilyMember interface for use in other files
-export type { FamilyMember };

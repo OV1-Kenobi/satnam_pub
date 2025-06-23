@@ -1,6 +1,24 @@
 // Family Federation Authentication Types
 // File: src/types/auth.ts
 
+// NIP-07 Browser Extension Types (for signin modal)
+export interface NostrExtension {
+  getPublicKey(): Promise<string>;
+  signEvent(event: any): Promise<any>;
+  getRelays?(): Promise<Record<string, { read: boolean; write: boolean }>>;
+  nip04?: {
+    encrypt(pubkey: string, plaintext: string): Promise<string>;
+    decrypt(pubkey: string, ciphertext: string): Promise<string>;
+  };
+}
+
+export interface NIP07AuthChallenge {
+  challenge: string;
+  domain: string;
+  timestamp: number;
+  expiresAt: number;
+}
+
 export interface FamilyFederationUser {
   npub: string;
   nip05?: string;
@@ -123,4 +141,54 @@ export interface AuthContextType {
   login: (authData: FamilyFederationUser) => void;
   logout: () => void;
   checkSession: () => Promise<boolean>;
+}
+
+// Individual Authentication Types
+export interface IndividualUser {
+  npub: string;
+  nip05?: string;
+  lightningAddress: string;
+  authMethod: "lightning" | "cashu" | "nwc";
+  walletType: "personal" | "child" | "guardian";
+  spendingLimits?: {
+    daily: number;
+    weekly: number;
+    requiresApproval: number;
+  };
+  sessionToken: string;
+  balance?: {
+    lightning: number;
+    cashu: number;
+  };
+}
+
+export interface IndividualAuthResponse {
+  success: boolean;
+  data?: {
+    authenticated: boolean;
+    sessionToken: string;
+    userAuth: {
+      npub: string;
+      nip05?: string;
+      lightningAddress: string;
+      authMethod: "lightning" | "cashu" | "nwc";
+      walletType: "personal" | "child" | "guardian";
+      spendingLimits?: {
+        daily: number;
+        weekly: number;
+        requiresApproval: number;
+      };
+      balance?: {
+        lightning: number;
+        cashu: number;
+      };
+    };
+    message: string;
+    verificationMethod: string;
+  };
+  error?: string;
+  details?: string;
+  meta: {
+    timestamp: string;
+  };
 }

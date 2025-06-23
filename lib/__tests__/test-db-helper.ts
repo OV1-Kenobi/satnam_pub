@@ -1,12 +1,9 @@
 // lib/__tests__/test-db-helper.ts
-import { createClient } from "@supabase/supabase-js";
-import { TEST_CONFIG } from "./test-config";
+import { supabase } from "../supabase";
+import { TEST_CONFIG } from "./test-setup";
 
-// Create a test-specific Supabase client
-export const testSupabase = createClient(
-  TEST_CONFIG.SUPABASE_URL,
-  TEST_CONFIG.SUPABASE_ANON_KEY,
-);
+// Use the main supabase client for tests since database is functional
+export const testSupabase = supabase;
 
 export class TestDbHelper {
   static testUserIds: string[] = [];
@@ -16,7 +13,7 @@ export class TestDbHelper {
    */
   static async createTestUser(
     userId: string,
-    encryptedNsec: string,
+    encryptedNsec: string
   ): Promise<void> {
     const { error } = await testSupabase.from("encrypted_keys").insert({
       user_id: userId,

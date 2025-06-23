@@ -6,6 +6,7 @@
 
 import dotenv from "dotenv";
 import { afterAll, beforeAll, vi } from "vitest";
+import { globalTestCleanup } from "./lib/__tests__/test-setup";
 
 // Load environment variables for testing
 dotenv.config({ path: ".env.test" });
@@ -24,11 +25,16 @@ beforeAll(async () => {
       "⚠️  No test database URL found. Some integration tests may fail."
     );
   }
+
+  // Initialize the shared test client to prevent multiple GoTrueClient instances
+  const { getTestSupabaseClient } = await import("./lib/__tests__/test-setup");
+  getTestSupabaseClient(); // Initialize the shared client early
 });
 
 // Global test cleanup
 afterAll(async () => {
   // Cleanup any global resources if needed
+  await globalTestCleanup();
 });
 
 // Mock console methods for cleaner test output using Vitest spies

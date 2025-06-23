@@ -41,6 +41,7 @@ interface IndividualFinancesDashboardProps {
       requiresApproval: number;
     };
   };
+  onBack?: () => void;
 }
 
 interface IndividualWallet {
@@ -1380,7 +1381,7 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
 };
 
 // Main Enhanced Component
-export function IndividualFinancesDashboard({ memberId, memberData }: IndividualFinancesDashboardProps) {
+export function IndividualFinancesDashboard({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
   const [wallet, setWallet] = useState<EnhancedIndividualWallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'privacy'>('overview');
@@ -1495,13 +1496,24 @@ export function IndividualFinancesDashboard({ memberId, memberData }: Individual
               </div>
             </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Refresh wallet data"
-          >
-            <RefreshCw className="h-5 w-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Back to home"
+              >
+                <ArrowDownLeft className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              onClick={handleRefresh}
+              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh wallet data"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -1,10 +1,8 @@
 // Individual Wallet API Service
 // File: src/services/individualApi.ts
 
-const API_BASE =
-  process.env.NODE_ENV === "production"
-    ? "https://your-production-domain.com"
-    : "http://localhost:8000";
+// Use relative paths for Bolt.new compatibility
+const API_BASE = "";
 
 // API Response Types
 export interface IndividualWalletData {

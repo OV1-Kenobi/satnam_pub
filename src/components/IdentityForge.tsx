@@ -1,13 +1,12 @@
 import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Key,
-  QrCode,
-  Sparkles,
-  Wifi,
-  X
+    AlertTriangle,
+    ArrowLeft,
+    ArrowRight,
+    Check,
+    Key,
+    QrCode,
+    Sparkles,
+    X
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { useCryptoOperations } from "../hooks/useCrypto";
@@ -16,8 +15,6 @@ interface FormData {
   username: string;
   pubkey: string;
   lightningEnabled: boolean;
-  familyRelay: string;
-  useCitadelRelay: boolean;
 }
 
 interface IdentityForgeProps {
@@ -34,8 +31,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     username: "",
     pubkey: "",
     lightningEnabled: true,
-    familyRelay: "",
-    useCitadelRelay: true,
   });
 
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(
@@ -137,7 +132,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   };
 
   const nextStep = () => {
-    if (currentStep < 4) {
+    if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
       if (currentStep === 1) {
         generateKeys();
@@ -163,61 +158,63 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         return formData.pubkey && !isGenerating;
       case 3:
         return true;
-      case 4:
-        return true;
       default:
         return false;
     }
   };
 
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onBack();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [onBack]);
+
   if (isComplete) {
     return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
-        {/* Energized Bitcoin Background */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{
-            backgroundImage: `url('/Energized Bitcoin.jpg')`,
-          }}
-        >
-          {/* Dark overlay for better text readability */}
-          <div className="absolute inset-0 bg-black/60"></div>
-          {/* Additional gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/70 via-purple-800/50 to-purple-600/40"></div>
-        </div>
-
-        <div className="relative z-10 bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center max-w-2xl border border-white/20 shadow-2xl">
-          <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
-            <Sparkles className="h-12 w-12 text-white" />
-          </div>
-          <h2 className="text-4xl font-bold text-white mb-6 drop-shadow-lg">
-            Identity Forged Successfully!
-          </h2>
-          <p className="text-xl text-purple-100 mb-8 drop-shadow-md">
-            Welcome to true digital sovereignty,{" "}
-            <span className="font-bold text-yellow-400">
-              {formData.username}
-            </span>
-          </p>
-          <div className="bg-white/10 rounded-lg p-6 mb-8 backdrop-blur-sm">
-            <p className="text-purple-100 mb-2">Your sovereign identity:</p>
-            <p className="text-white font-mono text-lg">
-              {formData.username}@satnam.pub
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700 rounded-xl shadow-2xl border border-white/20 p-8 max-w-2xl w-full mx-4 relative backdrop-blur-sm">
+          <div className="text-center">
+            <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
+              <Sparkles className="h-12 w-12 text-white" />
+            </div>
+            <h2 className="text-4xl font-bold text-white mb-6">
+              Identity Forged Successfully!
+            </h2>
+            <p className="text-xl text-purple-200 mb-8">
+              Welcome to true digital sovereignty,{" "}
+              <span className="font-bold text-yellow-400">
+                {formData.username}
+              </span>
             </p>
-          </div>
-          <div className="flex space-x-4 justify-center">
-            <button
-              onClick={onComplete}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
-            >
-              Explore Nostr Ecosystem
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
-            >
-              Forge Another
-            </button>
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 mb-8">
+              <p className="text-purple-200 mb-2">Your sovereign identity:</p>
+              <p className="text-white font-mono text-lg">
+                {formData.username}@satnam.pub
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button
+                onClick={onComplete}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+              >
+                <span>Explore Nostr Ecosystem</span>
+                <ArrowRight className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300"
+              >
+                Forge Another Identity
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -225,81 +222,74 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden p-4">
-      {/* Energized Bitcoin Background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: `url('/Energized Bitcoin.jpg')`,
-        }}
-      >
-        {/* Dark overlay for better text readability */}
-        <div className="absolute inset-0 bg-black/50"></div>
-        {/* Additional gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/60 via-purple-800/40 to-purple-600/30"></div>
-      </div>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700 rounded-xl shadow-2xl border border-white/20 p-8 max-w-lg w-full mx-4 relative min-h-[400px] backdrop-blur-sm">
+        {/* Close Button */}
+        <button
+          onClick={onBack}
+          className="absolute top-4 right-4 text-white hover:text-purple-200 transition-colors duration-200 z-10"
+        >
+          <X className="h-6 w-6" />
+        </button>
 
-      <div className="relative z-10 max-w-4xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-12 pt-8">
-          <div className="flex items-center justify-center space-x-3 mb-6">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <img
               src="/ID forge icon.png"
               alt="Identity Forge"
               className="h-10 w-10"
               loading="lazy"
             />
-            <h1 className="text-4xl font-bold text-white drop-shadow-lg">Identity Forge</h1>
           </div>
-          <p className="text-purple-100 text-lg drop-shadow-md">
+          <h2 className="text-3xl font-bold text-white mb-2">Identity Forge</h2>
+          <p className="text-purple-200">
             Forge your sovereign digital identity
           </p>
         </div>
 
         {/* Progress Indicator */}
-        <div className="mb-12">
+        <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
-            {[1, 2, 3, 4].map((step) => (
+            {[1, 2, 3].map((step) => (
               <div key={step} className="flex items-center">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${
                     step <= currentStep
-                      ? "bg-yellow-400 text-purple-900"
-                      : "bg-white/20 text-white"
+                      ? "bg-orange-500 text-white"
+                      : "bg-white/20 text-purple-200"
                   }`}
                 >
                   {step < currentStep ? <Check className="h-5 w-5" /> : step}
                 </div>
-                {step < 4 && (
+                {step < 3 && (
                   <div
-                    className={`h-1 w-20 mx-4 transition-all duration-300 ${
-                      step < currentStep ? "bg-yellow-400" : "bg-white/20"
+                    className={`h-1 w-16 mx-4 transition-all duration-300 ${
+                      step < currentStep ? "bg-orange-500" : "bg-white/20"
                     }`}
                   />
                 )}
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-sm text-purple-100">
+          <div className="flex justify-between text-sm text-purple-200">
             <span>Choose Name</span>
             <span>Generate Keys</span>
             <span>Lightning Setup</span>
-            <span>Family Federation</span>
           </div>
         </div>
 
         {/* Form Content */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-2xl">
+        <div className="space-y-6">
           {/* Step 1: Choose Your True Name */}
           {currentStep === 1 && (
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div className="text-center">
-                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
+                <h3 className="text-2xl font-bold text-white mb-4">
                   Choose Your True Name
-                </h2>
-                <p className="text-purple-100 drop-shadow-md">
-                  This will be your sovereign identity across the Bitcoin
-                  network
+                </h3>
+                <p className="text-purple-200">
+                  This will be your sovereign identity across the Bitcoin network
                 </p>
               </div>
 
@@ -315,7 +305,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       }))
                     }
                     placeholder="Enter your username"
-                    className="w-full px-6 py-4 text-xl bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300 backdrop-blur-sm"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   />
                   {formData.username && (
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
@@ -331,32 +321,36 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 </div>
 
                 {formData.username && (
-                  <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-                    <p className="text-purple-100 mb-2">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                    <p className="text-purple-200 mb-2">
                       Your identity will be:
                     </p>
                     <p className="text-white font-mono text-lg">
                       {formData.username}@satnam.pub
                     </p>
                     {usernameAvailable === false && (
-                      <p className="text-red-400 mt-2">
-                        This name is already taken
-                      </p>
+                      <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mt-3">
+                        <p className="text-red-200">
+                          This name is already taken
+                        </p>
+                      </div>
                     )}
                     {!validateUsername(formData.username) && (
-                      <p className="text-red-400 mt-2">
-                        3-20 characters, letters, numbers, and underscores only
-                      </p>
+                      <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mt-3">
+                        <p className="text-red-200">
+                          3-20 characters, letters, numbers, and underscores only
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="bg-purple-900/50 rounded-lg p-6 backdrop-blur-sm">
-                <h3 className="text-white font-bold mb-2">
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                <h4 className="text-white font-bold mb-2">
                   Your keys, your identity
-                </h3>
-                <p className="text-purple-100">
+                </h4>
+                <p className="text-purple-200">
                   No email required, no data collection. Sovereign from day one.
                 </p>
               </div>
@@ -365,73 +359,82 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
           {/* Step 2: Generate Your Keys */}
           {currentStep === 2 && (
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div className="text-center">
-                <Key className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
+                <Key className="h-16 w-16 text-orange-500 mx-auto mb-4" />
+                <h3 className="text-2xl font-bold text-white mb-4">
                   Generate Your Keys
-                </h2>
-                <p className="text-purple-100 drop-shadow-md">
+                </h3>
+                <p className="text-purple-200">
                   Creating your cryptographic identity
                 </p>
               </div>
 
               {isGenerating ? (
                 <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="w-24 h-24 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-white font-semibold">{generationStep}</p>
-                  </div>
-
-                  <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-                    <div className="flex justify-between text-sm text-purple-100 mb-2">
-                      <span>Progress</span>
-                      <span>{generationProgress}%</span>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-white font-semibold">
+                        {generationStep}
+                      </span>
+                      <span className="text-orange-500 font-bold">
+                        {generationProgress}%
+                      </span>
                     </div>
                     <div className="w-full bg-white/20 rounded-full h-3">
                       <div
-                        className="bg-gradient-to-r from-yellow-400 to-orange-500 h-3 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-orange-500 to-yellow-500 h-3 rounded-full transition-all duration-300"
                         style={{ width: `${generationProgress}%` }}
                       />
                     </div>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center">
+                    <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-purple-200">
+                      Generating cryptographically secure keys...
+                    </p>
                   </div>
                 </div>
               ) : formData.pubkey ? (
                 <div className="space-y-6">
                   <div className="text-center">
-                    <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Check className="h-8 w-8 text-white" />
+                    <div className="w-16 h-16 bg-green-500/20 border border-green-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Check className="h-8 w-8 text-green-400" />
                     </div>
-                    <p className="text-green-400 font-semibold">
-                      Keys generated successfully!
-                    </p>
+                    <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+                      <p className="text-green-200 font-semibold">
+                        Keys generated successfully!
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
-                    <h3 className="text-white font-bold mb-3">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                    <h4 className="text-white font-bold mb-3">
                       Your Public Key
-                    </h3>
-                    <p className="text-purple-100 font-mono break-all">
+                    </h4>
+                    <p className="text-purple-200 font-mono break-all">
                       {formData.pubkey.substring(0, 8)}...
                       {formData.pubkey.substring(formData.pubkey.length - 8)}
                     </p>
                   </div>
 
-                  <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6 backdrop-blur-sm">
+                  <div className="bg-red-500/20 border border-red-500/50 rounded-2xl p-6">
                     <div className="flex items-start space-x-3">
                       <AlertTriangle className="h-6 w-6 text-red-400 flex-shrink-0 mt-1" />
                       <div>
-                        <h3 className="text-red-400 font-bold mb-2">
+                        <h4 className="text-red-200 font-bold mb-2">
                           🚨 CRITICAL: Save Your Recovery Phrase Now
-                        </h3>
-                        <p className="text-red-200">
+                        </h4>
+                        <p className="text-red-200 mb-3">
                           Your recovery phrase is the ONLY way to restore your identity.
                           If you lose it, your funds and identity are lost forever.
                           Write it down on paper and store it in a secure location.
                         </p>
-                        <div className="mt-3 p-3 bg-red-800/50 rounded text-red-100 text-sm">
-                          <strong>Never:</strong> Screenshot, email, or store digitally<br/>
-                          <strong>Always:</strong> Write on paper, verify twice, store safely
+                        <div className="bg-red-500/30 rounded-lg p-3">
+                          <p className="text-red-200 text-sm">
+                            <strong>Never:</strong> Screenshot, email, or store digitally<br/>
+                            <strong>Always:</strong> Write on paper, verify twice, store safely
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -443,76 +446,76 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
           {/* Step 3: Lightning Address Setup */}
           {currentStep === 3 && (
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div className="text-center">
-                <div className="relative">
-                  <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4">
-                    <img
-                      src="/LN Bitcoin icon.png"
-                      alt="Lightning Bitcoin"
-                      className="h-12 w-12"
-                      loading="lazy"
-                    />
-                  </div>
+                <div className="w-16 h-16 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4 border border-white/20">
+                  <img
+                    src="/LN Bitcoin icon.png"
+                    alt="Lightning Bitcoin"
+                    className="h-12 w-12"
+                    loading="lazy"
+                  />
                 </div>
-                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
+                <h3 className="text-2xl font-bold text-white mb-4">
                   Lightning Address Setup
-                </h2>
-                <p className="text-purple-100 drop-shadow-md">
+                </h3>
+                <p className="text-purple-200">
                   Receive Bitcoin payments instantly
                 </p>
               </div>
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between bg-white/10 rounded-lg p-6 backdrop-blur-sm">
-                  <div>
-                    <h3 className="text-white font-bold mb-2">
-                      Enable Lightning Address
-                    </h3>
-                    <p className="text-purple-100">
-                      Allow others to send you Bitcoin payments
-                    </p>
-                  </div>
-                  <button
-                    onClick={() =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        lightningEnabled: !prev.lightningEnabled,
-                      }))
-                    }
-                    className={`w-14 h-8 rounded-full transition-all duration-300 ${
-                      formData.lightningEnabled
-                        ? "bg-yellow-400"
-                        : "bg-white/20"
-                    }`}
-                  >
-                    <div
-                      className={`w-6 h-6 bg-white rounded-full transition-all duration-300 ${
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-white font-bold mb-2">
+                        Enable Lightning Address
+                      </h4>
+                      <p className="text-purple-200">
+                        Allow others to send you Bitcoin payments
+                      </p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          lightningEnabled: !prev.lightningEnabled,
+                        }))
+                      }
+                      className={`w-14 h-8 rounded-full transition-all duration-300 ${
                         formData.lightningEnabled
-                          ? "translate-x-7"
-                          : "translate-x-1"
+                          ? "bg-orange-500"
+                          : "bg-white/20"
                       }`}
-                    />
-                  </button>
+                    >
+                      <div
+                        className={`w-6 h-6 bg-white rounded-full transition-all duration-300 ${
+                          formData.lightningEnabled
+                            ? "translate-x-7"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 {formData.lightningEnabled && (
                   <>
-                    <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
-                      <h3 className="text-white font-bold mb-3">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                      <h4 className="text-white font-bold mb-3">
                         Your Lightning Address
-                      </h3>
-                      <p className="text-yellow-400 font-mono text-lg">
+                      </h4>
+                      <p className="text-orange-400 font-mono text-lg">
                         {formData.username}@satnam.pub
                       </p>
-                      <p className="text-purple-100 mt-2">
+                      <p className="text-purple-200 mt-2">
                         This address can receive Bitcoin payments
                       </p>
                     </div>
 
-                    <div className="bg-white/10 rounded-lg p-6 text-center backdrop-blur-sm">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center">
                       <QrCode className="h-24 w-24 text-white mx-auto mb-4 opacity-50" />
-                      <p className="text-purple-100">
+                      <p className="text-purple-200">
                         QR code will be generated after setup
                       </p>
                     </div>
@@ -522,119 +525,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             </div>
           )}
 
-          {/* Step 4: Family Federation */}
-          {currentStep === 4 && (
-            <div className="space-y-8">
-              <div className="text-center">
-                <img
-                  src="/Rebuilding_Camelot_logo__transparency_v3.png"
-                  alt="Rebuilding Camelot"
-                  className="h-16 w-16 mx-auto mb-4"
-                  loading="lazy"
-                />
-                <h2 className="text-3xl font-bold text-white mb-4 drop-shadow-lg">
-                  Family Federation
-                </h2>
-                <p className="text-purple-100 drop-shadow-md">
-                  Connect to your family's private network
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between bg-white/10 rounded-lg p-6 backdrop-blur-sm">
-                  <div>
-                    <h3 className="text-white font-bold mb-2">
-                      Use Citadel Academy Public Relay
-                    </h3>
-                    <p className="text-purple-100">
-                      Connect to our secure, family-friendly relay
-                    </p>
-                  </div>
-                  <button
-                    onClick={() =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        useCitadelRelay: !prev.useCitadelRelay,
-                      }))
-                    }
-                    className={`w-14 h-8 rounded-full transition-all duration-300 ${
-                      formData.useCitadelRelay ? "bg-yellow-400" : "bg-white/20"
-                    }`}
-                  >
-                    <div
-                      className={`w-6 h-6 bg-white rounded-full transition-all duration-300 ${
-                        formData.useCitadelRelay
-                          ? "translate-x-7"
-                          : "translate-x-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {!formData.useCitadelRelay && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-white font-bold mb-2">
-                        Family Relay URL
-                      </label>
-                      <input
-                        type="url"
-                        value={formData.familyRelay}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            familyRelay: e.target.value,
-                          }))
-                        }
-                        placeholder="wss://relay.yourfamily.com"
-                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-200 focus:outline-none focus:border-yellow-400 transition-all duration-300 backdrop-blur-sm"
-                      />
-                    </div>
-                    <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 backdrop-blur-sm">
-                      <div className="flex items-start space-x-3">
-                        <Wifi className="h-5 w-5 text-blue-400 flex-shrink-0 mt-1" />
-                        <div>
-                          <h4 className="text-blue-400 font-bold mb-1">
-                            Private Family Relay
-                          </h4>
-                          <p className="text-blue-200 text-sm">
-                            Connect to your family's private Nostr relay for
-                            enhanced privacy and coordination.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white/10 rounded-lg p-6 backdrop-blur-sm">
-                  <h3 className="text-white font-bold mb-3">
-                    Family Federation Benefits
-                  </h3>
-                  <ul className="space-y-2 text-purple-100">
-                    <li className="flex items-center space-x-2">
-                      <Check className="h-4 w-4 text-green-400" />
-                      <span>Shared family identity verification</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="h-4 w-4 text-green-400" />
-                      <span>Coordinated Lightning payments</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="h-4 w-4 text-green-400" />
-                      <span>Multi-generational sovereignty</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Navigation Buttons */}
-          <div className="flex justify-between mt-12">
+          <div className="flex justify-between pt-6">
             <button
               onClick={prevStep}
-              className="flex items-center space-x-2 px-6 py-3 rounded-lg font-bold transition-all duration-300 bg-purple-700 hover:bg-purple-800 text-white shadow-lg hover:shadow-xl"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2"
             >
               <ArrowLeft className="h-5 w-5" />
               <span>Back</span>
@@ -643,28 +538,23 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             <button
               onClick={nextStep}
               disabled={!canContinue()}
-              className={`flex items-center space-x-2 px-8 py-3 rounded-lg font-bold transition-all duration-300 ${
+              className={`font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center space-x-2 ${
                 canContinue()
-                  ? "bg-purple-700 hover:bg-purple-800 text-white transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  ? "bg-orange-500 hover:bg-orange-600 text-white"
                   : "bg-white/10 text-purple-300 cursor-not-allowed"
               }`}
             >
-              <span>{currentStep === 4 ? "Complete Forge" : "Continue"}</span>
+              <span>{currentStep === 3 ? "Complete Forge" : "Continue"}</span>
               <ArrowRight className="h-5 w-5" />
             </button>
           </div>
         </div>
 
         {/* Security Messaging */}
-        <div className="text-center mt-8">
-          <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200">
+        <div className="text-center mt-8 pt-6 border-t border-white/20">
+          <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200 text-sm">
             <span className="flex items-center space-x-2">
-              <img
-                src="/Citadel Academy Logo.png"
-                alt="Citadel Academy"
-                className="h-4 w-4"
-                loading="lazy"
-              />
+              <Key className="h-4 w-4" />
               <span>Your keys, your identity</span>
             </span>
             <span className="flex items-center space-x-2">

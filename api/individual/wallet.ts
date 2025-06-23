@@ -1,26 +1,90 @@
-// Individual Wallet API Endpoints
-// File: api/individual/wallet.ts
-import { Request, Response } from "express";
+/**
+ * Handle CORS for the API endpoint
+ */
+function setCorsHeaders(req: any, res: any) {
+  const allowedOrigins =
+    process.env.NODE_ENV === "production"
+      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
+      : [
+          "http://localhost:3000",
+          "http://localhost:5173",
+          "http://localhost:3002",
+        ];
 
-export default async function handler(req: Request, res: Response) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
   }
 
-  const { memberId } = req.query;
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
 
-  if (!memberId || typeof memberId !== "string") {
-    return res.status(400).json({ error: "Member ID is required" });
+/**
+ * Individual Wallet API Endpoint
+ * GET /api/individual/wallet - Get individual wallet data
+ */
+export default async function handler(req: any, res: any) {
+  // Set CORS headers
+  setCorsHeaders(req, res);
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== "GET") {
+    res.setHeader("Allow", ["GET"]);
+    res.status(405).json({
+      success: false,
+      error: "Method not allowed",
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+    return;
   }
 
   try {
+    const { memberId } = req.query;
+
+    if (!memberId || typeof memberId !== "string") {
+      res.status(400).json({
+        success: false,
+        error: "Member ID is required",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
     // Fetch individual wallet data
     const walletData = await getIndividualWallet(memberId);
 
-    return res.json(walletData);
+    res.status(200).json({
+      success: true,
+      data: walletData,
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
   } catch (error) {
     console.error("Failed to fetch wallet data:", error);
-    return res.status(500).json({ error: "Failed to fetch wallet data" });
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch wallet data",
+      meta: {
+        timestamp: new Date().toISOString(),
+        demo: true,
+      },
+    });
   }
 }
 
