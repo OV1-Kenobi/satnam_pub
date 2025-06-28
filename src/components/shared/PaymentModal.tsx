@@ -1,7 +1,7 @@
 import { RefreshCw, Send, Shield, XCircle } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { SatnamFamilyMember } from "../../../types/family";
 import { formatSats } from "../../lib/utils";
+import { SatnamFamilyMember } from "../../types/shared";
 
 interface PaymentModalProps {
   isOpen: boolean;

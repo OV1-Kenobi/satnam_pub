@@ -143,6 +143,46 @@ export interface AuthContextType {
   checkSession: () => Promise<boolean>;
 }
 
+// Identity Forge Registration Types
+export interface IdentityRegistrationRequest {
+  username: string;
+  password: string;
+  confirmPassword: string;
+  recoveryPhrase: string;
+  nip05: string;
+  lightningAddress?: string;
+  generateInviteToken: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  nip05: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InviteToken {
+  token: string;
+  expiresAt: string;
+  uses: number;
+  maxUses: number;
+}
+
+export interface IdentityRegistrationResult {
+  success: boolean;
+  profile: UserProfile;
+  npub: string;
+  inviteToken?: InviteToken;
+  sessionToken: string;
+  message: string;
+  error?: string;
+  meta: {
+    timestamp: string;
+    demo?: boolean;
+  };
+}
+
 // Individual Authentication Types
 export interface IndividualUser {
   npub: string;

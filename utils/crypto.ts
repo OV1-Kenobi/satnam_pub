@@ -1,45 +1,37 @@
 // secp256k1 will be used in future implementations
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-enable @typescript-eslint/no-unused-vars */
-import { HDKey } from "@scure/bip32";
-import * as bip39 from "bip39";
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  pbkdf2,
-  randomBytes,
-} from "crypto";
-import {
-  finalizeEvent,
-  generateSecretKey,
-  getPublicKey,
-  nip19,
-} from "nostr-tools";
-import { promisify } from "util";
+// All crypto imports are lazy loaded for better performance
+// All crypto operations are now lazy loaded
 
 /**
  * Generate a random hex string of specified length
  */
-export function generateRandomHex(length: number): string {
-  return randomBytes(Math.ceil(length / 2))
-    .toString("hex")
-    .slice(0, length);
+export async function generateRandomHex(length: number): Promise<string> {
+  const { generateRandomHex: lazyGenerateRandomHex } = await import(
+    "./crypto-lazy"
+  );
+  return lazyGenerateRandomHex(length);
 }
 
 /**
  * Generate a secure token for session management
  */
-export function generateSecureToken(length: number = 64): string {
-  return randomBytes(length).toString("base64url");
+export async function generateSecureToken(
+  length: number = 64
+): Promise<string> {
+  const { generateSecureToken: lazyGenerateSecureToken } = await import(
+    "./crypto-lazy"
+  );
+  return lazyGenerateSecureToken(length);
 }
 
 /**
  * Hash a string using SHA-256
  */
-export function sha256(data: string): string {
-  return createHash("sha256").update(data).digest("hex");
+export async function sha256(data: string): Promise<string> {
+  const { sha256: lazySha256 } = await import("./crypto-lazy");
+  return lazySha256(data);
 }
 
 /**
@@ -67,69 +59,35 @@ export function constantTimeEquals(a: string, b: string): boolean {
  * @param account - Optional account index when using a recovery phrase (default: 0)
  * @returns Nostr key pair with private key, public key, npub, and nsec
  */
-export function generateNostrKeyPair(
+export async function generateNostrKeyPair(
   recoveryPhrase?: string,
   account: number = 0
 ) {
-  let privateKeyBytes: Uint8Array;
-
-  if (recoveryPhrase) {
-    // Derive private key from recovery phrase using NIP-06 standard
-    const derivedKey = privateKeyFromPhraseWithAccount(recoveryPhrase, account);
-    privateKeyBytes =
-      typeof derivedKey === "string"
-        ? Buffer.from(derivedKey, "hex")
-        : derivedKey;
-  } else {
-    // Generate a random private key
-    privateKeyBytes = generateSecretKey();
-  }
-
-  const privateKey = Buffer.from(privateKeyBytes).toString("hex");
-  const publicKey = getPublicKey(privateKeyBytes);
-
-  return {
-    privateKey,
-    publicKey,
-    npub: nip19.npubEncode(publicKey),
-    nsec: nip19.nsecEncode(privateKeyBytes),
-  };
+  const { generateNostrKeyPair: lazyGenerateNostrKeyPair } = await import(
+    "./crypto-lazy"
+  );
+  return lazyGenerateNostrKeyPair(recoveryPhrase, account);
 }
 
 /**
  * Generate a recovery phrase (mnemonic) for a private key
  */
-export function generateRecoveryPhrase(): string {
-  return bip39.generateMnemonic();
+export async function generateRecoveryPhrase(): Promise<string> {
+  const { generateRecoveryPhrase: lazyGenerateRecoveryPhrase } = await import(
+    "./crypto-lazy"
+  );
+  return lazyGenerateRecoveryPhrase();
 }
 
 /**
  * Derive a private key from a recovery phrase following NIP-06 standard
  * Uses the derivation path m/44'/1237'/0'/0/0 as specified in NIP-06
  */
-export function privateKeyFromPhrase(phrase: string): string {
-  // Validate the mnemonic phrase
-  if (!phrase || typeof phrase !== "string") {
-    throw new Error("Invalid mnemonic phrase: must be a non-empty string");
-  }
-
-  if (!bip39.validateMnemonic(phrase)) {
-    throw new Error("Invalid mnemonic phrase: failed validation");
-  }
-
-  // Generate seed from mnemonic
-  const seed = bip39.mnemonicToSeedSync(phrase);
-
-  // Derive the private key using BIP32 and the Nostr derivation path
-  // m/44'/1237'/0'/0/0 (BIP44, coin type 1237 for Nostr, account 0)
-  const rootKey = HDKey.fromMasterSeed(seed);
-  const nostrKey = rootKey.derive("m/44'/1237'/0'/0/0"); // Standard NIP-06 derivation path
-
-  if (!nostrKey.privateKey) {
-    throw new Error("Failed to derive private key");
-  }
-
-  return Buffer.from(nostrKey.privateKey).toString("hex");
+export async function privateKeyFromPhrase(phrase: string): Promise<string> {
+  const { privateKeyFromPhrase: lazyPrivateKeyFromPhrase } = await import(
+    "./crypto-lazy"
+  );
+  return lazyPrivateKeyFromPhrase(phrase);
 }
 
 /**
@@ -139,33 +97,14 @@ export function privateKeyFromPhrase(phrase: string): string {
  * @param account - Account index (default: 0)
  * @returns Hex-encoded private key
  */
-export function privateKeyFromPhraseWithAccount(
+export async function privateKeyFromPhraseWithAccount(
   phrase: string,
   account: number = 0
-): string {
-  // Validate the mnemonic phrase
-  if (!phrase || typeof phrase !== "string") {
-    throw new Error("Invalid mnemonic phrase: must be a non-empty string");
-  }
-
-  if (!bip39.validateMnemonic(phrase)) {
-    throw new Error("Invalid mnemonic phrase: failed validation");
-  }
-
-  // Generate seed from mnemonic
-  const seed = bip39.mnemonicToSeedSync(phrase);
-
-  // Derive the private key using BIP32 and the Nostr derivation path
-  // m/44'/1237'/{account}'/0/0 (BIP44, coin type 1237 for Nostr)
-  const rootKey = HDKey.fromMasterSeed(seed);
-  const path = `m/44'/1237'/${account}'/0/0`;
-  const nostrKey = rootKey.derive(path);
-
-  if (!nostrKey.privateKey) {
-    throw new Error("Failed to derive private key");
-  }
-
-  return Buffer.from(nostrKey.privateKey).toString("hex");
+): Promise<string> {
+  const {
+    privateKeyFromPhraseWithAccount: lazyPrivateKeyFromPhraseWithAccount,
+  } = await import("./crypto-lazy");
+  return lazyPrivateKeyFromPhraseWithAccount(phrase, account);
 }
 
 /**
@@ -180,30 +119,8 @@ export async function encryptData(
     "⚠️  SECURITY WARNING: Using legacy encryptData(). Please use encryptCredentials() from lib/security.ts for Gold Standard Argon2id encryption"
   );
 
-  const iv = randomBytes(16);
-  const salt = randomBytes(32); // Increased salt length for better security
-
-  // SECURITY IMPROVEMENT: Still using PBKDF2 here for backward compatibility
-  // but with increased iterations and stronger salt
-  const key = await promisify(pbkdf2)(password, salt, 210000, 32, "sha256"); // Increased iterations
-
-  // SECURITY IMPROVEMENT: Use AES-256-GCM instead of CBC for authenticated encryption
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  let encrypted = cipher.update(data, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  const authTag = cipher.getAuthTag();
-
-  // Return iv:salt:authTag:encrypted (updated format)
-  return (
-    iv.toString("hex") +
-    ":" +
-    salt.toString("hex") +
-    ":" +
-    authTag.toString("hex") +
-    ":" +
-    encrypted
-  );
+  const { encryptData: lazyEncryptData } = await import("./crypto-legacy");
+  return lazyEncryptData(data, password);
 }
 
 /**
@@ -218,49 +135,8 @@ export async function decryptData(
     "⚠️  SECURITY WARNING: Using legacy decryptData(). Please use decryptCredentials() from lib/security.ts for Gold Standard Argon2id decryption"
   );
 
-  const parts = encryptedData.split(":");
-
-  // Support both legacy format (iv:salt:encrypted) and new format (iv:salt:authTag:encrypted)
-  let iv: Buffer, salt: Buffer, authTag: Buffer | undefined, encrypted: string;
-
-  if (parts.length === 3) {
-    // Legacy format - no auth tag
-    console.warn(
-      "⚠️  Decrypting legacy format without authentication tag - consider re-encrypting with Gold Standard method"
-    );
-    [iv, salt, encrypted] = [
-      Buffer.from(parts[0], "hex"),
-      Buffer.from(parts[1], "hex"),
-      parts[2],
-    ];
-
-    // Use legacy PBKDF2 for backward compatibility
-    const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
-    const decipher = createDecipheriv("aes-256-cbc", key, iv);
-    let decrypted = decipher.update(encrypted, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
-  } else if (parts.length === 4) {
-    // New format with auth tag
-    [iv, salt, authTag, encrypted] = [
-      Buffer.from(parts[0], "hex"),
-      Buffer.from(parts[1], "hex"),
-      Buffer.from(parts[2], "hex"),
-      parts[3],
-    ];
-
-    // Use improved PBKDF2 for newer encrypted data
-    const key = await promisify(pbkdf2)(password, salt, 210000, 32, "sha256");
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(authTag);
-    let decrypted = decipher.update(encrypted, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
-  } else {
-    throw new Error(
-      "Invalid encrypted data format - expected 3 or 4 parts separated by colons"
-    );
-  }
+  const { decryptData: lazyDecryptData } = await import("./crypto-legacy");
+  return lazyDecryptData(encryptedData, password);
 }
 
 /**
@@ -277,22 +153,8 @@ export async function deriveKey(
   iterations: number = 100000,
   keyLength: number = 32
 ): Promise<Buffer> {
-  const saltBuffer = typeof salt === "string" ? Buffer.from(salt, "hex") : salt;
-
-  return new Promise((resolve, reject) => {
-    // Use async pbkdf2 for better performance in production
-    pbkdf2(
-      password,
-      saltBuffer,
-      iterations,
-      keyLength,
-      "sha256",
-      (err: Error | null, derivedKey: Buffer) => {
-        if (err) reject(err);
-        else resolve(derivedKey);
-      }
-    );
-  });
+  const { deriveKey: lazyDeriveKey } = await import("./crypto-lazy");
+  return lazyDeriveKey(password, salt, iterations, keyLength);
 }
 
 /**
@@ -352,9 +214,12 @@ export function isBase32(str: string): boolean {
  * @param window - Time window offset (default: 0)
  * @returns 6-digit TOTP code
  */
-export function generateTOTP(secret: string, window = 0): string {
-  const counter = Math.floor(Date.now() / 30000) + window;
-  return generateHOTP(secret, counter);
+export async function generateTOTP(
+  secret: string,
+  window = 0
+): Promise<string> {
+  const { generateTOTP: lazyGenerateTOTP } = await import("./crypto-lazy");
+  return lazyGenerateTOTP(secret, window);
 }
 
 /**
@@ -364,37 +229,12 @@ export function generateTOTP(secret: string, window = 0): string {
  * @param counter - The counter value
  * @returns 6-digit HOTP code
  */
-export function generateHOTP(secret: string, counter: number): string {
-  // Convert counter to buffer
-  const counterBuffer = Buffer.alloc(8);
-  for (let i = 0; i < 8; i++) {
-    counterBuffer[7 - i] = counter & 0xff;
-    counter = counter >> 8;
-  }
-
-  // Determine if the secret is Base32-encoded
-  let secretBuffer: Buffer;
-  if (isBase32(secret)) {
-    secretBuffer = decodeBase32(secret);
-  } else {
-    secretBuffer = Buffer.from(secret, "utf-8");
-  }
-
-  // Create HMAC using SHA-1 as specified in RFC 4226
-  // Note: While SHA-1 is generally deprecated, it's still the standard for HOTP
-  const hmac = createHmac("sha1", secretBuffer).update(counterBuffer).digest();
-
-  // Generate OTP
-  const offset = hmac[hmac.length - 1] & 0xf;
-  const binary =
-    ((hmac[offset] & 0x7f) << 24) |
-    ((hmac[offset + 1] & 0xff) << 16) |
-    ((hmac[offset + 2] & 0xff) << 8) |
-    (hmac[offset + 3] & 0xff);
-
-  // Get 6 digits
-  const otp = binary % 1000000;
-  return otp.toString().padStart(6, "0");
+export async function generateHOTP(
+  secret: string,
+  counter: number
+): Promise<string> {
+  const { generateHOTP: lazyGenerateHOTP } = await import("./crypto-lazy");
+  return lazyGenerateHOTP(secret, counter);
 }
 
 /**
@@ -404,10 +244,14 @@ export function generateHOTP(secret: string, counter: number): string {
  * @param window - Time window to check before and after current time (default: 1)
  * @returns Boolean indicating if the token is valid
  */
-export function verifyTOTP(token: string, secret: string, window = 1): boolean {
+export async function verifyTOTP(
+  token: string,
+  secret: string,
+  window = 1
+): Promise<boolean> {
   // Check current window and surrounding windows
   for (let i = -window; i <= window; i++) {
-    const generatedToken = generateTOTP(secret, i);
+    const generatedToken = await generateTOTP(secret, i);
     if (generatedToken === token) {
       return true;
     }
@@ -455,8 +299,9 @@ export function encodeBase32(buffer: Buffer): string {
  * @param length - Length of the secret in bytes (default: 20, recommended by RFC 6238)
  * @returns Base32-encoded secret string
  */
-export function generateTOTPSecret(length: number = 20): string {
-  const buffer = randomBytes(length);
+export async function generateTOTPSecret(length: number = 20): Promise<string> {
+  const randomHex = await generateRandomHex(length * 2);
+  const buffer = Buffer.from(randomHex, "hex");
   return encodeBase32(buffer);
 }
 
@@ -466,7 +311,7 @@ export function generateTOTPSecret(length: number = 20): string {
  * @param privateKey - The private key to sign with
  * @returns The signed Nostr event
  */
-export function signNostrEvent(
+export async function signNostrEvent(
   event: {
     kind: number;
     pubkey: string;
@@ -475,7 +320,7 @@ export function signNostrEvent(
     content: string;
   },
   privateKey: string
-): {
+): Promise<{
   id: string;
   kind: number;
   pubkey: string;
@@ -483,10 +328,10 @@ export function signNostrEvent(
   tags: string[][];
   content: string;
   sig: string;
-} {
-  // Use finalizeEvent to create a properly signed event
+}> {
+  const nostrTools = await import("nostr-tools");
   const privateKeyBytes = Buffer.from(privateKey, "hex");
-  const signedEvent = finalizeEvent(event, privateKeyBytes) as {
+  const signedEvent = nostrTools.finalizeEvent(event, privateKeyBytes) as {
     id: string;
     kind: number;
     pubkey: string;
@@ -507,12 +352,12 @@ export function signNostrEvent(
  * @param privateKey - The private key to sign with
  * @returns A signed Nostr event
  */
-export function createNostrEvent(
+export async function createNostrEvent(
   kind: number,
   content: string,
   tags: string[][] = [],
   privateKey: string
-): {
+): Promise<{
   id: string;
   kind: number;
   pubkey: string;
@@ -520,8 +365,9 @@ export function createNostrEvent(
   tags: string[][];
   content: string;
   sig: string;
-} {
-  const publicKey = getPublicKey(Buffer.from(privateKey, "hex"));
+}> {
+  const nostrTools = await import("nostr-tools");
+  const publicKey = nostrTools.getPublicKey(Buffer.from(privateKey, "hex"));
 
   const event = {
     kind,

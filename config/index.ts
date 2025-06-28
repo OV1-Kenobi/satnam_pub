@@ -134,7 +134,7 @@ export const dbConfig = {
           parsed.hostname.includes("supabase.co") ||
           process.env.DATABASE_SSL === "true",
       };
-    } catch (error) {
+    } catch {
       console.warn("Failed to parse DATABASE_URL, using localhost defaults");
       return {
         host: "localhost",

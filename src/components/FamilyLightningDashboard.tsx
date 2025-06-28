@@ -1,18 +1,19 @@
 import {
-  AlertTriangle,
-  RefreshCw,
+    AlertTriangle,
+    RefreshCw,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { copyToClipboard } from "../lib/utils";
+import { SatnamFamilyMember } from "../types/shared";
 import {
-  FamilyMembersSection,
-  InvoiceModal,
-  NodeStatusSection,
-  PaymentModal,
-  QRCodeModal,
-  TransactionHistorySection,
+    FamilyMembersSection,
+    InvoiceModal,
+    NodeStatusSection,
+    PaymentModal,
+    QRCodeModal,
+    TransactionHistorySection,
 } from "./FamilyLightningDashboard";
-import { NodeStatus, SatnamFamilyMember, Transaction } from "./types/shared";
+import { NodeStatus, Transaction } from "./FamilyLightningDashboard/types";
 
 interface FamilyLightningDashboardProps {
   familyId: string;

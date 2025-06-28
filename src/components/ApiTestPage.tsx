@@ -2,8 +2,16 @@ import { useState } from 'react';
 import { FamilyApiService } from '../services/familyApi';
 import { IndividualApiService } from '../services/individualApi';
 
+interface ApiTestResult {
+  name: string;
+  success: boolean;
+  duration: number;
+  result?: unknown;
+  error?: string;
+}
+
 export default function ApiTestPage() {
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<ApiTestResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const runApiTests = async () => {

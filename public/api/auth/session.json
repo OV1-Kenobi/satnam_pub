@@ -1,0 +1,12 @@
+{
+  "success": false,
+  "error": "Not authenticated - using static fallback",
+  "data": {
+    "authenticated": false
+  },
+  "meta": {
+    "timestamp": "2024-01-01T00:00:00.000Z",
+    "fallback": true,
+    "message": "This is a static fallback response. Dynamic API may not be configured properly."
+  }
+}

@@ -1,7 +1,7 @@
 import { Copy, Download, XCircle } from "lucide-react";
 import QRCode from "qrcode";
 import React, { useEffect, useRef, useState } from "react";
-import { SatnamFamilyMember } from "../types/shared";
+import { SatnamFamilyMember } from "../../types/shared";
 
 interface QRCodeModalProps {
   isOpen: boolean;

@@ -3,8 +3,8 @@
 // Supports both modal and redirect authentication approaches
 
 import React, { useEffect, useState } from 'react';
+import { useFamilyFederationAuth } from '../hooks/useFamilyFederationAuth';
 import { FamilyFederationUser } from '../types/auth';
-import { useAuth } from './auth/FamilyFederationAuth';
 import SignInModal from './SignInModal';
 
 interface ProtectedRouteProps {
@@ -24,7 +24,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   fallback,
   onAuthSuccess
 }) => {
-  const { isAuthenticated, userAuth, isLoading } = useAuth();
+  const { isAuthenticated, userAuth, isLoading } = useFamilyFederationAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
 

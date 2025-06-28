@@ -133,22 +133,19 @@ export class PhoenixdClient {
   private familyBalances: Map<string, FamilyMemberBalance> = new Map();
 
   constructor() {
-    // Environment variable helper for both Vite and Node.js
+    // Environment variable helper for browser
     const getEnvVar = (key: string): string => {
-      if (typeof import.meta !== "undefined" && import.meta.env) {
-        return import.meta.env[key] || "";
-      }
-      return process.env[key] || "";
+      return import.meta.env[key] || "";
     };
 
     this.config = {
-      host: getEnvVar("PHOENIXD_HOST") || "http://127.0.0.1:9740",
-      apiToken: getEnvVar("PHOENIXD_API_TOKEN") || "",
-      username: getEnvVar("PHOENIXD_USERNAME") || "phoenix",
+      host: getEnvVar("VITE_PHOENIXD_HOST") || "http://127.0.0.1:9740",
+      apiToken: getEnvVar("VITE_PHOENIXD_API_TOKEN") || "",
+      username: getEnvVar("VITE_PHOENIXD_USERNAME") || "phoenix",
       minChannelSize: parseInt(
-        getEnvVar("PHOENIXD_MIN_CHANNEL_SIZE") || "50000"
+        getEnvVar("VITE_PHOENIXD_MIN_CHANNEL_SIZE") || "50000"
       ),
-      familyEnabled: getEnvVar("FAMILY_PHOENIXD_ENABLED") === "true",
+      familyEnabled: getEnvVar("VITE_FAMILY_PHOENIXD_ENABLED") === "true",
     };
 
     // Initialize HTTP client with authentication

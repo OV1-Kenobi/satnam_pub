@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3002, // Frontend runs on 3002
+    host: true, // Allow external connections
+    // Configure dev server to serve static files from public directory
+    // This handles the serverless/static file approach
+    middlewareMode: false,
   },
   build: {
     outDir: "dist",
@@ -33,118 +37,24 @@ export default defineConfig({
     cssMinify: true,
     rollupOptions: {
       output: {
-        // Manual chunking strategy for better code splitting
-        manualChunks: (id) => {
+        // Simplified manual chunking to avoid empty chunks
+        manualChunks: {
           // React and core dependencies
-          if (
-            id.includes("node_modules") &&
-            (id.includes("react") || id.includes("react-dom"))
-          ) {
-            return "react-vendor";
-          }
+          "react-vendor": ["react", "react-dom"],
 
-          // Crypto dependencies - separate heavy crypto libraries
-          if (
-            id.includes("nostr-tools") ||
-            id.includes("@noble/ed25519") ||
-            id.includes("@noble/secp256k1")
-          ) {
-            return "crypto-nostr";
-          }
-
-          // Noble hashes separately (used by multiple crypto modules)
-          if (id.includes("@noble/hashes")) {
-            return "crypto-hashes";
-          }
-
-          // BIP39 and HD wallet dependencies
-          if (id.includes("bip39") || id.includes("@scure/bip32")) {
-            return "crypto-bip";
-          }
-
-          // Password hashing utilities
-          if (id.includes("bcryptjs") || id.includes("argon2")) {
-            return "crypto-password";
-          }
-
-          // General crypto utilities
-          if (id.includes("crypto-js")) {
-            return "crypto-utils";
-          }
-
-          // Lightning and Bitcoin utilities
-          if (id.includes("bolt11") || id.includes("bech32")) {
-            return "lightning-vendor";
-          }
-
-          // Supabase and database
-          if (id.includes("@supabase/supabase-js")) {
-            return "database-vendor";
-          }
-
-          // Nostr ecosystem
-          if (id.includes("@nostr-dev-kit/ndk")) {
-            return "nostr-vendor";
-          }
-
-          // QR code generation
-          if (id.includes("qrcode")) {
-            return "qr-vendor";
-          }
-
-          // HTTP client
-          if (id.includes("axios")) {
-            return "http-vendor";
-          }
-
-          // Validation and utilities
-          if (id.includes("zod") || id.includes("uuid")) {
-            return "utils-vendor";
-          }
-
-          // Secret sharing and advanced crypto
-          if (id.includes("shamirs-secret-sharing") || id.includes("z32")) {
-            return "advanced-crypto";
-          }
-
-          // Node.js polyfills - handle crypto-browserify specially
-          if (id.includes("crypto-browserify")) {
-            return "crypto-polyfill";
-          }
-
-          if (
-            id.includes("stream-browserify") ||
-            id.includes("util") ||
-            id.includes("buffer") ||
-            id.includes("process")
-          ) {
-            return "node-polyfills";
-          }
-
-          // Large third-party crypto math libraries
-          if (
-            id.includes("node_modules") &&
-            (id.includes("elliptic") ||
-              id.includes("bn.js") ||
-              id.includes("miller-rabin") ||
-              id.includes("brorand"))
-          ) {
-            return "crypto-math";
-          }
-
-          // Our crypto modules
-          if (id.includes("/utils/crypto-") && !id.includes("node_modules")) {
-            return "app-crypto";
-          }
-
-          // Other large node_modules
-          if (id.includes("node_modules")) {
-            return "vendor";
-          }
+          // Crypto dependencies
+          "crypto-vendor": [
+            "nostr-tools",
+            "@noble/secp256k1",
+            "@scure/bip32",
+            "@scure/bip39",
+            "crypto-js",
+          ],
         },
 
         // Optimize chunk naming for better caching
         chunkFileNames: (chunkInfo) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const _facadeModuleId = chunkInfo.facadeModuleId
             ? chunkInfo.facadeModuleId
                 .split("/")
@@ -187,14 +97,6 @@ export default defineConfig({
     // Define Node.js globals for browser compatibility
     global: "globalThis",
   },
-  resolve: {
-    alias: {
-      // Provide browser-compatible alternatives for Node.js modules
-      crypto: "crypto-browserify",
-      stream: "stream-browserify",
-      util: "util",
-    },
-  },
 
   // Optimize dependencies
   optimizeDeps: {
@@ -203,26 +105,21 @@ export default defineConfig({
       "react",
       "react-dom",
       "lucide-react",
-      "@radix-ui/react-slot",
-      "class-variance-authority",
       "clsx",
-      "tailwind-merge",
-      "axios",
-      "uuid",
-      "zod",
+      "crypto-js",
     ],
     exclude: [
       // Exclude crypto modules from pre-bundling to maintain lazy loading
       "nostr-tools",
-      "bip39",
       "@scure/bip32",
-      "@noble/ed25519",
-      "@noble/hashes",
+      "@scure/bip39",
       "@noble/secp256k1",
-      "crypto-js",
-      "bcryptjs",
-      "argon2",
-      "shamirs-secret-sharing",
     ],
+    esbuildOptions: {
+      // Node.js global to browser globalThis
+      define: {
+        global: "globalThis",
+      },
+    },
   },
 });

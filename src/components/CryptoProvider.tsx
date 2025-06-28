@@ -3,11 +3,9 @@
 
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import {
-  areCryptoModulesLoaded,
-  configureCryptoStrategy,
-  preloadCryptoModules,
-  type CryptoLoadingState,
-  type CryptoLoadingStrategy
+    configureCryptoStrategy,
+    type CryptoLoadingState,
+    type CryptoLoadingStrategy
 } from '../utils/crypto-factory';
 
 interface CryptoContextValue extends CryptoLoadingState {
@@ -59,7 +57,7 @@ export function CryptoProvider({
 }: CryptoProviderProps) {
   const [state, setState] = useState<CryptoLoadingState>(() => ({
     isLoading: false,
-    isLoaded: areCryptoModulesLoaded(),
+    isLoaded: true, // Always loaded in browser-only version
     error: null
   }));
 
@@ -73,27 +71,8 @@ export function CryptoProvider({
   }, [strategy]);
 
   const loadCrypto = async () => {
-    if (isLoadingRef || state.isLoaded) return;
-
-    setIsLoadingRef(true);
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      await preloadCryptoModules();
-      setState({
-        isLoading: false,
-        isLoaded: true,
-        error: null
-      });
-    } catch (error) {
-      setState({
-        isLoading: false,
-        isLoaded: false,
-        error: error instanceof Error ? error : new Error(String(error))
-      });
-    } finally {
-      setIsLoadingRef(false);
-    }
+    // No-op for browser-only version - crypto is always loaded
+    return Promise.resolve();
   };
 
   const retry = async () => {

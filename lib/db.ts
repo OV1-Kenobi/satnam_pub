@@ -12,7 +12,7 @@ import { supabase } from "./supabase";
 const pool = new Pool({
   host: config.database.host,
   port: config.database.port,
-  database: config.database.database,
+  database: config.database.name,
   user: config.database.user,
   password: config.database.password,
   max: 20, // Maximum number of clients in the pool
@@ -40,7 +40,7 @@ async function testDatabaseConnection() {
         config.supabase.anonKey ? "SET" : "NOT SET"
       );
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("profiles")
         .select("count", { count: "exact", head: true });
 

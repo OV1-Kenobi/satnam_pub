@@ -1,6 +1,6 @@
 import { Download, Shield, XCircle } from "lucide-react";
 import React from "react";
-import { SatnamFamilyMember } from "../types/shared";
+import { SatnamFamilyMember } from "../../types/shared";
 
 interface InvoiceModalProps {
   isOpen: boolean;

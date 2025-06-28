@@ -1,182 +1,68 @@
 // lib/supabase.ts
-// Load environment variables first
-import * as dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
-
 import { createClient } from "@supabase/supabase-js";
-import { validateCredentials } from "./security";
 
-// Security: Load credentials from environment variables only
-const supabaseUrl =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+// Production Supabase configuration
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Comprehensive credential validation
-const credentialValidation = validateCredentials();
-if (!credentialValidation.isValid) {
-  // In development, allow running without Supabase for frontend testing
-  if (process.env.NODE_ENV === "development") {
-    console.warn(
-      `⚠️  DEVELOPMENT MODE: Missing Supabase credentials: ${credentialValidation.missing.join(", ")}. ` +
-        "Some features may not work. Add real credentials to .env.local for full functionality."
-    );
-  } else {
-    throw new Error(
-      `CRITICAL SECURITY ERROR: Missing Supabase credentials: ${credentialValidation.missing.join(", ")}. ` +
-        "Ensure your .env.local file contains the required environment variables."
-    );
-  }
-}
-
-// Issue warnings for potential configuration problems
-if (credentialValidation.warnings.length > 0) {
-  console.error("🚨 CREDENTIAL WARNINGS:", credentialValidation.warnings);
+// Production validation - strict requirements
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error(
+    "CRITICAL: Supabase configuration missing. Check environment variables."
+  );
 }
 
 // Validate URL format and security
-if (!supabaseUrl || !supabaseKey) {
-  if (process.env.NODE_ENV === "development") {
-    console.warn(
-      "⚠️  DEVELOPMENT MODE: Supabase credentials not loaded, using mock client"
-    );
-  } else {
-    throw new Error("CRITICAL: Supabase credentials not loaded properly");
+try {
+  const url = new URL(supabaseUrl);
+  if (url.protocol !== "https:") {
+    throw new Error(`SECURITY: Supabase URL must use HTTPS: ${supabaseUrl}`);
   }
+} catch (error) {
+  throw new Error(`CRITICAL: Invalid Supabase URL format: ${supabaseUrl}`);
 }
 
-// Only validate URL if we have credentials
-if (supabaseUrl && supabaseKey) {
-  try {
-    const url = new URL(supabaseUrl);
-    if (
-      !url.hostname.includes("supabase.co") &&
-      !url.hostname.includes("localhost")
-    ) {
-      console.warn(`⚠️  Non-standard Supabase URL detected: ${url.hostname}`);
-    }
-    if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
-      throw new Error(
-        `SECURITY: Supabase URL must use HTTPS in production: ${supabaseUrl}`
-      );
-    }
-  } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn(
-        `⚠️  DEVELOPMENT MODE: Invalid Supabase URL: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    } else {
-      throw new Error(
-        `CRITICAL: Invalid Supabase URL format: ${supabaseUrl}. ` +
-          "Expected format: https://your-project-id.supabase.co"
-      );
-    }
-  }
+// Validate key format (basic check for JWT structure)
+if (!supabaseKey.startsWith("eyJ")) {
+  throw new Error(
+    "CRITICAL: Supabase anon key appears to be invalid (not a JWT token)"
+  );
 }
 
-// Validate key format (basic check for JWT structure) - only if we have a key
-if (supabaseKey && !supabaseKey.startsWith("eyJ")) {
-  if (process.env.NODE_ENV === "development") {
-    console.warn(
-      "⚠️  DEVELOPMENT MODE: Supabase anon key appears to be invalid (not a JWT token)"
-    );
-  } else {
-    throw new Error(
-      "CRITICAL: Supabase anon key appears to be invalid (not a JWT token)"
-    );
-  }
-}
-
-// Create secure Supabase client with enhanced configuration (or mock client in development)
-export const supabase =
-  supabaseUrl && supabaseKey
-    ? createClient(supabaseUrl, supabaseKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-          flowType: "pkce", // Enhanced security with PKCE
-          lock: async <R>(
-            name: string,
-            acquireTimeout: number,
-            fn: () => Promise<R>
-          ) => await fn(), // Prevent concurrent session operations
-          storageKey: "citadel-auth", // Custom storage key
-        },
-        global: {
-          headers: {
-            "x-client-info": "citadel-identity-forge@1.0.0",
-            "x-security-level": "enhanced",
-          },
-        },
-        db: {
-          schema: "public",
-        },
-        realtime: {
-          params: {
-            eventsPerSecond: 10, // Rate limiting
-          },
-          heartbeatIntervalMs: 30000, // Connection health monitoring
-          reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000), // Exponential backoff
-        },
-      })
-    : // Mock client for development when credentials are missing
-      ({
-        from: () => ({
-          select: () => ({
-            eq: () => ({
-              single: () =>
-                Promise.resolve({
-                  data: null,
-                  error: new Error(
-                    "Mock Supabase client - no real credentials"
-                  ),
-                }),
-            }),
-          }),
-          insert: () =>
-            Promise.resolve({
-              data: null,
-              error: new Error("Mock Supabase client - no real credentials"),
-            }),
-          update: () => ({
-            eq: () =>
-              Promise.resolve({
-                data: null,
-                error: new Error("Mock Supabase client - no real credentials"),
-              }),
-          }),
-          delete: () => ({
-            eq: () =>
-              Promise.resolve({
-                data: null,
-                error: new Error("Mock Supabase client - no real credentials"),
-              }),
-          }),
-        }),
-        auth: {
-          getSession: () =>
-            Promise.resolve({ data: { session: null }, error: null }),
-          signOut: () => Promise.resolve({ error: null }),
-        },
-        storage: {
-          from: () => ({
-            upload: () =>
-              Promise.resolve({
-                data: null,
-                error: new Error("Mock Supabase client - no real credentials"),
-              }),
-            download: () =>
-              Promise.resolve({
-                data: null,
-                error: new Error("Mock Supabase client - no real credentials"),
-              }),
-          }),
-        },
-      } as any);
+// Create production Supabase client with enhanced security configuration
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: "pkce", // Enhanced security with PKCE
+    lock: async <R>(
+      name: string,
+      acquireTimeout: number,
+      fn: () => Promise<R>
+    ) => await fn(), // Prevent concurrent session operations
+    storageKey: "citadel-auth", // Custom storage key
+  },
+  global: {
+    headers: {
+      "x-client-info": "citadel-identity-forge@1.0.0",
+      "x-security-level": "enhanced",
+    },
+  },
+  db: {
+    schema: "public",
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10, // Rate limiting
+    },
+    heartbeatIntervalMs: 30000, // Connection health monitoring
+    reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000), // Exponential backoff
+  },
+});
 
 // Connection health monitoring
-let connectionHealthCheck: NodeJS.Timeout | null = null;
+let connectionHealthCheck: number | null = null;
 
 export function startConnectionMonitoring() {
   if (connectionHealthCheck) return; // Already monitoring

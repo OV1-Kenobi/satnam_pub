@@ -35,30 +35,10 @@ interface PaymentResponse {
   };
 }
 
-/**
- * Handle CORS for the API endpoint
- */
-function setCorsHeaders(req: any, res: any) {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : [
-          "http://localhost:3000",
-          "http://localhost:5173",
-          "http://localhost:3002",
-        ];
+import { ApiRequest, ApiResponse } from "../../types/api";
+import { setCorsHeaders } from "../../utils/cors";
 
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+// Note: CORS handling is now managed by the shared utility
 
 /**
  * Mock family member validation
@@ -79,9 +59,9 @@ async function isFamilyMember(memberId: string): Promise<boolean> {
  * Lightning Payments API Endpoint
  * POST /api/payments/send - Send a Lightning payment
  */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  // Set CORS headers with appropriate methods for this endpoint
+  setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {

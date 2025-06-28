@@ -3,10 +3,11 @@ import {
   BookOpen,
   ExternalLink,
   Menu,
+  MessageSquare,
   Network,
   Users,
   X,
-  Zap,
+  Zap
 } from "lucide-react";
 import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
@@ -17,13 +18,13 @@ import FamilyWalletDemo from "./components/FamilyWalletDemo";
 import IdentityForge from "./components/IdentityForge";
 import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import NostrEcosystem from "./components/NostrEcosystem";
+import { PrivateCommunicationModal } from "./components/PrivateCommunicationModal";
 import SignInModal from "./components/SignInModal";
 import useAuth from "./hooks/useAuth";
 
 function App() {
   const [currentView, setCurrentView] = useState<
     | "landing"
-    | "forge"
     | "dashboard"
     | "financials"
     | "individual-wallet"
@@ -37,6 +38,9 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [signinDestination, setSigninDestination] = useState<'individual' | 'family' | null>(null);
+  const [forgeModalOpen, setForgeModalOpen] = useState(false);
+  const [privateCommunicationModalOpen, setPrivateCommunicationModalOpen] = useState(false);
+  const [communicationType, setCommunicationType] = useState<'family' | 'individual'>('individual');
   
   // Authentication state
   const auth = useAuth();
@@ -57,14 +61,7 @@ function App() {
     }
   };
 
-  if (currentView === "forge") {
-    return (
-      <IdentityForge
-        onComplete={() => setCurrentView("nostr-ecosystem")}
-        onBack={() => setCurrentView("landing")}
-      />
-    );
-  }
+  // Removed separate forge view - now handled as modal overlay
 
   if (currentView === "dashboard") {
     return <FamilyFinancialsDashboard onBack={() => setCurrentView("landing")} />;
@@ -292,7 +289,7 @@ function App() {
             <div className="hidden lg:flex items-center space-x-4 xl:space-x-6 flex-1 justify-end">
               {/* Primary CTA */}
               <button
-                onClick={() => setCurrentView("forge")}
+                onClick={() => setForgeModalOpen(true)}
                 className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
               >
                 <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
@@ -315,7 +312,16 @@ function App() {
                 <span>Individual Finances</span>
               </button>
 
-
+              <button
+                onClick={() => {
+                  setCommunicationType('individual');
+                  setPrivateCommunicationModalOpen(true);
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span>Private Communications</span>
+              </button>
 
               <button
                 onClick={() => setCurrentView("nostr-ecosystem")}
@@ -385,7 +391,7 @@ function App() {
 
                 <button
                   onClick={() => {
-                    setCurrentView("forge");
+                    setForgeModalOpen(true);
                     setMobileMenuOpen(false);
                   }}
                   className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
@@ -396,6 +402,18 @@ function App() {
                     className="h-4 w-4"
                   />
                   <span>Forge Identity</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setCommunicationType('individual');
+                    setPrivateCommunicationModalOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Private Communications</span>
                 </button>
 
                 {navigationItems.map((item, index) => (
@@ -441,7 +459,7 @@ function App() {
               <span>Nostrich Sign-in</span>
             </button>
             <button
-              onClick={() => setCurrentView("forge")}
+              onClick={() => setForgeModalOpen(true)}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
             >
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
@@ -517,7 +535,7 @@ function App() {
           {/* Decentralized Interoperable Identities Card */}
           <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
-            onClick={() => setCurrentView("forge")}
+            onClick={() => setForgeModalOpen(true)}
           >
             <div className="w-16 h-16 mx-auto mb-6 relative">
               <img
@@ -680,7 +698,7 @@ function App() {
               <h3 className="text-white font-bold mb-4">Features</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => setCurrentView("forge")}
+                  onClick={() => setForgeModalOpen(true)}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Identity Forge
@@ -821,9 +839,32 @@ function App() {
         onCreateNew={() => {
           setSignInModalOpen(false);
           setSigninDestination(null);
-          setCurrentView("forge");
+          setForgeModalOpen(true);
         }}
         destination={signinDestination}
+      />
+
+      {/* Identity Forge Modal */}
+      {forgeModalOpen && (
+        <IdentityForge
+          onComplete={() => {
+            setForgeModalOpen(false);
+            setCurrentView("nostr-ecosystem");
+          }}
+          onBack={() => setForgeModalOpen(false)}
+        />
+      )}
+
+      {/* Private Communication Modal */}
+      <PrivateCommunicationModal
+        isOpen={privateCommunicationModalOpen}
+        onClose={() => setPrivateCommunicationModalOpen(false)}
+        communicationType={communicationType}
+        userProfile={{
+          username: auth.user?.username || 'user',
+          npub: auth.user?.npub || '',
+          familyRole: 'parent' // This should come from actual user profile
+        }}
       />
     </div>
   );

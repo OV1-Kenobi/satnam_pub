@@ -25,7 +25,7 @@ function sanitizeNpubForLogging(npub: string): string {
 function sanitizeRelayForLogging(relayUrl: string): string {
   try {
     return new URL(relayUrl).hostname;
-  } catch (_error) {
+  } catch {
     // If URL parsing fails, return a generic placeholder
     return "invalid-url";
   }
@@ -223,7 +223,7 @@ export async function nwcSignIn(req: Request, res: Response): Promise<void> {
     }
 
     // Generate session token
-    const sessionToken = generateSecureToken(64);
+    const sessionToken = await generateSecureToken(64);
 
     // Create authentication session
     const { error: sessionError } = await supabase.rpc("create_auth_session", {

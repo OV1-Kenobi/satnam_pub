@@ -1,32 +1,10 @@
-/**
- * Handle CORS for the API endpoint
- */
-function setCorsHeaders(req: any, res: any) {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : [
-          "http://localhost:3000",
-          "http://localhost:5173",
-          "http://localhost:3002",
-        ];
-
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+import { ApiRequest, ApiResponse } from "../../types/api";
+import { setCorsHeadersForCustomAPI } from "../../utils/cors";
 
 /**
  * Extract session token from request
  */
-function extractSessionToken(req: any): string | null {
+function extractSessionToken(req: ApiRequest): string | null {
   // Try Authorization header first
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -68,9 +46,9 @@ function validateSession(sessionToken: string): any {
  * GET /api/auth/session - Get current session
  * DELETE /api/auth/session - Logout (delete session)
  */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  // Set CORS headers with appropriate methods for this endpoint
+  setCorsHeadersForCustomAPI(req, res, { methods: "GET, DELETE, OPTIONS" });
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {

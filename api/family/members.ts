@@ -168,30 +168,10 @@ const mockFamilyMembers: FamilyMember[] = [
   },
 ];
 
-/**
- * Handle CORS for the API endpoint
- */
-function setCorsHeaders(req: any, res: any) {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : [
-          "http://localhost:3000",
-          "http://localhost:5173",
-          "http://localhost:3002",
-        ];
+import { ApiRequest, ApiResponse } from "../../types/api";
+import { setCorsHeaders } from "../../utils/cors";
 
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+// Note: CORS handling is now managed by the shared utility
 
 /**
  * Family Members API Endpoint
@@ -200,9 +180,12 @@ function setCorsHeaders(req: any, res: any) {
  * PUT /api/family/members - Update a family member (requires id in query)
  * DELETE /api/family/members - Delete a family member (requires id in query)
  */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  // Set CORS headers with appropriate methods for this endpoint
+  setCorsHeaders(req, res, { methods: "GET, POST, PUT, DELETE, OPTIONS" });
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {
@@ -250,7 +233,7 @@ export default async function handler(req: any, res: any) {
 /**
  * Handle GET requests - Retrieve family members
  */
-async function handleGetMembers(req: any, res: any) {
+async function handleGetMembers(req: ApiRequest, res: ApiResponse) {
   const { familyId, role, verified } = req.query;
 
   let members = [...mockFamilyMembers];
@@ -289,7 +272,7 @@ async function handleGetMembers(req: any, res: any) {
 /**
  * Handle POST requests - Create a new family member
  */
-async function handleCreateMember(req: any, res: any) {
+async function handleCreateMember(req: ApiRequest, res: ApiResponse) {
   const { username, role, spendingLimits } = req.body;
 
   // Validate required fields
@@ -365,7 +348,7 @@ async function handleCreateMember(req: any, res: any) {
 /**
  * Handle PUT requests - Update a family member
  */
-async function handleUpdateMember(req: any, res: any) {
+async function handleUpdateMember(req: ApiRequest, res: ApiResponse) {
   const { id } = req.query;
   const updates = req.body;
 
@@ -420,7 +403,7 @@ async function handleUpdateMember(req: any, res: any) {
 /**
  * Handle DELETE requests - Delete a family member
  */
-async function handleDeleteMember(req: any, res: any) {
+async function handleDeleteMember(req: ApiRequest, res: ApiResponse) {
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {

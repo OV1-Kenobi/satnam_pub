@@ -1,13 +1,13 @@
 import { AlertTriangle, Shield } from "lucide-react";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext } from "react";
+import { usePrivacyFirstAuth } from "../../hooks/usePrivacyFirstAuth";
 import { AuthContextType, FamilyFederationUser } from "../../types/auth";
-import { getSessionInfo, secureLogout } from "../../utils/secureSession";
 
 // Create authentication context
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
-// Custom hook to use auth context
-export const useAuth = () => {
+// Internal hook for components in this file
+const useAuthContext = () => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error("useAuth must be used within FamilyFederationAuthProvider");
@@ -22,92 +22,30 @@ interface FamilyFederationAuthProviderProps {
 export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> = ({ 
   children 
 }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [userAuth, setUserAuth] = useState<FamilyFederationUser | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const privacyAuth = usePrivacyFirstAuth();
+  
+  // Convert privacy-first auth to legacy format for backward compatibility
+  const isAuthenticated = privacyAuth.authenticated;
+  const isLoading = privacyAuth.loading;
+  const error = privacyAuth.error;
+  const userAuth = privacyAuth.getLegacyUser(); // Converts to FamilyFederationUser format
 
-  // Check for existing session on mount
-  useEffect(() => {
-    checkExistingSession();
-  }, []);
-
-  const checkExistingSession = async () => {
-    try {
-      console.log('FamilyFederationAuth: Checking existing session');
-      
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session check timeout')), 5000)
-      );
-      
-      // Use secure session info from HttpOnly cookies with timeout
-      const sessionInfo = await Promise.race([
-        getSessionInfo(),
-        timeoutPromise
-      ]) as any;
-      
-      if (!sessionInfo.isAuthenticated || !sessionInfo.user) {
-        console.log('FamilyFederationAuth: No existing session found');
-        setIsLoading(false);
-        return;
-      }
-
-      // Convert session info to FamilyFederationUser format
-      const userAuth: FamilyFederationUser = {
-        npub: sessionInfo.user.npub,
-        nip05: sessionInfo.user.nip05,
-        federationRole: sessionInfo.user.federationRole,
-        authMethod: sessionInfo.user.authMethod,
-        isWhitelisted: sessionInfo.user.isWhitelisted,
-        votingPower: sessionInfo.user.votingPower,
-        guardianApproved: sessionInfo.user.guardianApproved,
-        sessionToken: '', // Not needed with HttpOnly cookies
-      };
-
-      console.log('FamilyFederationAuth: Existing session found, user authenticated');
-      setUserAuth(userAuth);
-      setIsAuthenticated(true);
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Session check error:", error);
-      // Don't block the UI if session check fails - just assume not authenticated
-      console.log('FamilyFederationAuth: Session check failed, proceeding as unauthenticated');
-      setIsLoading(false);
-    }
-  };
+  // Session management is now handled by privacy-first auth
+  console.log('FamilyFederationAuth: Using privacy-first authentication system');
+  console.log('Authentication state:', { isAuthenticated, isLoading, hasUser: !!userAuth });
 
   const login = (authData: FamilyFederationUser) => {
-    // With HttpOnly cookies, the session is managed server-side
-    // We just need to update the client state
-    setUserAuth(authData);
-    setIsAuthenticated(true);
-    setError(null);
-    // No need to store tokens in localStorage - they're in HttpOnly cookies
+    // Legacy compatibility - now handled by privacy-first auth
+    console.log('Legacy login called, redirecting to privacy-first auth:', authData);
   };
 
   const logout = async () => {
-    try {
-      // Use secure logout that clears HttpOnly cookies
-      await secureLogout();
-    } catch (error) {
-      console.error("Logout error:", error);
-    } finally {
-      // Clear client state
-      setUserAuth(null);
-      setIsAuthenticated(false);
-      setError(null);
-    }
+    await privacyAuth.logout();
   };
 
   const checkSession = async (): Promise<boolean> => {
-    try {
-      const sessionInfo = await getSessionInfo();
-      return sessionInfo.isAuthenticated;
-    } catch (error) {
-      console.error("Session check error:", error);
-      return false;
-    }
+    await privacyAuth.refreshSession();
+    return privacyAuth.authenticated;
   };
 
   const contextValue: AuthContextType = {
@@ -146,7 +84,7 @@ export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperPr
   allowedRoles = ['parent', 'child', 'guardian'],
   fallback,
 }) => {
-  const { isAuthenticated, userAuth, isLoading } = useAuth();
+  const { isAuthenticated, userAuth, isLoading } = useAuthContext();
 
   if (isLoading) {
     return (
@@ -214,7 +152,7 @@ interface AccessDeniedProps {
 }
 
 const AccessDenied: React.FC<AccessDeniedProps> = ({ userRole, allowedRoles }) => {
-  const { logout } = useAuth();
+  const { logout } = useAuthContext();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
@@ -246,6 +184,15 @@ const AccessDenied: React.FC<AccessDeniedProps> = ({ userRole, allowedRoles }) =
       </div>
     </div>
   );
+};
+
+// Export useAuth hook for external components (required for Fast Refresh)
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within FamilyFederationAuthProvider");
+  }
+  return context;
 };
 
 export default FamilyFederationAuthWrapper;

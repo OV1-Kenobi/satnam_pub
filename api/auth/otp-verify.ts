@@ -1,49 +1,15 @@
-import crypto from "crypto";
 import { z } from "zod";
+import { supabase } from "../../lib/supabase";
+import { ApiRequest, ApiResponse } from "../../types/api";
+import { generateSessionToken } from "../../utils/auth-crypto";
+import { setCorsHeadersForCustomAPI } from "../../utils/cors";
+import { OTPStorageService, OTP_CONFIG } from "../../utils/otp-storage";
 
-// In-memory OTP storage (should match the one in otp-initiate.ts)
-const otpStorage = new Map<
-  string,
-  {
-    otp: string;
-    npub: string;
-    nip05?: string;
-    createdAt: number;
-    attempts: number;
-  }
->();
-
-// OTP expiry time (5 minutes)
-const OTP_EXPIRY_MS = 5 * 60 * 1000;
-const MAX_OTP_ATTEMPTS = 3;
+// OTP configuration
+const MAX_OTP_ATTEMPTS = OTP_CONFIG.MAX_ATTEMPTS;
 
 // Progressive delay for failed attempts (in milliseconds)
 const PROGRESSIVE_DELAYS = [0, 1000, 2000, 5000, 10000]; // 0s, 1s, 2s, 5s, 10s
-
-/**
- * Handle CORS for the API endpoint
- */
-function setCorsHeaders(req: any, res: any) {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : [
-          "http://localhost:3000",
-          "http://localhost:5173",
-          "http://localhost:3002",
-        ];
-
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
 
 /**
  * Apply progressive delay based on failed attempts
@@ -61,19 +27,80 @@ async function applyProgressiveDelay(attempts: number): Promise<void> {
 }
 
 /**
- * Generate a secure session token
+ * Extract client information for security logging
  */
-function generateSessionToken(): string {
-  return crypto.randomBytes(32).toString("hex");
+function extractClientInfo(req: ApiRequest): {
+  userAgent?: string;
+  ipAddress?: string;
+} {
+  return {
+    userAgent: req.headers["user-agent"] as string,
+    ipAddress:
+      (req.headers["x-forwarded-for"] as string) ||
+      (req.headers["x-real-ip"] as string) ||
+      req.socket?.remoteAddress,
+  };
 }
+
+/**
+ * Create session in database
+ */
+async function createAuthSession(
+  hashedIdentifier: string,
+  sessionToken: string,
+  clientInfo: { userAgent?: string; ipAddress?: string }
+): Promise<{ success: boolean; userData?: any; error?: string }> {
+  try {
+    // In a real implementation, this would link to user profile
+    // For now, we'll create a mock user profile based on the hashed identifier
+    const userData = {
+      id: hashedIdentifier,
+      hashedIdentifier,
+      role: "family_member",
+      permissions: ["read", "write", "transfer"],
+      sessionToken,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Store session in family_auth_sessions table
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    const { error: sessionError } = await supabase.rpc("create_auth_session", {
+      p_npub: hashedIdentifier,
+      p_username: `user_${hashedIdentifier.slice(0, 8)}`,
+      p_session_token: sessionToken,
+      p_expires_at: expiresAt.toISOString(),
+      p_metadata: {
+        userAgent: clientInfo.userAgent,
+        ipAddress: clientInfo.ipAddress,
+        loginMethod: "otp",
+      },
+    });
+
+    if (sessionError) {
+      console.error("Failed to create auth session:", sessionError);
+      return {
+        success: false,
+        error: "Failed to create authentication session",
+      };
+    }
+
+    return { success: true, userData };
+  } catch (error) {
+    console.error("Error creating auth session:", error);
+    return { success: false, error: "Failed to create authentication session" };
+  }
+}
+
+// Note: Session token generation is now handled by the shared auth-crypto module
 
 /**
  * OTP Verification API Endpoint
  * POST /api/auth/otp-verify - Verify OTP and create session
  */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  // Set CORS headers with appropriate methods for this endpoint
+  setCorsHeadersForCustomAPI(req, res, { methods: "POST, OPTIONS" });
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {
@@ -95,7 +122,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const requestSchema = z.object({
-      otpKey: z.string().min(1, "OTP key is required"),
+      sessionId: z.string().min(1, "Session ID is required"),
       otp: z.string().length(6, "OTP must be 6 digits"),
     });
 
@@ -113,41 +140,27 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const { otpKey, otp } = validationResult.data;
+    const { sessionId, otp } = validationResult.data;
+    const clientInfo = extractClientInfo(req);
 
-    // Retrieve OTP data
-    const otpData = otpStorage.get(otpKey);
+    // Rate limiting check
+    const sessionRateLimitKey = `otp_verify_session_${sessionId}`;
+    const ipRateLimitKey = `otp_verify_ip_${clientInfo.ipAddress || "unknown"}`;
 
-    if (!otpData) {
-      res.status(400).json({
-        success: false,
-        error: "Invalid or expired OTP key",
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-      return;
-    }
+    // Check session-based rate limiting
+    const sessionRateLimit = await OTPStorageService.checkRateLimit(
+      sessionRateLimitKey,
+      OTP_CONFIG.RATE_LIMITS.VERIFY_PER_SESSION_PER_MINUTE,
+      1
+    );
 
-    // Check if OTP has expired
-    if (Date.now() - otpData.createdAt > OTP_EXPIRY_MS) {
-      otpStorage.delete(otpKey);
-      res.status(400).json({
-        success: false,
-        error: "OTP has expired",
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-      return;
-    }
-
-    // Check if max attempts exceeded
-    if (otpData.attempts >= MAX_OTP_ATTEMPTS) {
-      otpStorage.delete(otpKey);
+    if (!sessionRateLimit.allowed) {
       res.status(429).json({
         success: false,
-        error: "Maximum OTP attempts exceeded",
+        error: "Too many verification attempts for this session",
+        retryAfter: Math.ceil(
+          (sessionRateLimit.resetTime.getTime() - Date.now()) / 1000
+        ),
         meta: {
           timestamp: new Date().toISOString(),
         },
@@ -155,19 +168,20 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // Apply progressive delay for failed attempts
-    await applyProgressiveDelay(otpData.attempts);
+    // Check IP-based rate limiting
+    const ipRateLimit = await OTPStorageService.checkRateLimit(
+      ipRateLimitKey,
+      OTP_CONFIG.RATE_LIMITS.VERIFY_PER_IP_PER_MINUTE,
+      1
+    );
 
-    // Verify OTP
-    if (otpData.otp !== otp) {
-      // Increment attempts
-      otpData.attempts += 1;
-      otpStorage.set(otpKey, otpData);
-
-      res.status(400).json({
+    if (!ipRateLimit.allowed) {
+      res.status(429).json({
         success: false,
-        error: "Invalid OTP",
-        attemptsRemaining: MAX_OTP_ATTEMPTS - otpData.attempts,
+        error: "Too many verification attempts from this IP",
+        retryAfter: Math.ceil(
+          (ipRateLimit.resetTime.getTime() - Date.now()) / 1000
+        ),
         meta: {
           timestamp: new Date().toISOString(),
         },
@@ -175,43 +189,88 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // OTP verified successfully - clean up
-    otpStorage.delete(otpKey);
+    // Apply progressive delay (simulate processing time to prevent timing attacks)
+    await new Promise((resolve) =>
+      setTimeout(resolve, 500 + Math.random() * 1000)
+    );
 
-    // Generate session token
+    // Verify OTP using the storage service
+    const verificationResult = await OTPStorageService.verifyOTP({
+      sessionId,
+      otp,
+      userAgent: clientInfo.userAgent,
+      ipAddress: clientInfo.ipAddress,
+    });
+
+    if (!verificationResult.success) {
+      // Additional progressive delay for failed attempts
+      if (verificationResult.data?.attemptsRemaining !== undefined) {
+        const failedAttempts =
+          MAX_OTP_ATTEMPTS - verificationResult.data.attemptsRemaining;
+        await applyProgressiveDelay(failedAttempts);
+      }
+
+      const statusCode = verificationResult.error?.includes("expired")
+        ? 400
+        : verificationResult.error?.includes("Maximum")
+          ? 429
+          : 400;
+
+      res.status(statusCode).json({
+        success: false,
+        error: verificationResult.error,
+        attemptsRemaining: verificationResult.data?.attemptsRemaining,
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // OTP verified successfully - create session
     const sessionToken = generateSessionToken();
+    const sessionResult = await createAuthSession(
+      verificationResult.data!.hashedIdentifier,
+      sessionToken,
+      clientInfo
+    );
+
+    if (!sessionResult.success) {
+      res.status(500).json({
+        success: false,
+        error: sessionResult.error || "Failed to create authentication session",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // In a real implementation, this would:
-    // 1. Create a session in the database
-    // 2. Set secure HTTP-only cookies
-    // 3. Return user profile data
+    // Set secure session cookie
+    const cookieOptions = [
+      `session=${sessionToken}`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Strict",
+      `Max-Age=${24 * 60 * 60}`,
+      ...(process.env.NODE_ENV === "production" ? ["Secure"] : []),
+    ];
 
-    // Mock user data
-    const userData = {
-      npub: otpData.npub,
-      nip05: otpData.nip05,
-      username: otpData.nip05?.split("@")[0] || otpData.npub.slice(-8),
-      role: "family_member",
-      permissions: ["read", "write", "transfer"],
-    };
-
-    // Set session cookie (in production, use secure HTTP-only cookies)
-    res.setHeader("Set-Cookie", [
-      `session=${sessionToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${24 * 60 * 60}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
-    ]);
+    res.setHeader("Set-Cookie", cookieOptions.join("; "));
 
     res.status(200).json({
       success: true,
       data: {
-        user: userData,
+        user: sessionResult.userData,
         sessionToken,
         expiresAt: expiresAt.toISOString(),
         message: "Authentication successful",
       },
       meta: {
         timestamp: new Date().toISOString(),
-        demo: true,
+        sessionId,
       },
     });
   } catch (error) {
@@ -222,7 +281,6 @@ export default async function handler(req: any, res: any) {
       error: "Failed to verify OTP",
       meta: {
         timestamp: new Date().toISOString(),
-        demo: true,
       },
     });
   }

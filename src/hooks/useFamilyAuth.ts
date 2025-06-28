@@ -3,12 +3,15 @@
 // Provides easy integration with the authentication system
 
 import { useCallback, useState } from "react";
-import { useAuth } from "../components/auth/FamilyFederationAuth";
 import {
   AuthResponse,
   FamilyFederationUser,
   VerificationResponse,
 } from "../types/auth";
+import { ApiClient } from "../utils/api-client";
+
+// Re-export the main auth hook for convenience
+export { useFamilyFederationAuth as useFamilyAuth } from "./useFamilyFederationAuth";
 
 interface UseFamilyAuthReturn {
   // State
@@ -38,7 +41,7 @@ interface UseFamilyAuthReturn {
   clearError: () => void;
 }
 
-export const useFamilyAuth = (): UseFamilyAuthReturn => {
+export const useFamilyAuthOTP = (): UseFamilyAuthReturn => {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,16 +55,12 @@ export const useFamilyAuth = (): UseFamilyAuthReturn => {
     setError(null);
 
     try {
-      const response = await fetch("/api/auth/otp/initiate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          npub: npub.trim(),
-          nip05: nip05?.trim() || undefined,
-        }),
+      const apiClient = new ApiClient();
+      const result: AuthResponse = await apiClient.authenticateUser({
+        type: "otp-initiate",
+        npub: npub.trim(),
+        nip05: nip05?.trim() || undefined,
       });
-
-      const result: AuthResponse = await response.json();
 
       if (result.success && result.data) {
         return {
@@ -77,7 +76,7 @@ export const useFamilyAuth = (): UseFamilyAuthReturn => {
           error: errorMsg,
         };
       }
-    } catch (err) {
+    } catch {
       const errorMsg =
         "Network error. Please check your connection and try again.";
       setError(errorMsg);
@@ -96,16 +95,12 @@ export const useFamilyAuth = (): UseFamilyAuthReturn => {
       setError(null);
 
       try {
-        const response = await fetch("/api/auth/otp/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            otpKey,
-            otp: otp.trim(),
-          }),
+        const apiClient = new ApiClient();
+        const result: VerificationResponse = await apiClient.authenticateUser({
+          type: "otp-verify",
+          otpKey,
+          otp: otp.trim(),
         });
-
-        const result: VerificationResponse = await response.json();
 
         if (result.success && result.data?.authenticated) {
           const userData: FamilyFederationUser = {
@@ -137,7 +132,7 @@ export const useFamilyAuth = (): UseFamilyAuthReturn => {
             error: errorMsg,
           };
         }
-      } catch (err) {
+      } catch {
         const errorMsg = "Network error during verification. Please try again.";
         setError(errorMsg);
         return {

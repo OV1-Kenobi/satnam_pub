@@ -35,7 +35,7 @@ export const nip05Schema = z.object({
 });
 
 // Federation validation schemas
-export const createFederationSchema = z.object({
+const createFederationSchemaBase = z.object({
   action: z.literal("create"),
   name: z
     .string()
@@ -53,18 +53,19 @@ export const createFederationSchema = z.object({
     .number()
     .int("Threshold must be an integer")
     .min(1, "Threshold must be at least 1")
-    .refine((val, ctx) => {
-      const guardianCount = ctx.parent?.guardianUrls?.length;
-      if (guardianCount && val > guardianCount) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Threshold cannot exceed the number of guardians",
-        });
-        return false;
-      }
-      return true;
-    }),
+    .max(10, "Threshold cannot exceed 10"),
 });
+
+export const createFederationSchema = createFederationSchemaBase.refine(
+  (data) => {
+    // Cross-field validation: threshold cannot exceed guardian count
+    return data.threshold <= data.guardianUrls.length;
+  },
+  {
+    message: "Threshold cannot exceed the number of guardians",
+    path: ["threshold"],
+  }
+);
 
 export const joinFederationSchema = z.object({
   action: z.literal("join"),
@@ -77,7 +78,7 @@ export const connectFederationSchema = z.object({
 });
 
 export const federationActionSchema = z.discriminatedUnion("action", [
-  createFederationSchema,
+  createFederationSchemaBase,
   joinFederationSchema,
   connectFederationSchema,
 ]);
@@ -90,7 +91,7 @@ export const getFederationQuerySchema = z.object({
 // Validate request data against a schema
 export function validateData<T>(
   schema: z.ZodType<T>,
-  data: unknown,
+  data: unknown
 ): {
   success: boolean;
   data?: T;

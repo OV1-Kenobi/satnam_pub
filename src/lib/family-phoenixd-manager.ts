@@ -78,20 +78,17 @@ export class FamilyPhoenixdManager {
   constructor() {
     this.phoenixdClient = new PhoenixdClient();
 
-    // Configuration from environment
+    // Configuration from environment (browser-only)
     const getEnvVar = (key: string, defaultValue: string): string => {
-      if (typeof import.meta !== "undefined" && import.meta.env) {
-        return import.meta.env[key] || defaultValue;
-      }
-      return process.env[key] || defaultValue;
+      return import.meta.env[key] || defaultValue;
     };
 
     this.emergencyThreshold =
-      parseInt(getEnvVar("FAMILY_EMERGENCY_THRESHOLD", "10000")) || 10000; // 10k sats - guard against NaN
+      parseInt(getEnvVar("VITE_FAMILY_EMERGENCY_THRESHOLD", "10000")) || 10000; // 10k sats - guard against NaN
     this.maxEmergencyAmount =
-      parseInt(getEnvVar("FAMILY_MAX_EMERGENCY", "100000")) || 100000; // 100k sats - guard against NaN
+      parseInt(getEnvVar("VITE_FAMILY_MAX_EMERGENCY", "100000")) || 100000; // 100k sats - guard against NaN
     this.allowancePreparationDays =
-      parseInt(getEnvVar("FAMILY_ALLOWANCE_PREP_DAYS", "2")) || 2; // 2 days ahead - guard against NaN
+      parseInt(getEnvVar("VITE_FAMILY_ALLOWANCE_PREP_DAYS", "2")) || 2; // 2 days ahead - guard against NaN
 
     console.log("👨‍👩‍👧‍👦 Family PhoenixD Manager initialized");
   }

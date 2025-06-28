@@ -1052,8 +1052,8 @@ export class LiquidityIntelligenceSystem {
   // Additional helper methods for strategy generation
 
   private async generateChannelOptimizationStrategy(
-    metrics: LiquidityMetrics,
-    forecast: LiquidityForecast
+    _metrics: LiquidityMetrics,
+    _forecast: LiquidityForecast
   ): Promise<OptimizationStrategy> {
     return {
       id: generateSecureUUID(),
@@ -1090,8 +1090,8 @@ export class LiquidityIntelligenceSystem {
   }
 
   private async generateLightningOptimizationStrategy(
-    metrics: LiquidityMetrics,
-    forecast: LiquidityForecast
+    _metrics: LiquidityMetrics,
+    _forecast: LiquidityForecast
   ): Promise<OptimizationStrategy> {
     return {
       id: generateSecureUUID(),

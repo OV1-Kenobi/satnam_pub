@@ -2,22 +2,34 @@
  * Shared types used across multiple components
  */
 
-// Re-export family types for convenience
-export type {
-  DualProtocolFamilyMember,
-  EnhancedFamilyTreasury,
-  FamilyApproval,
-  FamilyGuardian,
-  FamilyMember,
-  FamilyPaymentRouting,
-  FamilyProfile,
-  FamilyZapConfig,
-  FedimintTransaction,
-  GuardianApproval,
-  LightningTransaction,
-  PhoenixDFamilyChannel,
-  SatnamFamilyMember,
-} from "../../types/family";
+// Define local family types since external file may not be accessible in build
+export interface FamilyMember {
+  id: string;
+  name: string;
+  role: "parent" | "child" | "guardian" | "other";
+  avatar?: string;
+  username?: string;
+  spendingLimits?: {
+    daily: number;
+    weekly?: number;
+    monthly?: number;
+  };
+}
+
+export interface SatnamFamilyMember {
+  id: string;
+  username: string;
+  lightningAddress: string;
+  role: "parent" | "child";
+  spendingLimits?: {
+    daily: number;
+    weekly?: number;
+    monthly?: number;
+  };
+  emergencyContact?: string;
+  backupSeed?: string;
+  recoveryPhrase?: string;
+}
 
 /**
  * Common transaction interface

@@ -186,14 +186,25 @@ export function useCryptoOperations() {
       // Wait for loading to complete if in progress
       if (cryptoState.isLoading) {
         return new Promise((resolve, reject) => {
+          let attempts = 0;
+          const maxAttempts = 100; // 10 seconds max wait
+
           const checkLoaded = () => {
+            if (attempts >= maxAttempts) {
+              reject(new Error("Crypto loading timeout"));
+              return;
+            }
+
             if (cryptoState.error) {
               reject(cryptoState.error);
             } else if (cryptoState.isLoaded) {
-              resolve(operation());
+              operation().then(resolve).catch(reject);
             } else if (cryptoState.isLoading) {
-              // Check again on next tick
-              setTimeout(checkLoaded, 0);
+              attempts++;
+              // Check again after a short delay
+              setTimeout(checkLoaded, 100);
+            } else {
+              reject(new Error("Crypto loading failed"));
             }
           };
           checkLoaded();
@@ -214,17 +225,43 @@ export function useCryptoOperations() {
 
     // Wrapped crypto operations that handle loading automatically
     async generateNostrKeyPair(recoveryPhrase?: string, account?: number) {
-      return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
-        return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
-      });
+      // For essential functions, try direct loading if preloading fails
+      try {
+        return await executeWithLoading(async () => {
+          const cryptoFactory = await import("../../utils/crypto-factory");
+          return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("timeout")) {
+          // If timeout, try direct import without waiting for preloading
+          console.warn(
+            "⚠️ Crypto preloading timed out, trying direct import..."
+          );
+          const cryptoFactory = await import("../../utils/crypto-factory");
+          return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
+        }
+        throw error;
+      }
     },
 
     async generateRecoveryPhrase() {
-      return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
-        return cryptoFactory.generateRecoveryPhrase();
-      });
+      // For essential functions, try direct loading if preloading fails
+      try {
+        return await executeWithLoading(async () => {
+          const cryptoFactory = await import("../../utils/crypto-factory");
+          return cryptoFactory.generateRecoveryPhrase();
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("timeout")) {
+          // If timeout, try direct import without waiting for preloading
+          console.warn(
+            "⚠️ Crypto preloading timed out, trying direct import..."
+          );
+          const cryptoFactory = await import("../../utils/crypto-factory");
+          return cryptoFactory.generateRecoveryPhrase();
+        }
+        throw error;
+      }
     },
 
     async privateKeyFromPhrase(phrase: string) {
@@ -301,6 +338,9 @@ export function useCryptoPreloader() {
 
     const preload = async () => {
       try {
+        const { preloadCryptoModules } = await import(
+          "../../utils/crypto-factory"
+        );
         await preloadCryptoModules();
         if (!cancelled) {
           setPreloaded(true);

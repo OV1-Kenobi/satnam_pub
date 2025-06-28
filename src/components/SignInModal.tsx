@@ -7,18 +7,18 @@ import {
   ArrowRight,
   CheckCircle,
   Globe,
-  Info,
   Key,
-  MessageCircle,
   RefreshCw,
   Shield,
-  Wallet,
   X
 } from 'lucide-react';
 import { nip19 } from 'nostr-tools';
 import React, { useEffect, useState } from 'react';
-import { NIP07AuthChallenge, NostrExtension } from '../types/auth';
+import { NIP07AuthChallenge } from '../types/auth';
+import { getSessionInfo, SessionInfo } from '../utils/secureSession';
 import NWCOTPSignIn from './auth/NWCOTPSignIn';
+import { MaxPrivacyAuth } from './MaxPrivacyAuth';
+import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -34,7 +34,17 @@ interface ExtensionStatus {
   error?: string;
 }
 
-type AuthStep = 'method-selection' | 'nip07-auth' | 'nwc-otp-auth';
+interface SignedAuthEvent {
+  kind: number;
+  created_at: number;
+  tags: string[][];
+  content: string;
+  pubkey: string;
+  id: string;
+  sig: string;
+}
+
+type AuthStep = 'method-selection' | 'nip07-auth' | 'nwc-otp-auth' | 'post-auth-invitation';
 
 const SignInModal: React.FC<SignInModalProps> = ({
   isOpen,
@@ -44,6 +54,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
   destination,
 }) => {
   const [authStep, setAuthStep] = useState<AuthStep>('method-selection');
+  const [showMaxPrivacyAuth, setShowMaxPrivacyAuth] = useState(false);
   const [showNWCOTPModal, setShowNWCOTPModal] = useState(false);
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus>({
     available: false
@@ -51,6 +62,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const [showTooltip, setShowTooltip] = useState(false);
   const [isCheckingExtension, setIsCheckingExtension] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
+  const [showPostAuthInvitation, setShowPostAuthInvitation] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   
   // NIP-07 auth state
   const [nip07State, setNip07State] = useState<{
@@ -96,8 +109,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
         setIsCheckingExtension(true);
         
         try {
-          if (typeof window !== 'undefined' && (window as any).nostr) {
-            const nostr = (window as any).nostr as NostrExtension;
+          if (typeof window !== 'undefined' && window.nostr) {
+            const nostr = window.nostr;
             
             if (typeof nostr.getPublicKey === 'function') {
               setExtensionStatus({
@@ -138,6 +151,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
       setShowNWCOTPModal(false);
       setIsClosing(false);
       setShowTooltip(false);
+      setShowPostAuthInvitation(false);
+      setSessionInfo(null);
     }
   }, [isOpen]);
 
@@ -164,11 +179,11 @@ const SignInModal: React.FC<SignInModalProps> = ({
         message: 'Connecting to your Nostr extension...'
       });
 
-      if (typeof window === 'undefined' || !(window as any).nostr) {
+      if (typeof window === 'undefined' || !window.nostr) {
         throw new Error('No Nostr extension detected');
       }
 
-      const nostr = (window as any).nostr as NostrExtension;
+      const nostr = window.nostr;
 
       // Get public key from extension
       let publicKey: string;
@@ -224,10 +239,24 @@ const SignInModal: React.FC<SignInModalProps> = ({
         message: 'Authentication successful!'
       });
 
-      setTimeout(() => {
-        onSignInSuccess(destination);
-        handleClose();
+      // Get session info and show invitation modal
+      const timer = setTimeout(() => {
+        const loadSessionInfo = async () => {
+          try {
+            const session = await getSessionInfo();
+            setSessionInfo(session);
+            setShowPostAuthInvitation(true);
+          } catch (error) {
+            console.error('Failed to get session info:', error);
+            onSignInSuccess(destination);
+            handleClose();
+          }
+        };
+        loadSessionInfo();
       }, 1000);
+
+      // Cleanup timer if component unmounts
+      return () => clearTimeout(timer);
 
     } catch (error) {
       console.error('NIP-07 authentication error:', error);
@@ -259,7 +288,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
     return result.data;
   };
 
-  const verifyAuthentication = async (signedEvent: any, challenge: NIP07AuthChallenge) => {
+  const verifyAuthentication = async (signedEvent: SignedAuthEvent, challenge: NIP07AuthChallenge) => {
     const response = await fetch('/api/auth/nip07-signin', {
       method: 'POST',
       headers: {
@@ -287,6 +316,33 @@ const SignInModal: React.FC<SignInModalProps> = ({
     setShowNWCOTPModal(false);
   };
 
+  const handleInvitationComplete = () => {
+    setShowPostAuthInvitation(false);
+    onSignInSuccess(destination);
+    handleClose();
+  };
+
+  const handleSkipInvitation = () => {
+    setShowPostAuthInvitation(false);
+    onSignInSuccess(destination);
+    handleClose();
+  };
+
+  const handleNWCOTPSuccess = async () => {
+    // Handle successful NWC/OTP authentication
+    setShowNWCOTPModal(false);
+    try {
+      const session = await getSessionInfo();
+      setSessionInfo(session);
+      setShowPostAuthInvitation(true);
+    } catch (error) {
+      console.error('Failed to get session info after NWC/OTP:', error);
+      // Fallback to normal flow
+      onSignInSuccess(destination);
+      handleClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   // Show NWC/OTP modal if selected
@@ -296,6 +352,18 @@ const SignInModal: React.FC<SignInModalProps> = ({
         isOpen={showNWCOTPModal}
         onClose={handleBackToMethods}
         onCreateNew={onCreateNew}
+      />
+    );
+  }
+
+  // Show Post-Auth Invitation Modal after successful authentication
+  if (showPostAuthInvitation && sessionInfo) {
+    return (
+      <PostAuthInvitationModal
+        isOpen={showPostAuthInvitation}
+        onClose={handleInvitationComplete}
+        onSkip={handleSkipInvitation}
+        sessionInfo={sessionInfo}
       />
     );
   }
@@ -346,121 +414,54 @@ const SignInModal: React.FC<SignInModalProps> = ({
         {authStep === 'method-selection' && (
           <div className="space-y-6">
             <h3 className="text-white font-bold text-xl mb-6 text-center">
-              Choose Your Authentication Method
+              Privacy-Protected Authentication
             </h3>
 
-            {/* NIP-07 Browser Extension Option */}
-            <div className="bg-white/10 rounded-2xl p-6 border border-white/20 hover:border-purple-500/50 transition-all duration-300">
+            {/* Maximum Privacy Authentication (ONLY OPTION) */}
+            <div className="bg-gradient-to-r from-purple-600/20 to-purple-500/20 rounded-2xl p-6 border-2 border-purple-500/50 relative">
+              <div className="absolute -top-3 left-4 bg-purple-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+                MAXIMUM PRIVACY • 95% ANONYMOUS
+              </div>
               <div className="flex items-start space-x-4 mb-4">
                 <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Globe className="h-6 w-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-white font-bold text-lg mb-2 flex items-center space-x-2">
-                    <span>Browser Extension (NIP-07)</span>
-                    {isCheckingExtension ? (
-                      <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                    ) : extensionStatus.available ? (
-                      <CheckCircle className="h-5 w-5 text-green-400" />
-                    ) : (
-                      <AlertTriangle className="h-5 w-5 text-yellow-400" />
-                    )}
-                  </h4>
-                  <p className="text-purple-200 text-sm mb-4">
-                    Sign in using your browser extension like Alby, nos2x, or other NIP-07 compatible extensions. 
-                    Fast, secure, and no additional setup required.
-                  </p>
-                  <div className="flex items-center space-x-2 text-purple-400 text-sm mb-2">
-                    <Shield className="h-4 w-4" />
-                    <span>
-                      {extensionStatus.available 
-                        ? 'Extension detected • Ready to use' 
-                        : 'No extension detected • Installation required'
-                      }
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={handleNIP07SignIn}
-                disabled={!extensionStatus.available}
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-500 disabled:to-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-              >
-                <Globe className="h-5 w-5" />
-                <span>
-                  {extensionStatus.available 
-                    ? 'Sign in with Browser Extension' 
-                    : 'Install Extension First'
-                  }
-                </span>
-                {extensionStatus.available && <ArrowRight className="h-5 w-5" />}
-              </button>
-            </div>
-
-            {/* NWC & OTP Combined Option */}
-            <div className="bg-white/10 rounded-2xl p-6 border border-white/20 hover:border-orange-500/50 transition-all duration-300">
-              <div className="flex items-start space-x-4 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  <div className="flex items-center space-x-1">
-                    <Wallet className="h-4 w-4 text-white" />
-                    <MessageCircle className="h-4 w-4 text-white" />
-                  </div>
+                  <Shield className="h-6 w-6 text-white" />
                 </div>
                 <div className="flex-1">
                   <h4 className="text-white font-bold text-lg mb-2">
-                    Nostr Wallet Connect & OTP
+                    Privacy-First Sign In
                   </h4>
                   <p className="text-purple-200 text-sm mb-4">
-                    Connect using your NWC-enabled wallet (Alby, Zeus, Mutiny) or receive a secure 
-                    verification code via Nostr DM. Perfect for Family Federation access.
+                    Maximum privacy protection with hashed UUIDs, Perfect Forward Secrecy, and zero PII storage. 
+                    Supports NWC, OTP, and NIP-07 authentication methods.
                   </p>
-                  <div className="flex items-center space-x-2 text-orange-400 text-sm">
+                  <div className="flex items-center space-x-2 text-purple-300 text-sm">
                     <Shield className="h-4 w-4" />
-                    <span>Wallet integration • Gift wrapped DMs • Family Federation ready</span>
+                    <span>Hashed UUIDs Only • No PII Storage • Perfect Forward Secrecy</span>
                   </div>
                 </div>
               </div>
               <button
-                onClick={() => setShowNWCOTPModal(true)}
-                className="w-full bg-gradient-to-r from-orange-500 to-blue-500 hover:from-orange-600 hover:to-blue-600 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                onClick={() => setShowMaxPrivacyAuth(true)}
+                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
               >
-                <Wallet className="h-5 w-5" />
-                <span>Sign in with NWC or OTP</span>
+                <Shield className="h-5 w-5" />
+                <span>Sign In with Maximum Privacy</span>
                 <ArrowRight className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Why Multiple Options Tooltip */}
-            <div className="relative">
+            {/* Legacy Authentication (Optional) */}
+            <div className="text-center">
               <button
-                onClick={() => setShowTooltip(!showTooltip)}
-                className="flex items-center space-x-2 text-purple-200 hover:text-white transition-colors duration-200"
+                onClick={() => setShowNWCOTPModal(true)}
+                className="text-purple-300 hover:text-white text-sm underline transition-colors"
               >
-                <Info className="h-4 w-4" />
-                <span className="text-sm">Why multiple authentication options?</span>
+                Use legacy NWC/OTP authentication
               </button>
-
-              {showTooltip && (
-                <div className="absolute top-8 left-0 bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20 max-w-md z-10">
-                  <p className="text-purple-100 text-sm mb-3">
-                    <strong>Browser Extensions (NIP-07):</strong> Fastest and most convenient for regular users with extensions installed.
-                  </p>
-                  <p className="text-purple-100 text-sm">
-                    <strong>NWC & OTP:</strong> Perfect for Family Federation users, provides Lightning wallet integration and universal DM-based fallback.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div className="flex items-center space-x-4 my-8">
-              <div className="flex-1 h-px bg-white/20" />
-              <span className="text-purple-200 text-sm">OR</span>
-              <div className="flex-1 h-px bg-white/20" />
             </div>
 
             {/* New User Section */}
-            <div className="text-center">
+            <div className="text-center mt-8">
               <h3 className="text-white font-bold text-xl mb-4">
                 New to Nostr?
               </h3>
@@ -539,6 +540,35 @@ const SignInModal: React.FC<SignInModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Maximum Privacy Authentication Modal */}
+      <MaxPrivacyAuth
+        isOpen={showMaxPrivacyAuth}
+        onClose={() => setShowMaxPrivacyAuth(false)}
+        onAuthSuccess={onSignInSuccess}
+        destination={destination}
+        title="Sign In to Satnam.pub"
+        purpose="Maximum privacy protection with hashed UUIDs and Perfect Forward Secrecy"
+      />
+
+      {/* Legacy NWC/OTP Modal (for backward compatibility) */}
+      {showNWCOTPModal && (
+        <NWCOTPSignIn
+          isOpen={showNWCOTPModal}
+          onClose={() => setShowNWCOTPModal(false)}
+          onCreateNew={onCreateNew}
+        />
+      )}
+
+      {/* Post-Auth Invitation Modal */}
+      {showPostAuthInvitation && sessionInfo && (
+        <PostAuthInvitationModal
+          isOpen={showPostAuthInvitation}
+          onClose={() => setShowPostAuthInvitation(false)}
+          onSkip={() => setShowPostAuthInvitation(false)}
+          sessionInfo={sessionInfo}
+        />
+      )}
     </div>
   );
 };

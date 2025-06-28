@@ -6,7 +6,7 @@
  */
 
 import { Request, Response } from "express";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
 import { FamilyFederationUser } from "../../src/types/auth";
 import { defaultLogger as logger } from "../../utils/logger";
 import { UserService } from "../services/user-service";
@@ -20,6 +20,8 @@ export interface SessionData {
   isWhitelisted: boolean;
   votingPower: number;
   guardianApproved: boolean;
+  sessionToken: string;
+  isAuthenticated: boolean;
   iat?: number;
   exp?: number;
 }
@@ -97,12 +99,17 @@ export class SecureSessionManager {
       isWhitelisted: userData.isWhitelisted,
       votingPower: userData.votingPower,
       guardianApproved: userData.guardianApproved,
+      sessionToken: "", // Will be set after JWT creation
+      isAuthenticated: true,
     };
 
     // Create session token (short-lived)
     const sessionToken = jwt.sign(sessionData, this.JWT_SECRET, {
       expiresIn: this.SESSION_EXPIRY,
     });
+
+    // Update sessionData with the actual token
+    sessionData.sessionToken = sessionToken;
 
     // Create refresh token (long-lived)
     const refreshToken = jwt.sign(
@@ -218,12 +225,17 @@ export class SecureSessionManager {
         isWhitelisted: federationData.isWhitelisted,
         votingPower: federationData.votingPower,
         guardianApproved: federationData.guardianApproved,
+        sessionToken: "", // Will be set after JWT creation
+        isAuthenticated: true,
       };
 
       // Create new session token
       const newSessionToken = jwt.sign(sessionData, this.JWT_SECRET, {
         expiresIn: this.SESSION_EXPIRY,
       });
+
+      // Update sessionData with the actual token
+      sessionData.sessionToken = newSessionToken;
 
       // Create new refresh token (rotation)
       const newRefreshToken = jwt.sign(

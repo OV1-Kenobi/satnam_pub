@@ -1,36 +1,68 @@
 // lib/security.ts
-import * as argon2 from "argon2";
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+// All crypto imports are lazy loaded for better performance
+
+// Type definitions for lazy-loaded modules
+type Argon2Module = typeof import("argon2");
+
+// Module cache for loaded modules
+const moduleCache = new Map<string, any>();
 
 /**
- * Security utilities for credential management and encryption
- * Used for protecting sensitive data at rest and in transit
- *
- * Uses Argon2id (gold standard) for key derivation - winner of Password Hashing Competition
- *
- * CONFIGURATION:
- * The Argon2 parameters are configurable via environment variables to prevent OOM errors:
- *
- * Environment Variables:
- * - ARGON2_MEMORY_COST: Log2 of memory usage (default: 16 = 64MB)
- * - ARGON2_TIME_COST: Number of iterations (default: 3)
- * - ARGON2_PARALLELISM: Degree of parallelism (default: 1)
- *
- * Memory Usage Guide:
- * - 2^15 (32MB): Development/testing only
- * - 2^16 (64MB): Production safe default, light security
- * - 2^17 (128MB): Good production balance with adequate resources
- * - 2^18 (256MB): High security, requires dedicated resources, monitor for OOM
- * - 2^19+ (512MB+): Maximum security, dedicated high-memory servers only
- *
- * Production Recommendations:
- * - Start with 64MB (ARGON2_MEMORY_COST=16) and monitor memory usage
- * - Scale up to 128MB (ARGON2_MEMORY_COST=17) if resources allow
- * - Never exceed 256MB (ARGON2_MEMORY_COST=18) without extensive load testing
- * - Use getArgon2Config() to validate your settings
- *
- * ⚠️  CRITICAL: Values >128MB may cause OOM errors on typical Node.js servers
+ * Lazy load crypto utilities for AES encryption
  */
+async function createCipher(algorithm: string, key: Buffer, iv: Buffer) {
+  if (typeof window !== "undefined") {
+    throw new Error(
+      "AES-GCM encryption not available in browser. Use Web Crypto API."
+    );
+  }
+
+  const crypto = await import("crypto");
+  return crypto.createCipheriv(algorithm, key, iv);
+}
+
+async function createDecipher(algorithm: string, key: Buffer, iv: Buffer) {
+  if (typeof window !== "undefined") {
+    throw new Error(
+      "AES-GCM decryption not available in browser. Use Web Crypto API."
+    );
+  }
+
+  const crypto = await import("crypto");
+  return crypto.createDecipheriv(algorithm, key, iv);
+}
+
+async function randomBytes(size: number): Promise<Buffer> {
+  if (typeof window !== "undefined") {
+    // Browser environment - use Web Crypto API
+    const array = new Uint8Array(size);
+    window.crypto.getRandomValues(array);
+    return Buffer.from(array);
+  } else {
+    // Node.js environment
+    const crypto = await import("crypto");
+    return crypto.randomBytes(size);
+  }
+}
+
+/**
+ * Lazy load argon2 module - only works in Node.js environment
+ */
+async function getArgon2(): Promise<Argon2Module> {
+  if (moduleCache.has("argon2")) {
+    return moduleCache.get("argon2") as Argon2Module;
+  }
+
+  if (typeof window !== "undefined") {
+    throw new Error(
+      "Argon2 is not available in browser environment. Use Web Crypto API alternatives."
+    );
+  }
+
+  const argon2 = await import("argon2");
+  moduleCache.set("argon2", argon2);
+  return argon2;
+}
 
 // Constants for encryption
 const ALGORITHM = "aes-256-gcm";
@@ -40,16 +72,19 @@ const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 
 // Configurable Argon2 parameters with production-safe defaults
-// Memory costs: 2^16 (64MB), 2^17 (128MB), 2^18 (256MB), 2^19 (512MB)
-// Recommended ranges:
-// - Development/Testing: 64MB (2^16)
-// - Production (light load): 128MB (2^17)
-// - Production (heavy load): 64MB (2^16)
-// - High-security (dedicated): 256MB+ (2^18+)
 const ARGON2_CONFIG = {
-  memoryCost: parseInt(process.env.ARGON2_MEMORY_COST || "16"), // 2^16 = 64MB (safe default)
-  timeCost: parseInt(process.env.ARGON2_TIME_COST || "3"), // Reduced from 5 for better performance
-  parallelism: parseInt(process.env.ARGON2_PARALLELISM || "1"), // Single thread
+  memoryCost:
+    typeof process !== "undefined" && process.env
+      ? parseInt(process.env.ARGON2_MEMORY_COST || "16")
+      : 16, // 2^16 = 64MB (safe default)
+  timeCost:
+    typeof process !== "undefined" && process.env
+      ? parseInt(process.env.ARGON2_TIME_COST || "3")
+      : 3, // Reduced from 5 for better performance
+  parallelism:
+    typeof process !== "undefined" && process.env
+      ? parseInt(process.env.ARGON2_PARALLELISM || "1")
+      : 1, // Single thread
   hashLength: KEY_LENGTH, // 32 bytes output
 };
 
@@ -74,7 +109,7 @@ export function getArgon2Config(): {
     warnings.push("Memory cost very high (>256MB) - may cause OOM errors");
   } else if (ARGON2_CONFIG.memoryCost > 17) {
     warnings.push(
-      "Memory cost high (>128MB) - monitor for OOM errors under load",
+      "Memory cost high (>128MB) - monitor for OOM errors under load"
     );
   }
 
@@ -85,20 +120,24 @@ export function getArgon2Config(): {
   }
 
   // Environment-specific recommendations
-  const nodeEnv = process.env.NODE_ENV;
+  const nodeEnv =
+    typeof process !== "undefined" && process.env
+      ? process.env.NODE_ENV
+      : undefined;
+
   if (nodeEnv === "development") {
     recommendations.push(
-      "Development: Consider ARGON2_MEMORY_COST=15 (32MB) for faster testing",
+      "Development: Consider ARGON2_MEMORY_COST=15 (32MB) for faster testing"
     );
   } else if (nodeEnv === "production") {
     if (ARGON2_CONFIG.memoryCost < 16) {
       recommendations.push(
-        "Production: Consider increasing to ARGON2_MEMORY_COST=16 (64MB) minimum",
+        "Production: Consider increasing to ARGON2_MEMORY_COST=16 (64MB) minimum"
       );
     }
     if (ARGON2_CONFIG.memoryCost > 17) {
       recommendations.push(
-        "Production: Consider reducing to ARGON2_MEMORY_COST=17 (128MB) to prevent OOM",
+        "Production: Consider reducing to ARGON2_MEMORY_COST=17 (128MB) to prevent OOM"
       );
     }
   }
@@ -114,14 +153,6 @@ export function getArgon2Config(): {
 /**
  * Validates Argon2 configuration on server startup
  * Call this during application initialization to catch configuration issues early
- *
- * Example usage:
- * ```typescript
- * import { validateArgon2ConfigOnStartup } from './lib/security';
- *
- * // In your server startup code
- * validateArgon2ConfigOnStartup();
- * ```
  */
 export function validateArgon2ConfigOnStartup(): void {
   const { config, memoryUsageMB, recommendations, warnings } =
@@ -129,19 +160,19 @@ export function validateArgon2ConfigOnStartup(): void {
 
   console.log(`🔐 Argon2 Configuration:`);
   console.log(
-    `   Memory: ${memoryUsageMB.toFixed(0)}MB (2^${config.memoryCost})`,
+    `   Memory: ${memoryUsageMB.toFixed(0)}MB (2^${config.memoryCost})`
   );
   console.log(`   Time Cost: ${config.timeCost} iterations`);
   console.log(`   Parallelism: ${config.parallelism} thread(s)`);
 
   if (warnings.length > 0) {
     console.warn(`⚠️  Configuration Warnings:`);
-    warnings.forEach((warning) => console.warn(`   - ${warning}`));
+    warnings.forEach((warning: string) => console.warn(`   - ${warning}`));
   }
 
   if (recommendations.length > 0) {
     console.log(`💡 Recommendations:`);
-    recommendations.forEach((rec) => console.log(`   - ${rec}`));
+    recommendations.forEach((rec: string) => console.log(`   - ${rec}`));
   }
 
   if (warnings.length === 0) {
@@ -151,37 +182,20 @@ export function validateArgon2ConfigOnStartup(): void {
 
 /**
  * Generates a cryptographically secure encryption key from a passphrase using Argon2id
- *
- * Argon2id is the OWASP-recommended gold standard for key derivation:
- * - Hybrid of Argon2i (data-independent) and Argon2d (data-dependent)
- * - Memory-hard function providing maximum resistance to GPU/ASIC attacks
- * - Winner of the Password Hashing Competition
- *
- * Parameters are configurable via environment variables:
- * - ARGON2_MEMORY_COST: Log2 of memory usage (default: 16 = 64MB)
- * - ARGON2_TIME_COST: Number of iterations (default: 3)
- * - ARGON2_PARALLELISM: Degree of parallelism (default: 1)
- *
- * Memory usage guide:
- * - 64MB (2^16): Safe for most production servers, light security
- * - 128MB (2^17): Good balance for production with adequate resources
- * - 256MB (2^18): High security, requires dedicated resources
- * - 512MB+ (2^19+): Maximum security, dedicated high-memory servers only
- *
- * ⚠️  WARNING: Values >128MB may cause OOM errors on typical Node.js servers
  */
 export async function deriveEncryptionKey(
   passphrase: string,
-  salt: Buffer,
+  salt: Buffer
 ): Promise<Buffer> {
+  const argon2 = await getArgon2();
   const hash = await argon2.hash(passphrase, {
     type: argon2.argon2id,
-    memoryCost: 2 ** ARGON2_CONFIG.memoryCost, // Configurable memory usage
-    timeCost: ARGON2_CONFIG.timeCost, // Configurable iterations
-    parallelism: ARGON2_CONFIG.parallelism, // Configurable parallelism
-    hashLength: ARGON2_CONFIG.hashLength, // 32 bytes output
+    memoryCost: 2 ** ARGON2_CONFIG.memoryCost,
+    timeCost: ARGON2_CONFIG.timeCost,
+    parallelism: ARGON2_CONFIG.parallelism,
+    hashLength: ARGON2_CONFIG.hashLength,
     salt: salt,
-    raw: true, // Return raw bytes instead of encoded string
+    raw: true,
   });
 
   return Buffer.from(hash);
@@ -193,19 +207,19 @@ export async function deriveEncryptionKey(
  */
 export async function encryptCredentials(
   data: string,
-  passphrase: string,
+  passphrase: string
 ): Promise<string> {
   try {
-    const salt = randomBytes(SALT_LENGTH);
-    const iv = randomBytes(IV_LENGTH);
+    const salt = await randomBytes(SALT_LENGTH);
+    const iv = await randomBytes(IV_LENGTH);
     const key = await deriveEncryptionKey(passphrase, salt);
 
-    const cipher = createCipheriv(ALGORITHM, key, iv);
+    const cipher = await createCipher(ALGORITHM, key, iv);
 
     let encrypted = cipher.update(data, "utf8", "hex");
     encrypted += cipher.final("hex");
 
-    const authTag = cipher.getAuthTag();
+    const authTag = (cipher as any).getAuthTag();
 
     // Prepend salt, iv, and auth tag to encrypted data
     const combined = Buffer.concat([
@@ -218,7 +232,7 @@ export async function encryptCredentials(
     return combined.toString("base64");
   } catch (error) {
     throw new Error(
-      `Encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }
@@ -228,7 +242,7 @@ export async function encryptCredentials(
  */
 export async function decryptCredentials(
   encryptedData: string,
-  passphrase: string,
+  passphrase: string
 ): Promise<string> {
   try {
     const combined = Buffer.from(encryptedData, "base64");
@@ -238,14 +252,14 @@ export async function decryptCredentials(
     const iv = combined.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
     const authTag = combined.subarray(
       SALT_LENGTH + IV_LENGTH,
-      SALT_LENGTH + IV_LENGTH + TAG_LENGTH,
+      SALT_LENGTH + IV_LENGTH + TAG_LENGTH
     );
     const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
 
     const key = await deriveEncryptionKey(passphrase, salt);
 
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(authTag);
+    const decipher = await createDecipher(ALGORITHM, key, iv);
+    (decipher as any).setAuthTag(authTag);
 
     let decrypted = decipher.update(encrypted, undefined, "utf8");
     decrypted += decipher.final("utf8");
@@ -253,7 +267,7 @@ export async function decryptCredentials(
     return decrypted;
   } catch (error) {
     throw new Error(
-      `Decryption failed: ${error instanceof Error ? error.message : "Invalid passphrase or corrupted data"}`,
+      `Decryption failed: ${error instanceof Error ? error.message : "Invalid passphrase or corrupted data"}`
     );
   }
 }
@@ -271,7 +285,10 @@ export function validateCredentials(): {
   const warnings: string[] = [];
 
   for (const key of required) {
-    const value = process.env[key] || process.env[`NEXT_PUBLIC_${key}`];
+    const env =
+      typeof process !== "undefined" && process.env ? process.env : {};
+    const value = env[key] || env[`NEXT_PUBLIC_${key}`];
+
     if (!value) {
       missing.push(key);
     } else {
@@ -298,15 +315,14 @@ export function validateCredentials(): {
  * Use this to store credentials securely outside of source code
  */
 export async function createSecureCredentialBackup(
-  passphrase: string,
+  passphrase: string
 ): Promise<string> {
+  const env = typeof process !== "undefined" && process.env ? process.env : {};
+
   const credentials = {
-    supabaseUrl:
-      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
-    supabaseKey:
-      process.env.SUPABASE_ANON_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    lightningDomain: process.env.LIGHTNING_DOMAIN,
+    supabaseUrl: env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL,
+    supabaseKey: env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    lightningDomain: env.LIGHTNING_DOMAIN,
     timestamp: new Date().toISOString(),
     version: "1.0.0",
   };
@@ -320,8 +336,8 @@ export async function createSecureCredentialBackup(
  */
 export async function restoreCredentialsFromBackup(
   encryptedBackup: string,
-  passphrase: string,
-): Promise<any> {
+  passphrase: string
+): Promise<Record<string, any>> {
   const decryptedData = await decryptCredentials(encryptedBackup, passphrase);
   return JSON.parse(decryptedData);
 }
@@ -332,9 +348,10 @@ export async function restoreCredentialsFromBackup(
  */
 export async function verifyPassphrase(
   passphrase: string,
-  hash: string,
+  hash: string
 ): Promise<boolean> {
   try {
+    const argon2 = await getArgon2();
     return await argon2.verify(hash, passphrase);
   } catch (error) {
     // Always return false on error to prevent information leakage
@@ -348,109 +365,165 @@ export async function verifyPassphrase(
  * Uses the same configurable parameters as deriveEncryptionKey
  */
 export async function hashPassphrase(passphrase: string): Promise<string> {
+  const argon2 = await getArgon2();
   return await argon2.hash(passphrase, {
     type: argon2.argon2id,
-    memoryCost: 2 ** ARGON2_CONFIG.memoryCost, // Configurable memory usage
-    timeCost: ARGON2_CONFIG.timeCost, // Configurable iterations
-    parallelism: ARGON2_CONFIG.parallelism, // Configurable parallelism
-    hashLength: ARGON2_CONFIG.hashLength, // 32 bytes hash
+    memoryCost: 2 ** ARGON2_CONFIG.memoryCost,
+    timeCost: ARGON2_CONFIG.timeCost,
+    parallelism: ARGON2_CONFIG.parallelism,
+    hashLength: ARGON2_CONFIG.hashLength,
   });
 }
 
 /**
- * Memory-safe credential loading with automatic cleanup
+ * Securely clears sensitive data from memory
+ * Use this after handling sensitive information
  */
-export async function loadCredentialsSecurely(): Promise<{
-  supabaseUrl: string;
-  supabaseKey: string;
-  cleanup: () => void;
-}> {
-  const validation = validateCredentials();
-
-  if (!validation.isValid) {
-    throw new Error(
-      `Missing required environment variables: ${validation.missing.join(", ")}`,
-    );
+export function clearSensitiveData(buffer: Buffer): void {
+  if (buffer && buffer.length > 0) {
+    buffer.fill(0);
   }
-
-  if (validation.warnings.length > 0) {
-    console.warn("Credential warnings:", validation.warnings);
-  }
-
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey =
-    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  // Return cleanup function to clear sensitive data from memory
-  const cleanup = () => {
-    // Note: JavaScript doesn't have true memory clearing, but this helps with GC
-    if (typeof global !== "undefined") {
-      global.gc?.(); // Force garbage collection if available
-    }
-  };
-
-  return { supabaseUrl, supabaseKey, cleanup };
 }
 
 /**
- * Atomic credential rotation for zero-downtime updates
+ * Generates a secure random token for various security purposes
+ * (session tokens, CSRF tokens, etc.)
  */
-export class CredentialRotationManager {
-  private backupCredentials: Map<string, string> = new Map();
+export async function generateSecureToken(
+  length: number = 32
+): Promise<string> {
+  const bytes = await randomBytes(length);
+  const token = bytes.toString("base64url");
+  clearSensitiveData(bytes);
+  return token;
+}
 
-  async rotateCredentials(newCredentials: {
-    supabaseUrl?: string;
-    supabaseKey?: string;
-  }): Promise<{ success: boolean; rollback?: () => void }> {
-    try {
-      // Backup current credentials
-      this.backupCredentials.set(
-        "SUPABASE_URL",
-        process.env.SUPABASE_URL || "",
-      );
-      this.backupCredentials.set(
-        "SUPABASE_ANON_KEY",
-        process.env.SUPABASE_ANON_KEY || "",
-      );
+/**
+ * Constant-time string comparison to prevent timing attacks
+ * Use this when comparing sensitive values like tokens or hashes
+ */
+export function constantTimeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
 
-      // Apply new credentials atomically
-      if (newCredentials.supabaseUrl) {
-        process.env.SUPABASE_URL = newCredentials.supabaseUrl;
-      }
-      if (newCredentials.supabaseKey) {
-        process.env.SUPABASE_ANON_KEY = newCredentials.supabaseKey;
-      }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
 
-      // Validate new credentials
-      const validation = validateCredentials();
-      if (!validation.isValid) {
-        throw new Error("New credentials failed validation");
-      }
+  return result === 0;
+}
 
-      const rollback = () => {
-        // Restore original credentials
-        this.backupCredentials.forEach((value, key) => {
-          if (value) {
-            process.env[key] = value;
-          }
-        });
-        this.backupCredentials.clear();
-      };
+/**
+ * Rate limiting helper for security-sensitive operations
+ * Simple in-memory rate limiter (for production, use Redis or similar)
+ */
+export class SecurityRateLimiter {
+  private attempts = new Map<string, { count: number; resetTime: number }>();
+  private maxAttempts: number;
+  private windowMs: number;
 
-      return { success: true, rollback };
-    } catch (error) {
-      // Auto-rollback on failure
-      this.backupCredentials.forEach((value, key) => {
-        if (value) {
-          process.env[key] = value;
-        }
+  constructor(maxAttempts: number = 5, windowMs: number = 15 * 60 * 1000) {
+    this.maxAttempts = maxAttempts;
+    this.windowMs = windowMs;
+  }
+
+  isAllowed(identifier: string): boolean {
+    const now = Date.now();
+    const record = this.attempts.get(identifier);
+
+    if (!record || now > record.resetTime) {
+      this.attempts.set(identifier, {
+        count: 1,
+        resetTime: now + this.windowMs,
       });
-      this.backupCredentials.clear();
+      return true;
+    }
 
-      throw new Error(
-        `Credential rotation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+    if (record.count >= this.maxAttempts) {
+      return false;
+    }
+
+    record.count++;
+    return true;
+  }
+
+  reset(identifier: string): void {
+    this.attempts.delete(identifier);
+  }
+
+  cleanup(): void {
+    const now = Date.now();
+    for (const [key, record] of Array.from(this.attempts.entries())) {
+      if (now > record.resetTime) {
+        this.attempts.delete(key);
+      }
     }
   }
 }
+
+/**
+ * Input validation helpers for security
+ */
+export const SecurityValidators = {
+  /**
+   * Validates email format with security considerations
+   */
+  isValidEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email) && email.length <= 254;
+  },
+
+  /**
+   * Validates password strength based on OWASP recommendations
+   */
+  isStrongPassword(password: string): {
+    isValid: boolean;
+    issues: string[];
+  } {
+    const issues: string[] = [];
+
+    if (password.length < 12) {
+      issues.push("Password must be at least 12 characters long");
+    }
+
+    if (!/[a-z]/.test(password)) {
+      issues.push("Password must contain at least one lowercase letter");
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      issues.push("Password must contain at least one uppercase letter");
+    }
+
+    if (!/\d/.test(password)) {
+      issues.push("Password must contain at least one number");
+    }
+
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>?]/.test(password)) {
+      issues.push("Password must contain at least one special character");
+    }
+
+    // Check for common patterns
+    if (/(.)\1{2,}/.test(password)) {
+      issues.push("Password should not contain repeated characters");
+    }
+
+    return {
+      isValid: issues.length === 0,
+      issues,
+    };
+  },
+
+  /**
+   * Sanitizes input to prevent injection attacks
+   */
+  sanitizeInput(input: string): string {
+    return input
+      .replace(/[<>]/g, "") // Remove angle brackets
+      .replace(/['"]/g, "") // Remove quotes
+      .replace(/[;&|`$]/g, "") // Remove command injection chars
+      .trim()
+      .substring(0, 1000); // Limit length
+  },
+};

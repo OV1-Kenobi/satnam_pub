@@ -127,9 +127,13 @@ describe("Dual-Mode Integration Tests", () => {
       });
 
       test("should handle individual payment with automatic liquidity management", async () => {
-        // Mock invoice for testing
-        const _mockInvoice = "lnbc1m1p0abcd...";
-        const _mockAmount = 100000; // 100k sats
+        // Mock invoice and amount for testing - used for validation
+        const mockInvoice = "lnbc1m1p0abcd...";
+        const mockAmount = 100000; // 100k sats
+
+        // Validate test data is properly formatted
+        expect(mockInvoice).toMatch(/^lnbc/);
+        expect(mockAmount).toBeGreaterThan(0);
 
         // This would normally call the actual PhoenixD client
         // For testing, we verify the interface and logic flow

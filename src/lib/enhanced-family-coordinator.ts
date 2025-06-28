@@ -378,10 +378,10 @@ export class EnhancedFamilyCoordinator {
     }
 
     // Validate encryption key availability
-    const envEncryptionKey = process.env.FAMILY_ENCRYPTION_KEY;
+    const envEncryptionKey = import.meta.env.VITE_FAMILY_ENCRYPTION_KEY;
     if (!envEncryptionKey) {
       throw new Error(
-        "FAMILY_ENCRYPTION_KEY environment variable is required for production use. " +
+        "VITE_FAMILY_ENCRYPTION_KEY environment variable is required for production use. " +
           "This key is used to encrypt sensitive family data including Lightning Network credentials."
       );
     }
@@ -1383,11 +1383,12 @@ export class EnhancedFamilyCoordinator {
   ): Promise<void> {
     try {
       switch (data.type) {
-        case "subscribe_liquidity":
+        case "subscribe_liquidity": {
           // Handle liquidity subscription
           const status = await this.getFamilyLiquidityStatus();
           this.sendToClient(client, { type: "liquidity_status", data: status });
           break;
+        }
 
         case "request_emergency_liquidity":
           if (data.memberId && data.amount && data.urgency) {

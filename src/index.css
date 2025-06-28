@@ -10,12 +10,14 @@
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    z-index: 9999 !important;
+    z-index: 50 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    padding: 1rem !important;
     background-color: rgba(0, 0, 0, 0.5) !important;
     backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
   }
 
   .modal-content {
@@ -70,4 +72,37 @@
 /* Prevent body scroll when modal is open */
 body.modal-open {
   overflow: hidden !important;
+}
+
+/* Utility classes for better compatibility */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* Fallback for browsers that don't support line-clamp */
+@supports not (-webkit-line-clamp: 2) {
+  .line-clamp-1,
+  .line-clamp-2,
+  .line-clamp-3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

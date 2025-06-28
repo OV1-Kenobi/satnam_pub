@@ -4,6 +4,7 @@ import App from "./App.tsx";
 import { FamilyFederationAuthProvider } from "./components/auth/FamilyFederationAuth.tsx";
 import "./index.css";
 
+// Simple browser-only initialization
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <FamilyFederationAuthProvider>

@@ -1,12 +1,12 @@
 // src/components/AuthTestingPanel.tsx
-import React, { useState } from "react";
-import { Buffer } from "buffer";
 import {
+  finalizeEvent as finishEvent,
   generateSecretKey as generatePrivateKey,
   getPublicKey,
-  finalizeEvent as finishEvent,
   nip19,
 } from "nostr-tools";
+import React, { useState } from "react";
+import { ApiClient } from "../../utils/api-client";
 
 interface TestResult {
   test: string;
@@ -37,13 +37,8 @@ const AuthTestingPanel: React.FC = () => {
     });
 
     try {
-      const response = await fetch("/api/auth/nwc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nwcUri }),
-      });
-
-      const result = await response.json();
+      const apiClient = new ApiClient();
+      const result = await apiClient.authenticateUser({ nwcUri, type: 'nwc' });
 
       if (result.success) {
         addResult({
@@ -232,7 +227,7 @@ const AuthTestingPanel: React.FC = () => {
     setTestNpub(npub);
 
     // Example NWC URI format
-    const secretHex = Buffer.from(privkey).toString("hex");
+    const secretHex = privkey; // privkey is already hex from nostr-tools
     setNwcUri(
       `nostr+walletconnect://${pubkey}?relay=wss://relay.damus.io&secret=${secretHex}`,
     );

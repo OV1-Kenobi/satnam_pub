@@ -34,7 +34,7 @@ function parseDatabaseUrl(url?: string) {
         parsed.hostname.includes("supabase.co") ||
         process.env.DB_SSL === "true",
     };
-  } catch (error) {
+  } catch {
     console.warn("Failed to parse DATABASE_URL, using individual env vars");
     return {
       host: process.env.DB_HOST || "localhost",
@@ -138,7 +138,6 @@ export const config = {
 
 // Validation function to check required configuration
 export function validateConfig(): { valid: boolean; missing: string[] } {
-  const required = [];
   const missing: string[] = [];
 
   // Check critical configuration

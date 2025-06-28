@@ -52,17 +52,16 @@ export class FedimintClient {
   constructor() {
     // Environment variable helper for both Vite and Node.js
     const getEnvVar = (key: string): string => {
-      if (typeof import.meta !== "undefined" && import.meta.env) {
-        return import.meta.env[key] || "";
-      }
-      return process.env[key] || "";
+      return import.meta.env[key] || "";
     };
 
     this.config = {
-      federationId: getEnvVar("FEDIMINT_FEDERATION_ID") || "test_federation",
-      gatewayUrl: getEnvVar("FEDIMINT_GATEWAY_URL") || "http://127.0.0.1:8080",
-      apiToken: getEnvVar("FEDIMINT_API_TOKEN") || "",
-      network: (getEnvVar("FEDIMINT_NETWORK") as any) || "testnet",
+      federationId:
+        getEnvVar("VITE_FEDIMINT_FEDERATION_ID") || "test_federation",
+      gatewayUrl:
+        getEnvVar("VITE_FEDIMINT_GATEWAY_URL") || "http://127.0.0.1:8080",
+      apiToken: getEnvVar("VITE_FEDIMINT_API_TOKEN") || "",
+      network: (getEnvVar("VITE_FEDIMINT_NETWORK") as any) || "testnet",
     };
 
     // Initialize HTTP client with authentication

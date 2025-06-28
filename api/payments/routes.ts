@@ -7,30 +7,10 @@ const QuerySchema = z.object({
   amount: z.string().regex(/^\d+$/, "Amount must be a positive integer"),
 });
 
-/**
- * Handle CORS for the API endpoint
- */
-function setCorsHeaders(req: any, res: any) {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : [
-          "http://localhost:3000",
-          "http://localhost:5173",
-          "http://localhost:3002",
-        ];
+import { ApiRequest, ApiResponse } from "../../types/api";
+import { setCorsHeaders } from "../../utils/cors";
 
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+// Note: CORS handling is now managed by the shared utility
 
 /**
  * Mock family member validation
@@ -51,9 +31,9 @@ async function isFamilyMember(memberId: string): Promise<boolean> {
  * Payment Routes API Endpoint
  * GET /api/payments/routes - Get available payment routes
  */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  // Set CORS headers with appropriate methods for this endpoint
+  setCorsHeaders(req, res, { methods: "GET, OPTIONS" });
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {

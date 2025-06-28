@@ -80,7 +80,7 @@ interface EnhancedPaymentResponse {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<EnhancedPaymentResponse>,
+  res: NextApiResponse<EnhancedPaymentResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -193,20 +193,20 @@ export default async function handler(
 
     // Get current liquidity metrics for intelligence analysis
     const liquidityMetrics = await intelligence.getLiquidityMetrics(
-      paymentRequest.familyId,
+      paymentRequest.familyId
     );
 
     // Calculate risk score
     const riskScore = calculatePaymentRiskScore(
       paymentRequest,
-      liquidityMetrics,
+      liquidityMetrics
     );
 
     // Check if approval is required
     const requiresApproval = await checkApprovalRequirement(
       paymentRequest,
       riskScore,
-      familyConfig,
+      familyConfig
     );
 
     let response: EnhancedPaymentResponse;
@@ -215,7 +215,7 @@ export default async function handler(
       // Create approval request
       const approvalResult = await createPaymentApproval(
         paymentRequest,
-        riskScore,
+        riskScore
       );
 
       response = {
@@ -232,11 +232,11 @@ export default async function handler(
           riskScore,
           recommendations: generateIntelligenceRecommendations(
             riskScore,
-            liquidityMetrics,
+            liquidityMetrics
           ),
           costOptimization: await generateCostOptimization(
             paymentRequest,
-            liquidityMetrics,
+            liquidityMetrics
           ),
         },
         metadata: {
@@ -255,7 +255,7 @@ export default async function handler(
         paymentRequest.fromMemberId,
         paymentRequest.toDestination,
         paymentRequest.amount,
-        paymentRequest.preferences,
+        paymentRequest.preferences
       );
 
       if (routes.length === 0) {
@@ -286,7 +286,7 @@ export default async function handler(
         paymentRequest.toDestination,
         paymentRequest.amount,
         0, // Use best route (index 0)
-        paymentRequest.preferences,
+        paymentRequest.preferences
       );
 
       const executionTime = Date.now() - startTime;
@@ -322,11 +322,11 @@ export default async function handler(
             riskScore,
             recommendations: generateIntelligenceRecommendations(
               riskScore,
-              liquidityMetrics,
+              liquidityMetrics
             ),
             costOptimization: await generateCostOptimization(
               paymentRequest,
-              liquidityMetrics,
+              liquidityMetrics
             ),
           },
           metadata: {
@@ -357,12 +357,12 @@ export default async function handler(
               "Check liquidity and try again",
               ...generateIntelligenceRecommendations(
                 riskScore,
-                liquidityMetrics,
+                liquidityMetrics
               ),
             ],
             costOptimization: await generateCostOptimization(
               paymentRequest,
-              liquidityMetrics,
+              liquidityMetrics
             ),
           },
           metadata: {
@@ -384,7 +384,7 @@ export default async function handler(
     });
 
     console.log(
-      `✅ Enhanced payment ${response.success ? "completed" : "failed"}: ${response.status}`,
+      `✅ Enhanced payment ${response.success ? "completed" : "failed"}: ${response.status}`
     );
 
     return res.status(response.success ? 200 : 400).json(response);
@@ -411,7 +411,7 @@ export default async function handler(
 
 function calculatePaymentRiskScore(
   request: EnhancedPaymentRequest,
-  metrics: LiquidityMetrics,
+  metrics: LiquidityMetrics
 ): number {
   let riskScore = 0.1; // Base risk
 
@@ -442,7 +442,7 @@ function calculatePaymentRiskScore(
 async function checkApprovalRequirement(
   request: EnhancedPaymentRequest,
   riskScore: number,
-  familyConfig: any,
+  _familyConfig: any
 ): Promise<boolean> {
   // Force approval if explicitly requested
   if (request.approvalRequired) return true;
@@ -459,7 +459,7 @@ async function checkApprovalRequirement(
 
 async function createPaymentApproval(
   request: EnhancedPaymentRequest,
-  riskScore: number,
+  riskScore: number
 ): Promise<{
   approvalId: string;
   requiredApprovers: string[];
@@ -473,21 +473,21 @@ async function createPaymentApproval(
   const encryptedFamilyId = await encryptSensitiveData(request.familyId);
   const encryptedMemberId = await encryptSensitiveData(request.fromMemberId);
   const encryptedDestination = await encryptSensitiveData(
-    request.toDestination,
+    request.toDestination
   );
   const encryptedAmount = await encryptSensitiveData(request.amount.toString());
   const encryptedMemo = request.memo
     ? await encryptSensitiveData(request.memo)
     : null;
   const encryptedApprovers = await encryptSensitiveData(
-    JSON.stringify(requiredApprovers),
+    JSON.stringify(requiredApprovers)
   );
   const encryptedRiskAssessment = await encryptSensitiveData(
     JSON.stringify({
       riskScore,
       factors: ["amount", "liquidity_utilization", "urgency"],
       timestamp: new Date().toISOString(),
-    }),
+    })
   );
 
   await supabase.from("secure_payment_approvals").insert({
@@ -534,7 +534,7 @@ async function createPaymentApproval(
 
 function generateIntelligenceRecommendations(
   riskScore: number,
-  metrics: LiquidityMetrics,
+  metrics: LiquidityMetrics
 ): string[] {
   const recommendations = [];
 
@@ -548,7 +548,7 @@ function generateIntelligenceRecommendations(
 
   if (metrics.efficiency.routingSuccessRate < 0.9) {
     recommendations.push(
-      "Low routing success rate - check channel connectivity",
+      "Low routing success rate - check channel connectivity"
     );
   }
 
@@ -568,7 +568,7 @@ interface CostOptimization {
 
 async function generateCostOptimization(
   request: EnhancedPaymentRequest,
-  metrics: LiquidityMetrics,
+  metrics: LiquidityMetrics
 ): Promise<CostOptimization> {
   return {
     currentPath: {
@@ -606,28 +606,28 @@ async function storeEnhancedPaymentRecord(data: {
   try {
     // Encrypt all sensitive payment data
     const encryptedFamilyId = await encryptSensitiveData(
-      data.paymentRequest.familyId,
+      data.paymentRequest.familyId
     );
     const encryptedFromMember = await encryptSensitiveData(
-      data.paymentRequest.fromMemberId,
+      data.paymentRequest.fromMemberId
     );
     const encryptedDestination = await encryptSensitiveData(
-      data.paymentRequest.toDestination,
+      data.paymentRequest.toDestination
     );
     const encryptedAmount = await encryptSensitiveData(
-      data.paymentRequest.amount.toString(),
+      data.paymentRequest.amount.toString()
     );
     const encryptedMemo = data.paymentRequest.memo
       ? await encryptSensitiveData(data.paymentRequest.memo)
       : null;
     const encryptedTxId = await encryptSensitiveData(
-      data.executionResult.transactionId,
+      data.executionResult.transactionId
     );
     const encryptedFee = await encryptSensitiveData(
-      data.executionResult.actualFee.toString(),
+      data.executionResult.actualFee.toString()
     );
     const encryptedRoutePath = await encryptSensitiveData(
-      JSON.stringify(data.route.path),
+      JSON.stringify(data.route.path)
     );
 
     await supabase.from("secure_family_payments").insert({

@@ -1,7 +1,7 @@
 import * as validation from "./validation";
 
-export { Logger, createLogger, defaultLogger } from "./logger";
-export type { LogContext, LogEntry, LogLevel, LoggerConfig } from "./logger";
+export { createLogger, defaultLogger, Logger } from "./logger";
+export type { LogContext, LogEntry, LoggerConfig, LogLevel } from "./logger";
 
 // Export browser-compatible crypto functions from crypto-factory
 export {
@@ -43,3 +43,30 @@ export type {
 } from "./crypto-factory";
 
 export { validation };
+
+// Export authentication crypto utilities
+export {
+  AUTH_CRYPTO_CONFIG,
+  checkRateLimit,
+  cleanupRateLimitStore,
+  CORS_HEADERS,
+  generateSecureChallenge,
+  generateSessionToken,
+  getClientIP,
+  getCorsHeaders,
+  getSecurityHeaders,
+  SECURITY_HEADERS,
+  validateOrigin,
+  validators,
+} from "./auth-crypto";
+
+export type { RateLimitResult } from "./auth-crypto";
+
+// Export enhanced CORS utilities
+export {
+  ALLOWED_ORIGINS,
+  getAllowedOrigins,
+  getCorsHeadersForAnyAPI,
+  setCorsHeaders,
+  setCorsHeadersFromShared,
+} from "./cors";

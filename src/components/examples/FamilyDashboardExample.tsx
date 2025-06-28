@@ -2,11 +2,11 @@
 // File: src/components/examples/FamilyDashboardExample.tsx
 
 import React from 'react';
-import { useFamilyAuth } from '../../hooks/useFamilyAuth';
+import { useFamilyFederationAuth } from '../../hooks/useFamilyFederationAuth';
 import ProtectedFamilyRoute from '../auth/ProtectedFamilyRoute';
 
 const FamilyFinancialsDashboard: React.FC = () => {
-  const { userAuth, logout } = useFamilyAuth();
+  const { userAuth, logout } = useFamilyFederationAuth();
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -1,7 +1,7 @@
 import { CheckCircle, Copy, Download, QrCode, Send } from "lucide-react";
 import React from "react";
 import { formatSats, getStatusColor, getStatusIcon } from "../../lib/utils";
-import { SatnamFamilyMember } from "../types/shared";
+import { SatnamFamilyMember } from "../../types/shared";
 
 interface FamilyMembersSectionProps {
   familyMembers: SatnamFamilyMember[];

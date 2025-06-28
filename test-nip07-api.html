@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIP-07 API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #005a8b;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .loading {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NIP-07 API Test</h1>
+        <p>This page tests the NIP-07 authentication API endpoints.</p>
+        
+        <h2>Test Challenge Generation</h2>
+        <button onclick="testChallenge()" id="challengeBtn">Generate Challenge</button>
+        <div id="challengeResult" class="result" style="display: none;"></div>
+        
+        <h2>Test Complete Flow</h2>
+        <button onclick="testCompleteFlow()" id="flowBtn">Test Complete Authentication Flow</button>
+        <div id="flowResult" class="result" style="display: none;"></div>
+        
+        <h2>Current Environment</h2>
+        <div class="result">
+            <strong>Current URL:</strong> ${window.location.href}
+            <strong>Has window.nostr:</strong> ${typeof window.nostr !== 'undefined' ? 'Yes' : 'No'}
+            <strong>User Agent:</strong> ${navigator.userAgent}
+        </div>
+    </div>
+
+    <script>
+        // Test challenge generation
+        async function testChallenge() {
+            const btn = document.getElementById('challengeBtn');
+            const result = document.getElementById('challengeResult');
+            
+            btn.disabled = true;
+            btn.textContent = 'Testing...';
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.textContent = 'Generating authentication challenge...';
+            
+            try {
+                const response = await fetch('/api/auth/nip07-challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    result.className = 'result success';
+                    result.textContent = 'Challenge generated successfully!\n\n' + JSON.stringify(data, null, 2);
+                    
+                    // Store challenge for complete flow test
+                    window.testChallenge = data.data;
+                } else {
+                    result.className = 'result error';
+                    result.textContent = 'Challenge generation failed:\n\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.textContent = 'Network error:\n\n' + error.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Challenge';
+            }
+        }
+        
+        // Test complete authentication flow
+        async function testCompleteFlow() {
+            const btn = document.getElementById('flowBtn');
+            const result = document.getElementById('flowResult');
+            
+            btn.disabled = true;
+            btn.textContent = 'Testing...';
+            result.style.display = 'block';
+            result.className = 'result loading';
+            result.textContent = 'Testing complete authentication flow...';
+            
+            try {
+                // Step 1: Check for NIP-07 extension
+                if (typeof window.nostr === 'undefined') {
+                    result.className = 'result error';
+                    result.textContent = 'No NIP-07 extension detected.\n\nPlease install a Nostr extension like Alby, nos2x, or Flamingo to test the complete flow.';
+                    return;
+                }
+                
+                result.textContent = 'Step 1: NIP-07 extension detected ✓\nStep 2: Generating challenge...';
+                
+                // Step 2: Generate challenge
+                const challengeResponse = await fetch('/api/auth/nip07-challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const challengeData = await challengeResponse.json();
+                
+                if (!challengeResponse.ok || !challengeData.success) {
+                    result.className = 'result error';
+                    result.textContent = 'Challenge generation failed:\n\n' + JSON.stringify(challengeData, null, 2);
+                    return;
+                }
+                
+                result.textContent = 'Step 1: NIP-07 extension detected ✓\nStep 2: Challenge generated ✓\nStep 3: Getting public key...';
+                
+                // Step 3: Get public key
+                const publicKey = await window.nostr.getPublicKey();
+                
+                result.textContent = 'Step 1: NIP-07 extension detected ✓\nStep 2: Challenge generated ✓\nStep 3: Public key obtained ✓\nStep 4: Creating auth event...';
+                
+                // Step 4: Create auth event
+                const authEvent = {
+                    kind: 22242,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [
+                        ['challenge', challengeData.data.challenge],
+                        ['domain', challengeData.data.domain],
+                        ['expires', challengeData.data.expiresAt.toString()]
+                    ],
+                    content: `Authenticate to ${challengeData.data.domain}`,
+                    pubkey: publicKey
+                };
+                
+                result.textContent = 'Step 1: NIP-07 extension detected ✓\nStep 2: Challenge generated ✓\nStep 3: Public key obtained ✓\nStep 4: Auth event created ✓\nStep 5: Requesting signature...';
+                
+                // Step 5: Sign the event
+                const signedEvent = await window.nostr.signEvent(authEvent);
+                
+                result.textContent = 'Step 1: NIP-07 extension detected ✓\nStep 2: Challenge generated ✓\nStep 3: Public key obtained ✓\nStep 4: Auth event created ✓\nStep 5: Event signed ✓\nStep 6: Verifying authentication...';
+                
+                // Step 6: Verify authentication
+                const verifyResponse = await fetch('/api/auth/nip07-signin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        signedEvent,
+                        challenge: challengeData.data.challenge,
+                        domain: challengeData.data.domain
+                    })
+                });
+                
+                const verifyData = await verifyResponse.json();
+                
+                if (verifyResponse.ok && verifyData.success) {
+                    result.className = 'result success';
+                    result.textContent = 'Complete authentication flow successful! ✓\n\nAll steps completed:\n1. NIP-07 extension detected\n2. Challenge generated\n3. Public key obtained\n4. Auth event created\n5. Event signed\n6. Authentication verified\n\nVerification response:\n' + JSON.stringify(verifyData, null, 2);
+                } else {
+                    result.className = 'result error';
+                    result.textContent = 'Authentication verification failed:\n\n' + JSON.stringify(verifyData, null, 2);
+                }
+                
+            } catch (error) {
+                result.className = 'result error';
+                result.textContent = 'Error during authentication flow:\n\n' + error.message + '\n\nThis could be due to:\n- User canceled signing\n- Extension not responding\n- Network error\n- API endpoint not available';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Test Complete Authentication Flow';
+            }
+        }
+    </script>
+</body>
+</html>

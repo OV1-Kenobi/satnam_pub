@@ -1,7 +1,8 @@
 import { Shield } from "lucide-react";
 import React from "react";
 import { getStatusColor } from "../../lib/utils";
-import { NodeStatus, SatnamFamilyMember } from "../types/shared";
+import { SatnamFamilyMember } from "../../types/shared";
+import { NodeStatus } from "./types";
 
 interface NodeStatusSectionProps {
   nodeStatus: NodeStatus;

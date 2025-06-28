@@ -1,8 +1,19 @@
 import { AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
+interface TestResult {
+  name: string;
+  url: string;
+  method: string;
+  status: number;
+  success: boolean;
+  duration: number;
+  response: unknown;
+  error?: string;
+}
+
 export default function ApiDebug() {
-  const [testResults, setTestResults] = useState<any[]>([]);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const testEndpoints = async () => {

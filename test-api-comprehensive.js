@@ -338,12 +338,12 @@ function generateReport(totalTestTime) {
 // Check if we can connect to the server first
 async function checkServerConnection() {
   try {
-    const response = await fetch(`${API_BASE}/api/health`, {
+    await fetch(`${API_BASE}/api/health`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
     return true;
-  } catch (error) {
+  } catch {
     console.log('❌ Cannot connect to server. Please ensure the server is running on http://localhost:3000');
     console.log('   Start the server with: npm run dev');
     return false;
@@ -363,9 +363,13 @@ async function main() {
   await runAllTests();
 }
 
-// Handle global fetch for Node.js environments
-if (typeof fetch === 'undefined') {
-  global.fetch = require('node-fetch');
+// Handle global fetch for Node.js environments and run main
+async function init() {
+  if (typeof fetch === 'undefined') {
+    const { default: fetch } = await import('node-fetch');
+    global.fetch = fetch;
+  }
+  await main();
 }
 
-main().catch(console.error);
+init().catch(console.error);

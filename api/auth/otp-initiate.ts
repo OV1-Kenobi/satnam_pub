@@ -1,45 +1,12 @@
-import crypto from "crypto";
+import * as crypto from "crypto";
 import { z } from "zod";
-
-// In-memory OTP storage (in production, use Redis or database)
-const otpStorage = new Map<
-  string,
-  {
-    otp: string;
-    npub: string;
-    nip05?: string;
-    createdAt: number;
-    attempts: number;
-  }
->();
+import { ApiRequest, ApiResponse } from "../../types/api";
+import { CommunicationServiceFactory } from "../../utils/communication-service";
+import { setCorsHeadersForCustomAPI } from "../../utils/cors";
+import { OTPStorageService, OTP_CONFIG } from "../../utils/otp-storage";
 
 // OTP expiry time (5 minutes)
-const OTP_EXPIRY_MS = 5 * 60 * 1000;
-
-/**
- * Handle CORS for the API endpoint
- */
-function setCorsHeaders(req: any, res: any) {
-  const allowedOrigins =
-    process.env.NODE_ENV === "production"
-      ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-      : [
-          "http://localhost:3000",
-          "http://localhost:5173",
-          "http://localhost:3002",
-        ];
-
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+const OTP_EXPIRY_MS = OTP_CONFIG.DEFAULT_TTL_MINUTES * 60 * 1000;
 
 /**
  * Generate a secure 6-digit OTP
@@ -49,21 +16,28 @@ function generateOTP(): string {
 }
 
 /**
- * Generate a secure OTP key
+ * Extract client information for security logging
  */
-function generateOTPKey(npub: string): string {
-  const timestamp = Date.now();
-  const random = crypto.randomBytes(8).toString("hex");
-  return `otp_${npub.slice(-8)}_${timestamp}_${random}`;
+function extractClientInfo(req: ApiRequest): {
+  userAgent?: string;
+  ipAddress?: string;
+} {
+  return {
+    userAgent: req.headers["user-agent"] as string,
+    ipAddress:
+      (req.headers["x-forwarded-for"] as string) ||
+      (req.headers["x-real-ip"] as string) ||
+      req.socket?.remoteAddress,
+  };
 }
 
 /**
  * OTP Initiation API Endpoint
  * POST /api/auth/otp-initiate - Generate and send OTP
  */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  // Set CORS headers with appropriate methods for this endpoint
+  setCorsHeadersForCustomAPI(req, res, { methods: "POST, OPTIONS" });
 
   // Handle preflight requests
   if (req.method === "OPTIONS") {
@@ -118,50 +92,110 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // For demo purposes, use the provided identifier
-    const targetNpub =
-      npub || `npub_${pubkey?.slice(0, 8)}` || `npub_${nip05?.split("@")[0]}`;
+    // Determine the target identifier (prioritize npub, then nip05, then derived from pubkey)
+    const targetIdentifier =
+      npub || nip05 || `npub_derived_${pubkey?.slice(0, 8)}`;
+    const clientInfo = extractClientInfo(req);
 
-    // Generate OTP and key
-    const otp = generateOTP();
-    const otpKey = generateOTPKey(targetNpub);
+    // Rate limiting check
+    const rateLimitKey = `otp_initiate_${clientInfo.ipAddress || "unknown"}`;
+    const identifierRateLimitKey = `otp_initiate_id_${crypto.createHash("sha256").update(targetIdentifier).digest("hex").slice(0, 16)}`;
 
-    // Store OTP (in production, this would be in Redis/database)
-    otpStorage.set(otpKey, {
-      otp,
-      npub: targetNpub,
-      nip05,
-      createdAt: Date.now(),
-      attempts: 0,
-    });
+    // Check IP-based rate limiting
+    const ipRateLimit = await OTPStorageService.checkRateLimit(
+      rateLimitKey,
+      OTP_CONFIG.RATE_LIMITS.INITIATE_PER_IP_PER_HOUR,
+      60
+    );
 
-    // Clean up expired OTPs
-    for (const [key, value] of otpStorage.entries()) {
-      if (Date.now() - value.createdAt > OTP_EXPIRY_MS) {
-        otpStorage.delete(key);
-      }
+    if (!ipRateLimit.allowed) {
+      res.status(429).json({
+        success: false,
+        error: "Too many OTP requests from this IP address",
+        retryAfter: Math.ceil(
+          (ipRateLimit.resetTime.getTime() - Date.now()) / 1000
+        ),
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
     }
 
-    // In a real implementation, this would send the OTP via Nostr DM
-    console.log(`🔐 OTP for ${targetNpub}: ${otp} (Demo mode)`);
-
-    // Simulate network delay
-    await new Promise((resolve) =>
-      setTimeout(resolve, 1000 + Math.random() * 1000)
+    // Check identifier-based rate limiting
+    const identifierRateLimit = await OTPStorageService.checkRateLimit(
+      identifierRateLimitKey,
+      OTP_CONFIG.RATE_LIMITS.INITIATE_PER_IDENTIFIER_PER_HOUR,
+      60
     );
+
+    if (!identifierRateLimit.allowed) {
+      res.status(429).json({
+        success: false,
+        error: "Too many OTP requests for this identifier",
+        retryAfter: Math.ceil(
+          (identifierRateLimit.resetTime.getTime() - Date.now()) / 1000
+        ),
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+
+    // Store OTP in Supabase with privacy-first approach
+    const sessionId = await OTPStorageService.createOTP(otp, {
+      identifier: targetIdentifier,
+      userAgent: clientInfo.userAgent,
+      ipAddress: clientInfo.ipAddress,
+      ttlMinutes: OTP_CONFIG.DEFAULT_TTL_MINUTES,
+    });
+
+    // Send OTP via communication service
+    try {
+      const communicationService =
+        await CommunicationServiceFactory.getDefaultService();
+      const sendResult = await communicationService.sendOTP(
+        targetIdentifier,
+        otp,
+        sessionId,
+        expiresAt
+      );
+
+      if (!sendResult.success) {
+        console.error("Failed to send OTP:", sendResult.error);
+        // Continue anyway - the OTP is stored and can be verified
+      }
+    } catch (communicationError) {
+      console.error("Communication service error:", communicationError);
+      // Continue anyway - in development mode, OTP will be logged
+    }
+
+    // Clean up expired OTPs (background task)
+    OTPStorageService.cleanupExpiredOTPs().catch((error) => {
+      console.error("Failed to cleanup expired OTPs:", error);
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        otpKey,
+        sessionId,
         message: "OTP sent successfully",
         expiresIn: OTP_EXPIRY_MS / 1000, // seconds
-        // In demo mode, include the OTP for testing
+        recipient: targetIdentifier,
+        // In demo/development mode, include the OTP for testing
         ...(process.env.NODE_ENV !== "production" && { otp }),
       },
       meta: {
         timestamp: new Date().toISOString(),
-        demo: true,
+        rateLimits: {
+          ipRemaining: ipRateLimit.remaining,
+          identifierRemaining: identifierRateLimit.remaining,
+        },
       },
     });
   } catch (error) {
@@ -172,7 +206,6 @@ export default async function handler(req: any, res: any) {
       error: "Failed to initiate OTP authentication",
       meta: {
         timestamp: new Date().toISOString(),
-        demo: true,
       },
     });
   }

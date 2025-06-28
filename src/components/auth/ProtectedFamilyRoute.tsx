@@ -2,7 +2,7 @@
 // File: src/components/auth/ProtectedFamilyRoute.tsx
 
 import React, { useEffect } from 'react';
-import { useFamilyAuth } from '../../hooks/useFamilyAuth';
+import { useFamilyFederationAuth } from '../../hooks/useFamilyFederationAuth';
 import FamilyFederationSignIn from './FamilyFederationSignIn';
 
 interface ProtectedFamilyRouteProps {
@@ -18,10 +18,10 @@ const ProtectedFamilyRoute: React.FC<ProtectedFamilyRouteProps> = ({
   requireWhitelist = true,
   requireGuardianApproval = false
 }) => {
-  const { isAuthenticated, userAuth, checkAuthStatus } = useFamilyAuth();
+  const { isAuthenticated, userAuth, checkSession } = useFamilyFederationAuth();
 
   useEffect(() => {
-    checkAuthStatus();
+    checkSession();
   }, []);
 
   // Show loading while checking authentication

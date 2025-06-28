@@ -1,6 +1,7 @@
 import { Baby, Crown, Shield, Users } from "lucide-react";
 import React, { useState } from "react";
-import { FamilyFederationAuthWrapper, useAuth } from "./FamilyFederationAuth";
+import { useFamilyFederationAuth } from "../../hooks/useFamilyFederationAuth";
+import { FamilyFederationAuthWrapper } from "./FamilyFederationAuth";
 import NWCOTPSignIn from "./NWCOTPSignIn";
 
 interface AuthProtectedRouteProps {
@@ -18,7 +19,7 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
   title = "Family Financials",
   description = "Access your family's Bitcoin treasury and Lightning channels",
 }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useFamilyFederationAuth();
   const [showSignIn, setShowSignIn] = useState(!isAuthenticated);
 
   const getRoleIcon = (role: string) => {

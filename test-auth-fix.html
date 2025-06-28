@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Fix Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Authentication Fix Test</h1>
+    <p>This test verifies that the authentication system handles HTML responses gracefully.</p>
+    
+    <button onclick="testAuthEndpoint()">Test Auth Endpoint</button>
+    <button onclick="testStaticFallback()">Test Static Fallback</button>
+    <button onclick="clearResults()">Clear Results</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            results.appendChild(div);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testAuthEndpoint() {
+            addResult('Testing /api/auth/session endpoint...', 'info');
+            
+            try {
+                const response = await fetch('/api/auth/session', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const contentType = response.headers.get('content-type');
+                addResult(`Response status: ${response.status}`, 'info');
+                addResult(`Content-Type: ${contentType}`, 'info');
+
+                if (contentType && contentType.includes('text/html')) {
+                    addResult('✅ Detected HTML response - this would trigger fallback mode', 'success');
+                } else if (contentType && contentType.includes('application/json')) {
+                    const result = await response.json();
+                    addResult('✅ Received JSON response: ' + JSON.stringify(result), 'success');
+                } else {
+                    addResult('⚠️ Unexpected content type', 'error');
+                }
+            } catch (error) {
+                if (error instanceof SyntaxError && error.message.includes('JSON')) {
+                    addResult('✅ Caught JSON parsing error - fallback mode would be triggered', 'success');
+                } else {
+                    addResult('❌ Unexpected error: ' + error.message, 'error');
+                }
+            }
+        }
+
+        async function testStaticFallback() {
+            addResult('Testing static fallback /api/auth/session.json...', 'info');
+            
+            try {
+                const response = await fetch('/api/auth/session.json', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    addResult('✅ Static fallback works: ' + JSON.stringify(result), 'success');
+                } else {
+                    addResult(`❌ Static fallback failed: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult('❌ Static fallback error: ' + error.message, 'error');
+            }
+        }
+
+        // Test on page load
+        window.addEventListener('load', () => {
+            addResult('Page loaded - ready to test authentication fixes', 'info');
+        });
+    </script>
+</body>
+</html>

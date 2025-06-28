@@ -317,7 +317,7 @@ function checkConsensus(
   // Different consensus rules based on proposal type
   switch (proposalType) {
     case "emergency_protocol":
-    case "guardian_removal":
+    case "guardian_removal": {
       // Critical proposals require higher threshold (75% of voting power)
       const criticalThreshold = Math.ceil(totalVotingPower * 0.75);
       return {
@@ -329,8 +329,9 @@ function checkConsensus(
               ? "rejected"
               : "voting",
       };
+    }
 
-    case "guardian_addition":
+    case "guardian_addition": {
       // Guardian addition requires majority of all guardians (not just voters)
       const majorityThreshold = Math.ceil(totalGuardians * 0.6);
       return {
@@ -342,6 +343,7 @@ function checkConsensus(
               ? "rejected"
               : "voting",
       };
+    }
 
     default:
       // Standard proposals require simple majority of required votes

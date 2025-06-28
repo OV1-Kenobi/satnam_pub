@@ -160,7 +160,7 @@ export class EnhancedPhoenixdManager {
       allowance?: FamilyMemberAccount["allowance"];
     }>
   ): Promise<FamilyLightningAccount> {
-    const nodeInfo = await this.phoenixClient.getNodeInfo();
+    await this.phoenixClient.getNodeInfo(); // Verify connection
     const balance = await this.phoenixClient.getBalance();
 
     const familyMembers: FamilyMemberAccount[] = members.map((member) => ({
@@ -458,10 +458,11 @@ export class EnhancedPhoenixdManager {
         return new Date(now.getTime() + 24 * 60 * 60 * 1000);
       case "weekly":
         return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      case "monthly":
+      case "monthly": {
         const nextMonth = new Date(now);
         nextMonth.setMonth(now.getMonth() + 1);
         return nextMonth;
+      }
       default:
         return new Date(now.getTime() + 24 * 60 * 60 * 1000);
     }

@@ -6,6 +6,8 @@
  * components initialize simultaneously.
  */
 
+import { supabase } from "../../lib/supabase";
+
 interface AuthResult {
   authenticated: boolean;
   user?: any;
@@ -56,49 +58,29 @@ class AuthManager {
 
   private async performAuthCheck(): Promise<AuthResult> {
     try {
-      const response = await fetch("/api/auth/session", {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      // Use Supabase directly for authentication in React app
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-      // 401 is expected when not authenticated - don't treat as error
-      if (response.status === 401) {
+      if (error) {
+        console.debug("Supabase session error:", error.message);
         return { authenticated: false };
       }
 
-      if (!response.ok) {
-        // Only log unexpected HTTP errors (not 401)
-        console.warn(
-          `Auth check returned ${response.status}: ${response.statusText}`
-        );
-        return { authenticated: false };
+      if (session && session.user) {
+        return {
+          authenticated: true,
+          user: {
+            ...session.user.user_metadata,
+          },
+        };
       }
 
-      const result = await response.json();
-
-      // Handle both old and new response formats
-      if (result.success) {
-        return result.data?.authenticated
-          ? result.data
-          : { authenticated: false };
-      } else {
-        return { authenticated: false };
-      }
+      return { authenticated: false };
     } catch (error) {
-      // Check if it's a JSON parsing error (which indicates API routing issues)
-      if (error instanceof SyntaxError && error.message.includes("JSON")) {
-        console.error(
-          "API routing issue - received non-JSON response:",
-          error.message
-        );
-        return { authenticated: false };
-      }
-
-      // Only log actual network errors
-      console.error("Auth check network error:", error);
+      console.error("Auth check unexpected error:", error);
       return { authenticated: false };
     }
   }

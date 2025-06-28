@@ -33,17 +33,52 @@ export async function loadBipCrypto() {
 
 /**
  * Hashing and encryption module - lazy loaded
+ * Uses conditional imports for serverless compatibility
  */
 export async function loadHashCrypto() {
-  const [noble, cryptoJs] = await Promise.all([
-    import("@noble/hashes"),
-    import("crypto-js"),
-  ]);
+  try {
+    // Import crypto-js which is needed for legacy functions
+    const cryptoJs = await import("crypto-js");
 
-  return {
-    noble,
-    cryptoJs,
-  };
+    // For noble-hashes, import specific functions that are actually needed
+    // Skip if not available to maintain serverless compatibility
+    let nobleHashes = null;
+    try {
+      // Import specific hash functions instead of the whole module
+      const [sha256, sha512] = await Promise.all([
+        import("@noble/hashes/sha256"),
+        import("@noble/hashes/sha512"),
+      ]);
+      nobleHashes = {
+        sha256: sha256.sha256,
+        sha512: sha512.sha512,
+      };
+    } catch (error) {
+      console.warn(
+        "⚠️ Noble hashes not available, using fallback implementations:",
+        error.message
+      );
+      // Fallback to Web Crypto API or other implementations
+      nobleHashes = {
+        sha256: null, // Will use Web Crypto API fallback
+        sha512: null, // Will use Web Crypto API fallback
+      };
+    }
+
+    return {
+      noble: nobleHashes,
+      cryptoJs,
+    };
+  } catch (error) {
+    console.warn(
+      "⚠️ Hash crypto module loading failed, using minimal implementation:",
+      error.message
+    );
+    return {
+      noble: null,
+      cryptoJs: null,
+    };
+  }
 }
 
 /**

@@ -100,7 +100,7 @@ export default async function handler(req, res) {
 
   try {
     switch (req.method) {
-      case "GET":
+      case "GET": {
         // Get family members
         const { memberId } = req.query;
         
@@ -140,8 +140,9 @@ export default async function handler(req, res) {
           });
         }
         break;
+      }
 
-      case "POST":
+      case "POST": {
         // Add new family member
         const newMember = req.body;
         
@@ -179,6 +180,7 @@ export default async function handler(req, res) {
           },
         });
         break;
+      }
 
       default:
         res.setHeader("Allow", ["GET", "POST"]);

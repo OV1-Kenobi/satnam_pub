@@ -90,7 +90,7 @@ export default async function handler(req: Request): Promise<Response> {
  */
 async function handleGetLiquidityStatus(
   req: Request,
-  familyManager: FamilyPhoenixdManager,
+  familyManager: FamilyPhoenixdManager
 ): Promise<Response> {
   try {
     const url = new URL(req.url);
@@ -166,7 +166,7 @@ async function handleGetLiquidityStatus(
  */
 async function handleLiquidityRequest(
   req: Request,
-  familyManager: FamilyPhoenixdManager,
+  familyManager: FamilyPhoenixdManager
 ): Promise<Response> {
   try {
     const requestData: LiquidityRequest = await req.json();
@@ -176,7 +176,7 @@ async function handleLiquidityRequest(
     }
 
     console.log(
-      `💰 Processing ${requestData.type} liquidity request for ${requestData.username}`,
+      `💰 Processing ${requestData.type} liquidity request for ${requestData.username}`
     );
 
     // Get family member details
@@ -185,7 +185,7 @@ async function handleLiquidityRequest(
       return errorResponse(
         "Family member not found",
         404,
-        requestData.username,
+        requestData.username
       );
     }
 
@@ -199,7 +199,7 @@ async function handleLiquidityRequest(
 
     // Process different types of liquidity requests
     switch (requestData.type) {
-      case "allowance":
+      case "allowance": {
         const allowanceResult =
           await familyManager.processAllowanceLiquidity(familyMember);
         liquidityResult = {
@@ -209,8 +209,9 @@ async function handleLiquidityRequest(
           message: allowanceResult.reason,
         };
         break;
+      }
 
-      case "emergency":
+      case "emergency": {
         if (
           !requestData.amount ||
           !requestData.urgency ||
@@ -219,7 +220,7 @@ async function handleLiquidityRequest(
           return errorResponse(
             "Emergency requests require amount, urgency, and reason",
             400,
-            requestData.username,
+            requestData.username
           );
         }
 
@@ -231,13 +232,14 @@ async function handleLiquidityRequest(
           maxFees: requestData.maxFees || 5000, // Default 5k sat max fees
         });
         break;
+      }
 
-      case "manual":
+      case "manual": {
         if (!requestData.amount) {
           return errorResponse(
             "Manual requests require amount",
             400,
-            requestData.username,
+            requestData.username
           );
         }
 
@@ -250,18 +252,19 @@ async function handleLiquidityRequest(
           maxFees: requestData.maxFees || 10000, // Default 10k sat max fees for manual
         });
         break;
+      }
 
       default:
         return errorResponse(
           `Invalid liquidity request type: ${requestData.type}`,
           400,
-          requestData.username,
+          requestData.username
         );
     }
 
     // Get updated liquidity status
     const liquidityStatus = await familyManager.getFamilyLiquidityStatus(
-      requestData.username,
+      requestData.username
     );
 
     const response: LiquidityResponse = {
@@ -303,7 +306,7 @@ async function handleLiquidityRequest(
         amount: liquidityResult.amount,
         fees: liquidityResult.fees,
         reason: liquidityResult.message,
-      },
+      }
     );
 
     return new Response(JSON.stringify(response), {
@@ -325,7 +328,7 @@ async function handleLiquidityRequest(
 function errorResponse(
   error: string,
   status: number = 500,
-  username?: string,
+  username?: string
 ): Response {
   const errorResponse: LiquidityErrorResponse = {
     status: "ERROR",

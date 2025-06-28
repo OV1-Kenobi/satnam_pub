@@ -487,6 +487,9 @@ export async function verifyOTP(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Generate session token for database storage (optional, for audit purposes)
+    const sessionToken = await generateSecureToken(64);
+
     // Create user data for session
     const userData = {
       npub: otpData.npub,
@@ -499,13 +502,11 @@ export async function verifyOTP(req: Request, res: Response): Promise<void> {
       isWhitelisted,
       votingPower: whitelistEntry?.voting_power || 0,
       guardianApproved: whitelistEntry?.guardian_approved || false,
+      sessionToken,
     };
 
     // Create secure session with HttpOnly cookies
     SecureSessionManager.createSession(res, userData);
-
-    // Generate session token for database storage (optional, for audit purposes)
-    const sessionToken = generateSecureToken(64);
 
     // Create authentication session in database
     const { error: sessionError } = await supabase.rpc("create_auth_session", {
@@ -748,7 +749,10 @@ export async function refreshSession(
   res: Response
 ): Promise<void> {
   try {
-    const refreshedSession = SecureSessionManager.refreshSession(req, res);
+    const refreshedSession = await SecureSessionManager.refreshSession(
+      req,
+      res
+    );
 
     if (!refreshedSession) {
       res.status(401).json({

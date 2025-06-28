@@ -14,60 +14,55 @@
 // - Configurable loading strategies
 // - Error handling with helpful diagnostics
 
-import type {
-  decryptData as DecryptDataType,
-  deriveKey as DeriveKeyType,
-  encryptData as EncryptDataType,
-  generateHOTP as GenerateHOTPType,
-  generateNostrKeyPair as GenerateNostrKeyPairType,
-  generateRecoveryPhrase as GenerateRecoveryPhraseType,
-  generateTOTP as GenerateTOTPType,
-  privateKeyFromPhrase as PrivateKeyFromPhraseType,
-  privateKeyFromPhraseWithAccount as PrivateKeyFromPhraseWithAccountType,
-} from "./crypto-lazy";
-
-// Lightweight utilities (always available) - re-exported to avoid static imports
+// Browser-compatible utilities using the new unified crypto classes
 export async function constantTimeEquals(
   a: string,
   b: string
 ): Promise<boolean> {
-  const { constantTimeEquals } = await import("./crypto-lazy");
-  return constantTimeEquals(a, b);
-}
-
-export async function decodeBase32(base32: string): Promise<Buffer> {
-  const { decodeBase32 } = await import("./crypto-lazy");
-  return decodeBase32(base32);
+  const { CryptoUnified } = await import("./crypto-unified");
+  // Simple constant time comparison
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 export async function generateRandomHex(length: number): Promise<string> {
-  const { generateRandomHex } = await import("./crypto-lazy");
-  return generateRandomHex(length);
+  const { CryptoUnified } = await import("./crypto-unified");
+  const bytes = CryptoUnified.randomBytes(Math.ceil(length / 2));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, length);
 }
 
-export async function generateSecureToken(length?: number): Promise<string> {
-  const { generateSecureToken } = await import("./crypto-lazy");
-  return generateSecureToken(length);
-}
-
-export async function isBase32(str: string): Promise<boolean> {
-  const { isBase32 } = await import("./crypto-lazy");
-  return isBase32(str);
+export async function generateSecureToken(
+  length: number = 64
+): Promise<string> {
+  const { CryptoUnified } = await import("./crypto-unified");
+  const bytes = CryptoUnified.randomBytes(length);
+  const base64 = btoa(String.fromCharCode(...Array.from(bytes)));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 export async function sha256(data: string): Promise<string> {
-  const { sha256 } = await import("./crypto-lazy");
-  return sha256(data);
+  const { CryptoUnified } = await import("./crypto-unified");
+  return CryptoUnified.hash(data);
 }
 
 // Environment detection
 const isServer = typeof window === "undefined";
 const isBrowser = typeof window !== "undefined";
-const hasWebCrypto = isBrowser && window.crypto && window.crypto.subtle;
-const hasNodeCrypto =
-  typeof process !== "undefined" && process.versions && process.versions.node;
-const isProduction =
-  typeof process !== "undefined" && process.env?.NODE_ENV === "production";
+const hasWebCrypto = Boolean(
+  isBrowser && window.crypto && window.crypto.subtle
+);
+const hasNodeCrypto = Boolean(
+  typeof process !== "undefined" && process.versions && process.versions.node
+);
+const isProduction = Boolean(
+  typeof process !== "undefined" && process.env?.NODE_ENV === "production"
+);
 
 // Strategy configuration
 interface CryptoLoadingStrategy {
@@ -145,7 +140,7 @@ export function getCryptoEnvironmentInfo() {
  * Check if the current environment supports crypto operations
  */
 export function isCryptoSupported(): boolean {
-  return hasWebCrypto || hasNodeCrypto;
+  return Boolean(hasWebCrypto || hasNodeCrypto);
 }
 
 /**
@@ -166,286 +161,71 @@ export function getPreferredCryptoImplementation():
   return "async";
 }
 
-// Lazy-loaded function wrappers
-let lazyFunctions: {
-  generateNostrKeyPair?: typeof GenerateNostrKeyPairType;
-  generateRecoveryPhrase?: typeof GenerateRecoveryPhraseType;
-  privateKeyFromPhrase?: typeof PrivateKeyFromPhraseType;
-  privateKeyFromPhraseWithAccount?: typeof PrivateKeyFromPhraseWithAccountType;
-  generateTOTP?: typeof GenerateTOTPType;
-  generateHOTP?: typeof GenerateHOTPType;
-  encryptData?: typeof EncryptDataType;
-  decryptData?: typeof DecryptDataType;
-  deriveKey?: typeof DeriveKeyType;
-} = {};
-
-/**
- * Load crypto functions based on current strategy and environment
- */
-async function loadCryptoFunctions() {
-  if (Object.keys(lazyFunctions).length > 0 && currentStrategy.enableCaching) {
-    return lazyFunctions;
-  }
-
-  // Determine the best crypto implementation based on environment
-  const shouldUseSync = currentStrategy.useSync && hasNodeCrypto && isServer;
-  const shouldUseBrowserCrypto =
-    currentStrategy.preferBrowserCrypto && hasWebCrypto;
-
-  if (shouldUseSync) {
-    // Load synchronous versions (for server-side with Node.js crypto)
-    try {
-      // Use dynamic import with string concatenation to avoid Vite static analysis
-      const cryptoModulePath = "./crypto";
-      const syncCrypto = await import(/* @vite-ignore */ cryptoModulePath);
-      lazyFunctions = {
-        generateNostrKeyPair: syncCrypto.generateNostrKeyPair,
-        generateRecoveryPhrase: () =>
-          Promise.resolve(syncCrypto.generateRecoveryPhrase()),
-        privateKeyFromPhrase: (phrase: string) =>
-          Promise.resolve(syncCrypto.privateKeyFromPhrase(phrase)),
-        privateKeyFromPhraseWithAccount: (phrase: string, account?: number) =>
-          Promise.resolve(
-            syncCrypto.privateKeyFromPhraseWithAccount(phrase, account)
-          ),
-        generateTOTP: (secret: string, window?: number) =>
-          Promise.resolve(syncCrypto.generateTOTP(secret, window)),
-        generateHOTP: (secret: string, counter: number) =>
-          Promise.resolve(syncCrypto.generateHOTP(secret, counter)),
-        encryptData: syncCrypto.encryptData,
-        decryptData: syncCrypto.decryptData,
-        deriveKey: syncCrypto.deriveKey,
-      };
-    } catch (error) {
-      console.warn(
-        "⚠️ Failed to load Node.js crypto, falling back to browser-compatible version:",
-        error
-      );
-      // Fallback to async crypto
-      const asyncCrypto = await import("./crypto-lazy");
-      lazyFunctions = createAsyncCryptoFunctions(asyncCrypto);
-    }
-  } else {
-    // Load asynchronous versions (for client-side or when browser crypto is preferred)
-    const asyncCrypto = await import("./crypto-lazy");
-    lazyFunctions = createAsyncCryptoFunctions(asyncCrypto);
-
-    if (shouldUseBrowserCrypto) {
-      console.log(
-        "✅ Using browser-compatible crypto implementations with Web Crypto API"
-      );
-    }
-  }
-
-  return lazyFunctions;
+// Browser-compatible crypto functions using the new unified classes
+export async function generateNostrKeyPair(): Promise<{
+  privateKey: string;
+  publicKey: string;
+}> {
+  const { CryptoUnified } = await import("./crypto-unified");
+  return CryptoUnified.generateKeyPair();
 }
 
-/**
- * Create async crypto function wrappers
- */
-function createAsyncCryptoFunctions(asyncCrypto: any) {
-  return {
-    generateNostrKeyPair: asyncCrypto.generateNostrKeyPair,
-    generateRecoveryPhrase: asyncCrypto.generateRecoveryPhrase,
-    privateKeyFromPhrase: asyncCrypto.privateKeyFromPhrase,
-    privateKeyFromPhraseWithAccount:
-      asyncCrypto.privateKeyFromPhraseWithAccount,
-    generateTOTP: asyncCrypto.generateTOTP,
-    generateHOTP: asyncCrypto.generateHOTP,
-    encryptData: asyncCrypto.encryptData,
-    decryptData: asyncCrypto.decryptData,
-    deriveKey: asyncCrypto.deriveKey,
-  };
-}
-
-/**
- * Generate a secp256k1 key pair for Nostr
- */
-export async function generateNostrKeyPair(
-  recoveryPhrase?: string,
-  account: number = 0
-) {
-  const functions = await loadCryptoFunctions();
-  if (!functions.generateNostrKeyPair) {
-    throw new Error("Crypto module failed to load: generateNostrKeyPair");
-  }
-  return functions.generateNostrKeyPair(recoveryPhrase, account);
-}
-
-/**
- * Generate a recovery phrase (mnemonic) for a private key
- */
-export async function generateRecoveryPhrase(): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.generateRecoveryPhrase) {
-    throw new Error("Crypto module failed to load: generateRecoveryPhrase");
-  }
-  return functions.generateRecoveryPhrase();
-}
-
-/**
- * Derive a private key from a recovery phrase following NIP-06 standard
- */
-export async function privateKeyFromPhrase(phrase: string): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.privateKeyFromPhrase) {
-    throw new Error("Crypto module failed to load: privateKeyFromPhrase");
-  }
-  return functions.privateKeyFromPhrase(phrase);
-}
-
-/**
- * Derive a private key from a recovery phrase with a specific account index
- */
-export async function privateKeyFromPhraseWithAccount(
-  phrase: string,
-  account: number = 0
-): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.privateKeyFromPhraseWithAccount) {
-    throw new Error(
-      "Crypto module failed to load: privateKeyFromPhraseWithAccount"
-    );
-  }
-  return functions.privateKeyFromPhraseWithAccount(phrase, account);
-}
-
-/**
- * Generate a time-based one-time password (TOTP)
- */
-export async function generateTOTP(
-  secret: string,
-  window = 0
-): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.generateTOTP) {
-    throw new Error("Crypto module failed to load: generateTOTP");
-  }
-  return functions.generateTOTP(secret, window);
-}
-
-/**
- * Generate an HMAC-based one-time password (HOTP)
- */
-export async function generateHOTP(
-  secret: string,
-  counter: number
-): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.generateHOTP) {
-    throw new Error("Crypto module failed to load: generateHOTP");
-  }
-  return functions.generateHOTP(secret, counter);
-}
-
-/**
- * Encrypt data with a password (legacy function)
- * @deprecated Use encryptCredentials from lib/security.ts
- */
 export async function encryptData(
   data: string,
   password: string
 ): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.encryptData) {
-    throw new Error("Crypto module failed to load: encryptData");
-  }
-  return functions.encryptData(data, password);
+  const { CryptoLazy } = await import("./crypto-lazy");
+  const crypto = CryptoLazy.getInstance();
+  return crypto.encryptData(data, password);
 }
 
-/**
- * Decrypt data with a password (legacy function)
- * @deprecated Use decryptCredentials from lib/security.ts
- */
 export async function decryptData(
   encryptedData: string,
   password: string
 ): Promise<string> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.decryptData) {
-    throw new Error("Crypto module failed to load: decryptData");
-  }
-  return functions.decryptData(encryptedData, password);
+  const { CryptoLazy } = await import("./crypto-lazy");
+  const crypto = CryptoLazy.getInstance();
+  return crypto.decryptData(encryptedData, password);
 }
 
-/**
- * Derive a cryptographic key from password and salt using PBKDF2
- */
-export async function deriveKey(
+export async function hashPassword(
   password: string,
-  salt: string | Buffer,
-  iterations: number = 100000,
-  keyLength: number = 32
-): Promise<Buffer> {
-  const functions = await loadCryptoFunctions();
-  if (!functions.deriveKey) {
-    throw new Error("Crypto module failed to load: deriveKey");
-  }
-  return functions.deriveKey(password, salt, iterations, keyLength);
+  salt?: string
+): Promise<string> {
+  const { CryptoLazy } = await import("./crypto-lazy");
+  const crypto = CryptoLazy.getInstance();
+  return crypto.hashPassword(password, salt);
 }
 
-/**
- * Preload crypto modules for better performance
- * Call this during app initialization or when crypto operations are likely to be needed
- */
+// Simple browser-compatible preload
 export async function preloadCryptoModules(): Promise<void> {
   if (!isCryptoSupported()) {
     console.warn("⚠️ Crypto operations not supported in this environment");
     return;
   }
 
-  if (currentStrategy.preloadModules) {
-    try {
-      const startTime = performance?.now?.() || Date.now();
-
-      await loadCryptoFunctions();
-
-      // Also preload the lazy modules if using async strategy
-      const shouldUseSync =
-        currentStrategy.useSync && hasNodeCrypto && isServer;
-      if (!shouldUseSync) {
-        const { preloadCryptoModules } = await import("./crypto-lazy");
-        await preloadCryptoModules();
-      }
-
-      const endTime = performance?.now?.() || Date.now();
-      const loadTime = Math.round(endTime - startTime);
-
-      const implementation = shouldUseSync
-        ? "Node.js crypto"
-        : "Web Crypto API";
-      console.log(
-        `✅ Crypto modules preloaded successfully using ${implementation} (${loadTime}ms)`
-      );
-    } catch (error) {
-      console.warn("⚠️ Failed to preload crypto modules:", error);
-
-      // Try to provide helpful error information
-      if (isBrowser && !hasWebCrypto) {
-        console.warn(
-          "💡 Web Crypto API not available. Ensure you're running in a secure context (HTTPS)"
-        );
-      } else if (isServer && !hasNodeCrypto) {
-        console.warn(
-          "💡 Node.js crypto module not available. Ensure you're running in a Node.js environment"
-        );
-      }
-    }
+  try {
+    // Preload our browser-compatible modules
+    await import("./crypto-unified");
+    await import("./crypto-lazy");
+    console.log("✅ Browser-compatible crypto modules preloaded successfully");
+  } catch (error) {
+    console.warn("⚠️ Failed to preload crypto modules:", error);
   }
 }
 
 /**
- * Check if crypto modules are loaded
+ * Check if crypto modules are loaded (simplified for browser-only)
  */
 export function areCryptoModulesLoaded(): boolean {
-  return Object.keys(lazyFunctions).length > 0;
+  return true; // Always true since we're using static imports
 }
 
 /**
- * Clear crypto module cache (useful for testing or memory management)
+ * Clear crypto module cache (no-op for browser-only version)
  */
 export function clearCryptoCache(): void {
-  lazyFunctions = {};
+  // No-op for browser version
 }
 
 // Utility for React components to handle loading states
@@ -456,13 +236,12 @@ export interface CryptoLoadingState {
 }
 
 /**
- * Hook-like utility for managing crypto loading state
- * (Can be used in React components or other contexts)
+ * Simplified loading manager for browser-only crypto
  */
 export function createCryptoLoadingManager() {
-  let state: CryptoLoadingState = {
+  const state: CryptoLoadingState = {
     isLoading: false,
-    isLoaded: areCryptoModulesLoaded(),
+    isLoaded: true, // Always loaded in browser
     error: null,
   };
 
@@ -473,23 +252,8 @@ export function createCryptoLoadingManager() {
   };
 
   const loadModules = async () => {
-    if (state.isLoaded || state.isLoading) return;
-
-    state = { isLoading: true, isLoaded: false, error: null };
-    notify();
-
-    try {
-      await preloadCryptoModules();
-      state = { isLoading: false, isLoaded: true, error: null };
-    } catch (error) {
-      state = {
-        isLoading: false,
-        isLoaded: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
-    }
-
-    notify();
+    // No-op for browser version - already loaded
+    return;
   };
 
   return {
@@ -503,4 +267,4 @@ export function createCryptoLoadingManager() {
 }
 
 // Export types for TypeScript users
-export type { CryptoLoadingState, CryptoLoadingStrategy };
+export type { CryptoLoadingStrategy };

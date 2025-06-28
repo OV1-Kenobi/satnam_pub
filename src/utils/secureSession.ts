@@ -1,11 +1,11 @@
 /**
  * Secure Session Utilities for Client-Side
  *
- * This module provides client-side utilities for working with secure HttpOnly cookie sessions.
- * It does not directly access session tokens (as they're HttpOnly), but provides methods
- * to check session status and handle authentication flows securely.
+ * This module provides client-side utilities for working with Supabase authentication.
+ * It handles authentication flows securely using Supabase's built-in session management.
  */
 
+import { supabase } from "../../lib/supabase";
 import { authManager } from "./authManager";
 
 export interface SessionInfo {
@@ -34,32 +34,33 @@ export async function getSessionInfo(): Promise<SessionInfo> {
       user: result.user,
     };
   } catch (error) {
-    // Only log actual network errors, not auth failures
-    console.error("Failed to get session info:", error);
+    // Don't log JSON parsing errors as they're handled by authManager
+    if (error instanceof SyntaxError && error.message.includes("JSON")) {
+      console.debug(
+        "Session info: Using fallback authentication mode due to API routing issue"
+      );
+    } else {
+      console.debug(
+        "Session info check failed:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
     return { isAuthenticated: false };
   }
 }
 
 /**
  * Perform secure logout
- * This calls the server logout endpoint which clears HttpOnly cookies
+ * This uses Supabase to sign out the user and clear the session
  */
 export async function secureLogout(): Promise<boolean> {
   try {
-    const response = await fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include", // Important: include cookies in request
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    const { error } = await supabase.auth.signOut();
 
     // Clear auth manager cache after logout
-    if (response.ok) {
-      authManager.clearCache();
-    }
+    authManager.clearCache();
 
-    return response.ok;
+    return !error;
   } catch (error) {
     console.error("Logout error:", error);
     return false;
@@ -67,18 +68,22 @@ export async function secureLogout(): Promise<boolean> {
 }
 
 /**
- * Make authenticated API calls using HttpOnly cookies
- * The session token is automatically included via HttpOnly cookies
+ * Make authenticated API calls using Supabase session
+ * The session token is automatically included in the Authorization header
  */
 export async function authenticatedFetch(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   return fetch(endpoint, {
     ...options,
-    credentials: "include", // Important: include cookies in request
     headers: {
       "Content-Type": "application/json",
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
       ...options.headers,
     },
   });
@@ -86,31 +91,25 @@ export async function authenticatedFetch(
 
 /**
  * Refresh session if needed
- * This attempts to refresh the session using the refresh token
+ * This uses Supabase to refresh the current session
  */
 export async function refreshSession(): Promise<SessionInfo> {
   try {
-    const response = await fetch("/api/auth/refresh", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.refreshSession();
 
-    // 401 is expected when refresh token is invalid/expired - don't treat as error
-    if (response.status === 401) {
+    if (error || !session) {
       return { isAuthenticated: false };
     }
 
-    if (!response.ok) {
-      return { isAuthenticated: false };
-    }
+    // Clear auth manager cache to force fresh check
+    authManager.clearCache();
 
-    const result = await response.json();
-    return result.success ? result.data : { isAuthenticated: false };
+    // Get updated session info through auth manager
+    return await getSessionInfo();
   } catch (error) {
-    // Only log actual network errors, not auth failures
     console.error("Session refresh error:", error);
     return { isAuthenticated: false };
   }

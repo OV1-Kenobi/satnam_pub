@@ -3,7 +3,7 @@
 // Demonstrates various ways to integrate Family Federation authentication
 
 import React, { useState } from 'react';
-import { useFamilyAuth } from '../../hooks/useFamilyAuth';
+import { useFamilyAuthOTP } from '../../hooks/useFamilyAuth';
 import { FamilyFederationUser } from '../../types/auth';
 import ProtectedRoute from '../ProtectedRoute';
 import SignInModal from '../SignInModal';
@@ -61,7 +61,7 @@ export const ProtectedContentExample: React.FC = () => {
 
 // Example 3: Custom authentication flow using the hook
 export const CustomAuthExample: React.FC = () => {
-  const { sendOTP, verifyOTP, isLoading, error, clearError } = useFamilyAuth();
+  const { sendOTP, verifyOTP, isLoading, error, clearError } = useFamilyAuthOTP();
   const [step, setStep] = useState<'input' | 'otp'>('input');
   const [npub, setNpub] = useState('');
   const [otp, setOtp] = useState('');

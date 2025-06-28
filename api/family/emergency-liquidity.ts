@@ -913,7 +913,7 @@ async function handleProtocolsManagement(
     );
 
     // Get encrypted protocols
-    const { data: _encryptedProtocols, error } = await supabase
+    const { error } = await supabase
       .from("secure_emergency_protocols")
       .select("*")
       .eq("active", true)
@@ -1261,10 +1261,12 @@ function validateProtocolConfiguration(config: any): void {
 async function storeEncryptedProtocolConfig(
   familyId: string,
   protocolId: string,
-  config: any
+  _config: any
 ): Promise<void> {
   // Simplified storage implementation
-  console.log(`💾 Storing protocol configuration: ${protocolId}`);
+  console.log(
+    `💾 Storing protocol configuration: ${protocolId} for family: ${familyId}`
+  );
 }
 
 async function getActiveProtocolCount(_familyId: string): Promise<number> {
@@ -1306,8 +1308,8 @@ async function generateEmergencyOptimizations(
 }
 
 async function generateEmergencyPredictions(
-  familyId: string,
-  intelligence: LiquidityIntelligenceSystem
+  _familyId: string,
+  _intelligence: LiquidityIntelligenceSystem
 ): Promise<any> {
   // Generate predictions based on historical data and patterns
   return {

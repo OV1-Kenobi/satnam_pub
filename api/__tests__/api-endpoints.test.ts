@@ -1,20 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockRequest, MockResponse } from "../../src/types/api-responses";
 
 // Mock request and response objects
 const createMockRequest = (
   method: string,
-  body?: any,
-  query?: any,
-  headers?: any
-) => ({
+  body?: Record<string, unknown>,
+  query?: Record<string, unknown>,
+  headers?: Record<string, string>
+): MockRequest => ({
   method,
   body: body || {},
   query: query || {},
   headers: headers || {},
 });
 
-const createMockResponse = () => {
-  const res: any = {
+const createMockResponse = (): MockResponse => {
+  const res = {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn().mockReturnThis(),

@@ -1,22 +1,22 @@
 import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle,
-  Eye,
-  EyeOff,
-  Info,
-  Key,
-  MessageCircle,
-  RefreshCw,
-  Send,
-  Shield,
-  Wallet,
-  X,
+    AlertTriangle,
+    ArrowRight,
+    CheckCircle,
+    Eye,
+    EyeOff,
+    Info,
+    Key,
+    MessageCircle,
+    RefreshCw,
+    Send,
+    Shield,
+    Wallet,
+    X,
 } from "lucide-react";
 import React, { useState } from "react";
+import { useFamilyFederationAuth } from "../../hooks/useFamilyFederationAuth";
 import type { NWCAuthResponse, VerificationResponse } from "../../types/auth";
 import { handleAuthenticationSuccess, isSuccessfulAuthResponse } from "../../utils/authSuccessHandler";
-import { useAuth } from "./FamilyFederationAuth";
 
 interface NWCOTPSignInProps {
   isOpen: boolean;
@@ -29,7 +29,7 @@ const NWCOTPSignIn: React.FC<NWCOTPSignInProps> = ({
   onClose,
   onCreateNew,
 }) => {
-  const { login } = useAuth();
+  const { login } = useFamilyFederationAuth();
   
   // UI State
   const [showOTPFlow, setShowOTPFlow] = useState(false);
