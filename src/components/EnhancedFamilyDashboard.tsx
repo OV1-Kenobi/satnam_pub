@@ -1,19 +1,25 @@
 import {
-    Activity,
-    AlertTriangle,
-    ArrowLeft,
-    BarChart3,
-    CheckCircle,
-    Eye,
-    EyeOff,
-    Globe,
-    RefreshCw,
-    Settings,
-    Shield,
-    TrendingUp,
-    Zap
+  Activity,
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  Globe,
+  RefreshCw,
+  Settings,
+  Shield,
+  TrendingUp,
+  Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
+
+// Import authentication wrapper
+import DashboardAuthWrapper from './auth/DashboardAuthWrapper';
+import { GiftwrappedMessaging } from './communications/GiftwrappedMessaging';
+
+// Import privacy components
 
 // Import our new dual-protocol components
 import FamilyFedimintGovernance from './FamilyFedimintGovernance';
@@ -24,8 +30,8 @@ import UnifiedFamilyPayments from './UnifiedFamilyPayments';
 
 // Import enhanced types
 import {
-    DualProtocolFamilyMember,
-    EnhancedFamilyTreasury
+  DualProtocolFamilyMember,
+  EnhancedFamilyTreasury
 } from '../../types/family';
 
 interface EnhancedFamilyDashboardProps {
@@ -34,7 +40,8 @@ interface EnhancedFamilyDashboardProps {
 
 type DashboardView = 'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd' | 'settings';
 
-const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBack }) => {
+// Internal Dashboard Component (preserving all 600 lines of functionality)
+const EnhancedFamilyDashboardCore: React.FC<EnhancedFamilyDashboardProps> = ({ onBack }) => {
   // State management
   const [currentView, setCurrentView] = useState<DashboardView>('overview');
   const [familyName] = useState("Nakamoto");
@@ -45,6 +52,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [satsToDollars] = useState(0.00003); // Mock exchange rate
   const [refreshing, setRefreshing] = useState(false);
+  const [showCommunications, setShowCommunications] = useState(false);
 
   // Enhanced family treasury data
   const [enhancedTreasury, setEnhancedTreasury] = useState<EnhancedFamilyTreasury>({
@@ -461,7 +469,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       {/* Quick Actions */}
       <div className="bg-orange-900 rounded-2xl p-6 border border-orange-400/20">
         <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <button
             onClick={() => setCurrentView('lightning')}
             className="flex flex-col items-center space-y-2 p-4 bg-orange-800/50 rounded-lg hover:bg-orange-700 transition-colors"
@@ -489,6 +497,13 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
           >
             <Globe className="h-6 w-6 text-green-400" />
             <span className="text-white text-sm">PhoenixD Manager</span>
+          </button>
+          <button
+            onClick={() => setShowCommunications(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+          >
+            <span>💬</span>
+            <span>Communications</span>
           </button>
         </div>
       </div>
@@ -593,8 +608,40 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
           console.log('Invoice generated:', { invoice, qrCode });
         }}
       />
+
+      {/* Communications Modal */}
+      {showCommunications && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-xl font-semibold">Family Communications</h2>
+              <button
+                onClick={() => setShowCommunications(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4">
+              <GiftwrappedMessaging familyMember={familyMembers[0]} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+// Main Enhanced Family Dashboard Component with Authentication Protection
+export function EnhancedFamilyDashboard(props: EnhancedFamilyDashboardProps) {
+  return (
+    <DashboardAuthWrapper 
+      requiredRole="parent" 
+      dashboardType="enhanced"
+    >
+      <EnhancedFamilyDashboardCore {...props} />
+    </DashboardAuthWrapper>
+  );
+}
 
 export default EnhancedFamilyDashboard;

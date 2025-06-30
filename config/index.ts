@@ -3,7 +3,14 @@
  *
  * This file exports all configuration settings for use throughout the application.
  */
-import { randomBytes } from "crypto";
+// Use these instead for Bolt.new
+const randomBytes = (size) => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+};
 import * as dotenv from "dotenv";
 import { z } from "zod";
 

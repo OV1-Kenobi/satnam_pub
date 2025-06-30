@@ -48,37 +48,66 @@ export default async function handler(req, res) {
     // const lightningClient = await connectToLightningNode(process.env.LIGHTNING_NODE_URL);
     // const nodeInfo = await lightningClient.getInfo();
     
-    // Mock Lightning node status for demo
-    const lightningStatus = {
-      nodeId: "03a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-      alias: "SatnamFamily-Lightning",
+    // Enhanced mock Lightning node status
+    const mockLightningStatus = {
+      nodeId: "03abcd1234567890abcdef1234567890abcdef1234567890abcdef",
+      alias: "Satnam Family Node",
+      version: "0.17.4-beta",
+      network: "bitcoin",
+      status: "online",
       isOnline: true,
-      blockHeight: 850000 + Math.floor(Math.random() * 1000),
-      channels: {
-        active: 12,
-        pending: 1,
-        total: 13,
+      syncStatus: {
+        chainSynced: true,
+        graphSynced: true,
+        bestBlockHeight: 820000,
+        bestBlockHash: "00000000000000000001a2b3c4d5e6f7890abcdef1234567890abcdef123456"
       },
       balance: {
-        confirmed: 5000000, // sats
+        onChain: 100000000, // sats
+        lightning: 50000000,
+        pending: 5000000,
+        confirmed: 5000000,
         unconfirmed: 0,
         total: 5000000,
       },
-      peers: 8,
-      version: "0.17.4-beta",
-      network: "mainnet",
+      channels: {
+        active: 12,
+        inactive: 1,
+        pending: 2,
+        total: 13,
+        totalCapacity: 200000000,
+        localBalance: 120000000,
+        remoteBalance: 80000000
+      },
+      peers: 24,
       fees: {
         baseFee: 1000,
         feeRate: 0.000001,
       },
+      lastUpdated: new Date().toISOString()
     };
+
+    // Simulate some variance in status (85% chance of being healthy)
+    const isHealthy = Math.random() > 0.15;
+
+    if (!isHealthy) {
+      mockLightningStatus.status = "syncing";
+      mockLightningStatus.isOnline = false;
+      mockLightningStatus.syncStatus.chainSynced = false;
+      mockLightningStatus.channels.inactive = 3;
+    }
 
     res.status(200).json({
       success: true,
-      data: lightningStatus,
+      data: {
+        node: mockLightningStatus,
+        healthy: isHealthy,
+        timestamp: new Date().toISOString()
+      },
       meta: {
         timestamp: new Date().toISOString(),
         demo: true,
+        source: "mock-lightning-node"
       },
     });
   } catch (error) {

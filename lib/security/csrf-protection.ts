@@ -3,7 +3,14 @@
  * @description Prevents Cross-Site Request Forgery attacks on sensitive operations
  */
 
-import { createHmac, randomBytes } from "crypto";
+// Use these instead for Bolt.new
+const randomBytes = (size) => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+};
 import { NextFunction, Request, Response } from "express";
 
 interface CSRFToken {

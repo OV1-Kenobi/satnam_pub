@@ -12,6 +12,7 @@ import {
   MessageCircle,
   RefreshCw,
   Shield,
+  Users,
   Wallet,
   X
 } from 'lucide-react';
@@ -19,6 +20,9 @@ import { nip19 } from 'nostr-tools';
 import React, { useEffect, useState } from 'react';
 import { NIP07AuthChallenge, NostrExtension } from '../types/auth';
 import NWCOTPSignIn from './auth/NWCOTPSignIn';
+import { FamilyFederationInvitationModal } from './communications/FamilyFederationInvitationModal';
+import { PeerInvitationModal } from './communications/PeerInvitationModal';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -34,7 +38,7 @@ interface ExtensionStatus {
   error?: string;
 }
 
-type AuthStep = 'method-selection' | 'nip07-auth' | 'nwc-otp-auth';
+type AuthStep = 'method-selection' | 'nip07-auth' | 'nwc-otp-auth' | 'invitation-options';
 
 const SignInModal: React.FC<SignInModalProps> = ({
   isOpen,
@@ -48,6 +52,11 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus>({
     available: false
   });
+  
+  // Invitation modal states
+  const [showFamilyInvitationModal, setShowFamilyInvitationModal] = useState(false);
+  const [showPeerInvitationModal, setShowPeerInvitationModal] = useState(false);
+  const [authenticatedUserData, setAuthenticatedUserData] = useState<any>(null);
   const [showTooltip, setShowTooltip] = useState(false);
   const [isCheckingExtension, setIsCheckingExtension] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
@@ -117,6 +126,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
             });
           }
         } catch (error) {
+          console.error('Extension check failed:', error);
           setExtensionStatus({
             available: false,
             error: 'Extension check failed'
@@ -175,6 +185,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
       try {
         publicKey = await nostr.getPublicKey();
       } catch (error) {
+        console.error('Failed to get public key from extension:', error);
         throw new Error('Extension access denied. Please allow access and try again.');
       }
 
@@ -207,6 +218,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
       try {
         signedEvent = await nostr.signEvent(authEvent);
       } catch (error) {
+        console.error('Signing error:', error);
         throw new Error('Signing cancelled. Please sign the authentication challenge to continue.');
       }
 
@@ -224,9 +236,15 @@ const SignInModal: React.FC<SignInModalProps> = ({
         message: 'Authentication successful!'
       });
 
+      // Store user data for invitation options
+      setAuthenticatedUserData({
+        publicKey,
+        npub,
+        destination
+      });
+
       setTimeout(() => {
-        onSignInSuccess(destination);
-        handleClose();
+        setAuthStep('invitation-options');
       }, 1000);
 
     } catch (error) {
@@ -237,6 +255,33 @@ const SignInModal: React.FC<SignInModalProps> = ({
         error: error instanceof Error ? error.message : 'An unexpected error occurred'
       });
     }
+  };
+
+  const handleInvitationOptionSelected = (option: 'invite' | 'skip') => {
+    if (option === 'invite') {
+      if (destination === 'family') {
+        setShowFamilyInvitationModal(true);
+      } else {
+        setShowPeerInvitationModal(true);
+      }
+    } else {
+      // Skip invitation, proceed to dashboard
+      onSignInSuccess(destination);
+      handleClose();
+    }
+  };
+
+  const handleInvitationModalClose = () => {
+    setShowFamilyInvitationModal(false);
+    setShowPeerInvitationModal(false);
+    onSignInSuccess(destination);
+    handleClose();
+  };
+
+  const handleSendPeerInvitation = async (recipientNpub: string, invitationType: string, personalMessage: string, privacyLevel: string) => {
+    // Handle the peer invitation sending logic here
+    console.log('Sending peer invitation:', { recipientNpub, invitationType, personalMessage, privacyLevel });
+    // You can implement the actual invitation sending logic here
   };
 
   const generateAuthChallenge = async (): Promise<NIP07AuthChallenge> => {
@@ -313,6 +358,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
         }`}
         onClick={(e) => e.stopPropagation()}
       >
+        <ErrorBoundary>
         {/* Close Button */}
         <button
           onClick={handleClose}
@@ -538,7 +584,81 @@ const SignInModal: React.FC<SignInModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Invitation Options Step */}
+        {authStep === 'invitation-options' && (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="h-8 w-8 text-white" />
+              </div>
+              <h3 className="text-white font-bold text-2xl mb-2">Welcome to Satnam.pub!</h3>
+              <p className="text-purple-200">
+                {destination === 'family' 
+                  ? 'Would you like to invite someone to join your Family Federation?'
+                  : 'Would you like to invite friends to join Satnam.pub?'
+                }
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <button
+                onClick={() => handleInvitationOptionSelected('invite')}
+                className="w-full bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+              >
+                <Users className="h-5 w-5" />
+                <span>
+                  {destination === 'family' 
+                    ? 'Invite Family Member'
+                    : 'Invite Friends'
+                  }
+                </span>
+                <ArrowRight className="h-5 w-5" />
+              </button>
+
+              <button
+                onClick={() => handleInvitationOptionSelected('skip')}
+                className="w-full bg-white/10 text-white border border-white/20 hover:bg-white/20 font-bold py-4 px-6 rounded-lg transition-all duration-300"
+              >
+                Skip for Now
+              </button>
+            </div>
+
+            <div className="text-center">
+              <p className="text-purple-300 text-sm">
+                {destination === 'family' 
+                  ? 'You can invite family members later from your Family Dashboard'
+                  : 'You can invite friends later from your Individual Dashboard'
+                }
+              </p>
+            </div>
+          </div>
+        )}
+        </ErrorBoundary>
       </div>
+
+      {/* Family Federation Invitation Modal */}
+      {showFamilyInvitationModal && (
+        <FamilyFederationInvitationModal
+          isOpen={showFamilyInvitationModal}
+          onClose={handleInvitationModalClose}
+          familyData={{
+            federationId: 'demo-federation',
+            familyName: 'Family Federation',
+            guardianThreshold: 2
+          }}
+        />
+      )}
+
+      {/* Peer Invitation Modal */}
+      {showPeerInvitationModal && (
+        <PeerInvitationModal
+          isOpen={showPeerInvitationModal}
+          onClose={handleInvitationModalClose}
+          onSendInvitation={handleSendPeerInvitation}
+          senderProfile={authenticatedUserData}
+        />
+      )}
     </div>
   );
 };

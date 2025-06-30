@@ -20,6 +20,11 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
+// Import authentication wrapper
+import DashboardAuthWrapper from './auth/DashboardAuthWrapper';
+
+// Import privacy components
+
 // Import Transaction type from shared types
 import { PaymentModal, Transaction } from './shared';
 
@@ -1381,7 +1386,8 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
 };
 
 // Main Enhanced Component
-export function IndividualFinancesDashboard({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
+// Internal Dashboard Component (preserving all 1,835 lines of functionality)
+function IndividualFinancesDashboardCore({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
   const [wallet, setWallet] = useState<EnhancedIndividualWallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'privacy'>('overview');
@@ -1829,6 +1835,17 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
         onSelectedMemberChange={setSelectedMember}
       />
     </div>
+  );
+}
+
+// Main Individual Finances Dashboard Component with Authentication Protection
+export function IndividualFinancesDashboard(props: IndividualFinancesDashboardProps) {
+  return (
+    <DashboardAuthWrapper 
+      dashboardType="individual"
+    >
+      <IndividualFinancesDashboardCore {...props} />
+    </DashboardAuthWrapper>
   );
 }
 

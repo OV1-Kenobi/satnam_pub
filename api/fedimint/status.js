@@ -48,47 +48,66 @@ export default async function handler(req, res) {
     // const fedimintClient = await connectToFedimint(process.env.FEDIMINT_GATEWAY_URL);
     // const federationInfo = await fedimintClient.getFederationInfo();
     
-    // Mock Fedimint federation status for demo
-    const fedimintStatus = {
-      federationId: "fed1qw2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c2v3b4n5m6",
+    // Enhanced mock Fedimint federation status
+    const mockFedimintStatus = {
+      federationId: "fed1abcd1234567890abcdef",
       name: "Satnam Family Federation",
       status: "online",
+      guardianCount: 4,
+      guardianThreshold: 3,
+      onlineGuardians: 4,
       guardians: {
-        total: 5,
-        online: 5,
+        total: 4,
+        online: 4,
         threshold: 3,
       },
       balance: {
+        total: 50000000, // msat
+        spendable: 48500000,
+        reserved: 1500000,
         totalEcash: 15000000, // Total ecash in federation (sats)
         familyBalance: 875000, // Family's ecash balance (sats)
       },
-      modules: {
-        lightning: {
-          enabled: true,
-          gateway: "gw1abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567",
-          status: "connected",
-        },
-        mint: {
-          enabled: true,
-          denominations: [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
-        },
-        wallet: {
-          enabled: true,
-          onchainAddress: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-        },
-      },
-      network: "mainnet",
+      lastSeen: new Date().toISOString(),
       version: "0.3.0",
+      network: "bitcoin",
+      modules: {
+        wallet: { enabled: true, status: "active", onchainAddress: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" },
+        lightning: { 
+          enabled: true, 
+          status: "active",
+          gateway: "gw1abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567",
+        },
+        mint: { 
+          enabled: true, 
+          status: "active",
+          denominations: [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
+        }
+      },
       uptime: Math.floor(Math.random() * 2592000000), // Random uptime up to 30 days
       lastSync: new Date(Date.now() - Math.floor(Math.random() * 300000)).toISOString(), // Last sync within 5 minutes
     };
 
+    // Simulate some variance in status (90% chance of being healthy)
+    const isHealthy = Math.random() > 0.1;
+
+    if (!isHealthy) {
+      mockFedimintStatus.status = "degraded";
+      mockFedimintStatus.onlineGuardians = 3;
+      mockFedimintStatus.guardians.online = 3;
+    }
+
     res.status(200).json({
       success: true,
-      data: fedimintStatus,
+      data: {
+        federation: mockFedimintStatus,
+        timestamp: new Date().toISOString(),
+        healthy: isHealthy,
+      },
       meta: {
         timestamp: new Date().toISOString(),
         demo: true,
+        source: "mock-federation"
       },
     });
   } catch (error) {

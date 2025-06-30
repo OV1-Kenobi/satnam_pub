@@ -1,5 +1,12 @@
 // scripts/generate-family-federation-config.ts
-import { randomBytes } from "crypto";
+// Use these instead for Bolt.new
+const randomBytes = (size) => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+};
 import { FederationManager } from "../lib/fedimint/federation-manager";
 
 /**
@@ -71,14 +78,14 @@ export class FamilyFederationConfigGenerator {
       "Satnam Family Federation",
       "Private family federation for Satnam Family eCash and Nostr protection",
       nodes,
-      5, // 5 out of 7 threshold
+      5 // 5 out of 7 threshold
     );
 
     // Generate an invite code for family members
     const inviteCode = await this.federationManager.createInvite(
       actualFederationId,
       "family_admin",
-      30 * 24 * 60 * 60 * 1000, // 30 days
+      30 * 24 * 60 * 60 * 1000 // 30 days
     );
 
     return {
@@ -144,11 +151,11 @@ async function main() {
 
     console.log("\n🔐 SECURITY NOTES:");
     console.log(
-      "- The federation ID is your unique family federation identifier",
+      "- The federation ID is your unique family federation identifier"
     );
     console.log("- The mint ID is your family eCash mint identifier");
     console.log(
-      "- The invite code allows family members to join your federation",
+      "- The invite code allows family members to join your federation"
     );
     console.log("- Keep these values secure and do not share publicly");
 

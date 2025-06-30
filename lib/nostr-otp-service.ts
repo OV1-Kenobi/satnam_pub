@@ -1,6 +1,6 @@
 // Secure Nostr OTP DM service using Rebuilding Camelot account
 // File: lib/nostr-otp-service.ts
-import crypto from "crypto";
+// Browser-compatible crypto using Web Crypto API
 import {
   Event,
   finalizeEvent,
@@ -229,13 +229,11 @@ If you didn't request this code, please ignore this message.
 
   // Hash OTP for secure storage
   private async hashOTP(otp: string): Promise<string> {
-    const salt = process.env.OTP_SALT;
-    if (!salt) {
-      throw new Error("OTP_SALT environment variable is required");
-    }
-    const hash = crypto.createHash("sha256");
-    hash.update(otp + salt);
-    return hash.digest("hex");
+    const salt = process.env.OTP_SALT || "default_otp_salt_for_demo";
+    const data = new TextEncoder().encode(otp + salt);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   // Verify OTP during authentication

@@ -14,6 +14,14 @@ import {
 } from 'lucide-react';
 import React, { useState } from 'react';
 
+// Import authentication wrapper
+import DashboardAuthWrapper from './auth/DashboardAuthWrapper';
+
+// Import privacy components
+import { DataSanitizer } from '../lib/privacy/data-sanitizer';
+import { useAuth } from './auth/FamilyFederationAuth';
+import PrivacyControls from './privacy/PrivacyControls';
+
 // Import our enhanced dual-protocol components
 import AtomicSwapModal from './AtomicSwapModal';
 import FamilyFedimintGovernance from './FamilyFedimintGovernance';
@@ -214,8 +222,8 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
   );
 };
 
-// Main Family Financials Dashboard Component
-export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps> = ({ 
+// Internal Dashboard Component (preserving all 579 lines of functionality)
+const FamilyFinancialsDashboardCore: React.FC<FamilyFinancialsDashboardProps> = ({ 
   familyData, 
   onBack 
 }) => {
@@ -225,6 +233,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   const [familyId] = useState("nakamoto_family_001");
   const [showPrivateBalances, setShowPrivateBalances] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Privacy controls state
+  const [privacyLevel, setPrivacyLevel] = useState<'public' | 'family' | 'private'>('family');
+  const { userAuth } = useAuth();
   
   // Payment Modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -336,6 +348,25 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   const formatSats = (sats: number): string => {
     return new Intl.NumberFormat().format(sats);
   };
+
+  // Sanitize treasury data for privacy-safe display
+  const sanitizedTreasuryData = DataSanitizer.sanitizeForDisplay(
+    {
+      totalBalance: lightningBalance + fedimintBalance,
+      individualBalances: familyMembers.reduce((acc, member) => ({
+        ...acc,
+        [member.id]: member.balance
+      }), {}),
+      recentTransactions: mockTransactions,
+      phoenixdStatus: phoenixdStatus,
+      federationHealth: federationData
+    },
+    userAuth?.federationRole || 'child',
+    'family-dashboard'
+  );
+
+  // Generate privacy metrics
+  const privacyMetrics = DataSanitizer.generatePrivacyMetrics(sanitizedTreasuryData.data);
 
   const totalBalance = lightningBalance + fedimintBalance;
 
@@ -537,6 +568,17 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           </div>
         </div>
 
+        {/* Privacy Controls */}
+        <div className="mb-6">
+          <PrivacyControls
+            currentLevel={privacyLevel}
+            onLevelChange={setPrivacyLevel}
+            userRole={userAuth?.federationRole || 'child'}
+            showMetrics={true}
+            privacyMetrics={privacyMetrics}
+          />
+        </div>
+
         {/* Navigation Tabs */}
         <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm mb-6">
           <div className="flex flex-wrap gap-2">
@@ -575,5 +617,17 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     </div>
   );
 };
+
+// Main Family Financials Dashboard Component with Authentication Protection
+export function FamilyFinancialsDashboard(props: FamilyFinancialsDashboardProps) {
+  return (
+    <DashboardAuthWrapper 
+      requiredRole="parent" 
+      dashboardType="family"
+    >
+      <FamilyFinancialsDashboardCore {...props} />
+    </DashboardAuthWrapper>
+  );
+}
 
 export default FamilyFinancialsDashboard;

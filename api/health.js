@@ -44,52 +44,67 @@ export default function handler(req, res) {
   }
 
   try {
-    // Mock health status for demonstration
-    const healthStatus = {
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      service: "Satnam Family Banking API",
-      version: "1.0.0",
-      uptime: Math.floor(Math.random() * 86400000), // Random uptime in ms
+    const timestamp = new Date().toISOString();
+    
+    // Basic system checks
+    const checks = {
+      api: { status: 'healthy', timestamp },
+      crypto: { 
+        status: 'healthy', 
+        webCryptoAvailable: typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined',
+        timestamp 
+      },
+      environment: {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        timestamp
+      },
       services: {
         lightning: "online",
-        phoenixd: "online",
+        phoenixd: "online", 
         fedimint: "online",
         database: "online",
-      },
+      }
     };
+
+    // Calculate overall health
+    const allHealthy = Object.values(checks).every(check => 
+      check.status === 'healthy' || check.status === 'online' || 
+      (typeof check === 'object' && !check.status)
+    );
+    const overallStatus = allHealthy ? 'healthy' : 'degraded';
 
     res.status(200).json({
       success: true,
-      data: healthStatus,
+      status: overallStatus,
+      timestamp,
+      checks,
+      version: '1.0.0',
+      deployment: 'browser-compatible',
+      service: "Satnam Family Banking API",
       meta: {
-        timestamp: new Date().toISOString(),
+        uptime: process.uptime ? Math.floor(process.uptime()) : Math.floor(Math.random() * 86400000),
+        memory: process.memoryUsage ? process.memoryUsage() : null,
+        platform: 'server',
+        architecture: 'bolt-compatible',
         demo: true,
-      },
+        timestamp
+      }
     });
   } catch (error) {
     console.error("Health check error:", error);
 
-    res.status(503).json({
+    res.status(500).json({
       success: false,
-      error: "Health check failed",
-      data: {
-        status: "down",
-        timestamp: new Date().toISOString(),
-        service: "Satnam Family Banking API",
-        version: "1.0.0",
-        uptime: 0,
-        services: {
-          lightning: "offline",
-          phoenixd: "offline",
-          fedimint: "offline",
-          database: "offline",
-        },
-      },
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString(),
       meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
+        platform: 'server',
+        architecture: 'bolt-compatible',
+        demo: true
+      }
     });
   }
 }

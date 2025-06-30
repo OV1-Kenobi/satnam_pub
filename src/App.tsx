@@ -18,6 +18,7 @@ import IdentityForge from "./components/IdentityForge";
 import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
+import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import useAuth from "./hooks/useAuth";
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [signinDestination, setSigninDestination] = useState<'individual' | 'family' | null>(null);
+  const [showCommunications, setShowCommunications] = useState(false);
   
   // Authentication state
   const auth = useAuth();
@@ -55,6 +57,14 @@ function App() {
     } else if (destination === 'family') {
       setCurrentView("financials");
     }
+  };
+
+  const handleCommunicationsClick = () => {
+    if (!auth.isAuthenticated) {
+      alert('Sign in required');
+      return;
+    }
+    setShowCommunications(true);
   };
 
   if (currentView === "forge") {
@@ -173,6 +183,7 @@ function App() {
   const navigationItems = [
     { label: "Family Financials", action: () => openSigninModal('family') },
     { label: "Individual Finances", action: () => openSigninModal('individual') },
+    { label: "Communications", action: handleCommunicationsClick },
     { label: "Family Wallets", action: () => setCurrentView("family-wallets") },
     { label: "Bitcoin Education", action: () => setCurrentView("education") },
     {
@@ -293,10 +304,9 @@ function App() {
               {/* Primary CTA */}
               <button
                 onClick={() => setCurrentView("forge")}
-                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
+                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-9 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg border-2 border-black"
               >
-                <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
-                <span>New ID Forge</span>
+                <span>Forge ID</span>
               </button>
 
               {/* Navigation Links */}
@@ -315,7 +325,12 @@ function App() {
                 <span>Individual Finances</span>
               </button>
 
-
+              <button
+                onClick={handleCommunicationsClick}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+              >
+                Communications
+              </button>
 
               <button
                 onClick={() => setCurrentView("nostr-ecosystem")}
@@ -325,20 +340,18 @@ function App() {
                 <span>Nostr Resources</span>
               </button>
 
-              <a
-                href="https://citadel.academy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
+              <button
+                onClick={() => window.open("https://citadel.academy", "_blank")}
+                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
               >
                 <img
                   src="/Citadel Academy Logo.png"
                   alt="Citadel Academy"
                   className="h-4 w-4"
                 />
-                <span>Enter Citadel Academy</span>
+                <span>Citadel Academy</span>
                 <ExternalLink className="h-3 w-3" />
-              </a>
+              </button>
 
               {/* Nostrich Sign-in Button - Positioned Before Recovery */}
               <button
@@ -442,7 +455,7 @@ function App() {
             </button>
             <button
               onClick={() => setCurrentView("forge")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
@@ -825,6 +838,11 @@ function App() {
         }}
         destination={signinDestination}
       />
+      
+      {/* Communications Modal */}
+      {showCommunications && (
+        <GiftwrappedMessaging onClose={() => setShowCommunications(false)} />
+      )}
     </div>
   );
 }

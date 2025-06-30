@@ -516,12 +516,15 @@ export class EnhancedFamilyCoordinator {
               await this.processScheduledAllowances();
             } catch (error) {
               // Log error and broadcast alert without exposing sensitive details
+              const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+
               logPrivacyOperation({
                 action: "access",
                 dataType: "family_data",
                 familyId: this.config.familyId,
                 success: false,
-                error: "Scheduled allowance distribution failed",
+                error: `Scheduled allowance distribution failed: ${errorMessage}`,
               });
 
               await this.broadcastAlert(
@@ -545,12 +548,15 @@ export class EnhancedFamilyCoordinator {
             try {
               await this.performAutomaticRebalancing();
             } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+
               logPrivacyOperation({
                 action: "access",
                 dataType: "family_data",
                 familyId: this.config.familyId,
                 success: false,
-                error: "Scheduled rebalancing failed",
+                error: `Scheduled rebalancing failed: ${errorMessage}`,
               });
 
               await this.broadcastAlert(
@@ -574,12 +580,15 @@ export class EnhancedFamilyCoordinator {
             try {
               await this.performHealthCheck();
             } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+
               logPrivacyOperation({
                 action: "access",
                 dataType: "family_data",
                 familyId: this.config.familyId,
                 success: false,
-                error: "Scheduled health check failed",
+                error: `Scheduled health check failed: ${errorMessage}`,
               });
             }
           },
@@ -614,14 +623,18 @@ export class EnhancedFamilyCoordinator {
 
       this.wsServer = new WebSocket.Server({
         port,
-        verifyClient: (info) => {
+        verifyClient: (_info: {
+          origin: string;
+          secure: boolean;
+          req: any;
+        }) => {
           // TODO: Implement proper authentication logic
           // Should verify JWT token or other authentication mechanism
           return true;
         },
       });
 
-      this.wsServer.on("connection", (ws, req) => {
+      this.wsServer.on("connection", (ws, _req) => {
         this.connectedClients.add(ws);
 
         ws.on("message", async (message) => {
@@ -629,6 +642,7 @@ export class EnhancedFamilyCoordinator {
             const data = JSON.parse(message.toString());
             await this.handleWebSocketMessage(ws, data);
           } catch (error) {
+            console.error("WebSocket message parsing error:", error);
             this.sendToClient(ws, { error: "Invalid message format" });
           }
         });
@@ -638,6 +652,7 @@ export class EnhancedFamilyCoordinator {
         });
 
         ws.on("error", (error) => {
+          console.error("WebSocket connection error:", error);
           this.connectedClients.delete(ws);
           logPrivacyOperation({
             action: "access",
@@ -806,13 +821,20 @@ export class EnhancedFamilyCoordinator {
       // Check current liquidity status
       const liquidityStatus = await this.getFamilyLiquidityStatus();
 
+      // Validate sufficient liquidity is available
+      if (liquidityStatus.overall.availableLiquidity < amount) {
+        throw new Error(
+          `Insufficient liquidity: ${liquidityStatus.overall.availableLiquidity} sats available, ${amount} sats required`
+        );
+      }
+
       // Check if it's an internal family payment
       const isInternal = await this.isInternalFamilyPayment(toDestination);
 
       if (isInternal) {
         // Internal family payments - prefer eCash for privacy
         const internalRoutes = await this.getInternalPaymentRoutes(
-          fromMemberId,
+          encryptedMemberId,
           toDestination,
           amount,
           validatedPreferences
@@ -827,7 +849,7 @@ export class EnhancedFamilyCoordinator {
         validatedPreferences.layer === "auto"
       ) {
         const lightningRoutes = await this.getLightningRoutes(
-          fromMemberId,
+          encryptedMemberId,
           toDestination,
           amount,
           validatedPreferences
@@ -842,7 +864,7 @@ export class EnhancedFamilyCoordinator {
         validatedPreferences.layer === "auto"
       ) {
         const ecashRoutes = await this.getEcashRoutes(
-          fromMemberId,
+          encryptedMemberId,
           toDestination,
           amount,
           validatedPreferences
@@ -902,7 +924,7 @@ export class EnhancedFamilyCoordinator {
       if (availableLiquidity >= validatedRequest.requiredAmount) {
         // Sufficient liquidity available - use family rebalance
         const rebalanceResult = await this.executeEmergencyRebalance(
-          validatedRequest.memberId,
+          encryptedMemberId,
           validatedRequest.requiredAmount
         );
 
@@ -922,7 +944,7 @@ export class EnhancedFamilyCoordinator {
         validatedRequest.requiredAmount
       ) {
         const reserveResult = await this.useEmergencyReserve(
-          validatedRequest.memberId,
+          encryptedMemberId,
           validatedRequest.requiredAmount
         );
 
@@ -972,9 +994,12 @@ export class EnhancedFamilyCoordinator {
    */
   async shutdown(): Promise<void> {
     try {
+      console.log("🛑 Shutting down Enhanced Family Coordinator...");
+
       // Stop all cron jobs
       for (const [name, job] of this.cronJobs) {
         job.stop();
+        console.log(`⏰ Stopped cron job: ${name}`);
       }
       this.cronJobs.clear();
 
@@ -988,6 +1013,8 @@ export class EnhancedFamilyCoordinator {
 
       this.isInitialized = false;
 
+      console.log("✅ Enhanced Family Coordinator shutdown complete");
+
       logPrivacyOperation({
         action: "access",
         dataType: "family_data",
@@ -995,6 +1022,8 @@ export class EnhancedFamilyCoordinator {
         success: true,
       });
     } catch (error) {
+      console.error("❌ Error during family coordinator shutdown:", error);
+
       logPrivacyOperation({
         action: "access",
         dataType: "family_data",
@@ -1383,13 +1412,14 @@ export class EnhancedFamilyCoordinator {
   ): Promise<void> {
     try {
       switch (data.type) {
-        case "subscribe_liquidity":
+        case "subscribe_liquidity": {
           // Handle liquidity subscription
           const status = await this.getFamilyLiquidityStatus();
           this.sendToClient(client, { type: "liquidity_status", data: status });
           break;
+        }
 
-        case "request_emergency_liquidity":
+        case "request_emergency_liquidity": {
           if (data.memberId && data.amount && data.urgency) {
             const result = await this.handleEmergencyLiquidity(
               data.memberId,
@@ -1402,12 +1432,15 @@ export class EnhancedFamilyCoordinator {
             });
           }
           break;
+        }
 
         default:
           this.sendToClient(client, { error: "Unknown message type" });
       }
     } catch (error) {
-      this.sendToClient(client, { error: "Message processing failed" });
+      const errorMessage =
+        error instanceof Error ? error.message : "Message processing failed";
+      this.sendToClient(client, { error: errorMessage });
     }
   }
 
@@ -1447,7 +1480,7 @@ export class EnhancedFamilyCoordinator {
     from: string,
     to: string,
     amount: number,
-    prefs: PaymentPreferences
+    _prefs: PaymentPreferences
   ): Promise<PaymentRoute[]> {
     return [
       {
@@ -1522,7 +1555,7 @@ export class EnhancedFamilyCoordinator {
     from: string,
     to: string,
     amount: number,
-    prefs: PaymentPreferences
+    _prefs: PaymentPreferences
   ): Promise<PaymentRoute[]> {
     return [
       {
@@ -1602,14 +1635,24 @@ export class EnhancedFamilyCoordinator {
   /**
    * Use emergency reserve
    * @private
-   * @param memberId - Member ID
+   * @param memberId - Member ID (encrypted)
    * @param amount - Amount to provide
    * @returns {Promise<object>} Reserve result
    */
   private async useEmergencyReserve(memberId: string, amount: number) {
+    // Log privacy operation for emergency reserve usage
+    logPrivacyOperation({
+      action: "access",
+      dataType: "family_data",
+      familyId: this.config.familyId,
+      userId: memberId,
+      success: true,
+    });
+
     return {
       channelId: `reserve_${generateSecureUUID()}`,
       fee: 0,
+      providedAmount: amount, // Include the amount in the response
     };
   }
 

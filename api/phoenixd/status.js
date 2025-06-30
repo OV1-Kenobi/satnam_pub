@@ -1,6 +1,7 @@
 /**
  * PhoenixD Daemon Status API
  * GET /api/phoenixd/status - Get PhoenixD daemon status
+ * POST /api/phoenixd/status - Update PhoenixD automation configuration
  */
 
 // Handle CORS
@@ -31,86 +32,141 @@ export default async function handler(req, res) {
     return;
   }
 
-  if (req.method !== "GET") {
-    res.setHeader("Allow", ["GET"]);
-    res.status(405).json({
-      success: false,
-      error: "Method not allowed",
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-    return;
+  if (req.method === "GET") {
+
+    try {
+      // Simulate PhoenixD status with enhanced automation features
+      const mockPhoenixDStatus = {
+        nodeId: "02phoenixd1234567890abcdef1234567890abcdef1234567890abcdef",
+        version: "0.3.2",
+        network: "bitcoin",
+        status: "running",
+        automation: {
+          enabled: true,
+          autoLiquidity: true,
+          autoChannelOpening: true,
+          swapInEnabled: true,
+          feeBudget: {
+            maxOnchainFees: 10000, // sats
+            maxLightningFees: 1000
+          }
+        },
+        balance: {
+          onChain: 75000000, // sats
+          lightning: 25000000,
+          totalCapacity: 150000000
+        },
+        channels: {
+          count: 8,
+          state: "normal",
+          averageCapacity: 18750000,
+          inboundLiquidity: 80000000,
+          outboundLiquidity: 70000000
+        },
+        liquidity: {
+          status: "optimal",
+          needsRebalancing: false,
+          lastSwapIn: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+          nextSwapThreshold: 5000000
+        },
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Simulate some variance in liquidity status
+      const liquidityHealth = Math.random();
+      
+      if (liquidityHealth < 0.2) {
+        mockPhoenixDStatus.liquidity.status = "low";
+        mockPhoenixDStatus.liquidity.needsRebalancing = true;
+        mockPhoenixDStatus.balance.lightning = 5000000;
+      } else if (liquidityHealth < 0.4) {
+        mockPhoenixDStatus.liquidity.status = "rebalancing";
+        mockPhoenixDStatus.liquidity.needsRebalancing = true;
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          phoenixd: mockPhoenixDStatus,
+          healthy: mockPhoenixDStatus.status === "running",
+          timestamp: new Date().toISOString()
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+          source: "mock-phoenixd-node"
+        }
+      });
+
+    } catch (error) {
+      console.error("PhoenixD status error:", error);
+
+      return res.status(500).json({
+        success: false,
+        error: "Failed to get PhoenixD status",
+        data: {
+          status: "offline",
+          error: error.message
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+        },
+      });
+    }
   }
 
-  try {
-    // In production, this would connect to actual PhoenixD daemon
-    // const phoenixdClient = await connectToPhoenixd(process.env.PHOENIXD_URL);
-    // const daemonInfo = await phoenixdClient.getInfo();
-    
-    // Mock PhoenixD daemon status for demo
-    const phoenixdStatus = {
-      status: "running",
-      version: "0.2.3",
-      nodeId: "03b2c4d6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3",
-      alias: "SatnamFamily-Phoenix",
-      isConnected: true,
-      network: "mainnet",
-      blockHeight: 850000 + Math.floor(Math.random() * 1000),
-      balance: {
-        onchain: 2000000, // sats
-        lightning: 1500000, // sats
-        total: 3500000, // sats
-      },
-      channels: {
-        active: 3,
-        inactive: 0,
-        pending: 0,
-        total: 3,
-      },
-      peers: [
-        {
-          nodeId: "03a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-          alias: "ACINQ",
-          isConnected: true,
-        },
-        {
-          nodeId: "03c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
-          alias: "Bitrefill",
-          isConnected: true,
-        },
-      ],
-      fees: {
-        baseFee: 1000, // msat
-        feeRate: 100, // ppm
-      },
-      uptime: Math.floor(Math.random() * 2592000000), // Random uptime up to 30 days
-      lastRestart: new Date(Date.now() - Math.floor(Math.random() * 86400000)).toISOString(), // Last restart within 24 hours
-      config: {
-        autoLiquidity: true,
-        maxFeePercent: 0.5,
-        maxRelayFee: 3000,
-      },
-    };
+  if (req.method === "POST") {
+    try {
+      const body = req.body;
+      
+      // Handle automation configuration updates
+      if (body.automation) {
+        console.log("🔧 Updating PhoenixD automation config:", body.automation);
+        
+        return res.status(200).json({
+          success: true,
+          data: {
+            message: "Automation configuration updated successfully",
+            config: body.automation,
+            appliedAt: new Date().toISOString()
+          },
+          meta: {
+            timestamp: new Date().toISOString(),
+            demo: true,
+          }
+        });
+      }
 
-    res.status(200).json({
-      success: true,
-      data: phoenixdStatus,
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
-  } catch (error) {
-    console.error("PhoenixD status error:", error);
+      return res.status(400).json({
+        success: false,
+        error: "Invalid configuration data",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
 
-    res.status(500).json({
-      success: false,
-      error: "Failed to get PhoenixD daemon status",
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
+    } catch (error) {
+      console.error("PhoenixD config update error:", error);
+
+      return res.status(500).json({
+        success: false,
+        error: "Failed to update PhoenixD configuration",
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+        },
+      });
+    }
   }
+
+  // Method not allowed
+  res.setHeader("Allow", ["GET", "POST"]);
+  return res.status(405).json({
+    success: false,
+    error: "Method not allowed",
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
+  });
 }

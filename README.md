@@ -1,495 +1,793 @@
-# Satnam.pub - Sovereign Bitcoin Identity Forge
+# Satnam.pub - Sovereign Family Banking and Identity Forge Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)]()
 [![Bitcoin Only](https://img.shields.io/badge/Bitcoin-Only-f2a900.svg)]()
 [![Nostr Protocol](https://img.shields.io/badge/Protocol-Nostr-purple.svg)]()
+[![Lightning Network](https://img.shields.io/badge/Lightning-Network-brightgreen.svg)]()
+[![Fedimint](https://img.shields.io/badge/Fedimint-Federation-orange.svg)]()
+[![Cashu](https://img.shields.io/badge/Cashu-eCash-pink.svg)]()
 
-> **Forge Your True Name** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians and no compromises.
+> **Forge Your Sovereign Financial Future** - The most advanced Bitcoin-only family banking platform combining Lightning Network, Fedimint federations, Cashu eCash, and Nostr communications for complete financial sovereignty.
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Architecture](#architecture)
-- [Security](#security)
-- [API Documentation](#api-documentation)
-- [Contributing](#contributing)
-- [License](#license)
-- [Support](#support)
+- [Project Overview](#project-overview)
+- [Key Features](#key-features)
+  - [Human-Readable Lightning Addresses](#human-readable-lightning-addresses)
+  - [Giftwrapped Communications](#giftwrapped-communications)
+  - [Nostr Protocol Integration](#nostr-protocol-integration)
+  - [Fedimint to Lightning to Cashu Bridge](#fedimint-to-lightning-to-cashu-bridge)
+  - [Bearer Instruments](#bearer-instruments)
+  - [Authentication Options](#authentication-options)
+  - [Lightning Network Infrastructure](#lightning-network-infrastructure)
+- [Technical Architecture](#technical-architecture)
+- [Authentication and Security](#authentication-and-security)
+- [Bearer Instruments and Value Transfer](#bearer-instruments-and-value-transfer)
+- [Development Roadmap](#development-roadmap)
+- [Getting Started](#getting-started)
+- [Contributing Guidelines](#contributing-guidelines)
+- [License and Legal Information](#license-and-legal-information)
 
-## Overview
+## Project Overview
 
-Satnam.pub is a sovereign Bitcoin identity platform that empowers families and individuals to create and manage decentralized digital identities without relying on custodial services. Built on Bitcoin and the Nostr protocols, the platform provides a comprehensive suite of tools for identity forging, education, family coordination, and account recovery.
+Satnam.pub is the world's most sophisticated Bitcoin-only sovereign family banking platform, designed to empower families with complete financial independence through cutting-edge Bitcoin technologies. Our platform seamlessly integrates Lightning Network payments, Fedimint federation management, Cashu eCash privacy, and Nostr communications into a unified family banking experience.
 
-The project combines the security and sovereignty of Bitcoin with the interoperability of Nostr to create human-readable addresses, family dashboards, and educational resources - all while maintaining complete user control over private keys and identity data.
+### Mission Statement
 
-Whether you're a Bitcoin beginner seeking education or an advanced user coordinating family security, Satnam.pub provides the tools to build your digital dynasty with pure Bitcoin sovereignty.
+To provide families with the tools necessary for complete financial sovereignty, combining the security of Bitcoin with the privacy of Cashu eCash, the efficiency of Lightning Network, and the resilience of Fedimint federations, all unified through Nostr's decentralized communication protocol.
 
-## Features
+### Core Principles
 
-### 🔨 **Identity Forge**
+- **Bitcoin-Only Architecture**: No altcoins, no tokens, pure Bitcoin technology stack
+- **Privacy-First Design**: Maximum privacy through multiple layers of protection
+- **Family-Centric Approach**: Designed specifically for multi-generational family banking
+- **Sovereign Identity**: Complete control over identity and financial data
+- **Enterprise-Grade Security**: Production-ready infrastructure for serious financial operations
 
-- Create sovereign digital identities with no custodians
-- Generate human-readable reusable social media & wallet accounts
-- Customizable usernames and family names
-- Secure recovery system with encrypted backups
-- Multi-factor authentication with OTP via Nostr DMs
-- Seamless integration with Nostr ecosystem w/curated Nostr client apps
-- Nostr-native authentication NWC/OTP using cryptographic signatures
-- Secure private key management and backup systems
+## Key Features
 
-### 👨‍👩‍👧‍👦 **Family Coordination**
+### Human-Readable Lightning Addresses
 
-- Family dashboard for coordinated Nostr account, LN Bitcoin, & eCash management
-- Multi-generational onboarding and education
-- Shared security practices and recovery protocols
-- Family-wide Lightning Network & Nostr account integration
+Our platform provides comprehensive Lightning Address infrastructure for seamless Bitcoin payments:
 
-### 📚 **Bitcoin Education Platform Integration**
+#### Lightning Address Resolution
 
-- Comprehensive Bitcoin education for all skill levels
-- Interactive learning modules and tutorials
-- Security best practices and hands-on exercises
-- Integration with Citadel Academy Nostr-based educational resources
+- **Reusable Payment Identifiers**: `username@satnam.pub` format for easy payments
+- **Cross-Platform Compatibility**: Works with all Lightning wallets and applications
+- **Family Banking Integration**: Shared family treasury with individual member addresses
+- **Enterprise Lightning Infrastructure**: Built on Voltage, Phoenix, and Breez technologies
 
-### 🌐 **Nostr Ecosystem Integration**
-
-- Native Nostr protocol implementation
-- NIP-05 verification system (username@satnam.pub)
-- Lightning addresses for seamless 'Zap'payments
-- Cross-platform identity portability
-
-### 🔐 **Advanced Security**
-
-- No passwords stored server-side
-- Time-based challenge authentication
-- Encrypted private key backups
-- Multi-factor authentication with OTP via Nostr DMs
-- Comprehensive security guidelines and monitoring
-
-### ⚡ **Lightning Network Support**
-
-- Lightning address provisioning
-- Voltage, BTCPayserver, and LN Bits integration
-- Family-wide Lightning Network invoices and payments
-- Multi-signature setup for enhanced security
-- Real-time transaction monitoring
-
-## Installation
-
-### Prerequisites
-
-- **Node.js** 20.x or higher
-- **npm** 9.x or higher
-- **PostgreSQL** 14.x or higher (for production)
-- **Redis** 6.x or higher (for session management)
-
-### Development Setup
-
-For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
-
-**Quick Start:**
-
-1. **Clone and install**
-
-   ```bash
-   git clone https://github.com/OV1_kenobi/satnam.git
-   cd satnam
-   npm install
-   ```
-
-2. **Setup environment**
-
-   ```bash
-   cp .env.development .env.local
-   ```
-
-3. **Start servers**
-
-   ```bash
-   # Terminal 1 - Backend
-   npm run server:dev
-
-   # Terminal 2 - Frontend
-   npm run dev
-   ```
-
-4. **Access application**
-   - Frontend: http://localhost:3000
-   - Backend: http://localhost:8000
-
-### Production Deployment
-
-1. **Build the application**
-
-   ```bash
-   npm run build
-   ```
-
-2. **Start production server**
-   ```bash
-   npm run server
-   ```
-
-### Testing
-
-The project uses Vitest for fast, reliable testing with TypeScript support.
-
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage
-npm run test:coverage
-
-# Run specific test file
-npm test -- zeus-lsp-client.test.ts
-
-# Run tests with UI
-npm run test:ui
-```
-
-**Test Structure:**
-
-- Unit tests: `**/*.test.ts`
-- Integration tests: `**/__tests__/**/*.test.ts`
-- Component tests: `**/*.test.tsx`
-
-**Zeus LSP Testing:**
-The Zeus LSP client includes mock implementations for testing without real LSP connections.
+#### NIP-05 Identity Verification
 
 ```typescript
-import { LSPClient } from "./lib/zeus-lsp-client";
-
-// Create mock client for testing
-const mockClient = LSPClient.createMock();
+// Example NIP-05 verification
+{
+  "names": {
+    "satoshi": "npub1...",
+    "nakamoto_family": "npub1..."
+  },
+  "relays": {
+    "npub1...": ["wss://relay.satnam.pub", "wss://nos.lol"]
+  }
+}
 ```
 
-## Quick Start
+#### Domain Validation System
 
-### 1. Forge Your Identity
+- Cryptographic proof of identity ownership
+- DNS-based verification for maximum compatibility
+- Integration with existing Nostr ecosystem
+- Seamless wallet discovery and connection
 
-Visit `http://localhost:3000` and click "Forge Identity" to create your sovereign digital identity:
+### Giftwrapped Communications
+
+Advanced privacy-first messaging system implementing the latest Nostr encryption standards:
+
+#### NIP-59 Gift Wrapped Messaging
+
+- **Maximum Privacy**: Triple-layer encryption for sensitive communications
+- **Forward Secrecy**: Each message uses unique encryption keys
+- **Metadata Protection**: Complete obscuration of sender, recipient, and timing
+- **Plausible Deniability**: No proof of message content or participation
+
+#### Communication Channels
 
 ```typescript
-// Example: Creating a new identity
-const identity = await forgeIdentity({
-  username: "satoshi",
-  familyName: "nakamoto",
-  recoveryPassword: "your-secure-recovery-password",
-});
+// Individual encrypted messaging
+interface IndividualMessage {
+  type: "gift_wrapped";
+  privacy_level: "maximum";
+  encryption: "nip-59";
+  forward_secrecy: true;
+}
+
+// Family group messaging
+interface FamilyGroupMessage {
+  type: "family_group";
+  guardian_oversight: boolean;
+  privacy_level: "high";
+  members: FamilyMember[];
+}
+
+// Business peer messaging
+interface PeerGroupMessage {
+  type: "peer_group";
+  business_context: true;
+  trust_level: "verified";
+  encryption: "nip-17" | "nip-59";
+}
 ```
 
-### 2. Authentication Methods
+#### Privacy-First Contact Management
 
-**Option A: Nostr Wallet Connect (Recommended)**
+- **Three-Tier Privacy System**: Giftwrapped, encrypted, and minimal privacy levels
+- **Trust Level Management**: Dynamic trust scoring for contacts
+- **Guardian Oversight**: Parental controls for family member communications
+- **Contact Verification**: Cryptographic verification of contact identities
+
+### Nostr Protocol Integration
+
+Comprehensive implementation of Nostr Improvement Proposals (NIPs) for maximum ecosystem compatibility:
+
+#### Core NIP Implementations
+
+- **NIP-04**: Encrypted Direct Messages (fallback compatibility)
+- **NIP-05**: Mapping Nostr keys to DNS-based internet identifiers
+- **NIP-07**: Browser extension support for key management
+- **NIP-17**: Private Direct Messages with enhanced privacy
+- **NIP-28**: Public Chat foundation for group messaging
+- **NIP-29**: Relay-based Groups for advanced group management
+- **NIP-59**: Gift Wrap for maximum privacy messaging
+
+#### Advanced Nostr Features
+
+```javascript
+// NIP-07 Browser Extension Integration
+window.nostr = {
+  getPublicKey: async () => string,
+  signEvent: async (event) => event,
+  encrypt: async (pubkey, plaintext) => ciphertext,
+  decrypt: async (pubkey, ciphertext) => plaintext,
+};
+
+// NIP-05 Identity Resolution
+const identity = await resolveNip05("satoshi@satnam.pub");
+// Returns: { pubkey: 'npub1...', relays: ['wss://...'] }
+```
+
+### Fedimint to Lightning to Cashu Bridge
+
+Revolutionary multi-protocol bridge architecture enabling seamless value transfer:
+
+#### Fedimint Federation Management
+
+- **Guardian Consensus**: Multi-signature approval workflows for family treasuries
+- **Federation Discovery**: Automatic discovery and connection to trusted federations
+- **Consensus Mechanisms**: Byzantine fault-tolerant consensus for transaction approval
+- **Guardian Roles**: Customizable roles for family members (parent, guardian, member)
+
+#### Lightning Network Integration
 
 ```typescript
-// Sign authentication challenge
-const challenge = await getAuthChallenge(npub);
-const signature = await signChallenge(challenge, privateKey);
-const token = await authenticate(npub, signature);
+interface LightningBridge {
+  // Convert Fedimint to Lightning
+  fedimintToLightning: (amount: number, invoice: string) => Promise<Payment>;
+
+  // Convert Lightning to Cashu
+  lightningToCashu: (payment: Payment) => Promise<CashuToken>;
+
+  // Direct Fedimint to Cashu
+  fedimintToCashu: (
+    federationId: string,
+    amount: number
+  ) => Promise<CashuToken>;
+}
 ```
 
-**Option B: One-Time Password via Nostr DM**
+#### Cashu eCash Integration
+
+- **Privacy-Preserving Transfers**: Anonymous value transfer using blind signatures
+- **Denomination Optimization**: Automatic nut swapping for optimal privacy
+- **Multi-Nut Transactions**: Complex multi-input, multi-output transactions
+- **Mint Management**: Support for multiple Cashu mints with automatic failover
+
+### Bearer Instruments
+
+Three distinct forms of Cashu bearer instruments for different use cases:
+
+#### QR Code Bearer Instruments
 
 ```typescript
-// Request OTP
-await requestOTP(npub);
-// Check your Nostr DMs for the code
-const token = await authenticateWithOTP(npub, otpCode);
+interface QRBearerInstrument {
+  type: "qr_code";
+  cashu_token: string;
+  amount: number;
+  denomination: number[];
+  mint_url: string;
+  created_at: number;
+  expires_at?: number;
+}
 ```
 
-### 3. Family Dashboard Access
+#### NFC Bearer Instruments
 
-After authentication, access your family dashboard to:
+- **Tap-to-Transfer**: Physical NFC devices for instant value transfer
+- **NTAG424 DNA Support**: Hardware-secured NFC authentication
+- **Offline Capability**: Works without internet connection
+- **Physical Security**: Tamper-evident hardware integration
 
-- View family members and their Bitcoin addresses
-- Coordinate multi-signature setups
-- Share educational resources
-- Monitor Lightning Network activity
-
-### 4. Recovery Process
-
-If you lose access, use the recovery system:
+#### Gift Wrapped DM Bearer Instruments
 
 ```typescript
-// Recover identity using backup
-const recoveredIdentity = await recoverIdentity(
-  username,
-  recoveryPassword,
-  encryptedBackup
-);
+interface GiftWrappedBearerInstrument {
+  type: "gift_wrapped_dm";
+  cashu_token: string; // Encrypted within gift wrap
+  recipient: string; // Obfuscated
+  privacy_level: "maximum";
+  forward_secrecy: true;
+}
 ```
 
-## Architecture
+### Authentication Options
+
+Three secure authentication methods to accommodate different user preferences:
+
+#### NIP-07 Browser Extension
+
+```javascript
+// MetaMask-style Nostr key management
+const pubkey = await window.nostr.getPublicKey();
+const signature = await window.nostr.signEvent(authEvent);
+```
+
+#### NWC (Nostr Wallet Connect)
+
+- **Advanced User Integration**: Connect existing Lightning wallets to Nostr accounts
+- **Wallet Compatibility**: Support for major Lightning wallet implementations
+- **Secure Connections**: Encrypted communication between wallet and platform
+- **Permission Management**: Granular permission control for wallet operations
+
+#### OTP Invitation System
+
+```typescript
+interface OTPAuthentication {
+  type: "otp_invitation";
+  secure_onboarding: true;
+  new_user_friendly: true;
+  recovery_options: string[];
+  family_invitation: boolean;
+}
+```
+
+### Lightning Network Infrastructure
+
+Four-layer Lightning Network architecture for maximum reliability and privacy:
+
+#### Layer 1: Voltage (Enterprise Hosting)
+
+- **Enterprise-Grade Nodes**: Professional Lightning node hosting
+- **High Availability**: 99.9% uptime guarantee
+- **Managed Liquidity**: Professional liquidity management
+- **Security Compliance**: Enterprise security standards
+
+#### Layer 2: Phoenix (Automated Liquidity)
+
+- **Automatic Channel Management**: Self-managing Lightning channels
+- **Liquidity Optimization**: Intelligent routing and channel balancing
+- **Mobile Integration**: Seamless mobile Lightning experience
+- **Submarine Swaps**: Automatic on-chain to Lightning conversion
+
+#### Layer 3: Proxy Node (Privacy Routing)
+
+```typescript
+interface PrivacyProxy {
+  transaction_obfuscation: boolean;
+  route_anonymization: boolean;
+  timing_randomization: boolean;
+  metadata_stripping: boolean;
+}
+```
+
+#### Layer 4: Breez (Mobile SDK)
+
+- **Mobile Lightning SDK**: Complete mobile Lightning integration
+- **Self-Custodial**: Non-custodial mobile Lightning experience
+- **Developer Tools**: Rich SDK for mobile application development
+- **Cross-Platform**: iOS and Android compatibility
+
+## Technical Architecture
 
 ### Frontend Stack
 
-- **React 18** with TypeScript
-- **Vite** for development and building
-- **Tailwind CSS** for styling
-- **Lucide React** for icons
-- **Built with Bolt.new** - AI-powered full-stack web development platform
+- **React 18** with TypeScript for type-safe component development
+- **Vite** for fast development and optimized builds
+- **Tailwind CSS** for responsive, utility-first styling
+- **Lucide React** for consistent iconography
+- **Nostr-Tools** for Nostr protocol implementation
+- **WebLN** for Lightning Network browser integration
 
 ### Backend Stack
 
-- **Node.js** with Express.js
-- **TypeScript** for type safety
-- **PostgreSQL** for data persistence
-- **Redis** for session management
-- **JWT** for authentication tokens
+- **Node.js** with Express.js for robust server architecture
+- **TypeScript** throughout for compile-time safety
+- **PostgreSQL** for relational data with privacy-first schema design
+- **Redis** for high-performance session and cache management
+- **JWT** with Nostr signature verification for authentication
 
-### Bitcoin & Nostr Integration
+### Bitcoin & Lightning Integration
 
-- **nostr-tools** for Nostr protocol implementation
-- **@noble/secp256k1** for cryptographic operations
-- **bech32** for address encoding
-- **bolt11** for Lightning invoice parsing
+```typescript
+// Core technology integrations
+import { NostrRelay } from "nostr-relays";
+import { LightningClient } from "@voltage/client";
+import { CashuMint } from "@cashu/cashu-ts";
+import { FedimintClient } from "@fedimint/fedimint-client";
 
-### Project Structure
-
-```
-src/
-├── components/          # React components
-│   ├── EducationPlatform.tsx
-│   ├── FamilyDashboard.tsx
-│   ├── IdentityForge.tsx
-│   └── SignInModal.tsx
-├── services/           # Business logic
-│   ├── auth.ts
-│   ├── identity.ts
-│   └── lightning.ts
-├── utils/              # Utility functions
-│   ├── crypto.ts
-│   └── validation.ts
-├── types/              # TypeScript definitions
-└── App.tsx             # Main application component
-
-api/
-├── endpoints/          # API route handlers
-│   ├── auth.ts
-│   ├── family.ts
-│   └── user.ts
-└── index.ts
-
-lib/
-├── nostr.ts           # Nostr protocol implementation
-├── secure-storage.ts  # Encrypted storage utilities
-└── supabase.ts        # Database configuration
-
-database/
-└── migrations/        # Database schema migrations
-```
-
-## Security
-
-### 🔐 **Security Model**
-
-Satnam.pub implements a zero-knowledge security model where:
-
-- No passwords are stored on the server
-- All authentication uses cryptographic signatures
-- Private keys remain under user control
-- Recovery systems use encrypted backups
-
-### 🛡️ **Security Features**
-
-- **HTTPS Enforcement**: All connections use TLS encryption
-- **Input Validation**: Comprehensive validation using Zod schemas
-- **Rate Limiting**: Protection against brute force attacks
-- **Session Management**: Secure JWT tokens with automatic expiration
-- **CSP Headers**: Content Security Policy for XSS prevention
-
-### ⚠️ **Security Guidelines**
-
-Please review our comprehensive [Security Guidelines](SECURITY_GUIDELINES.md) before using the platform. Key points:
-
-- Never enter your private key on HTTP websites
-- Use incognito/private browsing mode
-- Avoid public WiFi for sensitive operations
-- Consider using Nostr browser extensions
-- Always verify you're on the correct domain
-
-### 🚨 **Security Reporting**
-
-If you discover a security vulnerability, please report it to our security team immediately:
-
-- Email: ov1_kenobi@mailfence.com
-- For sensitive issues, use our Nostr ID: ov1@satnam.pub [Coming Soon, once deployed]
-
-## API Documentation
-
-### Authentication Endpoints
-
-#### Get Authentication Challenge
-
-```http
-GET /api/auth/challenge/:npub
-```
-
-Response:
-
-```json
-{
-  "challenge": "auth_challenge_1234567890",
-  "expires_at": "2024-01-01T12:00:00Z"
+interface TechnicalStack {
+  nostr: NostrRelay[];
+  lightning: LightningClient;
+  cashu: CashuMint[];
+  fedimint: FedimintClient;
 }
 ```
 
-#### Authenticate with Signature
+### Security Architecture
 
-```http
-POST /api/auth/authenticate
-Content-Type: application/json
+- **Zero-Knowledge Design**: No sensitive data stored on servers
+- **End-to-End Encryption**: All communications encrypted
+- **Cryptographic Authentication**: Signature-based authentication only
+- **Hardware Security Module**: Integration with HSM for key management
+- **Multi-Factor Authentication**: Hardware tokens and biometric support
 
-{
-  "npub": "npub1...",
-  "signature": "signature_hex",
-  "challenge": "auth_challenge_1234567890"
+## Authentication and Security
+
+### Privacy-First Authentication
+
+Our authentication system implements multiple layers of security without compromising privacy:
+
+#### Cryptographic Authentication
+
+```typescript
+interface AuthenticationFlow {
+  challenge_generation: () => string;
+  signature_verification: (
+    pubkey: string,
+    signature: string,
+    challenge: string
+  ) => boolean;
+  session_creation: (pubkey: string) => JWT;
+  privacy_preservation: boolean;
 }
 ```
 
-#### Request OTP
+#### Multi-Factor Security
 
-```http
-POST /api/auth/otp-request
-Content-Type: application/json
+- **Hardware Tokens**: FIDO2/WebAuthn support for hardware authentication
+- **Biometric Integration**: Touch ID, Face ID, and fingerprint authentication
+- **NFC Authentication**: Physical NFC devices for additional security layer
+- **Time-Based Challenges**: Cryptographic challenges with expiration
 
-{
-  "npub": "npub1..."
+### Privacy Features
+
+#### Three-Tier Privacy System
+
+1. **Maximum Privacy (Giftwrapped)**: NIP-59 with triple encryption
+2. **High Privacy (Encrypted)**: NIP-17 with forward secrecy
+3. **Standard Privacy (Minimal)**: NIP-04 for compatibility
+
+#### Metadata Protection
+
+- **Timing Obfuscation**: Randomized message timing
+- **Size Padding**: Message size normalization
+- **Route Anonymization**: Multi-hop routing for Lightning payments
+- **IP Protection**: Tor integration for network-level privacy
+
+## Bearer Instruments and Value Transfer
+
+### Cashu eCash Implementation
+
+Our Cashu implementation provides the highest level of privacy for Bitcoin transactions:
+
+#### Token Management
+
+```typescript
+interface CashuToken {
+  mint: string;
+  proofs: Proof[];
+  amount: number;
+  memo?: string;
+}
+
+interface Proof {
+  id: string;
+  amount: number;
+  secret: string;
+  C: string; // Commitment
 }
 ```
 
-### Identity Management
+#### Multi-Mint Support
 
-#### Create Identity
+- **Mint Discovery**: Automatic discovery of trusted Cashu mints
+- **Failover Support**: Automatic failover between mints
+- **Cross-Mint Swaps**: Seamless token exchange between different mints
+- **Reputation System**: Community-driven mint reputation scoring
 
-```http
-POST /api/identity/create
-Authorization: Bearer <jwt_token>
-Content-Type: application/json
+### Value Transfer Mechanisms
 
-{
-  "username": "satoshi",
-  "family_name": "nakamoto",
-  "recovery_password": "secure_password"
+#### Lightning to Cashu Flow
+
+```mermaid
+graph LR
+    A[Lightning Invoice] --> B[Phoenix Node]
+    B --> C[Voltage Infrastructure]
+    C --> D[Cashu Mint]
+    D --> E[eCash Tokens]
+    E --> F[Bearer Instrument]
+```
+
+#### Fedimint Integration
+
+- **Guardian Consensus**: Multi-signature approval for large transactions
+- **Federation Management**: Easy setup and management of family federations
+- **Consensus Monitoring**: Real-time monitoring of federation health
+- **Emergency Procedures**: Predefined emergency protocols for federation issues
+
+## Development Roadmap
+
+### Phase 1: Hardware Security Integration (Q2 2024)
+
+#### NTAG424 DNA NFC Integration
+
+- **Physical Authentication**: Secure NFC devices for transaction signing
+- **Tamper Detection**: Hardware-level tamper detection and response
+- **Offline Capability**: NFC transactions without internet connectivity
+- **Family Distribution**: NFC devices for each family member
+
+#### Hardware Wallet Support
+
+```typescript
+interface HardwareWalletIntegration {
+  coldcard: {
+    psbt_signing: boolean;
+    multisig_coordination: boolean;
+    air_gapped_operation: boolean;
+  };
+  tapsigner: {
+    nfc_authentication: boolean;
+    mobile_integration: boolean;
+    backup_recovery: boolean;
+  };
 }
 ```
 
-#### Recover Identity
+#### Multi-Factor Authentication Enhancement
 
-```http
-POST /api/identity/recover
-Content-Type: application/json
+- **Hardware Token Integration**: FIDO2 security keys
+- **Biometric Authentication**: Platform-native biometric integration
+- **Physical Device Verification**: NFC and USB device authentication
+- **Emergency Access Codes**: Secure recovery mechanisms
 
-{
-  "username": "satoshi",
-  "recovery_password": "secure_password",
-  "encrypted_backup": "encrypted_data"
+### Phase 2: Production Infrastructure Migration (Q3 2024)
+
+#### Fedimint Production Deployment
+
+- **Live Federation Setup**: Migration from demo to production federations
+- **Guardian Onboarding**: Production-ready guardian consensus mechanisms
+- **High Availability**: Enterprise-grade uptime and reliability
+- **Disaster Recovery**: Comprehensive backup and recovery procedures
+
+#### Lightning Network Production
+
+```typescript
+interface ProductionLightning {
+  mainnet_operations: boolean;
+  enterprise_nodes: VoltageNode[];
+  liquidity_management: {
+    automated_rebalancing: boolean;
+    channel_optimization: boolean;
+    fee_optimization: boolean;
+  };
+  monitoring: {
+    real_time_alerts: boolean;
+    performance_metrics: boolean;
+    uptime_tracking: boolean;
+  };
 }
 ```
 
-For complete API documentation, see our [API Reference](docs/api-reference.md).
+#### Production-Grade Treasury Management
 
-## Contributing
+- **Automated Compliance**: Regulatory compliance automation
+- **Risk Management**: Real-time risk assessment and mitigation
+- **Audit Trails**: Complete transaction history and audit capabilities
+- **Reporting Systems**: Comprehensive financial reporting tools
 
-We welcome contributions from the Bitcoin and Nostr communities! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting pull requests.
+### Phase 3: Advanced Family Banking Features (Q4 2024)
 
-### Development Process
+#### Automated Allowance Systems
 
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
-3. **Commit** your changes: `git commit -m 'Add amazing feature'`
-4. **Push** to the branch: `git push origin feature/amazing-feature`
-5. **Open** a Pull Request
+```typescript
+interface AllowanceAutomation {
+  recurring_payments: {
+    schedule: "daily" | "weekly" | "monthly";
+    amount: number;
+    recipient: string;
+    conditions: AllowanceCondition[];
+  };
+  spending_controls: {
+    daily_limits: number;
+    merchant_restrictions: string[];
+    geographic_limits: GeoRestriction[];
+    approval_requirements: ApprovalRule[];
+  };
+}
+```
 
-### Code Standards
+#### Advanced Financial Analytics
 
-- Use TypeScript for all new code
-- Follow the existing code style and formatting
-- Write tests for new functionality
-- Update documentation as needed
-- Ensure all security guidelines are followed
+- **Spending Pattern Analysis**: AI-powered spending insights
+- **Budget Optimization**: Automated budget recommendations
+- **Investment Tracking**: Portfolio performance monitoring
+- **Tax Reporting**: Automated tax document generation
 
-### Running Tests
+#### Emergency Fund Management
+
+- **Multi-Signature Emergency Access**: Emergency fund access protocols
+- **Automated Emergency Detection**: AI-powered emergency detection
+- **Recovery Protocols**: Comprehensive account recovery procedures
+- **Family Emergency Coordination**: Multi-family emergency response
+
+### Phase 4: Ecosystem Expansion (Q1 2025)
+
+#### Multi-Federation Support
+
+```typescript
+interface EcosystemExpansion {
+  federation_network: {
+    cross_federation_transfers: boolean;
+    federation_discovery: boolean;
+    reputation_system: boolean;
+    interoperability: boolean;
+  };
+  cashu_mint_network: {
+    multi_mint_support: boolean;
+    automatic_failover: boolean;
+    cross_mint_swaps: boolean;
+    mint_reputation: boolean;
+  };
+}
+```
+
+#### Enhanced Privacy Infrastructure
+
+- **Multi-Hop Lightning Routing**: Enhanced privacy through multiple routing nodes
+- **Tor Integration**: Built-in Tor support for network-level privacy
+- **VPN Integration**: Seamless VPN integration for enhanced security
+- **Anonymous Account Creation**: Zero-knowledge account creation
+
+## Getting Started
+
+### Prerequisites
+
+Before installing Satnam.pub, ensure you have the following prerequisites:
+
+- **Node.js** 20.x or higher
+- **npm** 9.x or higher
+- **PostgreSQL** 15.x or higher
+- **Redis** 7.x or higher
+- **Git** for version control
+
+### Development Environment Setup
+
+#### 1. Clone and Install Dependencies
+
+```bash
+# Clone the repository
+git clone https://github.com/satnamdev/satnam-recovery.git
+cd satnam-recovery
+
+# Install dependencies
+npm install
+
+# Install additional Bitcoin dependencies
+npm install @cashu/cashu-ts @fedimint/fedimint-client nostr-tools
+```
+
+#### 2. Environment Configuration
+
+```bash
+# Copy environment template
+cp .env.example .env.local
+
+# Configure your environment variables
+# Edit .env.local with your specific configuration
+```
+
+Example `.env.local` configuration:
+
+```env
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/satnam_dev
+REDIS_URL=redis://localhost:6379
+
+# Bitcoin Network Configuration
+BITCOIN_NETWORK=testnet
+LIGHTNING_NETWORK_ENDPOINT=your_voltage_endpoint
+
+# Nostr Configuration
+NOSTR_RELAYS="wss://relay.satnam.pub,wss://nos.lol"
+DOMAIN=satnam.pub
+
+# Security Configuration
+JWT_SECRET=your_jwt_secret_here
+ENCRYPTION_KEY=your_encryption_key_here
+```
+
+#### 3. Database Setup
+
+```bash
+# Run database migrations
+npm run migrate
+
+# Seed development data (optional)
+npm run seed:dev
+```
+
+#### 4. Start Development Servers
+
+```bash
+# Terminal 1 - Backend API
+npm run server:dev
+
+# Terminal 2 - Frontend Development Server
+npm run dev
+
+# Terminal 3 - Background Services (Redis, etc.)
+npm run services:start
+```
+
+#### 5. Access the Application
+
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+### Production Deployment
+
+#### Docker Deployment
+
+```bash
+# Build production images
+docker build -t satnam-frontend .
+docker build -t satnam-backend ./api
+
+# Deploy with Docker Compose
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+#### Manual Production Setup
+
+```bash
+# Build production assets
+npm run build
+
+# Start production server
+NODE_ENV=production npm run server:prod
+```
+
+### Testing
+
+#### Comprehensive Test Suite
 
 ```bash
 # Run all tests
 npm test
 
-# Run tests in watch mode
-npm run test:watch
+# Run specific test suites
+npm run test:unit           # Unit tests
+npm run test:integration    # Integration tests
+npm run test:e2e           # End-to-end tests
 
 # Run tests with coverage
 npm run test:coverage
+
+# Run Bitcoin protocol tests
+npm run test:bitcoin
+
+# Run Nostr protocol tests
+npm run test:nostr
 ```
 
-## Roadmap
+#### Security Testing
 
-### Phase 1: Core Identity System ✅
+```bash
+# Run security audit
+npm run security:audit
 
-- [x] Nostr-native authentication
-- [x] Identity forging and management
-- [x] Basic security implementation
-- [x] Recovery system
+# Run cryptographic tests
+npm run test:crypto
 
-### Phase 2: Family Features 🚧
+# Run privacy compliance tests
+npm run test:privacy
+```
 
-- [x] Family dashboard
-- [x] Multi-user onboarding
-- [ ] Enhanced family coordination tools
-- [ ] Shared security protocols
+## Contributing Guidelines
 
-### Phase 3: Lightning Integration ⏳
+We welcome contributions from the Bitcoin community! Please follow these guidelines:
 
-- [ ] Lightning address provisioning
-- [ ] NWC wallet integration
-- [ ] Family payment coordination
-- [ ] Multi-signature support
+### Development Standards
 
-### Phase 4: Advanced Features ⏳
+#### Code Quality Requirements
 
-- [ ] Mobile application
-- [ ] Hardware wallet integration
-- [ ] Advanced privacy features
-- [ ] Citadel Academy integration
+- **TypeScript**: All new code must be written in TypeScript
+- **Testing**: Minimum 90% test coverage for new features
+- **Security**: All code must pass security audits
+- **Documentation**: Comprehensive documentation for all features
 
-## Changelog
+#### Bitcoin Development Standards
 
-### v0.1.0 (Current)
+```typescript
+// Example: Proper Bitcoin address validation
+function validateBitcoinAddress(address: string): boolean {
+  // Implement comprehensive validation
+  // Support for Legacy, SegWit, and Taproot addresses
+  // Proper network validation (mainnet/testnet)
+  return validateAddress(address);
+}
+```
 
-- Initial release with core identity forging
-- Nostr authentication implementation
-- Basic family dashboard
-- Security guidelines and documentation
-- Recovery system implementation
+### Contribution Process
 
-For detailed changes, see [CHANGELOG.md](CHANGELOG.md).
+#### 1. Fork and Branch
 
-## Acknowledgments
+```bash
+git clone https://github.com/yourusername/satnam-recovery.git
+cd satnam-recovery
+git checkout -b feature/amazing-bitcoin-feature
+```
 
-- **Bitcoin Core** - For the foundation of digital sovereignty
-- **Nostr Protocol** - For decentralized identity infrastructure
-- **Bolt.new** - AI-powered platform that accelerated frontend development
-- **Citadel Academy** - For educational partnership and resources
-- **Noble Cryptography** - For robust cryptographic implementations
-- **The Bitcoin Community** - For inspiration and continuous feedback
+#### 2. Development Guidelines
 
-## License
+- Follow existing code patterns and conventions
+- Write comprehensive tests for all new functionality
+- Update documentation for any API changes
+- Ensure all security checks pass
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+#### 3. Pull Request Process
+
+- Create detailed pull request descriptions
+- Include test results and security audit reports
+- Request review from core maintainers
+- Address all feedback before merging
+
+### Community Standards
+
+#### Code of Conduct
+
+We follow the Bitcoin Core Code of Conduct:
+
+- Be respectful and inclusive
+- Focus on technical merit
+- Avoid personal attacks or discrimination
+- Maintain professional communication
+
+#### Security-First Development
+
+- Never commit private keys or sensitive data
+- Use secure coding practices throughout
+- Regular security audits and code reviews
+- Immediate disclosure of security vulnerabilities
+
+## License and Legal Information
+
+### MIT License
 
 ```
 MIT License
 
-Copyright (c) 2024 Satnam.pub
+Copyright (c) 2024 Satnam.pub Development Team
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -500,37 +798,47 @@ furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
-## Support
+### Legal Disclaimers
 
-### Getting Help
+#### Financial Services Disclaimer
 
-- **Documentation**: Comprehensive guides available in the `/docs` directory
-- **GitHub Issues**: Report bugs and request features
-- **Community**: Join our discussions on Nostr
-- **Email**: support@satnam.pub
+Satnam.pub is a self-custodial Bitcoin platform. Users maintain complete control over their private keys and funds. We do not provide financial advice or act as a financial institution.
 
-### Community Resources
+#### Regulatory Compliance
 
-- **Citadel Academy**: [https://citadel.academy](https://citadel.academy)
-- **Nostr Protocol**: [https://nostr.com](https://nostr.com)
+Users are responsible for complying with local regulations regarding Bitcoin usage, financial reporting, and tax obligations in their jurisdiction.
 
-### Emergency Recovery
+#### Privacy Notice
 
-If you've lost access to your identity:
+We implement privacy-by-design principles. No personal data is stored without explicit user consent, and all communications are encrypted by default.
 
-1. Try the automated recovery system first
-2. Contact our support team with your public key
-3. Review our [Recovery Documentation](docs/recovery-guide.md)
-4. Join our support channel for real-time assistance
+### Security Contact
+
+For security-related issues:
+
+- **Email**: security@satnam.pub
+- **Nostr**: security@satnam.pub (NIP-05 verified)
+- **GPG Key**: Available on keybase.io/satnamdev
+
+### Community Support
+
+- **Documentation**: https://docs.satnam.pub
+- **Community Forum**: https://community.satnam.pub
+- **Developer Chat**: Lightning-based chat rooms available
+- **Technical Support**: Nostr-based support channels
 
 ---
 
-**Last Updated**: December 2024  
-**Version**: 0.1.0  
-**Maintainers**: Satnam.pub Team
+**Built with ❤️ for Bitcoin sovereignty and family financial independence.**
 
----
-
-_Built with ⚡ and 🧡 for Bitcoin sovereignty_
+_Last updated: December 2024_

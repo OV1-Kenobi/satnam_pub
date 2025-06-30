@@ -1,9 +1,13 @@
 /**
- * @fileoverview Family Nostr Federation Service
+ * @fileoverview Family Nostr Federation Service - BROWSER COMPATIBLE VERSION
  * @description Manages federated banking and eCash operations for family members
  */
 
 import { ECashNote, FedimintConfig } from "./fedimint/types";
+import {
+  FederationSecrets,
+  vaultFederationClient,
+} from "./vault-federation-client";
 
 export interface FamilyMemberBalance {
   ecash: number;
@@ -28,9 +32,144 @@ export interface TransferOptions {
 export class FamilyNostrFederation {
   private federationConfig: FedimintConfig | null = null;
   private balances: FamilyEcashBalances = {};
+  private federationSecrets: FederationSecrets | null = null;
+  protected guardianThreshold: number;
+  protected guardianCount: number;
+  protected connected: boolean = false;
+  protected balance: number = 0;
 
   constructor(config?: FedimintConfig) {
     this.federationConfig = config || null;
+
+    // Non-sensitive configuration from environment variables
+    // Sensitive federation secrets (IDs, keys, URLs) are fetched from Supabase Vault
+    this.guardianThreshold = parseInt(
+      import.meta.env.VITE_FEDIMINT_NOSTR_THRESHOLD || "2"
+    );
+    this.guardianCount = parseInt(
+      import.meta.env.VITE_FEDIMINT_NOSTR_GUARDIAN_COUNT || "3"
+    );
+  }
+
+  /**
+   * Initialize federation secrets from Supabase Vault
+   */
+  private async initializeFederationSecrets(): Promise<void> {
+    if (!this.federationSecrets) {
+      this.federationSecrets =
+        await vaultFederationClient.getFederationSecrets();
+    }
+  }
+
+  /**
+   * Get federation ID from Vault (secure)
+   */
+  async getFederationId(): Promise<string> {
+    await this.initializeFederationSecrets();
+    return this.federationSecrets?.federationId || "demo-federation";
+  }
+
+  /**
+   * Get guardian nodes from Vault (secure)
+   */
+  async getGuardianNodes(): Promise<string[]> {
+    await this.initializeFederationSecrets();
+    return (
+      this.federationSecrets?.guardianNodes || [
+        "demo-node1",
+        "demo-node2",
+        "demo-node3",
+      ]
+    );
+  }
+
+  /**
+   * Get consensus API from Vault (secure)
+   */
+  async getConsensusAPI(): Promise<string> {
+    await this.initializeFederationSecrets();
+    return (
+      this.federationSecrets?.consensusAPI || "https://demo-consensus.local"
+    );
+  }
+
+  // Web Crypto API instead of Node.js crypto
+  generateId() {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+      ""
+    );
+  }
+
+  async protectFamilyMemberNsec(
+    familyMemberId: string,
+    nsec: string,
+    guardianList: string[]
+  ) {
+    const response = await fetch("/api/federation/nostr/protect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        familyMemberId,
+        nsec,
+        guardians: guardianList,
+        threshold: this.guardianThreshold,
+        federationId: this.federationId,
+      }),
+    });
+    return response.json();
+  }
+
+  async requestGuardianApprovalForSigning(
+    nostrEvent: any,
+    familyMemberId: string
+  ) {
+    const response = await fetch("/api/federation/nostr/sign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: nostrEvent,
+        familyMemberId,
+        requiresApproval: this.requiresGuardianApproval(nostrEvent),
+        federationId: this.federationId,
+      }),
+    });
+    return response.json();
+  }
+
+  requiresGuardianApproval(nostrEvent: any) {
+    const sensitiveKinds = [0, 10002, 30023, 1984];
+    return (
+      sensitiveKinds.includes(nostrEvent.kind) ||
+      nostrEvent.tags.some((tag: any[]) => tag[0] === "family-governance")
+    );
+  }
+
+  async transferLightningToEcash(amount: number, familyMemberId: string) {
+    const response = await fetch("/api/federation/ecash/lightning-to-ecash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount,
+        familyMemberId,
+        federationId: this.federationId,
+      }),
+    });
+    return response.json();
+  }
+
+  async transferEcashToLightning(amount: number, familyMemberId: string) {
+    const response = await fetch("/api/federation/ecash/ecash-to-lightning", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount,
+        familyMemberId,
+        federationId: this.federationId,
+      }),
+    });
+    return response.json();
   }
 
   /**
@@ -71,7 +210,7 @@ export class FamilyNostrFederation {
    */
   async transferLightningToEcash(
     amount: number,
-    memberId: string,
+    memberId: string
   ): Promise<boolean> {
     if (!this.federationConfig) {
       throw new Error("Federation not initialized");
@@ -99,7 +238,7 @@ export class FamilyNostrFederation {
     memberBalance.lastUpdated = new Date();
 
     console.log(
-      `Transferred ${amount} sats from Lightning to eCash for member ${memberId}`,
+      `Transferred ${amount} sats from Lightning to eCash for member ${memberId}`
     );
     return true;
   }
@@ -109,7 +248,7 @@ export class FamilyNostrFederation {
    */
   async transferEcashToLightning(
     amount: number,
-    memberId: string,
+    memberId: string
   ): Promise<boolean> {
     if (!this.federationConfig) {
       throw new Error("Federation not initialized");
@@ -137,7 +276,7 @@ export class FamilyNostrFederation {
     memberBalance.lastUpdated = new Date();
 
     console.log(
-      `Transferred ${amount} sats from eCash to Lightning for member ${memberId}`,
+      `Transferred ${amount} sats from eCash to Lightning for member ${memberId}`
     );
     return true;
   }
@@ -147,7 +286,7 @@ export class FamilyNostrFederation {
    */
   async issueEcashNotes(
     amount: number,
-    memberId: string,
+    memberId: string
   ): Promise<ECashNote[]> {
     if (!this.federationConfig) {
       throw new Error("Federation not initialized");
@@ -174,7 +313,7 @@ export class FamilyNostrFederation {
   async checkSpendingLimits(
     memberId: string,
     amount: number,
-    memberRole: string,
+    memberRole: string
   ): Promise<boolean> {
     if (memberRole === "child") {
       // Children have daily spending limits

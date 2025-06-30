@@ -4,27 +4,21 @@
 import { HDKey } from "@scure/bip32";
 import * as bip39 from "bip39";
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  pbkdf2,
-  randomBytes,
-} from "crypto";
-import {
   finalizeEvent,
   generateSecretKey,
   getPublicKey,
   nip19,
 } from "nostr-tools";
-import { promisify } from "util";
 
 /**
  * Generate a random hex string of specified length
  */
 export function generateRandomHex(length: number): string {
-  return randomBytes(Math.ceil(length / 2))
-    .toString("hex")
+  const buffer = new ArrayBuffer(Math.ceil(length / 2));
+  const bytes = new Uint8Array(buffer);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
+    .join("")
     .slice(0, length);
 }
 
@@ -32,14 +26,24 @@ export function generateRandomHex(length: number): string {
  * Generate a secure token for session management
  */
 export function generateSecureToken(length: number = 64): string {
-  return randomBytes(length).toString("base64url");
+  const buffer = new ArrayBuffer(length);
+  const bytes = new Uint8Array(buffer);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode.apply(null, Array.from(bytes)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**
  * Hash a string using SHA-256
  */
-export function sha256(data: string): string {
-  return createHash("sha256").update(data).digest("hex");
+export async function sha256(data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -62,6 +66,26 @@ export function constantTimeEquals(a: string, b: string): boolean {
 }
 
 /**
+ * Convert hex string to Uint8Array
+ */
+function hexToUint8Array(hex: string): Uint8Array {
+  const bytes = hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16));
+  const buffer = new ArrayBuffer(bytes.length);
+  const result = new Uint8Array(buffer);
+  result.set(bytes);
+  return result;
+}
+
+/**
+ * Convert Uint8Array to hex string
+ */
+function uint8ArrayToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
  * Generate a secp256k1 key pair for Nostr
  * @param recoveryPhrase - Optional BIP39 mnemonic phrase to derive the key from
  * @param account - Optional account index when using a recovery phrase (default: 0)
@@ -77,15 +101,13 @@ export function generateNostrKeyPair(
     // Derive private key from recovery phrase using NIP-06 standard
     const derivedKey = privateKeyFromPhraseWithAccount(recoveryPhrase, account);
     privateKeyBytes =
-      typeof derivedKey === "string"
-        ? Buffer.from(derivedKey, "hex")
-        : derivedKey;
+      typeof derivedKey === "string" ? hexToUint8Array(derivedKey) : derivedKey;
   } else {
     // Generate a random private key
     privateKeyBytes = generateSecretKey();
   }
 
-  const privateKey = Buffer.from(privateKeyBytes).toString("hex");
+  const privateKey = uint8ArrayToHex(privateKeyBytes);
   const publicKey = getPublicKey(privateKeyBytes);
 
   return {
@@ -129,7 +151,7 @@ export function privateKeyFromPhrase(phrase: string): string {
     throw new Error("Failed to derive private key");
   }
 
-  return Buffer.from(nostrKey.privateKey).toString("hex");
+  return uint8ArrayToHex(new Uint8Array(nostrKey.privateKey));
 }
 
 /**
@@ -165,7 +187,7 @@ export function privateKeyFromPhraseWithAccount(
     throw new Error("Failed to derive private key");
   }
 
-  return Buffer.from(nostrKey.privateKey).toString("hex");
+  return uint8ArrayToHex(new Uint8Array(nostrKey.privateKey));
 }
 
 /**
@@ -180,29 +202,55 @@ export async function encryptData(
     "⚠️  SECURITY WARNING: Using legacy encryptData(). Please use encryptCredentials() from lib/security.ts for Gold Standard Argon2id encryption"
   );
 
-  const iv = randomBytes(16);
-  const salt = randomBytes(32); // Increased salt length for better security
+  // Generate random IV and salt using Web Crypto API
+  const ivBuffer = new ArrayBuffer(16);
+  const iv = new Uint8Array(ivBuffer);
+  crypto.getRandomValues(iv);
+
+  const saltBuffer = new ArrayBuffer(32);
+  const salt = new Uint8Array(saltBuffer);
+  crypto.getRandomValues(salt);
 
   // SECURITY IMPROVEMENT: Still using PBKDF2 here for backward compatibility
   // but with increased iterations and stronger salt
-  const key = await promisify(pbkdf2)(password, salt, 210000, 32, "sha256"); // Increased iterations
+  const key = await deriveKeyFromPassword(password, salt, 210000);
 
   // SECURITY IMPROVEMENT: Use AES-256-GCM instead of CBC for authenticated encryption
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  let encrypted = cipher.update(data, "utf8", "hex");
-  encrypted += cipher.final("hex");
+  const dataEncoded = new TextEncoder().encode(data);
+  const dataBuffer = new ArrayBuffer(dataEncoded.length);
+  const dataArray = new Uint8Array(dataBuffer);
+  dataArray.set(dataEncoded);
 
-  const authTag = cipher.getAuthTag();
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv: iv,
+    },
+    key,
+    dataArray
+  );
+
+  const encryptedArray = new Uint8Array(encrypted);
+  const authTag = encryptedArray.slice(-16); // Last 16 bytes are the auth tag
+  const ciphertext = encryptedArray.slice(0, -16); // Everything except the last 16 bytes
 
   // Return iv:salt:authTag:encrypted (updated format)
   return (
-    iv.toString("hex") +
+    Array.from(iv)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("") +
     ":" +
-    salt.toString("hex") +
+    Array.from(salt)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("") +
     ":" +
-    authTag.toString("hex") +
+    Array.from(authTag)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("") +
     ":" +
-    encrypted
+    Array.from(ciphertext)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
   );
 }
 
@@ -221,85 +269,182 @@ export async function decryptData(
   const parts = encryptedData.split(":");
 
   // Support both legacy format (iv:salt:encrypted) and new format (iv:salt:authTag:encrypted)
-  let iv: Buffer, salt: Buffer, authTag: Buffer | undefined, encrypted: string;
+  let iv: Uint8Array<ArrayBuffer>,
+    salt: Uint8Array<ArrayBuffer>,
+    authTag: Uint8Array<ArrayBuffer> | undefined,
+    encrypted: string;
 
   if (parts.length === 3) {
-    // Legacy format - no auth tag
-    console.warn(
-      "⚠️  Decrypting legacy format without authentication tag - consider re-encrypting with Gold Standard method"
+    // Legacy format - no auth tag - not supported in browser crypto
+    throw new Error(
+      "Legacy format without authentication tag is not supported in browser environment. Please re-encrypt with Gold Standard method."
     );
-    [iv, salt, encrypted] = [
-      Buffer.from(parts[0], "hex"),
-      Buffer.from(parts[1], "hex"),
-      parts[2],
-    ];
-
-    // Use legacy PBKDF2 for backward compatibility
-    const key = await promisify(pbkdf2)(password, salt, 100000, 32, "sha256");
-    const decipher = createDecipheriv("aes-256-cbc", key, iv);
-    let decrypted = decipher.update(encrypted, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
   } else if (parts.length === 4) {
     // New format with auth tag
-    [iv, salt, authTag, encrypted] = [
-      Buffer.from(parts[0], "hex"),
-      Buffer.from(parts[1], "hex"),
-      Buffer.from(parts[2], "hex"),
-      parts[3],
-    ];
+    const ivBytes = parts[0]
+      .match(/.{1,2}/g)!
+      .map((byte) => parseInt(byte, 16));
+    const ivBuffer = new ArrayBuffer(ivBytes.length);
+    iv = new Uint8Array(ivBuffer);
+    iv.set(ivBytes);
+
+    const saltBytes = parts[1]
+      .match(/.{1,2}/g)!
+      .map((byte) => parseInt(byte, 16));
+    const saltBuffer = new ArrayBuffer(saltBytes.length);
+    salt = new Uint8Array(saltBuffer);
+    salt.set(saltBytes);
+
+    const authTagBytes = parts[2]
+      .match(/.{1,2}/g)!
+      .map((byte) => parseInt(byte, 16));
+    const authTagBuffer = new ArrayBuffer(authTagBytes.length);
+    authTag = new Uint8Array(authTagBuffer);
+    authTag.set(authTagBytes);
+    encrypted = parts[3];
 
     // Use improved PBKDF2 for newer encrypted data
-    const key = await promisify(pbkdf2)(password, salt, 210000, 32, "sha256");
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(authTag);
-    let decrypted = decipher.update(encrypted, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
+    const key = await deriveKeyFromPassword(password, salt, 210000);
+
+    // For AES-GCM, combine ciphertext and auth tag as expected by Web Crypto API
+    const ciphertextBytes = encrypted
+      .match(/.{1,2}/g)!
+      .map((byte) => parseInt(byte, 16));
+    const ciphertextBuffer = new ArrayBuffer(ciphertextBytes.length);
+    const ciphertext = new Uint8Array(ciphertextBuffer);
+    ciphertext.set(ciphertextBytes);
+
+    // Combine ciphertext and auth tag for GCM decryption
+    const combinedBuffer = new ArrayBuffer(ciphertext.length + authTag.length);
+    const combined = new Uint8Array(combinedBuffer);
+    combined.set(ciphertext, 0);
+    combined.set(authTag, ciphertext.length);
+
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: iv,
+      },
+      key,
+      combined
+    );
+
+    return new TextDecoder().decode(decrypted);
   } else {
     throw new Error(
-      "Invalid encrypted data format - expected 3 or 4 parts separated by colons"
+      "Invalid encrypted data format - expected 4 parts separated by colons"
     );
   }
 }
 
 /**
- * Derive a cryptographic key from password and salt using PBKDF2
+ * Derive a cryptographic key from password and salt using PBKDF2 (Web Crypto API)
  * @param password - The password to derive from
- * @param salt - The salt (as hex string or Buffer)
+ * @param salt - The salt (as hex string or Uint8Array)
  * @param iterations - Number of PBKDF2 iterations (default: 100000)
  * @param keyLength - Length of derived key in bytes (default: 32)
- * @returns Promise<Buffer> - The derived key
+ * @returns Promise<Uint8Array> - The derived key
  */
 export async function deriveKey(
   password: string,
-  salt: string | Buffer,
+  salt: string | Uint8Array,
   iterations: number = 100000,
   keyLength: number = 32
-): Promise<Buffer> {
-  const saltBuffer = typeof salt === "string" ? Buffer.from(salt, "hex") : salt;
+): Promise<Uint8Array> {
+  let saltBuffer: Uint8Array<ArrayBuffer>;
+  if (typeof salt === "string") {
+    const bytes = salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16));
+    const buffer = new ArrayBuffer(bytes.length);
+    saltBuffer = new Uint8Array(buffer);
+    saltBuffer.set(bytes);
+  } else {
+    // Even if salt is already Uint8Array, ensure it's backed by proper ArrayBuffer
+    const buffer = new ArrayBuffer(salt.length);
+    saltBuffer = new Uint8Array(buffer);
+    saltBuffer.set(salt);
+  }
 
-  return new Promise((resolve, reject) => {
-    // Use async pbkdf2 for better performance in production
-    pbkdf2(
-      password,
-      saltBuffer,
-      iterations,
-      keyLength,
-      "sha256",
-      (err: Error | null, derivedKey: Buffer) => {
-        if (err) reject(err);
-        else resolve(derivedKey);
-      }
-    );
-  });
+  // Import password as key material
+  const passwordEncoded = new TextEncoder().encode(password);
+  const passwordBuffer = new ArrayBuffer(passwordEncoded.length);
+  const passwordArray = new Uint8Array(passwordBuffer);
+  passwordArray.set(passwordEncoded);
+
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    passwordArray,
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+
+  // Derive the key using PBKDF2
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: saltBuffer,
+      iterations: iterations,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    keyLength * 8 // Convert bytes to bits
+  );
+
+  return new Uint8Array(derivedBits);
 }
 
 /**
- * Decode a Base32 string to a buffer
+ * Derive a CryptoKey from password and salt using PBKDF2 (for use with Web Crypto API)
+ * @param password - The password to derive from
+ * @param salt - The salt as Uint8Array
+ * @param iterations - Number of PBKDF2 iterations
+ * @returns Promise<CryptoKey> - The derived key ready for encryption/decryption
+ */
+async function deriveKeyFromPassword(
+  password: string,
+  salt: Uint8Array,
+  iterations: number
+): Promise<CryptoKey> {
+  // Ensure salt is backed by proper ArrayBuffer
+  const saltBuffer = new ArrayBuffer(salt.length);
+  const saltArray = new Uint8Array(saltBuffer);
+  saltArray.set(salt);
+
+  // Ensure password encoding is backed by proper ArrayBuffer
+  const passwordEncoded = new TextEncoder().encode(password);
+  const passwordBuffer = new ArrayBuffer(passwordEncoded.length);
+  const passwordArray = new Uint8Array(passwordBuffer);
+  passwordArray.set(passwordEncoded);
+
+  // Import password as key material
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    passwordArray,
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  // Derive the key using PBKDF2
+  return await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: saltArray,
+      iterations: iterations,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+/**
+ * Decode a Base32 string to a Uint8Array
  * This is used for TOTP/HOTP secrets which are commonly Base32-encoded
  */
-export function decodeBase32(base32: string): Buffer {
+export function decodeBase32(base32: string): Uint8Array {
   // Remove spaces and convert to uppercase
   const sanitized = base32.replace(/\s+/g, "").toUpperCase();
 
@@ -308,7 +453,8 @@ export function decodeBase32(base32: string): Buffer {
 
   // Prepare output buffer
   const length = Math.floor((sanitized.length * 5) / 8);
-  const result = Buffer.alloc(length);
+  const buffer = new ArrayBuffer(length);
+  const result = new Uint8Array(buffer);
 
   let bits = 0;
   let value = 0;
@@ -350,11 +496,14 @@ export function isBase32(str: string): boolean {
  * Generate a time-based one-time password (TOTP)
  * @param secret - The secret key (UTF-8 string or Base32-encoded string)
  * @param window - Time window offset (default: 0)
- * @returns 6-digit TOTP code
+ * @returns Promise<string> - 6-digit TOTP code
  */
-export function generateTOTP(secret: string, window = 0): string {
+export async function generateTOTP(
+  secret: string,
+  window = 0
+): Promise<string> {
   const counter = Math.floor(Date.now() / 30000) + window;
-  return generateHOTP(secret, counter);
+  return await generateHOTP(secret, counter);
 }
 
 /**
@@ -362,27 +511,46 @@ export function generateTOTP(secret: string, window = 0): string {
  * Implementation follows RFC 4226
  * @param secret - The secret key (UTF-8 string or Base32-encoded string)
  * @param counter - The counter value
- * @returns 6-digit HOTP code
+ * @returns Promise<string> - 6-digit HOTP code
  */
-export function generateHOTP(secret: string, counter: number): string {
+export async function generateHOTP(
+  secret: string,
+  counter: number
+): Promise<string> {
   // Convert counter to buffer
-  const counterBuffer = Buffer.alloc(8);
+  const counterArrayBuffer = new ArrayBuffer(8);
+  const counterBuffer = new Uint8Array(counterArrayBuffer);
   for (let i = 0; i < 8; i++) {
     counterBuffer[7 - i] = counter & 0xff;
     counter = counter >> 8;
   }
 
   // Determine if the secret is Base32-encoded
-  let secretBuffer: Buffer;
+  let secretBuffer: Uint8Array<ArrayBuffer>;
   if (isBase32(secret)) {
-    secretBuffer = decodeBase32(secret);
+    const decoded = decodeBase32(secret);
+    const secretArrayBuffer = new ArrayBuffer(decoded.length);
+    secretBuffer = new Uint8Array(secretArrayBuffer);
+    secretBuffer.set(decoded);
   } else {
-    secretBuffer = Buffer.from(secret, "utf-8");
+    const encoded = new TextEncoder().encode(secret);
+    const secretArrayBuffer = new ArrayBuffer(encoded.length);
+    secretBuffer = new Uint8Array(secretArrayBuffer);
+    secretBuffer.set(encoded);
   }
 
   // Create HMAC using SHA-1 as specified in RFC 4226
   // Note: While SHA-1 is generally deprecated, it's still the standard for HOTP
-  const hmac = createHmac("sha1", secretBuffer).update(counterBuffer).digest();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secretBuffer,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign("HMAC", key, counterBuffer);
+  const hmac = new Uint8Array(signature);
 
   // Generate OTP
   const offset = hmac[hmac.length - 1] & 0xf;
@@ -402,12 +570,16 @@ export function generateHOTP(secret: string, counter: number): string {
  * @param token - The TOTP code to verify
  * @param secret - The secret key (UTF-8 string or Base32-encoded string)
  * @param window - Time window to check before and after current time (default: 1)
- * @returns Boolean indicating if the token is valid
+ * @returns Promise<boolean> - Boolean indicating if the token is valid
  */
-export function verifyTOTP(token: string, secret: string, window = 1): boolean {
+export async function verifyTOTP(
+  token: string,
+  secret: string,
+  window = 1
+): Promise<boolean> {
   // Check current window and surrounding windows
   for (let i = -window; i <= window; i++) {
-    const generatedToken = generateTOTP(secret, i);
+    const generatedToken = await generateTOTP(secret, i);
     if (generatedToken === token) {
       return true;
     }
@@ -416,10 +588,10 @@ export function verifyTOTP(token: string, secret: string, window = 1): boolean {
 }
 
 /**
- * Encode a buffer to Base32
+ * Encode a Uint8Array to Base32
  * This is used for TOTP/HOTP secrets to be compatible with authenticator apps
  */
-export function encodeBase32(buffer: Buffer): string {
+export function encodeBase32(buffer: Uint8Array): string {
   // Base32 character set (RFC 4648)
   const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -456,7 +628,7 @@ export function encodeBase32(buffer: Buffer): string {
  * @returns Base32-encoded secret string
  */
 export function generateTOTPSecret(length: number = 20): string {
-  const buffer = randomBytes(length);
+  const buffer = crypto.getRandomValues(new Uint8Array(length));
   return encodeBase32(buffer);
 }
 
@@ -485,7 +657,7 @@ export function signNostrEvent(
   sig: string;
 } {
   // Use finalizeEvent to create a properly signed event
-  const privateKeyBytes = Buffer.from(privateKey, "hex");
+  const privateKeyBytes = hexToUint8Array(privateKey);
   const signedEvent = finalizeEvent(event, privateKeyBytes) as {
     id: string;
     kind: number;
@@ -521,7 +693,7 @@ export function createNostrEvent(
   content: string;
   sig: string;
 } {
-  const publicKey = getPublicKey(Buffer.from(privateKey, "hex"));
+  const publicKey = getPublicKey(hexToUint8Array(privateKey));
 
   const event = {
     kind,

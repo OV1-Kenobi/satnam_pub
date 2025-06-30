@@ -64,6 +64,13 @@ class AuthManager {
         },
       });
 
+      // Check if response is actually JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.warn("Non-JSON response received from auth API");
+        return { authenticated: false };
+      }
+
       // 401 is expected when not authenticated - don't treat as error
       if (response.status === 401) {
         return { authenticated: false };
@@ -100,6 +107,31 @@ class AuthManager {
       // Only log actual network errors
       console.error("Auth check network error:", error);
       return { authenticated: false };
+    }
+  }
+
+  async signIn(credentials: any) {
+    try {
+      const response = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials),
+      });
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Invalid response format from server");
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Sign in failed");
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Sign in failed:", error);
+      throw error;
     }
   }
 

@@ -1,5 +1,4 @@
 // lib/crypto/privacy-manager.ts
-import crypto from "crypto";
 import { constantTimeEquals } from "../../utils/crypto";
 
 export class PrivacyManager {
@@ -7,10 +6,35 @@ export class PrivacyManager {
    * Create a non-reversible hash for authentication
    * Uses the pubkey but doesn't store it - only the hash
    */
-  static createAuthHash(pubkey: string, salt?: string): string {
-    const authSalt = salt || crypto.randomBytes(32).toString("hex");
-    const hash = crypto.pbkdf2Sync(pubkey, authSalt, 100000, 64, "sha512");
-    return `${authSalt}:${hash.toString("hex")}`;
+  static async createAuthHash(pubkey: string, salt?: string): Promise<string> {
+    const authSalt =
+      salt ||
+      Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
+        b.toString(16).padStart(2, "0")
+      ).join("");
+    const keyBuffer = new TextEncoder().encode(pubkey);
+    const saltBuffer = new TextEncoder().encode(authSalt);
+    const importedKey = await crypto.subtle.importKey(
+      "raw",
+      keyBuffer,
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: saltBuffer,
+        iterations: 100000,
+        hash: "SHA-512",
+      },
+      importedKey,
+      512
+    );
+    const hash = Array.from(new Uint8Array(derivedBits), (b) =>
+      b.toString(16).padStart(2, "0")
+    ).join("");
+    return `${authSalt}:${hash}`;
   }
 
   /**
@@ -18,11 +42,35 @@ export class PrivacyManager {
    * Allows authentication without storing the actual pubkey
    * Uses constant-time comparison to prevent timing attacks
    */
-  static verifyAuthHash(pubkey: string, storedHash: string): boolean {
+  static async verifyAuthHash(
+    pubkey: string,
+    storedHash: string
+  ): Promise<boolean> {
     try {
       const [salt, originalHash] = storedHash.split(":");
-      const hash = crypto.pbkdf2Sync(pubkey, salt, 100000, 64, "sha512");
-      return constantTimeEquals(hash.toString("hex"), originalHash);
+      const keyBuffer = new TextEncoder().encode(pubkey);
+      const saltBuffer = new TextEncoder().encode(salt);
+      const importedKey = await crypto.subtle.importKey(
+        "raw",
+        keyBuffer,
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+      );
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: "PBKDF2",
+          salt: saltBuffer,
+          iterations: 100000,
+          hash: "SHA-512",
+        },
+        importedKey,
+        512
+      );
+      const hash = Array.from(new Uint8Array(derivedBits), (b) =>
+        b.toString(16).padStart(2, "0")
+      ).join("");
+      return constantTimeEquals(hash, originalHash);
     } catch {
       return false;
     }
@@ -32,37 +80,99 @@ export class PrivacyManager {
    * Encrypt user data with their own password/key
    * Platform cannot decrypt this - only the user can
    */
-  static encryptUserData(data: any, userKey: string): string {
-    const key = crypto.scryptSync(userKey, "salt", 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  static async encryptUserData(data: any, userKey: string): Promise<string> {
+    const keyBuffer = new TextEncoder().encode(userKey);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const importedKey = await crypto.subtle.importKey(
+      "raw",
+      keyBuffer,
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+      importedKey,
+      256
+    );
+    const key = await crypto.subtle.importKey(
+      "raw",
+      derivedBits,
+      "AES-GCM",
+      false,
+      ["encrypt"]
+    );
 
-    let encrypted = cipher.update(JSON.stringify(data), "utf8", "hex");
-    encrypted += cipher.final("hex");
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const dataBuffer = new TextEncoder().encode(JSON.stringify(data));
 
-    const authTag = cipher.getAuthTag();
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      dataBuffer
+    );
 
-    return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
+    const ivHex = Array.from(iv, (b) => b.toString(16).padStart(2, "0")).join(
+      ""
+    );
+    const saltHex = Array.from(salt, (b) =>
+      b.toString(16).padStart(2, "0")
+    ).join("");
+    const encryptedHex = Array.from(new Uint8Array(encrypted), (b) =>
+      b.toString(16).padStart(2, "0")
+    ).join("");
+
+    return `${ivHex}:${saltHex}:${encryptedHex}`;
   }
 
   /**
    * Decrypt user data with their password/key
    * Only the user can decrypt their own data
    */
-  static decryptUserData(encryptedData: string, userKey: string): any {
+  static async decryptUserData(
+    encryptedData: string,
+    userKey: string
+  ): Promise<any> {
     try {
-      const [ivHex, authTagHex, encrypted] = encryptedData.split(":");
-      const key = crypto.scryptSync(userKey, "salt", 32);
-      const iv = Buffer.from(ivHex, "hex");
-      const authTag = Buffer.from(authTagHex, "hex");
+      const [ivHex, saltHex, encryptedHex] = encryptedData.split(":");
+      const keyBuffer = new TextEncoder().encode(userKey);
+      const salt = new Uint8Array(
+        ivHex.match(/.{2}/g)?.map((byte) => parseInt(byte, 16)) || []
+      );
+      const iv = new Uint8Array(
+        saltHex.match(/.{2}/g)?.map((byte) => parseInt(byte, 16)) || []
+      );
+      const encrypted = new Uint8Array(
+        encryptedHex.match(/.{2}/g)?.map((byte) => parseInt(byte, 16)) || []
+      );
 
-      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(authTag);
+      const importedKey = await crypto.subtle.importKey(
+        "raw",
+        keyBuffer,
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+      );
+      const derivedBits = await crypto.subtle.deriveBits(
+        { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+        importedKey,
+        256
+      );
+      const key = await crypto.subtle.importKey(
+        "raw",
+        derivedBits,
+        "AES-GCM",
+        false,
+        ["decrypt"]
+      );
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
+      const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        key,
+        encrypted
+      );
 
-      return JSON.parse(decrypted);
+      return JSON.parse(new TextDecoder().decode(decrypted));
     } catch {
       throw new Error("Failed to decrypt user data - invalid key");
     }
@@ -72,12 +182,14 @@ export class PrivacyManager {
    * Create a privacy-safe identifier for platform use
    * Derived from pubkey but not reversible
    */
-  static createPlatformId(pubkey: string): string {
-    return crypto
-      .createHash("sha256")
-      .update(pubkey + "platform_salt")
-      .digest("hex")
-      .substring(0, 16);
+  static async createPlatformId(pubkey: string): Promise<string> {
+    const data = new TextEncoder().encode(pubkey + "platform_salt");
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return hashHex.substring(0, 16);
   }
 
   /**
@@ -103,7 +215,7 @@ export class PrivacyManager {
    */
   static decryptPrivateKey(
     encryptedPrivateKey: string,
-    userPassphrase: string,
+    userPassphrase: string
   ): string {
     try {
       const [ivHex, authTagHex, encrypted] = encryptedPrivateKey.split(":");
@@ -230,7 +342,7 @@ export class PrivacyManager {
     // Character check
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
       errors.push(
-        "Username can only contain letters, numbers, underscores, and hyphens",
+        "Username can only contain letters, numbers, underscores, and hyphens"
       );
     }
 
@@ -291,7 +403,7 @@ export class PrivacyManager {
       return `v1:${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
     } catch (error) {
       throw new Error(
-        `Service config encryption failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Service config encryption failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -303,7 +415,7 @@ export class PrivacyManager {
    */
   static decryptServiceConfig(
     encryptedConfig: string,
-    serviceKey: string,
+    serviceKey: string
   ): any {
     try {
       // Handle versioned format
@@ -327,7 +439,7 @@ export class PrivacyManager {
       return JSON.parse(decrypted);
     } catch (error) {
       throw new Error(
-        `Service config decryption failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Service config decryption failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

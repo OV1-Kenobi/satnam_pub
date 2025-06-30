@@ -1,4 +1,11 @@
-import { createHash, randomBytes } from "crypto";
+// Use these instead for Bolt.new
+const randomBytes = (size) => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+};
 import * as ed25519 from "@noble/ed25519";
 export interface PubkyKeypair {
   private_key: string;
@@ -42,7 +49,7 @@ export class EnhancedPubkyClient {
   // Register Pubky domain
   async registerPubkyDomain(
     keypair: PubkyKeypair,
-    domainRecords: PubkyDomainRecord[],
+    domainRecords: PubkyDomainRecord[]
   ): Promise<{ success: boolean; sovereignty_score: number }> {
     // Create PKARR record
     const pkarrRecord = {
@@ -55,7 +62,7 @@ export class EnhancedPubkyClient {
     const recordBytes = JSON.stringify(pkarrRecord);
     const signature = await ed25519.sign(
       Buffer.from(recordBytes),
-      Buffer.from(keypair.private_key, "hex"),
+      Buffer.from(keypair.private_key, "hex")
     );
 
     // Simulate publishing to PKARR relays

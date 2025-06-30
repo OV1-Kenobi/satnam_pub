@@ -1,11 +1,35 @@
 // lib/fedimint/client.ts
 import * as secp256k1 from "@noble/secp256k1";
-import { randomBytes } from "crypto";
-import { EventEmitter } from "events";
 import { v4 as uuidv4 } from "uuid";
 import type { ECashNote, FedimintConfig, Guardian } from "./types";
+// Use these instead for Bolt.new
+const randomBytes = (size) => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+};
 
-export class FedimintClient extends EventEmitter {
+// Simple event system for browser
+class SimpleEventEmitter {
+  constructor() {
+    this.events = {};
+  }
+
+  on(event, callback) {
+    if (!this.events[event]) this.events[event] = [];
+    this.events[event].push(callback);
+  }
+
+  emit(event, ...args) {
+    if (this.events[event]) {
+      this.events[event].forEach((callback) => callback(...args));
+    }
+  }
+}
+
+export class FedimintClient extends SimpleEventEmitter {
   private config: FedimintConfig;
   private connected: boolean = false;
   private balance: number = 0;
@@ -66,7 +90,7 @@ export class FedimintClient extends EventEmitter {
       async (guardian) => {
         // Simulate network delay and occasional failures
         await new Promise((resolve) =>
-          setTimeout(resolve, Math.random() * 1000),
+          setTimeout(resolve, Math.random() * 1000)
         );
 
         const isOnline = Math.random() > 0.2; // 80% uptime simulation
@@ -74,18 +98,18 @@ export class FedimintClient extends EventEmitter {
         guardian.lastSeen = new Date();
 
         return guardian;
-      },
+      }
     );
 
     await Promise.all(healthPromises);
 
     const onlineGuardians = Array.from(this.guardianStatus.values()).filter(
-      (g) => g.status === "online",
+      (g) => g.status === "online"
     ).length;
 
     if (onlineGuardians < this.config.threshold) {
       throw new Error(
-        `Insufficient guardians online: ${onlineGuardians}/${this.config.threshold}`,
+        `Insufficient guardians online: ${onlineGuardians}/${this.config.threshold}`
       );
     }
   }
@@ -143,7 +167,7 @@ export class FedimintClient extends EventEmitter {
     // Simulate Chaumian blind signature process
     const noteId = uuidv4();
     const spendKey = Buffer.from(secp256k1.utils.randomPrivateKey()).toString(
-      "hex",
+      "hex"
     );
 
     // Simulate guardian signing delay
@@ -179,7 +203,7 @@ export class FedimintClient extends EventEmitter {
 
     if (validNotes.length !== notes.length) {
       throw new Error(
-        `Invalid notes detected: ${notes.length - validNotes.length} rejected`,
+        `Invalid notes detected: ${notes.length - validNotes.length} rejected`
       );
     }
 
@@ -200,7 +224,7 @@ export class FedimintClient extends EventEmitter {
 
   async createLightningInvoice(
     amount: number,
-    description?: string,
+    description?: string
   ): Promise<string> {
     if (!this.connected) {
       throw new Error("Not connected to federation");

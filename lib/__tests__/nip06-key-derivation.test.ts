@@ -6,7 +6,6 @@
  * Set SHOW_SECRETS=true environment variable to display full values (NOT recommended for CI/production)
  */
 
-import { createHash } from "crypto";
 import { describe, expect, test } from "vitest";
 
 // Import crypto utilities - adjust path as needed
@@ -16,7 +15,11 @@ import * as crypto from "../../utils/crypto";
 const showSecrets = process.env.SHOW_SECRETS === "true";
 
 // Helper function to safely display sensitive data
-function safelog(label: string, value: string, type: "key" | "phrase" = "key") {
+async function safelog(
+  label: string,
+  value: string,
+  type: "key" | "phrase" = "key"
+) {
   if (showSecrets) {
     console.log(`${label}:`, value);
   } else {
@@ -28,10 +31,18 @@ function safelog(label: string, value: string, type: "key" | "phrase" = "key") {
     } else {
       // For keys, show first 4 and last 4 characters with hash
       const masked = `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
-      const hash = createHash("sha256")
-        .update(value)
-        .digest("hex")
+
+      // Use Web Crypto API for hashing
+      const encoder = new TextEncoder();
+      const data = encoder.encode(value);
+      const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", data);
+      const hashArray = new Uint8Array(hashBuffer);
+      const hash = Array.from(hashArray, (byte) =>
+        byte.toString(16).padStart(2, "0")
+      )
+        .join("")
         .substring(0, 8);
+
       console.log(`${label}:`, `${masked} (hash: ${hash})`);
     }
   }
@@ -41,57 +52,57 @@ describe("NIP-06 Key Derivation", () => {
   // Security notice for test output
   if (!showSecrets) {
     console.log(
-      "🔒 Security mode: Private keys and recovery phrases are masked in test output.",
+      "🔒 Security mode: Private keys and recovery phrases are masked in test output."
     );
     console.log(
-      "   Set SHOW_SECRETS=true environment variable to display full values (NOT recommended for CI/production)",
+      "   Set SHOW_SECRETS=true environment variable to display full values (NOT recommended for CI/production)"
     );
     console.log("   Hashes are shown for verification purposes.\n");
   } else {
     console.log(
-      "⚠️  WARNING: Showing full private keys and recovery phrases in test output!",
+      "⚠️  WARNING: Showing full private keys and recovery phrases in test output!"
     );
     console.log(
-      "   This should NEVER be used in CI/production environments.\n",
+      "   This should NEVER be used in CI/production environments.\n"
     );
   }
 
-  test("should generate a valid recovery phrase", () => {
+  test("should generate a valid recovery phrase", async () => {
     const phrase = crypto.generateRecoveryPhrase();
 
     expect(phrase).toBeDefined();
     expect(typeof phrase).toBe("string");
     expect(phrase.split(" ").length).toBeGreaterThanOrEqual(12); // Standard mnemonic lengths
 
-    safelog("✅ Recovery phrase generated", phrase, "phrase");
+    await safelog("✅ Recovery phrase generated", phrase, "phrase");
   });
 
-  test("should derive private key from recovery phrase", () => {
+  test("should derive private key from recovery phrase", async () => {
     const phrase = crypto.generateRecoveryPhrase();
 
-    expect(() => {
+    await expect(async () => {
       const privateKey = crypto.privateKeyFromPhrase(phrase);
       expect(privateKey).toBeDefined();
       expect(typeof privateKey).toBe("string");
       expect(privateKey.length).toBeGreaterThan(0);
 
-      safelog("✅ Private key (account 0)", privateKey);
+      await safelog("✅ Private key (account 0)", privateKey);
     }).not.toThrow();
   });
 
-  test("should derive keys for multiple accounts", () => {
+  test("should derive keys for multiple accounts", async () => {
     const phrase = crypto.generateRecoveryPhrase();
     const accounts = 3;
 
     console.log("\n🔑 Deriving keys for multiple accounts:");
 
     for (let i = 0; i < accounts; i++) {
-      expect(() => {
+      await expect(async () => {
         const accountKey = crypto.privateKeyFromPhraseWithAccount(phrase, i);
         expect(accountKey).toBeDefined();
         expect(typeof accountKey).toBe("string");
 
-        safelog(`✅ Account ${i} private key`, accountKey);
+        await safelog(`✅ Account ${i} private key`, accountKey);
 
         // Generate a full key pair
         const keyPair = crypto.generateNostrKeyPair(phrase, i);
@@ -99,7 +110,7 @@ describe("NIP-06 Key Derivation", () => {
         expect(keyPair.publicKey).toBeDefined();
         expect(keyPair.npub).toBeDefined();
 
-        safelog(`✅ Account ${i} public key`, keyPair.publicKey);
+        await safelog(`✅ Account ${i} public key`, keyPair.publicKey);
         console.log(`✅ Account ${i} npub:`, keyPair.npub);
       }).not.toThrow();
     }

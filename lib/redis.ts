@@ -1,6 +1,22 @@
 import { createClient } from "redis";
 import { config } from "../config";
-import { EventEmitter } from "events";
+// Simple event system for browser
+class SimpleEventEmitter {
+  constructor() {
+    this.events = {};
+  }
+
+  on(event, callback) {
+    if (!this.events[event]) this.events[event] = [];
+    this.events[event].push(callback);
+  }
+
+  emit(event, ...args) {
+    if (this.events[event]) {
+      this.events[event].forEach((callback) => callback(...args));
+    }
+  }
+}
 
 // Configuration for reconnection
 const RECONNECT_MAX_ATTEMPTS = 10;
@@ -18,7 +34,7 @@ enum RedisConnectionState {
 }
 
 // Create Redis event emitter for application-wide notifications
-export const redisEvents = new EventEmitter();
+export const redisEvents = new SimpleEventEmitter();
 
 // Create Redis client
 const redisClient = createClient({
@@ -30,7 +46,7 @@ const redisClient = createClient({
         // Maximum reconnection attempts reached - emit critical failure event
         redisEvents.emit(
           "critical-failure",
-          new Error("Maximum reconnection attempts reached"),
+          new Error("Maximum reconnection attempts reached")
         );
         return new Error("Maximum reconnection attempts reached");
       }
@@ -38,7 +54,7 @@ const redisClient = createClient({
       // Calculate delay with exponential backoff and some randomness (jitter)
       const delay = Math.min(
         RECONNECT_INITIAL_DELAY * Math.pow(2, retries) + Math.random() * 1000,
-        RECONNECT_MAX_DELAY,
+        RECONNECT_MAX_DELAY
       );
 
       // Logging reconnection attempt with calculated delay
@@ -175,7 +191,7 @@ async function handleReconnection() {
 
     const delay = Math.min(
       RECONNECT_INITIAL_DELAY * Math.pow(2, reconnectAttempt - 1),
-      RECONNECT_MAX_DELAY,
+      RECONNECT_MAX_DELAY
     );
 
     // Manual reconnection with exponential backoff
@@ -199,7 +215,7 @@ async function handleReconnection() {
     redisEvents.emit("state-change", connectionState);
     redisEvents.emit(
       "critical-failure",
-      new Error("All manual reconnection attempts failed"),
+      new Error("All manual reconnection attempts failed")
     );
   }
 
@@ -274,10 +290,10 @@ const isRedisHealthy = async (): Promise<boolean> => {
 };
 
 export {
-  redisClient,
-  connectRedis,
   closeRedis,
+  connectRedis,
   getRedisConnectionState,
   isRedisHealthy,
+  redisClient,
   RedisConnectionState,
 };

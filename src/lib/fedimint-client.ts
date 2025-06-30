@@ -1,230 +1,120 @@
-/**
- * Fedimint Client for Satnam Family Banking
- *
- * Provides integration with Fedimint federation for eCash operations
- * Handles atomic swaps, balance management, and transaction processing
- *
- * @fileoverview Fedimint federation client for eCash operations
- */
-
-import axios, { AxiosResponse } from "axios";
-
-// Fedimint API Types
-interface FedimintBalance {
-  ecash: number;
-  lightning: number;
-}
-
-interface FedimintTransaction {
-  txId: string;
-  amount: number;
-  fee: number;
-  timestamp: number;
-  type: "deposit" | "withdrawal" | "transfer";
-  status: "pending" | "confirmed" | "failed";
-}
-
-interface FedimintRedemptionRequest {
-  memberId: string;
-  amount: number;
-  lightningInvoice: string;
-  swapId: string;
-}
-
-interface FedimintRedemptionResult {
-  success: boolean;
-  txId?: string;
-  fee?: number;
-  error?: string;
-}
-
-interface FedimintClientConfig {
-  federationId: string;
-  gatewayUrl: string;
-  apiToken: string;
-  network: "mainnet" | "testnet" | "regtest";
-}
-
-export class FedimintClient {
-  private config: FedimintClientConfig;
-  private axiosInstance;
-
-  constructor() {
-    // Environment variable helper for both Vite and Node.js
-    const getEnvVar = (key: string): string => {
-      if (typeof import.meta !== "undefined" && import.meta.env) {
-        return import.meta.env[key] || "";
-      }
-      return process.env[key] || "";
-    };
-
-    this.config = {
-      federationId: getEnvVar("FEDIMINT_FEDERATION_ID") || "test_federation",
-      gatewayUrl: getEnvVar("FEDIMINT_GATEWAY_URL") || "http://127.0.0.1:8080",
-      apiToken: getEnvVar("FEDIMINT_API_TOKEN") || "",
-      network: (getEnvVar("FEDIMINT_NETWORK") as any) || "testnet",
-    };
-
-    // Initialize HTTP client with authentication
-    this.axiosInstance = axios.create({
-      baseURL: this.config.gatewayUrl,
-      headers: {
-        Authorization: `Bearer ${this.config.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 30000, // 30 second timeout
-    });
-
-    console.log("🏦 Fedimint Client initialized:", {
-      federationId: this.config.federationId,
-      gatewayUrl: this.config.gatewayUrl,
-      network: this.config.network,
-    });
+// Browser-compatible Fedimint client for Bolt.new
+export class BrowserFedimintClient {
+  constructor(config) {
+    this.config = config;
+    this.connected = false;
+    this.balance = 0;
+    this.notes = new Map();
+    this.events = {};
   }
 
-  /**
-   * Get Fedimint eCash balance for a family member
-   */
-  async getBalance(memberId: string): Promise<number> {
-    try {
-      const response: AxiosResponse<FedimintBalance> =
-        await this.axiosInstance.get(`/balance/${memberId}`);
-      return response.data.ecash;
-    } catch (error) {
-      console.error("❌ Failed to get Fedimint balance:", error);
-      throw new Error(`Failed to get balance: ${error}`);
+  // Simple event system
+  on(event, callback) {
+    if (!this.events[event]) this.events[event] = [];
+    this.events[event].push(callback);
+  }
+
+  emit(event, ...args) {
+    if (this.events[event]) {
+      this.events[event].forEach((callback) => callback(...args));
     }
   }
 
-  /**
-   * Execute atomic redemption to pay Lightning invoice
-   */
-  async atomicRedeemToPay(
-    request: FedimintRedemptionRequest
-  ): Promise<FedimintRedemptionResult> {
-    try {
-      const response: AxiosResponse<FedimintRedemptionResult> =
-        await this.axiosInstance.post("/atomic-redeem", {
-          member_id: request.memberId,
-          amount: request.amount,
-          lightning_invoice: request.lightningInvoice,
-          swap_id: request.swapId,
-        });
-
-      console.log(`⚡ Fedimint atomic redemption: ${request.amount} sats`);
-      return response.data;
-    } catch (error) {
-      console.error("❌ Fedimint atomic redemption failed:", error);
-      return {
-        success: false,
-        error: `Atomic redemption failed: ${error}`,
-      };
-    }
+  // Web Crypto API for random generation
+  generateId() {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+      ""
+    );
   }
 
-  /**
-   * Rollback a failed redemption
-   */
-  async rollbackRedemption(swapId: string): Promise<void> {
+  async connect() {
     try {
-      await this.axiosInstance.post("/rollback-redemption", {
-        swap_id: swapId,
+      console.log(`Connecting to federation ${this.config.federationId}`);
+
+      // Simulate connection with fetch API
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      this.connected = true;
+      this.balance = Math.floor(Math.random() * 100000); // Mock balance
+
+      this.emit("connected", {
+        federationId: this.config.federationId,
+        guardianCount: this.config.totalGuardians,
+        threshold: this.config.threshold,
       });
-      console.log(`🔄 Rolled back Fedimint redemption: ${swapId}`);
+
+      return true;
     } catch (error) {
-      console.error("❌ Failed to rollback Fedimint redemption:", error);
-      throw new Error(`Rollback failed: ${error}`);
+      this.emit("error", error);
+      throw error;
     }
   }
 
-  /**
-   * Get transaction history for a family member
-   */
-  async getTransactionHistory(
-    memberId: string,
-    limit: number = 50
-  ): Promise<FedimintTransaction[]> {
-    try {
-      const response: AxiosResponse<FedimintTransaction[]> =
-        await this.axiosInstance.get(
-          `/transactions/${memberId}?limit=${limit}`
-        );
-      return response.data;
-    } catch (error) {
-      console.error("❌ Failed to get Fedimint transaction history:", error);
-      throw new Error(`Failed to get transaction history: ${error}`);
-    }
+  async getBalance() {
+    if (!this.connected) throw new Error("Not connected to federation");
+    return this.balance;
   }
 
-  /**
-   * Deposit eCash to family member account
-   */
-  async depositEcash(
-    memberId: string,
-    amount: number,
-    notes: string
-  ): Promise<FedimintTransaction> {
-    try {
-      const response: AxiosResponse<FedimintTransaction> =
-        await this.axiosInstance.post("/deposit", {
-          member_id: memberId,
-          amount,
-          ecash_notes: notes,
-        });
+  async issueECash(amount) {
+    if (!this.connected) throw new Error("Not connected to federation");
+    if (amount > this.balance) throw new Error("Insufficient balance");
 
-      console.log(`💰 Deposited ${amount} sats eCash for ${memberId}`);
-      return response.data;
-    } catch (error) {
-      console.error("❌ Failed to deposit eCash:", error);
-      throw new Error(`Deposit failed: ${error}`);
+    const notes = [];
+    const denominations = [10000, 5000, 1000, 1, 2, 3];
+    let remaining = amount;
+
+    for (const denom of denominations) {
+      while (remaining >= denom) {
+        const note = {
+          amount: denom,
+          noteId: this.generateId(),
+          spendKey: this.generateId(),
+          denomination: denom,
+          issuedAt: new Date(),
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        };
+
+        notes.push(note);
+        this.notes.set(note.noteId, note);
+        remaining -= denom;
+      }
     }
+
+    this.balance -= amount;
+    this.emit("ecash-issued", { amount, noteCount: notes.length });
+    return notes;
   }
 
-  /**
-   * Withdraw eCash from family member account
-   */
-  async withdrawEcash(
-    memberId: string,
-    amount: number
-  ): Promise<{ notes: string; txId: string }> {
-    try {
-      const response: AxiosResponse<{ notes: string; txId: string }> =
-        await this.axiosInstance.post("/withdraw", {
-          member_id: memberId,
-          amount,
-        });
+  async createLightningInvoice(amount, description) {
+    if (!this.connected) throw new Error("Not connected to federation");
 
-      console.log(`💸 Withdrew ${amount} sats eCash for ${memberId}`);
-      return response.data;
-    } catch (error) {
-      console.error("❌ Failed to withdraw eCash:", error);
-      throw new Error(`Withdrawal failed: ${error}`);
-    }
+    // Mock Lightning invoice
+    const mockInvoice = `lnbc${amount}u1p${this.generateId()}`;
+    this.emit("invoice-created", { amount, invoice: mockInvoice, description });
+    return mockInvoice;
   }
 
-  /**
-   * Check federation status and connectivity
-   */
-  async getFederationInfo(): Promise<{
-    federationId: string;
-    guardians: number;
-    network: string;
-    blockHeight: number;
-  }> {
-    try {
-      const response = await this.axiosInstance.get("/federation-info");
-      return response.data;
-    } catch (error) {
-      console.error("❌ Failed to get federation info:", error);
-      throw new Error(`Federation unreachable: ${error}`);
-    }
+  async payLightningInvoice(invoice) {
+    if (!this.connected) throw new Error("Not connected to federation");
+
+    // Extract amount from mock invoice
+    const amount = 1000; // Mock amount
+    if (amount > this.balance) throw new Error("Insufficient balance");
+
+    this.balance -= amount;
+    const paymentHash = this.generateId();
+    this.emit("lightning-payment", { amount, paymentHash, invoice });
+    return paymentHash;
+  }
+
+  isConnected() {
+    return this.connected;
+  }
+
+  disconnect() {
+    this.connected = false;
+    this.emit("disconnected", { federationId: this.config.federationId });
   }
 }
-
-export type {
-  FedimintBalance,
-  FedimintClientConfig,
-  FedimintRedemptionRequest,
-  FedimintRedemptionResult,
-  FedimintTransaction,
-};

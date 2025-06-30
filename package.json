@@ -60,9 +60,7 @@
     "test:federation:coverage": "vitest run --coverage api/federation/__tests__",
     "test:api:endpoints": "vitest run --config vitest.api.config.ts",
     "test:api:endpoints:watch": "vitest --config vitest.api.config.ts",
-    "test:api:endpoints:coverage": "vitest run --coverage --config vitest.api.config.ts",
-    "vault:setup": "tsx scripts/setup-vault.ts",
-    "vault:init": "tsx scripts/setup-vault.ts"
+    "test:api:endpoints:coverage": "vitest run --coverage --config vitest.api.config.ts"
   },
   "dependencies": {
     "@noble/ed25519": "^2.3.0",

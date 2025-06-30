@@ -1,6 +1,13 @@
 // lib/security.ts
 import * as argon2 from "argon2";
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+// Use these instead for Bolt.new
+const randomBytes = (size) => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+};
 
 /**
  * Security utilities for credential management and encryption
@@ -74,7 +81,7 @@ export function getArgon2Config(): {
     warnings.push("Memory cost very high (>256MB) - may cause OOM errors");
   } else if (ARGON2_CONFIG.memoryCost > 17) {
     warnings.push(
-      "Memory cost high (>128MB) - monitor for OOM errors under load",
+      "Memory cost high (>128MB) - monitor for OOM errors under load"
     );
   }
 
@@ -88,17 +95,17 @@ export function getArgon2Config(): {
   const nodeEnv = process.env.NODE_ENV;
   if (nodeEnv === "development") {
     recommendations.push(
-      "Development: Consider ARGON2_MEMORY_COST=15 (32MB) for faster testing",
+      "Development: Consider ARGON2_MEMORY_COST=15 (32MB) for faster testing"
     );
   } else if (nodeEnv === "production") {
     if (ARGON2_CONFIG.memoryCost < 16) {
       recommendations.push(
-        "Production: Consider increasing to ARGON2_MEMORY_COST=16 (64MB) minimum",
+        "Production: Consider increasing to ARGON2_MEMORY_COST=16 (64MB) minimum"
       );
     }
     if (ARGON2_CONFIG.memoryCost > 17) {
       recommendations.push(
-        "Production: Consider reducing to ARGON2_MEMORY_COST=17 (128MB) to prevent OOM",
+        "Production: Consider reducing to ARGON2_MEMORY_COST=17 (128MB) to prevent OOM"
       );
     }
   }
@@ -129,7 +136,7 @@ export function validateArgon2ConfigOnStartup(): void {
 
   console.log(`🔐 Argon2 Configuration:`);
   console.log(
-    `   Memory: ${memoryUsageMB.toFixed(0)}MB (2^${config.memoryCost})`,
+    `   Memory: ${memoryUsageMB.toFixed(0)}MB (2^${config.memoryCost})`
   );
   console.log(`   Time Cost: ${config.timeCost} iterations`);
   console.log(`   Parallelism: ${config.parallelism} thread(s)`);
@@ -172,7 +179,7 @@ export function validateArgon2ConfigOnStartup(): void {
  */
 export async function deriveEncryptionKey(
   passphrase: string,
-  salt: Buffer,
+  salt: Buffer
 ): Promise<Buffer> {
   const hash = await argon2.hash(passphrase, {
     type: argon2.argon2id,
@@ -193,7 +200,7 @@ export async function deriveEncryptionKey(
  */
 export async function encryptCredentials(
   data: string,
-  passphrase: string,
+  passphrase: string
 ): Promise<string> {
   try {
     const salt = randomBytes(SALT_LENGTH);
@@ -218,7 +225,7 @@ export async function encryptCredentials(
     return combined.toString("base64");
   } catch (error) {
     throw new Error(
-      `Encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }
@@ -228,7 +235,7 @@ export async function encryptCredentials(
  */
 export async function decryptCredentials(
   encryptedData: string,
-  passphrase: string,
+  passphrase: string
 ): Promise<string> {
   try {
     const combined = Buffer.from(encryptedData, "base64");
@@ -238,7 +245,7 @@ export async function decryptCredentials(
     const iv = combined.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
     const authTag = combined.subarray(
       SALT_LENGTH + IV_LENGTH,
-      SALT_LENGTH + IV_LENGTH + TAG_LENGTH,
+      SALT_LENGTH + IV_LENGTH + TAG_LENGTH
     );
     const encrypted = combined.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
 
@@ -253,7 +260,7 @@ export async function decryptCredentials(
     return decrypted;
   } catch (error) {
     throw new Error(
-      `Decryption failed: ${error instanceof Error ? error.message : "Invalid passphrase or corrupted data"}`,
+      `Decryption failed: ${error instanceof Error ? error.message : "Invalid passphrase or corrupted data"}`
     );
   }
 }
@@ -298,7 +305,7 @@ export function validateCredentials(): {
  * Use this to store credentials securely outside of source code
  */
 export async function createSecureCredentialBackup(
-  passphrase: string,
+  passphrase: string
 ): Promise<string> {
   const credentials = {
     supabaseUrl:
@@ -320,7 +327,7 @@ export async function createSecureCredentialBackup(
  */
 export async function restoreCredentialsFromBackup(
   encryptedBackup: string,
-  passphrase: string,
+  passphrase: string
 ): Promise<any> {
   const decryptedData = await decryptCredentials(encryptedBackup, passphrase);
   return JSON.parse(decryptedData);
@@ -332,7 +339,7 @@ export async function restoreCredentialsFromBackup(
  */
 export async function verifyPassphrase(
   passphrase: string,
-  hash: string,
+  hash: string
 ): Promise<boolean> {
   try {
     return await argon2.verify(hash, passphrase);
@@ -369,7 +376,7 @@ export async function loadCredentialsSecurely(): Promise<{
 
   if (!validation.isValid) {
     throw new Error(
-      `Missing required environment variables: ${validation.missing.join(", ")}`,
+      `Missing required environment variables: ${validation.missing.join(", ")}`
     );
   }
 
@@ -407,11 +414,11 @@ export class CredentialRotationManager {
       // Backup current credentials
       this.backupCredentials.set(
         "SUPABASE_URL",
-        process.env.SUPABASE_URL || "",
+        process.env.SUPABASE_URL || ""
       );
       this.backupCredentials.set(
         "SUPABASE_ANON_KEY",
-        process.env.SUPABASE_ANON_KEY || "",
+        process.env.SUPABASE_ANON_KEY || ""
       );
 
       // Apply new credentials atomically
@@ -449,7 +456,7 @@ export class CredentialRotationManager {
       this.backupCredentials.clear();
 
       throw new Error(
-        `Credential rotation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Credential rotation failed: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
   }
