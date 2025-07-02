@@ -1,14 +1,16 @@
-// Family API Service
+// Family API Service (Privacy-Enhanced)
 // File: src/services/familyApi.ts
+
+import { PaymentRequest, PaymentResponse } from "../../types/privacy-api";
 
 // Use relative paths for Bolt.new compatibility
 const API_BASE = "";
 
-// API Response Types
+// Legacy interface for backward compatibility
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "parent" | "child";
+  role: "adult" | "child" | "guardian";
   permissions: string[];
   lightningAddress: string;
   balance: {
@@ -22,6 +24,9 @@ export interface FamilyMember {
   status: "active" | "inactive";
   joinedAt: string;
 }
+
+// New privacy-enhanced interface (preferred)
+export { FamilyMemberWithPrivacy } from "../../types/privacy-api";
 
 export interface FamilyMembersResponse {
   members: FamilyMember[];
@@ -189,7 +194,7 @@ export class FamilyApiService {
 
   static async addFamilyMember(member: {
     name: string;
-    role: "parent" | "child";
+    role: "adult" | "child" | "guardian";
   }): Promise<FamilyMember> {
     return this.makeRequest<FamilyMember>("/family/members", {
       method: "POST",

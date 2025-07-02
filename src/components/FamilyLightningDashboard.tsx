@@ -51,7 +51,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
           {
             id: "1",
             username: "Satoshi",
-            role: "parent",
+            role: "adult",
             lightningAddress: "satoshi@satnam.pub",
             balance: 250000,
             nip05Verified: true,
@@ -63,7 +63,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
           {
             id: "2",
             username: "Hal",
-            role: "parent",
+            role: "adult",
             lightningAddress: "hal@satnam.pub",
             balance: 175000,
             nip05Verified: true,

@@ -1,7 +1,7 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "parent" | "child" | "teen" | "guardian";
+  role: "adult" | "child" | "teen" | "guardian";
   lightningAddress: string;
   balance: number;
   spendingLimits?: {

@@ -3,7 +3,7 @@
 
 import React, { useEffect } from 'react';
 import { useFamilyFederationAuth } from '../../hooks/useFamilyFederationAuth';
-import FamilyFederationSignIn from './FamilyFederationSignIn';
+import FamilyFederationSignIn from './FamilyFederationSignIn.tsx';
 
 interface ProtectedFamilyRouteProps {
   children: React.ReactNode;

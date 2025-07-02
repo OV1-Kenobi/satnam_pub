@@ -31,7 +31,7 @@ export interface AuthUser {
   npub: string;
   username?: string;
   familyName?: string;
-  role?: "parent" | "child" | "guardian";
+  role?: "adult" | "child" | "guardian";
   permissions?: string[];
   lastLogin?: string;
 }

@@ -6,7 +6,7 @@ import {
     configureCryptoStrategy,
     type CryptoLoadingState,
     type CryptoLoadingStrategy
-} from '../utils/crypto-factory';
+} from '../../utils/crypto-factory';
 
 interface CryptoContextValue extends CryptoLoadingState {
   loadCrypto: () => Promise<void>;

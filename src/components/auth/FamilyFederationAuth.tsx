@@ -74,14 +74,14 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
 interface FamilyFederationAuthWrapperProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  allowedRoles?: ('parent' | 'child' | 'guardian')[];
+  allowedRoles?: ('adult' | 'child' | 'guardian')[];
   fallback?: React.ReactNode;
 }
 
 export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperProps> = ({
   children,
   requireAuth = true,
-  allowedRoles = ['parent', 'child', 'guardian'],
+  allowedRoles = ['adult', 'child', 'guardian'],
   fallback,
 }) => {
   const { isAuthenticated, userAuth, isLoading } = useAuthContext();

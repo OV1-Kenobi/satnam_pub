@@ -44,19 +44,17 @@ export default function handler(req, res) {
   }
 
   try {
-    // For demo purposes, always return not authenticated
-    // In a real app, this would check session cookies or JWT tokens
-    res.status(401).json({
-      success: false,
-      error: "Not authenticated",
-      data: {
-        authenticated: false,
+    // Mock session check for development - return proper JSON format
+    const mockSession = {
+      user: {
+        id: 'demo-user',
+        username: 'demo',
+        role: 'parent'
       },
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
+      authenticated: false // Change to true for testing
+    };
+
+    res.status(200).json(mockSession);
   } catch (error) {
     console.error("Session check error:", error);
 

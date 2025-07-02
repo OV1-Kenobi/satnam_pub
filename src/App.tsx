@@ -9,7 +9,8 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { PrivateCommunicationModal } from "./components/communications/PrivateCommunicationModal";
 import EducationPlatform from "./components/EducationPlatform";
 import FamilyCoordination from "./components/FamilyCoordination";
 import FamilyFinancialsDashboard from "./components/FamilyFinancialsDashboard";
@@ -18,7 +19,6 @@ import FamilyWalletDemo from "./components/FamilyWalletDemo";
 import IdentityForge from "./components/IdentityForge";
 import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import NostrEcosystem from "./components/NostrEcosystem";
-import { PrivateCommunicationModal } from "./components/PrivateCommunicationModal";
 import SignInModal from "./components/SignInModal";
 import useAuth from "./hooks/useAuth";
 
@@ -42,12 +42,34 @@ function App() {
   const [privateCommunicationModalOpen, setPrivateCommunicationModalOpen] = useState(false);
   const [communicationType, setCommunicationType] = useState<'family' | 'individual'>('individual');
   
+  // Invitation handling
+  const [invitationToken, setInvitationToken] = useState<string | null>(null);
+  const [showInvitationWelcome, setShowInvitationWelcome] = useState(false);
+  
   // Authentication state
   const auth = useAuth();
+
+  // Check for invitation token on app load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteToken = urlParams.get('invite');
+    
+    if (inviteToken) {
+      setInvitationToken(inviteToken);
+      setShowInvitationWelcome(true);
+      // Clean URL without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const openSigninModal = (destination: 'individual' | 'family') => {
     setSigninDestination(destination);
     setSignInModalOpen(true);
+  };
+
+  const handleInvitationAccept = () => {
+    setShowInvitationWelcome(false);
+    setForgeModalOpen(true);
   };
 
   const handleAuthenticationSuccess = (destination?: 'individual' | 'family') => {
@@ -77,7 +99,7 @@ function App() {
         memberId="demo-user"
         memberData={{
           username: "user",
-          role: "parent",
+          role: "adult",
           lightningAddress: "user@satnam.pub",
           spendingLimits: {
             daily: 100000,
@@ -269,6 +291,39 @@ function App() {
           </line>
         </svg>
       </div>
+
+      {/* Invitation Welcome Banner */}
+      {showInvitationWelcome && (
+        <div className="relative z-30 bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 shadow-lg">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                🎁
+              </div>
+              <div>
+                <div className="font-semibold">You've been invited to Satnam.pub!</div>
+                <div className="text-sm text-green-100">
+                  Create your sovereign identity and earn course credits
+                </div>
+              </div>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleInvitationAccept}
+                className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                Get Started
+              </button>
+              <button
+                onClick={() => setShowInvitationWelcome(false)}
+                className="text-white/80 hover:text-white p-2"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Enhanced Navigation */}
       <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
@@ -863,7 +918,7 @@ function App() {
         userProfile={{
           username: auth.user?.username || 'user',
           npub: auth.user?.npub || '',
-          familyRole: 'parent' // This should come from actual user profile
+          familyRole: 'adult' // This should come from actual user profile
         }}
       />
     </div>

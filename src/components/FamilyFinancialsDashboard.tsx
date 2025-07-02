@@ -15,12 +15,15 @@ import {
 import React, { useState } from 'react';
 
 // Import our enhanced dual-protocol components
-import AtomicSwapModal from './AtomicSwapModal';
-import FamilyFedimintGovernance from './FamilyFedimintGovernance';
-import FamilyLightningTreasury from './FamilyLightningTreasury';
-import PhoenixDFamilyManager from './PhoenixDFamilyManager';
+import AtomicSwapModal from './AtomicSwapModal.tsx';
+import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
+import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
+import PhoenixDFamilyManager from './PhoenixDFamilyManager.tsx';
 import { PaymentModal } from './shared';
-import UnifiedFamilyPayments from './UnifiedFamilyPayments';
+import UnifiedFamilyPayments from './UnifiedFamilyPayments.tsx';
+
+// Import Credits Balance
+import { CreditsBalance } from './CreditsBalance.tsx';
 
 // Import enhanced types
 
@@ -38,6 +41,8 @@ interface UnifiedPaymentProps {
   lightningBalance: number;
   fedimintBalance: number;
   onPayment: (payment: any) => void;
+  showPaymentModal: boolean;
+  setShowPaymentModal: (show: boolean) => void;
 }
 
 // Guardian Consensus Panel Component
@@ -96,7 +101,9 @@ const GuardianConsensusPanel: React.FC<GuardianConsensusProps> = ({
 const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({ 
   lightningBalance, 
   fedimintBalance, 
-  onPayment 
+  onPayment,
+  showPaymentModal,
+  setShowPaymentModal
 }) => {
   const [paymentType, setPaymentType] = useState<'lightning' | 'fedimint' | 'auto'>('auto');
   const [recipient, setRecipient] = useState('');
@@ -266,7 +273,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       id: "1",
       username: "satoshi",
       lightningAddress: "satoshi@satnam.pub",
-      role: "parent" as const,
+      role: "adult" as const,
       balance: 1250000,
       nip05Verified: true,
       spendingLimits: {
@@ -278,7 +285,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       id: "2", 
       username: "hal",
       lightningAddress: "hal@satnam.pub",
-      role: "parent" as const,
+      role: "adult" as const,
       balance: 850000,
       nip05Verified: true,
       spendingLimits: {
@@ -350,8 +357,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
   const renderOverview = () => (
     <div className="space-y-8">
-      {/* Dual Protocol Treasury Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Dual Protocol Treasury Overview with Credits */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-orange-900">
@@ -413,6 +420,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
             </button>
           </div>
         </div>
+
+        <CreditsBalance variant="family" />
       </div>
 
       {/* Enhanced Unified Family Payment Interface */}
@@ -420,6 +429,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
         lightningBalance={lightningBalance}
         fedimintBalance={fedimintBalance}
         onPayment={handleUnifiedPayment}
+        showPaymentModal={showPaymentModal}
+        setShowPaymentModal={setShowPaymentModal}
       />
 
       {/* Guardian Consensus Panel */}

@@ -13,7 +13,7 @@ export interface SessionInfo {
   user?: {
     npub: string;
     nip05?: string;
-    federationRole: "parent" | "child" | "guardian";
+    federationRole: "adult" | "child" | "guardian";
     authMethod: "otp" | "nwc";
     isWhitelisted: boolean;
     votingPower: number;

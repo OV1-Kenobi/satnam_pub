@@ -632,7 +632,7 @@ class SatnamInternalLightningBridge {
       return { approved: false, reason: "Family member not found" };
     }
     // Parents have unlimited spending
-    if (familyMember.role === "parent") {
+    if (familyMember.role === "adult" || familyMember.role === "guardian") {
       return { approved: true };
     }
     // Check spending limits for children

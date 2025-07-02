@@ -1,9 +1,88 @@
 import react from "@vitejs/plugin-react";
+import fs from "fs";
+import path from "path";
 import { defineConfig } from "vite";
+
+// Helper function to recursively collect all entry points in a directory
+function getAllEntries(
+  dir: string,
+  exts: string[] = [".ts", ".tsx", ".js", ".jsx"]
+): Record<string, string> {
+  let entries: Record<string, string> = {};
+
+  if (!fs.existsSync(dir)) {
+    console.warn(`Directory ${dir} does not exist`);
+    return entries;
+  }
+
+  try {
+    fs.readdirSync(dir).forEach((file) => {
+      const fullPath = path.join(dir, file);
+
+      // Skip development files and other problematic files
+      if (
+        file.includes("-recovered") ||
+        file.includes(".hot-update") ||
+        file.includes(".vite") ||
+        file.startsWith(".") ||
+        file.includes("allowance-automation") || // Node.js-only module
+        file.includes("server-") ||
+        file.includes("-server") ||
+        file.includes("node-")
+      ) {
+        return;
+      }
+
+      if (fs.statSync(fullPath).isDirectory()) {
+        // Recursively collect entries from subdirectories
+        entries = { ...entries, ...getAllEntries(fullPath, exts) };
+      } else if (exts.includes(path.extname(fullPath))) {
+        // Use relative path from src as key for better organization
+        const relativePath = path.relative(
+          path.join(__dirname, "src"),
+          fullPath
+        );
+        const entryKey = relativePath
+          .replace(/\\/g, "/") // Normalize path separators
+          .replace(/\.[^/.]+$/, "") // Remove file extension
+          .replace(/\/index$/, ""); // Remove /index from entry names
+
+        entries[entryKey || "index"] = fullPath;
+      }
+    });
+  } catch (error) {
+    console.warn(`Error reading directory ${dir}:`, error);
+  }
+
+  return entries;
+}
+
+// Collect all component and lib entries
+const componentEntries = getAllEntries(
+  path.resolve(__dirname, "src/components")
+);
+const libEntries = getAllEntries(path.resolve(__dirname, "src/lib"));
+
+console.log(`Found ${Object.keys(componentEntries).length} component entries`);
+console.log(`Found ${Object.keys(libEntries).length} lib entries`);
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+      "@components": path.resolve(__dirname, "src/components"),
+      "@lib": path.resolve(__dirname, "src/lib"),
+      "@/components": path.resolve(__dirname, "src/components"),
+      "@/lib": path.resolve(__dirname, "src/lib"),
+      "@/hooks": path.resolve(__dirname, "src/hooks"),
+      "@/services": path.resolve(__dirname, "src/services"),
+      "@/types": path.resolve(__dirname, "src/types"),
+      "@/utils": path.resolve(__dirname, "src/utils"),
+    },
+  },
   server: {
     port: 3002, // Frontend runs on 3002
     host: true, // Allow external connections
@@ -36,6 +115,12 @@ export default defineConfig({
     cssCodeSplit: true,
     cssMinify: true,
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        // Automatically include all component and lib entries
+        ...componentEntries,
+        ...libEntries,
+      },
       output: {
         // Simplified manual chunking to avoid empty chunks
         manualChunks: {

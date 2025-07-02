@@ -319,7 +319,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
               disabled={loading}
               className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
             >
-              <option value="parent" className="bg-purple-900">Parent</option>
+              <option value="adult" className="bg-purple-900">Adult</option>
               <option value="child" className="bg-purple-900">Child</option>
               <option value="guardian" className="bg-purple-900">Guardian</option>
               <option value="advisor" className="bg-purple-900">Advisor</option>

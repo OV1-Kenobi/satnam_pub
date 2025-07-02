@@ -7,25 +7,27 @@
  */
 
 import {
-    AlertTriangle,
-    Check,
-    Eye,
-    EyeOff,
-    Gift,
-    Lock,
-    MessageSquare,
-    Send,
-    Shield,
-    Users,
-    X,
-    Zap
+  AlertTriangle,
+  Check,
+  Eye,
+  EyeOff,
+  Gift,
+  Lock,
+  MessageSquare,
+  Send,
+  Shield,
+  Users,
+  X,
+  Zap
 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
-import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging'
-import { GiftwrappedCommunicationService } from '../lib/giftwrapped-communication-service'
-import { Contact } from '../types/contacts'
-import { ContactsManagerModal } from './ContactsManagerModal'
-import { PostAuthInvitationModal } from './PostAuthInvitationModal'
+import { useEffect, useState } from 'react'
+import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging'
+import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service'
+import { Contact } from '../../types/contacts'
+import { calculatePrivacyMetrics } from '../../types/privacy'
+import { ContactsManagerModal } from '../ContactsManagerModal.tsx'
+import SignInModal from '../SignInModal.tsx'
+import { PrivacyLevel, PrivacyLevelSelector, getDefaultPrivacyLevel } from './PrivacyLevelSelector.tsx'
 
 interface PrivateCommunicationModalProps {
   isOpen: boolean
@@ -34,18 +36,12 @@ interface PrivateCommunicationModalProps {
   userProfile: {
     username: string
     npub: string
-    familyRole: 'parent' | 'child' | 'guardian'
+    familyRole: 'adult' | 'child' | 'guardian'
   }
   preSelectedRecipient?: Contact
 }
 
-interface EncryptionLevel {
-  level: 'standard' | 'enhanced' | 'maximum'
-  name: string
-  description: string
-  features: string[]
-  icon: React.ReactNode
-}
+
 
 interface PrivacyMetrics {
   encryptionStrength: number
@@ -73,7 +69,7 @@ export function PrivateCommunicationModal({
   const [message, setMessage] = useState('')
   const [recipient, setRecipient] = useState(preSelectedRecipient?.npub || '')
   const [recipientDisplay, setRecipientDisplay] = useState(preSelectedRecipient?.displayName || '')
-  const [encryptionLevel, setEncryptionLevel] = useState<'standard' | 'enhanced' | 'maximum'>('enhanced')
+  const [privacyLevel, setPrivacyLevel] = useState<PrivacyLevel>(getDefaultPrivacyLevel())
   
   // UI state
   const [sendingMessage, setSendingMessage] = useState(false)
@@ -92,66 +88,12 @@ export function PrivateCommunicationModal({
   // Hooks
   const messaging = usePrivacyFirstMessaging()
 
-  // Encryption level configurations
-  const encryptionLevels: EncryptionLevel[] = [
-    {
-      level: 'standard',
-      name: 'Standard Protection',
-      description: 'Basic gift wrapping with end-to-end encryption',
-      features: [
-        'NIP-04 encryption',
-        'Basic message wrapping',
-        'Sender verification',
-        'Immediate delivery'
-      ],
-      icon: <Lock className="h-5 w-5 text-yellow-400" />
-    },
-    {
-      level: 'enhanced',
-      name: 'Enhanced Privacy',
-      description: 'Metadata obfuscation with timing protection',
-      features: [
-        'Gift-wrap message hiding',
-        'Metadata encryption',
-        'Sender anonymization',
-        'Recipient protection',
-        'Timing obfuscation'
-      ],
-      icon: <Gift className="h-5 w-5 text-blue-400" />
-    },
-    {
-      level: 'maximum',
-      name: 'Maximum Anonymity',
-      description: 'Full anonymity with decoy messages and delays',
-      features: [
-        'Complete sender anonymity',
-        'Decoy message generation',
-        'Random timing delays',
-        'Traffic analysis protection',
-        'Full metadata scrubbing',
-        'Forward secrecy guarantees'
-      ],
-      icon: <Shield className="h-5 w-5 text-green-400" />
-    }
-  ]
 
-  // Calculate privacy metrics based on encryption level
+
+  // Calculate privacy metrics based on privacy level
   useEffect(() => {
-    const calculateMetrics = () => {
-      switch (encryptionLevel) {
-        case 'standard':
-          return { encryptionStrength: 70, metadataProtection: 40, anonymityLevel: 30 }
-        case 'enhanced':
-          return { encryptionStrength: 90, metadataProtection: 80, anonymityLevel: 70 }
-        case 'maximum':
-          return { encryptionStrength: 100, metadataProtection: 100, anonymityLevel: 95 }
-        default:
-          return { encryptionStrength: 0, metadataProtection: 0, anonymityLevel: 0 }
-      }
-    }
-    
-    setPrivacyMetrics(calculateMetrics())
-  }, [encryptionLevel])
+    setPrivacyMetrics(calculatePrivacyMetrics(privacyLevel))
+  }, [privacyLevel])
 
   // Handle modal close
   const handleClose = () => {
@@ -176,6 +118,20 @@ export function PrivateCommunicationModal({
     setModalStep('compose')
   }
 
+  // Convert PrivacyLevel to encryption level
+  const getEncryptionLevel = (level: PrivacyLevel): "standard" | "enhanced" | "maximum" => {
+    switch (level) {
+      case PrivacyLevel.MINIMAL:
+        return "standard"
+      case PrivacyLevel.ENCRYPTED:
+        return "enhanced"
+      case PrivacyLevel.GIFTWRAPPED:
+        return "maximum"
+      default:
+        return "enhanced"
+    }
+  }
+
   // Handle message sending
   const handleSendMessage = async () => {
     if (!message.trim() || !recipient.trim()) {
@@ -198,7 +154,7 @@ export function PrivateCommunicationModal({
         content: message,
         recipient: recipient,
         sender: userProfile.npub,
-        encryptionLevel: encryptionLevel,
+        encryptionLevel: getEncryptionLevel(privacyLevel),
         communicationType: communicationType
       })
 
@@ -222,7 +178,7 @@ export function PrivateCommunicationModal({
   }
 
   // Handle authentication success
-  const handleAuthSuccess = (authResult: any) => {
+  const handleAuthSuccess = (destination?: 'individual' | 'family') => {
     setIsAuthenticated(true)
     setShowAuthModal(false)
     setSuccess('Authentication successful! You can now send private messages.')
@@ -358,48 +314,13 @@ export function PrivateCommunicationModal({
                 </div>
               </div>
 
-              {/* Encryption Level Selection */}
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-3">
-                  Privacy Protection Level
-                </label>
-                <div className="grid gap-3">
-                  {encryptionLevels.map((level) => (
-                    <div
-                      key={level.level}
-                      className={`p-4 rounded-lg border cursor-pointer transition-all duration-300 ${
-                        encryptionLevel === level.level
-                          ? 'bg-purple-500/20 border-purple-500/50'
-                          : 'bg-white/5 border-white/20 hover:bg-white/10'
-                      }`}
-                      onClick={() => setEncryptionLevel(level.level)}
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div className="mt-1">{level.icon}</div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <h4 className="font-medium text-white">{level.name}</h4>
-                            {encryptionLevel === level.level && (
-                              <Check className="h-4 w-4 text-purple-400" />
-                            )}
-                          </div>
-                          <p className="text-purple-200 text-sm mb-2">{level.description}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {level.features.map((feature, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-1 bg-white/10 text-purple-300 rounded text-xs"
-                              >
-                                {feature}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Privacy Level Selection */}
+              <PrivacyLevelSelector
+                selectedLevel={privacyLevel}
+                onLevelChange={setPrivacyLevel}
+                showMetrics={false}
+                variant="modal"
+              />
 
               {/* Privacy Metrics */}
               <div className="bg-white/5 rounded-lg p-4 border border-white/20">
@@ -447,7 +368,7 @@ export function PrivateCommunicationModal({
                         <Shield className="h-4 w-4 text-yellow-400" />
                         <span className="text-yellow-300">No server-side storage</span>
                       </div>
-                      {encryptionLevel === 'maximum' && (
+                      {privacyLevel === PrivacyLevel.GIFTWRAPPED && (
                         <>
                           <div className="flex items-center space-x-2">
                             <Lock className="h-4 w-4 text-green-400" />
@@ -525,11 +446,15 @@ export function PrivateCommunicationModal({
 
       {/* Authentication Modal */}
       {showAuthModal && (
-        <PostAuthInvitationModal
+        <SignInModal
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
-          invitationType={authType}
-          onAuthSuccess={handleAuthSuccess}
+          onSignInSuccess={handleAuthSuccess}
+          onCreateNew={() => {
+            setShowAuthModal(false)
+            // You could redirect to Identity Forge here if needed
+          }}
+          destination={authType}
         />
       )}
     </>

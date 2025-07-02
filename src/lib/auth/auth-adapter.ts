@@ -11,7 +11,7 @@ export interface PrivateAuthUser {
   id: string; // Hashed UUID
   npub: string;
   nip05?: string;
-  federationRole: "parent" | "child" | "guardian";
+  federationRole: "adult" | "child" | "guardian";
   authMethod: "nip07" | "nwc" | "otp" | "nip05";
   isWhitelisted: boolean;
   votingPower: number;

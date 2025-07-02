@@ -54,7 +54,7 @@ const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
-                  member.role === "parent"
+                  (member.role === "adult" || member.role === "guardian")
                     ? "bg-gradient-to-br from-yellow-400 to-orange-500"
                     : member.role === "teen"
                       ? "bg-gradient-to-br from-blue-400 to-purple-500"

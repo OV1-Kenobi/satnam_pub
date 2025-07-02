@@ -1,17 +1,17 @@
 import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Copy,
-  Download,
-  Eye,
-  EyeOff,
-  Key,
-  Lock,
-  Shield,
-  Sparkles,
-  X
+    AlertTriangle,
+    ArrowLeft,
+    ArrowRight,
+    Check,
+    Copy,
+    Download,
+    Eye,
+    EyeOff,
+    Key,
+    Lock,
+    Shield,
+    Sparkles,
+    X
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { ApiClient } from "../../utils/api-client";
@@ -358,6 +358,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button
+                onClick={() => setShowInvitationModal(true)}
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+              >
+                <span>🎁 Invite a Peer</span>
+                <ArrowRight className="h-5 w-5" />
+              </button>
               <button
                 onClick={onComplete}
                 className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"

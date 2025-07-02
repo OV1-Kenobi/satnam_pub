@@ -423,6 +423,164 @@ const models = {
       return result.rows[0];
     },
   },
+
+  /**
+   * Course Credits and Educational Invitations operations
+   * These are EDUCATIONAL COURSE CREDITS, not monetary credits
+   *
+   * PRIVACY-FIRST PROTOCOLS:
+   * - Uses only hashed user IDs (NO pubkeys/npubs stored)
+   * - All operations use privacy-safe identifiers
+   * - Sensitive data encrypted with user keys only
+   */
+  courseCredits: {
+    /**
+     * Get user's course credits balance (privacy-safe)
+     */
+    getUserCredits: async (hashedUserId: string) => {
+      const result = await pool.query(
+        "SELECT hashed_user_id, total_credits, last_updated FROM authenticated_user_credits WHERE hashed_user_id = $1",
+        [hashedUserId]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Award course credits to user
+     */
+    awardCredits: async (hashedUserId: string, creditsToAdd: number) => {
+      const result = await pool.query(
+        `
+        INSERT INTO authenticated_user_credits (hashed_user_id, total_credits)
+        VALUES ($1, $2)
+        ON CONFLICT (hashed_user_id) 
+        DO UPDATE SET 
+          total_credits = authenticated_user_credits.total_credits + $2,
+          last_updated = NOW()
+        RETURNING *
+      `,
+        [hashedUserId, creditsToAdd]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Get user's educational referral statistics
+     */
+    getUserReferralStats: async (hashedUserId: string) => {
+      const result = await pool.query(
+        `
+        SELECT 
+          COUNT(*) as total_referrals,
+          SUM(CASE WHEN api.used = true THEN 1 ELSE 0 END) as completed_referrals,
+          SUM(CASE WHEN api.used = false AND api.expires_at > NOW() THEN 1 ELSE 0 END) as pending_referrals,
+          SUM(CASE WHEN api.used = true THEN re.credits_amount ELSE 0 END) as total_course_credits_earned,
+          SUM(CASE WHEN api.used = false AND api.expires_at > NOW() THEN api.course_credits ELSE 0 END) as pending_course_credits
+        FROM authenticated_peer_invitations api
+        LEFT JOIN authenticated_referral_events re ON api.invite_token = re.invite_token
+        WHERE api.hashed_inviter_id = $1
+      `,
+        [hashedUserId]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Get user's course credit activity history
+     */
+    getUserCreditHistory: async (hashedUserId: string) => {
+      const result = await pool.query(
+        `
+        SELECT 
+          re.id,
+          re.credits_amount,
+          re.event_type,
+          re.metadata,
+          re.created_at,
+          api.invitation_data,
+          CASE 
+            WHEN re.event_type = 'authenticated_referral' THEN 'earned'
+            WHEN re.event_type = 'bonus_award' THEN 'bonus'
+            ELSE 'other'
+          END as activity_type,
+          CASE 
+            WHEN re.event_type = 'authenticated_referral' THEN 'Referral completed - Friend joined'
+            WHEN re.event_type = 'bonus_award' THEN 'Bonus award'
+            ELSE 'Course activity'
+          END as description
+        FROM authenticated_referral_events re
+        LEFT JOIN authenticated_peer_invitations api ON re.invite_token = api.invite_token
+        WHERE re.hashed_inviter_id = $1 OR re.hashed_invitee_id = $1
+        ORDER BY re.created_at DESC
+        LIMIT 50
+      `,
+        [hashedUserId]
+      );
+      return result.rows;
+    },
+  },
+
+  /**
+   * Educational Invitations operations
+   */
+  educationalInvitations: {
+    /**
+     * Create new educational invitation
+     */
+    create: async (data: {
+      inviteToken: string;
+      hashedInviteId: string;
+      hashedInviterId: string;
+      invitationData: any;
+      courseCredits: number;
+      expiresAt: Date;
+    }) => {
+      const result = await pool.query(
+        `
+        INSERT INTO authenticated_peer_invitations 
+        (invite_token, hashed_invite_id, hashed_inviter_id, invitation_data, course_credits, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `,
+        [
+          data.inviteToken,
+          data.hashedInviteId,
+          data.hashedInviterId,
+          data.invitationData,
+          data.courseCredits,
+          data.expiresAt,
+        ]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Get invitation by token
+     */
+    getByToken: async (inviteToken: string) => {
+      const result = await pool.query(
+        "SELECT * FROM authenticated_peer_invitations WHERE invite_token = $1",
+        [inviteToken]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Mark invitation as used and award course credits
+     */
+    markAsUsed: async (inviteToken: string, hashedUsedById: string) => {
+      const result = await pool.query(
+        `
+        UPDATE authenticated_peer_invitations 
+        SET used = true, hashed_used_by_id = $2, used_at = NOW()
+        WHERE invite_token = $1 AND used = false AND expires_at > NOW()
+        RETURNING *
+      `,
+        [inviteToken, hashedUsedById]
+      );
+      return result.rows[0];
+    },
+  },
 };
 
 /**

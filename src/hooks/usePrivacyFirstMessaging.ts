@@ -59,7 +59,7 @@ export interface PrivacyMessagingActions {
     npub: string;
     nip05?: string;
     displayName: string;
-    familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+    familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
     trustLevel: "family" | "trusted" | "known" | "unverified";
     preferredEncryption: "gift-wrap" | "nip04" | "auto";
     notes?: string;
@@ -202,7 +202,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
           setState((prev) => ({
             ...prev,
             loading: false,
-            error: workflowResult.error,
+            error: workflowResult.error || null,
           }));
         }
       } catch (error) {
@@ -343,7 +343,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
       npub: string;
       nip05?: string;
       displayName: string;
-      familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+      familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
       trustLevel: "family" | "trusted" | "known" | "unverified";
       preferredEncryption: "gift-wrap" | "nip04" | "auto";
       notes?: string;
@@ -357,8 +357,9 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        const contactId =
-          await communicationsRef.current.addContact(contactData);
+        const contactId = await communicationsRef.current.addContact(
+          contactData
+        );
 
         setState((prev) => ({ ...prev, loading: false }));
         return contactId;

@@ -8,7 +8,8 @@
  * - Compatible with existing OTP storage security protocols
  */
 
-import { Event, getPublicKey, nip04, nip59 } from "nostr-tools";
+import { Event, getPublicKey, nip04 } from "nostr-tools";
+import * as nip59 from "nostr-tools/nip59";
 import { SimplePool } from "nostr-tools/pool";
 import { supabase } from "../../lib/supabase";
 
@@ -65,7 +66,7 @@ export interface PrivacyContact {
   encryptedNpub: string; // Encrypted npub
   nip05Hash?: string; // Hashed nip05 for privacy-safe lookup
   displayNameHash: string; // Hashed display name
-  familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
   trustLevel: "family" | "trusted" | "known" | "unverified";
   supportsGiftWrap: boolean;
   preferredEncryption: "gift-wrap" | "nip04" | "auto";
@@ -364,7 +365,13 @@ PRIVACY CONSEQUENCES:
 SCOPE OF DISCLOSURE:
 ${scope === "direct" ? "• Your NIP-05 will appear in direct messages only" : ""}
 ${scope === "groups" ? "• Your NIP-05 will appear in ALL group messages" : ""}
-${scope === "specific-groups" ? `• Your NIP-05 will appear in ${specificGroupIds?.length || 0} selected groups only` : ""}
+${
+  scope === "specific-groups"
+    ? `• Your NIP-05 will appear in ${
+        specificGroupIds?.length || 0
+      } selected groups only`
+    : ""
+}
 
 WHAT REMAINS PRIVATE:
 • Your messages are still encrypted
@@ -649,7 +656,9 @@ Do you understand these privacy implications and consent to NIP-05 disclosure?
     const scopeDescriptions = {
       direct: "Your NIP-05 will appear in direct messages only",
       groups: "Your NIP-05 will appear in ALL group messages",
-      "specific-groups": `Your NIP-05 will appear in ${specificGroupIds?.length || 0} selected groups only`,
+      "specific-groups": `Your NIP-05 will appear in ${
+        specificGroupIds?.length || 0
+      } selected groups only`,
     };
 
     return {
@@ -771,7 +780,9 @@ IMPORTANT: Private messaging remains the default. You are choosing to identify y
       return {
         success: false,
         requiresUserConfirmation: false,
-        error: `Failed to prepare NIP-05 disclosure: ${error instanceof Error ? error.message : "Unknown error"}`,
+        error: `Failed to prepare NIP-05 disclosure: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -783,7 +794,7 @@ IMPORTANT: Private messaging remains the default. You are choosing to identify y
     npub: string;
     nip05?: string;
     displayName: string;
-    familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+    familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
     trustLevel: "family" | "trusted" | "known" | "unverified";
     preferredEncryption: "gift-wrap" | "nip04" | "auto";
     notes?: string;
@@ -2197,7 +2208,11 @@ Time: ${message.timestamp.toLocaleString()}${identityDisclaimer}
 
 ${content}
 
-${message.metadataHash ? `\nMessage ID: ${message.messageSessionId.substring(0, 12)}...` : ""}
+${
+  message.metadataHash
+    ? `\nMessage ID: ${message.messageSessionId.substring(0, 12)}...`
+    : ""
+}
 
 ---
 This message is Gift Wrapped for enhanced privacy
@@ -2215,7 +2230,10 @@ Satnam.pub Sovereign Family Communications`;
     }
 
     // Enhanced human-readable formatting with optional NIP-05 disclosure
-    let senderInfo = `Family Member (${this.userSession.userHash.substring(0, 8)}...)`;
+    let senderInfo = `Family Member (${this.userSession.userHash.substring(
+      0,
+      8
+    )}...)`;
     let identityDisclaimer = "";
 
     // Check if NIP-05 disclosure is allowed for direct messages

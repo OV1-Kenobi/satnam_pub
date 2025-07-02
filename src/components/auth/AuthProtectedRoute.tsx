@@ -7,7 +7,7 @@ import NWCOTPSignIn from "./NWCOTPSignIn";
 interface AuthProtectedRouteProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  allowedRoles?: ('parent' | 'child' | 'guardian')[];
+  allowedRoles?: ('adult' | 'child' | 'guardian')[];
   title?: string;
   description?: string;
 }
@@ -15,7 +15,7 @@ interface AuthProtectedRouteProps {
 const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
   children,
   requireAuth = true,
-  allowedRoles = ['parent', 'child', 'guardian'],
+  allowedRoles = ['adult', 'child', 'guardian'],
   title = "Family Financials",
   description = "Access your family's Bitcoin treasury and Lightning channels",
 }) => {
@@ -24,7 +24,7 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
 
   const getRoleIcon = (role: string) => {
     switch (role) {
-      case 'parent':
+      case 'adult':
         return <Crown className="h-5 w-5" />;
       case 'guardian':
         return <Shield className="h-5 w-5" />;
@@ -37,7 +37,7 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
 
   const getRoleColor = (role: string) => {
     switch (role) {
-      case 'parent':
+      case 'adult':
         return 'text-yellow-400';
       case 'guardian':
         return 'text-blue-400';

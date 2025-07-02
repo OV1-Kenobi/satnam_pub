@@ -92,6 +92,55 @@ class AuthManager {
     this.lastResult = null;
     this.lastCheckTime = 0;
   }
+
+  // Additional browser-compatible methods for fetch-based auth
+  async checkSession(): Promise<AuthResult | null> {
+    try {
+      const response = await fetch("/api/auth/session");
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.warn("Non-JSON response received from auth API");
+        return null;
+      }
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Session check failed:", error);
+      return null;
+    }
+  }
+
+  async signIn(credentials: any): Promise<any> {
+    try {
+      const response = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials),
+      });
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Invalid response format from server");
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Sign in failed");
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Sign in failed:", error);
+      throw error;
+    }
+  }
 }
 
 export const authManager = AuthManager.getInstance();

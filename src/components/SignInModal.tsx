@@ -16,9 +16,10 @@ import { nip19 } from 'nostr-tools';
 import React, { useEffect, useState } from 'react';
 import { NIP07AuthChallenge } from '../types/auth';
 import { getSessionInfo, SessionInfo } from '../utils/secureSession';
-import NWCOTPSignIn from './auth/NWCOTPSignIn';
-import { MaxPrivacyAuth } from './MaxPrivacyAuth';
-import { PostAuthInvitationModal } from './PostAuthInvitationModal';
+import NWCOTPSignIn from './auth/NWCOTPSignIn.tsx';
+import ErrorBoundary from './ErrorBoundary.tsx';
+import { MaxPrivacyAuth } from './MaxPrivacyAuth.tsx';
+import { PostAuthInvitationModal } from './PostAuthInvitationModal.tsx';
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -369,9 +370,10 @@ const SignInModal: React.FC<SignInModalProps> = ({
   }
 
   return (
-    <div 
-      className={`modal-overlay transition-opacity duration-300 ${
-        isClosing ? 'opacity-0' : 'opacity-100'
+    <ErrorBoundary>
+      <div 
+        className={`modal-overlay transition-opacity duration-300 ${
+          isClosing ? 'opacity-0' : 'opacity-100'
       }`}
       onClick={handleBackdropClick}
     >
@@ -562,14 +564,17 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
       {/* Post-Auth Invitation Modal */}
       {showPostAuthInvitation && sessionInfo && (
-        <PostAuthInvitationModal
-          isOpen={showPostAuthInvitation}
-          onClose={() => setShowPostAuthInvitation(false)}
-          onSkip={() => setShowPostAuthInvitation(false)}
-          sessionInfo={sessionInfo}
-        />
+        <ErrorBoundary>
+          <PostAuthInvitationModal
+            isOpen={showPostAuthInvitation}
+            onClose={() => setShowPostAuthInvitation(false)}
+            onSkip={() => setShowPostAuthInvitation(false)}
+            sessionInfo={sessionInfo}
+          />
+        </ErrorBoundary>
       )}
     </div>
+    </ErrorBoundary>
   );
 };
 

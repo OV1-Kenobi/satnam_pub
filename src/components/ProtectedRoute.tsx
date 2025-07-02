@@ -5,12 +5,12 @@
 import React, { useEffect, useState } from 'react';
 import { useFamilyFederationAuth } from '../hooks/useFamilyFederationAuth';
 import { FamilyFederationUser } from '../types/auth';
-import SignInModal from './SignInModal';
+import SignInModal from './SignInModal.tsx';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  allowedRoles?: ('parent' | 'child' | 'guardian')[];
+  allowedRoles?: ('adult' | 'child' | 'guardian')[];
   authMode?: 'modal' | 'redirect' | 'auto';
   fallback?: React.ReactNode;
   onAuthSuccess?: (user: FamilyFederationUser) => void;
@@ -19,7 +19,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requireAuth = true,
-  allowedRoles = ['parent', 'child', 'guardian'],
+  allowedRoles = ['adult', 'child', 'guardian'],
   authMode = 'auto',
   fallback,
   onAuthSuccess

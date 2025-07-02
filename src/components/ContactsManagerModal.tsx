@@ -7,24 +7,24 @@
  */
 
 import {
-  AlertTriangle,
-  Edit3,
-  Eye,
-  EyeOff,
-  Gift,
-  Plus,
-  Search,
-  Shield,
-  UserPlus,
-  Users,
-  X
+    AlertTriangle,
+    Edit3,
+    Eye,
+    EyeOff,
+    Gift,
+    Plus,
+    Search,
+    Shield,
+    UserPlus,
+    Users,
+    X
 } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging'
 import { Contact, CreateContactInput, UpdateContactInput } from '../types/contacts'
-import AddContactForm from './AddContactForm'
-import ContactsList from './ContactsList'
-import EditContactForm from './EditContactForm'
+import AddContactForm from './AddContactForm.tsx'
+import ContactsList from './ContactsList.tsx'
+import EditContactForm from './EditContactForm.tsx'
 
 interface ContactsManagerModalProps {
   isOpen: boolean

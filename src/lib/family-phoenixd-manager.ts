@@ -17,7 +17,7 @@ interface FamilyMember {
   id: string;
   username: string;
   name: string;
-  role: "parent" | "teen" | "child";
+  role: "adult" | "teen" | "child" | "guardian";
   dailyLimit?: number;
   weeklyLimit?: number;
   phoenixd_channel_id?: string;

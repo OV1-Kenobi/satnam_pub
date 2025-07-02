@@ -1,13 +1,13 @@
 import { AlertTriangle, RefreshCw, Users, Zap } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import FamilyWalletCard, { mockFamilyMembers } from './FamilyWalletCard';
+import FamilyWalletCard, { mockFamilyMembers } from './FamilyWalletCard.tsx';
 
 // Family Member interface
 interface FamilyMember {
   id: string;
   username: string;
   lightningAddress: string;
-  role: 'parent' | 'child';
+  role: 'adult' | 'child' | 'guardian';
   spendingLimits?: {
     daily: number;
     weekly: number;
@@ -91,7 +91,7 @@ const FamilyWalletDemo: React.FC = () => {
     alert(`Show QR code for Lightning Address: ${address}`);
   };
 
-  const parentMembers = members.filter(member => member.role === 'parent');
+  const adultMembers = members.filter(member => member.role === 'adult' || member.role === 'guardian');
   const childMembers = members.filter(member => member.role === 'child');
 
   if (isLoading) {

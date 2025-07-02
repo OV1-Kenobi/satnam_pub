@@ -58,7 +58,7 @@ interface FamilyLightningAccount {
 interface FamilyMemberAccount {
   userId: string;
   username: string;
-  role: "parent" | "teen" | "child";
+  role: "adult" | "teen" | "child" | "guardian";
   individualChannelId?: string;
   allocatedBalanceSat: number;
   limits: {
@@ -155,7 +155,7 @@ export class EnhancedPhoenixdManager {
     members: Array<{
       userId: string;
       username: string;
-      role: "parent" | "teen" | "child";
+      role: "adult" | "teen" | "child" | "guardian";
       limits?: FamilyMemberAccount["limits"];
       allowance?: FamilyMemberAccount["allowance"];
     }>
@@ -171,20 +171,20 @@ export class EnhancedPhoenixdManager {
           member.role === "child"
             ? 10000
             : member.role === "teen"
-              ? 50000
-              : undefined,
+            ? 50000
+            : undefined,
         weeklyLimit:
           member.role === "child"
             ? 50000
             : member.role === "teen"
-              ? 200000
-              : undefined,
+            ? 200000
+            : undefined,
         transactionLimit:
           member.role === "child"
             ? 5000
             : member.role === "teen"
-              ? 25000
-              : undefined,
+            ? 25000
+            : undefined,
       },
     }));
 
@@ -261,7 +261,9 @@ export class EnhancedPhoenixdManager {
       return {
         success: false,
         feeSat: 0,
-        message: `Payment failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Payment failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -311,7 +313,9 @@ export class EnhancedPhoenixdManager {
   private async provisionLiquidity(
     request: LiquidityRequest
   ): Promise<LiquidityOperation> {
-    const operationId = `liq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const operationId = `liq_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
 
     const operation: LiquidityOperation = {
       id: operationId,

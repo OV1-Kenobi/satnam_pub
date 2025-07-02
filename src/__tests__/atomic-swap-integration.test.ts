@@ -15,11 +15,11 @@ const mockSupabase = {
       eq: vi.fn((field: string, value: any) => mockChain),
       single: vi.fn(() => {
         if (table === "family_members") {
-          // Default to parent role for most tests
+          // Default to adult role for most tests
           return {
             data: {
               id: "1",
-              role: "parent",
+              role: "adult",
               spending_limits: { requiresApproval: 5000 },
             },
             error: null,
@@ -242,8 +242,8 @@ describe("Atomic Swap Integration Tests", () => {
       requiresApproval: true,
     };
 
-    it("should approve swaps for parent role without limits", async () => {
-      // Create a new bridge instance with parent role mock
+    it("should approve swaps for adult role without limits", async () => {
+      // Create a new bridge instance with adult role mock
       const parentMockSupabase = {
         from: vi.fn((table: string) => {
           const mockChain = {
@@ -254,7 +254,7 @@ describe("Atomic Swap Integration Tests", () => {
                 return {
                   data: {
                     id: "1",
-                    role: "parent",
+                    role: "adult",
                     spending_limits: { requiresApproval: 5000 },
                   },
                   error: null,
@@ -416,8 +416,9 @@ describe("Atomic Swap Integration Tests", () => {
       (approvedChildBridge as any).phoenixd = mockPhoenixd;
       (approvedChildBridge as any).cashuManager = mockCashuManager;
 
-      const result =
-        await approvedChildBridge.executeAtomicSwap(highAmountRequest);
+      const result = await approvedChildBridge.executeAtomicSwap(
+        highAmountRequest
+      );
 
       expect(result.success).toBe(true);
     });

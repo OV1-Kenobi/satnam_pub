@@ -9,25 +9,13 @@ const mockFamilyMembers: SatnamFamilyMember[] = [
     id: "1",
     username: "satnam_dad",
     lightningAddress: "satnam_dad@satnam.pub",
-    role: "parent",
-    nip05Verified: true,
-    balance: 5000000,
-    recentActivity: {
-      lastTransaction: "2 hours ago",
-      transactionCount24h: 12,
-    },
+    role: "adult",
   },
   {
     id: "2",
     username: "satnam_mom",
     lightningAddress: "satnam_mom@satnam.pub",
-    role: "parent",
-    nip05Verified: true,
-    balance: 3200000,
-    recentActivity: {
-      lastTransaction: "1 hour ago",
-      transactionCount24h: 8,
-    },
+    role: "adult",
   },
   {
     id: "3",
@@ -38,12 +26,6 @@ const mockFamilyMembers: SatnamFamilyMember[] = [
       daily: 100000,
       weekly: 500000,
     },
-    nip05Verified: true,
-    balance: 150000,
-    recentActivity: {
-      lastTransaction: "30 minutes ago",
-      transactionCount24h: 3,
-    },
   },
   {
     id: "4",
@@ -53,12 +35,6 @@ const mockFamilyMembers: SatnamFamilyMember[] = [
     spendingLimits: {
       daily: 50000,
       weekly: 200000,
-    },
-    nip05Verified: false,
-    balance: 75000,
-    recentActivity: {
-      lastTransaction: "4 hours ago",
-      transactionCount24h: 1,
     },
   },
 ];
@@ -144,7 +120,7 @@ const SmartPaymentModalDemo: React.FC = () => {
             >
               <div className="flex items-center space-x-3 mb-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
-                  member.role === "parent" 
+                  (member.role === "adult" || member.role === "guardian") 
                     ? "bg-gradient-to-br from-orange-500 to-amber-500" 
                     : "bg-gradient-to-br from-amber-400 to-orange-400"
                 }`}>

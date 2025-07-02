@@ -5,8 +5,8 @@
 import React, { useState } from 'react';
 import { useFamilyAuthOTP } from '../../hooks/useFamilyAuth';
 import { FamilyFederationUser } from '../../types/auth';
-import ProtectedRoute from '../ProtectedRoute';
-import SignInModal from '../SignInModal';
+import ProtectedRoute from '../ProtectedRoute.tsx';
+import SignInModal from '../SignInModal.tsx';
 
 // Example 1: Button that triggers authentication modal
 export const AuthModalExample: React.FC = () => {
@@ -44,7 +44,7 @@ export const ProtectedContentExample: React.FC = () => {
   return (
     <ProtectedRoute
       requireAuth={true}
-      allowedRoles={['parent', 'guardian']}
+      allowedRoles={['adult', 'guardian']}
       authMode="modal"
     >
       <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
@@ -52,7 +52,7 @@ export const ProtectedContentExample: React.FC = () => {
           🎉 Protected Content
         </h2>
         <p className="text-green-700">
-          This content is only visible to authenticated family members with parent or guardian roles.
+          This content is only visible to authenticated family members with adult or guardian roles.
         </p>
       </div>
     </ProtectedRoute>

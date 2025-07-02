@@ -22,7 +22,7 @@ export interface NIP07AuthChallenge {
 export interface FamilyFederationUser {
   npub: string;
   nip05?: string;
-  federationRole: "parent" | "child" | "guardian";
+  federationRole: "adult" | "child" | "guardian";
   authMethod: "nwc" | "otp";
   isWhitelisted: boolean;
   votingPower: number;
@@ -103,7 +103,7 @@ export interface NWCAuthResponse {
     userAuth: {
       npub: string;
       nip05: string;
-      federationRole: "parent" | "child" | "guardian";
+      federationRole: "adult" | "child" | "guardian";
       authMethod: "nwc";
       isWhitelisted: boolean;
       votingPower: number;

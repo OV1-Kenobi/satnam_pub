@@ -23,6 +23,9 @@ import React, { useEffect, useState } from 'react';
 // Import Transaction type from shared types
 import { PaymentModal, Transaction } from './shared';
 
+// Import Credits Balance
+import { CreditsBalance } from './CreditsBalance.tsx';
+
 // Import API service
 import { IndividualApiService, handleApiError } from '../services/individualApi';
 
@@ -33,7 +36,7 @@ interface IndividualFinancesDashboardProps {
   memberId: string;
   memberData: {
     username: string;
-    role: 'parent' | 'child' | 'guardian';
+    role: 'adult' | 'child' | 'guardian';
     lightningAddress: string;
     spendingLimits?: {
       daily: number;
@@ -1746,11 +1749,12 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
         </div>
       </div>
 
-      {/* Cross-Mint Balance Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* Balance Overview with Credits */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <LightningWalletCard wallet={wallet} />
         <CashuWalletCard wallet={wallet} />
         <ExternalMintsCard wallet={wallet} />
+        <CreditsBalance variant="individual" />
       </div>
 
       {/* Quick Actions */}

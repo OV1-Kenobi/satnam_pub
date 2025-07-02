@@ -1,31 +1,36 @@
 import {
-    Activity,
-    AlertTriangle,
-    ArrowLeft,
-    BarChart3,
-    CheckCircle,
-    Eye,
-    EyeOff,
-    Globe,
-    RefreshCw,
-    Settings,
-    Shield,
-    TrendingUp,
-    Zap
+  Activity,
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  Globe,
+  RefreshCw,
+  Settings,
+  Shield,
+  TrendingUp,
+  Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
 
 // Import our new dual-protocol components
-import FamilyFedimintGovernance from './FamilyFedimintGovernance';
-import FamilyLightningTreasury from './FamilyLightningTreasury';
-import PhoenixDFamilyManager from './PhoenixDFamilyManager';
-import SmartPaymentModal from './SmartPaymentModal';
-import UnifiedFamilyPayments from './UnifiedFamilyPayments';
+import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
+import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
+import PhoenixDFamilyManager from './PhoenixDFamilyManager.tsx';
+import SmartPaymentModal from './SmartPaymentModal.tsx';
+import UnifiedFamilyPayments from './UnifiedFamilyPayments.tsx';
+
+// Import new privacy-enhanced components
+import PrivacyDashboardIndicators from './enhanced/PrivacyDashboardIndicators.tsx';
+import PrivacyEnhancedPaymentModal from './enhanced/PrivacyEnhancedPaymentModal.tsx';
+import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal.tsx';
 
 // Import enhanced types
 import {
-    DualProtocolFamilyMember,
-    EnhancedFamilyTreasury
+  DualProtocolFamilyMember,
+  EnhancedFamilyTreasury
 } from '../../types/family';
 
 interface EnhancedFamilyDashboardProps {
@@ -45,6 +50,11 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [satsToDollars] = useState(0.00003); // Mock exchange rate
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Privacy modal states
+  const [privacyPaymentModalOpen, setPrivacyPaymentModalOpen] = useState(false);
+  const [privacyPreferencesModalOpen, setPrivacyPreferencesModalOpen] = useState(false);
+  const [showPrivacyDashboard, setShowPrivacyDashboard] = useState(true);
 
   // Enhanced family treasury data
   const [enhancedTreasury, setEnhancedTreasury] = useState<EnhancedFamilyTreasury>({
@@ -79,7 +89,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       id: "1",
       username: "satoshi",
       lightningAddress: "satoshi@satnam.pub",
-      role: "parent",
+      role: "adult",
       spendingLimits: { daily: 100000, weekly: 500000 },
       nip05Verified: true,
       balance: 5000000,
@@ -106,7 +116,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       id: "2",
       username: "hal",
       lightningAddress: "hal@satnam.pub",
-      role: "parent",
+      role: "adult",
       spendingLimits: { daily: 100000, weekly: 500000 },
       nip05Verified: true,
       balance: 3500000,
@@ -461,7 +471,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       {/* Quick Actions */}
       <div className="bg-orange-900 rounded-2xl p-6 border border-orange-400/20">
         <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <button
             onClick={() => setCurrentView('lightning')}
             className="flex flex-col items-center space-y-2 p-4 bg-orange-800/50 rounded-lg hover:bg-orange-700 transition-colors"
@@ -490,8 +500,36 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
             <Globe className="h-6 w-6 text-green-400" />
             <span className="text-white text-sm">PhoenixD Manager</span>
           </button>
+          <button
+            onClick={() => setPrivacyPaymentModalOpen(true)}
+            className="flex flex-col items-center space-y-2 p-4 bg-orange-800/50 rounded-lg hover:bg-orange-700 transition-colors border-2 border-purple-500/30"
+          >
+            <Shield className="h-6 w-6 text-purple-400" />
+            <span className="text-white text-sm">Privacy Payment</span>
+          </button>
         </div>
       </div>
+
+      {/* Privacy Dashboard Section */}
+      {showPrivacyDashboard && (
+        <div className="bg-orange-900 rounded-2xl p-6 border border-orange-400/20">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">Privacy Dashboard</h3>
+            <button
+              onClick={() => setPrivacyPreferencesModalOpen(true)}
+              className="text-orange-300 hover:text-white transition-colors text-sm flex items-center space-x-1"
+            >
+              <Settings className="h-4 w-4" />
+              <span>Settings</span>
+            </button>
+          </div>
+          <PrivacyDashboardIndicators
+            familyId={familyId}
+            showDetailedMetrics={true}
+            onPrivacySettingsClick={() => setPrivacyPreferencesModalOpen(true)}
+          />
+        </div>
+      )}
     </div>
   );
 
@@ -591,6 +629,33 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
         }}
         onInvoiceGenerated={(invoice, qrCode) => {
           console.log('Invoice generated:', { invoice, qrCode });
+        }}
+      />
+
+      {/* Privacy-Enhanced Payment Modal */}
+      <PrivacyEnhancedPaymentModal
+        isOpen={privacyPaymentModalOpen}
+        onClose={() => setPrivacyPaymentModalOpen(false)}
+        familyMembers={familyMembers}
+        selectedMember={selectedMemberId}
+        onSelectedMemberChange={setSelectedMemberId}
+        onPaymentComplete={(result) => {
+          console.log('Privacy payment completed:', result);
+          handlePaymentComplete(result);
+        }}
+      />
+
+      {/* Privacy Preferences Modal */}
+      <PrivacyPreferencesModal
+        isOpen={privacyPreferencesModalOpen}
+        onClose={() => setPrivacyPreferencesModalOpen(false)}
+        userId="current_user_id" // In real implementation, get from auth context
+        userRole="adult" // In real implementation, get from user data
+        onPreferencesUpdated={(preferences) => {
+          console.log('Privacy preferences updated:', preferences);
+          // Refresh privacy dashboard
+          setShowPrivacyDashboard(false);
+          setTimeout(() => setShowPrivacyDashboard(true), 100);
         }}
       />
     </div>

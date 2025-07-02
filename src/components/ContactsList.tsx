@@ -8,7 +8,7 @@
 import { Filter, SortAsc, SortDesc, Users } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { Contact, ContactFilters, ContactSortOptions } from '../types/contacts';
-import ContactCard from './ContactCard';
+import ContactCard from './ContactCard.tsx';
 
 interface ContactsListProps {
   contacts: Contact[];

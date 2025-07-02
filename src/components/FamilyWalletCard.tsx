@@ -1,14 +1,14 @@
 import {
-    Activity,
-    CheckCircle,
-    Clock,
-    Copy,
-    Download,
-    QrCode,
-    Send,
-    Shield,
-    TrendingUp,
-    Zap
+  Activity,
+  CheckCircle,
+  Clock,
+  Copy,
+  Download,
+  QrCode,
+  Send,
+  Shield,
+  TrendingUp,
+  Zap
 } from "lucide-react";
 import React, { useState } from "react";
 
@@ -17,7 +17,7 @@ interface FamilyMember {
   id: string;
   username: string;
   lightningAddress: string;
-  role: 'parent' | 'child';
+  role: 'adult' | 'child' | 'guardian';
   spendingLimits?: {
     daily: number;
     weekly: number;
@@ -75,13 +75,13 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
   };
 
   const getRoleColor = (role: string): string => {
-    return role === "parent" 
+    return (role === "adult" || role === "guardian") 
       ? "from-orange-500 to-amber-500" 
       : "from-amber-400 to-orange-400";
   };
 
   const getSpendingLimitDisplay = () => {
-    if (member.role === 'parent') {
+    if (member.role === 'adult' || member.role === 'guardian') {
       return "Unlimited";
     }
     if (member.spendingLimits) {
@@ -169,7 +169,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
         <div className="space-y-2 text-xs">
           <div className="flex items-center justify-between">
             <span className="text-amber-200">Status</span>
-            <span className={`font-medium ${member.role === 'parent' ? 'text-green-400' : 'text-amber-400'}`}>
+            <span className={`font-medium ${(member.role === 'adult' || member.role === 'guardian') ? 'text-green-400' : 'text-amber-400'}`}>
               {getSpendingLimitDisplay()}
             </span>
           </div>
@@ -251,7 +251,7 @@ export const mockFamilyMembers: FamilyMember[] = [
     id: "1",
     username: "satnam_dad",
     lightningAddress: "satnam_dad@satnam.pub",
-    role: "parent",
+    role: "adult",
     nip05Verified: true,
     balance: 5000000,
     recentActivity: {
@@ -263,7 +263,7 @@ export const mockFamilyMembers: FamilyMember[] = [
     id: "2",
     username: "satnam_mom",
     lightningAddress: "satnam_mom@satnam.pub",
-    role: "parent",
+    role: "adult",
     nip05Verified: true,
     balance: 3500000,
     recentActivity: {

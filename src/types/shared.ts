@@ -6,7 +6,7 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "parent" | "child" | "guardian" | "other";
+  role: "adult" | "child" | "guardian" | "other";
   avatar?: string;
   username?: string;
   spendingLimits?: {
@@ -20,7 +20,7 @@ export interface SatnamFamilyMember {
   id: string;
   username: string;
   lightningAddress: string;
-  role: "parent" | "child";
+  role: "adult" | "child" | "guardian";
   spendingLimits?: {
     daily: number;
     weekly?: number;

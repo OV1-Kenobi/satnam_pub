@@ -12,7 +12,7 @@ export interface EncryptedContact {
   encrypted_npub: string;
   nip05_hash?: string;
   display_name_hash: string;
-  family_role?: "parent" | "child" | "guardian" | "advisor" | "friend";
+  family_role?: "adult" | "child" | "guardian" | "advisor" | "friend";
   trust_level: "family" | "trusted" | "known" | "unverified";
   supports_gift_wrap: boolean;
   preferred_encryption: "gift-wrap" | "nip04" | "auto";
@@ -32,7 +32,7 @@ export interface Contact {
   npub: string;
   displayName: string;
   nip05?: string;
-  familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
   trustLevel: "family" | "trusted" | "known" | "unverified";
   supportsGiftWrap: boolean;
   preferredEncryption: "gift-wrap" | "nip04" | "auto";
@@ -177,7 +177,7 @@ export interface CreateContactInput {
   npub: string;
   nip05?: string;
   displayName: string;
-  familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
   trustLevel: "family" | "trusted" | "known" | "unverified";
   preferredEncryption: "gift-wrap" | "nip04" | "auto";
   notes?: string;
@@ -187,7 +187,7 @@ export interface CreateContactInput {
 export interface UpdateContactInput {
   id: string;
   displayName?: string;
-  familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
   trustLevel?: "family" | "trusted" | "known" | "unverified";
   preferredEncryption?: "gift-wrap" | "nip04" | "auto";
   notes?: string;
@@ -213,7 +213,7 @@ export interface UpdateGroupInput {
 // Filter and sort options for contacts
 export interface ContactFilters {
   trustLevel?: "family" | "trusted" | "known" | "unverified";
-  familyRole?: "parent" | "child" | "guardian" | "advisor" | "friend";
+  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
   supportsGiftWrap?: boolean;
   verified?: boolean;
   groupId?: string;

@@ -16,7 +16,7 @@ import { supabase } from "../../../lib/supabase";
 export interface PrivacyUser {
   hashedUUID: string; // Dynamic hashed UUID (unique per user)
   userSalt: string; // Per-user salt for UUID generation
-  federationRole: "parent" | "child" | "guardian";
+  federationRole: "adult" | "child" | "guardian";
   authMethod: "nwc" | "otp" | "nip07";
   isWhitelisted: boolean;
   votingPower: number;

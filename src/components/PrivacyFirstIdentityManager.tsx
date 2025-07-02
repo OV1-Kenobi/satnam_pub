@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from 'react'
 import { MESSAGING_CONFIG } from '../../lib/gift-wrapped-messaging/privacy-first-service'
 import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging'
-import ContactsManagerModal from './ContactsManagerModal'
+import ContactsManagerModal from './ContactsManagerModal.tsx'
 
 interface PrivacyFirstIdentityManagerProps {
   userNsec?: string
