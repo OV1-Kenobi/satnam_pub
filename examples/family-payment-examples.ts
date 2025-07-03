@@ -4,9 +4,9 @@
  * Practical examples of how to use the enhanced PhoenixD family payment system
  */
 
-// Example 1: Weekly Allowance Distribution
-export async function setupWeeklyAllowances() {
-  console.log("🔄 Setting up weekly allowances for all children...");
+// Example 1: Weekly Payment Distribution
+export async function setupWeeklyPayments() {
+  console.log("🔄 Setting up weekly payments for all children...");
 
   const children = [
     { id: "child1", name: "Alice", amount: 10000 }, // 10k sats
@@ -17,7 +17,7 @@ export async function setupWeeklyAllowances() {
   for (const child of children) {
     try {
       const response = await fetch(
-        "/api/family/allowance-automation/create-schedule",
+        "/api/family/payment-automation/create-schedule",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -40,13 +40,15 @@ export async function setupWeeklyAllowances() {
           `✅ ${child.name}: ${child.amount} sats every Sunday at 10 AM`
         );
         console.log(
-          `   Next distribution: ${new Date(result.nextDistribution).toLocaleString()}`
+          `   Next distribution: ${new Date(
+            result.nextDistribution
+          ).toLocaleString()}`
         );
       } else {
-        console.error(`❌ Failed to setup allowance for ${child.name}`);
+        console.error(`❌ Failed to setup payment for ${child.name}`);
       }
     } catch (error) {
-      console.error(`Error setting up allowance for ${child.name}:`, error);
+      console.error(`Error setting up payment for ${child.name}:`, error);
     }
   }
 }
@@ -127,7 +129,7 @@ export async function approveEmergency(emergencyId: string) {
 }
 
 // Example 4: Daily Family Payment
-export async function sendDailyAllowance() {
+export async function sendDailyPayment() {
   console.log("💰 Sending today's lunch money...");
 
   const lunchPayments = [
@@ -155,7 +157,10 @@ export async function sendDailyAllowance() {
       if (result.success) {
         console.log(`✅ ${payment.description}: ${payment.amount} sats`);
         console.log(
-          `   Fee: ${result.feeSat} sats (${((result.feeSat / result.amountSat) * 100).toFixed(2)}%)`
+          `   Fee: ${result.feeSat} sats (${(
+            (result.feeSat / result.amountSat) *
+            100
+          ).toFixed(2)}%)`
         );
         console.log(`   Time: ${result.processingTimeMs}ms`);
       } else {
@@ -232,7 +237,7 @@ export async function sendBonusPayment() {
 
   try {
     const response = await fetch(
-      "/api/family/allowance-automation/distribute-now",
+      "/api/family/payment-automation/distribute-now",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -269,17 +274,17 @@ export async function monitorPendingTransactions() {
   console.log("⏳ Checking for pending approvals...");
 
   try {
-    // Check pending allowances
-    const allowanceResponse = await fetch(
-      "/api/family/allowance-automation/pending-approvals"
+    // Check pending payments
+    const paymentResponse = await fetch(
+      "/api/family/payment-automation/pending-approvals"
     );
-    const allowanceResult = await allowanceResponse.json();
+    const paymentResult = await paymentResponse.json();
 
-    if (allowanceResult.success && allowanceResult.approvals.length > 0) {
+    if (paymentResult.success && paymentResult.approvals.length > 0) {
       console.log(
-        `📋 ${allowanceResult.approvals.length} allowances pending approval:`
+        `📋 ${paymentResult.approvals.length} payments pending approval:`
       );
-      allowanceResult.approvals.forEach((approval: any) => {
+      paymentResult.approvals.forEach((approval: any) => {
         console.log(
           `   - ${approval.familyMemberId}: ${approval.amount} sats (${approval.reason})`
         );
@@ -308,7 +313,7 @@ export async function monitorPendingTransactions() {
     }
 
     if (
-      allowanceResult.approvals?.length === 0 &&
+      paymentResult.approvals?.length === 0 &&
       emergencyResult.pendingEmergencies?.length === 0
     ) {
       console.log(
@@ -324,12 +329,12 @@ export async function monitorPendingTransactions() {
 export async function runCompleteExample() {
   console.log("🚀 Running complete family payment system example...\n");
 
-  // 1. Setup weekly allowances
-  await setupWeeklyAllowances();
+  // 1. Setup weekly payments
+  await setupWeeklyPayments();
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
   // 2. Send daily lunch money
-  await sendDailyAllowance();
+  await sendDailyPayment();
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
   // 3. Handle an emergency
@@ -370,13 +375,13 @@ if (require.main === module) {
     try {
       switch (command) {
         case "allowances":
-          await setupWeeklyAllowances();
+          await setupWeeklyPayments();
           break;
         case "emergency":
           await handleSchoolEmergency();
           break;
         case "lunch":
-          await sendDailyAllowance();
+          await sendDailyPayment();
           break;
         case "health":
           await checkFamilyHealth();

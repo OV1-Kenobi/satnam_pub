@@ -1,0 +1,29 @@
+{
+  "recoveryDate": "2025-01-02T17:16:00Z",
+  "backupBranch": "pre-bolt-merge-backup-2025-07-02-1716",
+  "boltBackupPath": "C:\\Users\\ov1kn\\Desktop\\project-bolt-sb1-ktvup4vy (3)\\project",
+  "currentWorkingPath": "c:/Users/ov1kn/Desktop/satnam-recovery",
+  "analysis": {
+    "filesInBoltOnly": [],
+    "filesInCurrentOnly": [],
+    "filesInBoth": [],
+    "conflictsDetected": [],
+    "integratedFiles": [],
+    "failedIntegrations": []
+  },
+  "criticalDirectories": [
+    "src/components",
+    "src/lib", 
+    "api",
+    "lib",
+    "types",
+    "utils",
+    "hooks",
+    "services",
+    "migrations",
+    "scripts",
+    "docs",
+    "examples"
+  ],
+  "status": "IN_PROGRESS"
+}

@@ -8,6 +8,7 @@
 import { Edit3, Gift, MoreVertical } from 'lucide-react';
 import React, { useState } from 'react';
 import { Contact } from '../types/contacts';
+import ContextualAvatar from './ContextualAvatar';
 
 interface ContactCardProps {
   contact: Contact;
@@ -18,6 +19,7 @@ interface ContactCardProps {
   showPrivateData: boolean;
   loading?: boolean;
   selectionMode?: boolean;
+  onOpenPrivateMessage?: (contactId: string) => void;
 }
 
 export const ContactCard: React.FC<ContactCardProps> = ({
@@ -29,6 +31,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   showPrivateData,
   loading = false,
   selectionMode = false,
+  onOpenPrivateMessage,
 }) => {
   const [showMenu, setShowMenu] = useState<boolean>(false);
 
@@ -131,6 +134,20 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       {/* Contact Info */}
       <div className="pr-8">
         <div className="flex items-center space-x-3 mb-2">
+          <ContextualAvatar
+            member={{
+              id: contact.id,
+              username: contact.displayName,
+              avatar: contact.displayName.charAt(0).toUpperCase(),
+            }}
+            context="contacts"
+            onContactsClick={(contactId) => {
+              if (onOpenPrivateMessage) {
+                onOpenPrivateMessage(contactId);
+              }
+            }}
+            size="sm"
+          />
           <h4 className="text-white font-semibold truncate">{contact.displayName}</h4>
           <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getTrustLevelColor(contact.trustLevel)}`}>
             {getTrustLevelIcon(contact.trustLevel)} {contact.trustLevel}

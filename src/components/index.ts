@@ -30,7 +30,7 @@ export { default as FamilyCoordination } from "./FamilyCoordination.tsx";
 export { default as FamilyFedimintGovernance } from "./FamilyFedimintGovernance.tsx";
 
 // Lightning & Payments
-export { default as PhoenixDFamilyManager } from "./PhoenixDFamilyManager.tsx";
+export { default as EnhancedLiquidityDashboard } from "./EnhancedLiquidityDashboard";
 export { default as PhoenixDNodeStatus } from "./PhoenixDNodeStatus.tsx";
 export { default as SmartPaymentModal } from "./SmartPaymentModal.tsx";
 export { default as SmartPaymentModalDemo } from "./SmartPaymentModalDemo.tsx";

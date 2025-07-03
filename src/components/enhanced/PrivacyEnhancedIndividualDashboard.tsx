@@ -4,19 +4,19 @@
  */
 
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  CheckCircle,
-  Copy,
-  CreditCard,
-  Eye,
-  EyeOff,
-  RefreshCw,
-  Send,
-  Settings,
-  Shield,
-  Wallet,
-  Zap
+    ArrowDownLeft,
+    ArrowUpRight,
+    CheckCircle,
+    Copy,
+    CreditCard,
+    Eye,
+    EyeOff,
+    RefreshCw,
+    Send,
+    Settings,
+    Shield,
+    Wallet,
+    Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { formatSats } from '../../lib/utils';
@@ -114,7 +114,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
           amount: 100000,
           status: 'completed',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-          description: 'Weekly allowance',
+          description: 'Weekly payment',
           privacy_level: PrivacyLevel.ENCRYPTED,
           routing_method: 'fedimint'
         },

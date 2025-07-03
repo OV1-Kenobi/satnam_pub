@@ -62,7 +62,7 @@ const FamilyFedimintGovernance: React.FC<FamilyFedimintGovernanceProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [showCreateProposal, setShowCreateProposal] = useState(false);
   const [selectedApproval, setSelectedApproval] = useState<FamilyApproval | null>(null);
-  const [proposalType, setProposalType] = useState<string>('allowance_distribution');
+  const [proposalType, setProposalType] = useState<string>('payment_distribution');
   const [proposalDescription, setProposalDescription] = useState('');
   const [proposalAmount, setProposalAmount] = useState('');
   const [proposalRecipient, setProposalRecipient] = useState('');
@@ -501,7 +501,7 @@ const FamilyFedimintGovernance: React.FC<FamilyFedimintGovernanceProps> = ({
                   onChange={(e) => setProposalType(e.target.value)}
                   className="w-full px-3 py-2 bg-orange-800 text-white rounded-lg border border-orange-600 focus:border-orange-400 focus:outline-none"
                 >
-                  <option value="allowance_distribution">Allowance Distribution</option>
+                  <option value="payment_distribution">Payment Distribution</option>
                   <option value="emergency_withdrawal">Emergency Withdrawal</option>
                   <option value="spending_limit_change">Spending Limit Change</option>
                   <option value="guardian_change">Guardian Change</option>
@@ -517,7 +517,7 @@ const FamilyFedimintGovernance: React.FC<FamilyFedimintGovernanceProps> = ({
                   className="w-full px-3 py-2 bg-orange-800 text-white rounded-lg border border-orange-600 focus:border-orange-400 focus:outline-none resize-none"
                 />
               </div>
-              {(proposalType === 'allowance_distribution' || proposalType === 'emergency_withdrawal' || proposalType === 'spending_limit_change') && (
+              {(proposalType === 'payment_distribution' || proposalType === 'emergency_withdrawal' || proposalType === 'spending_limit_change') && (
                 <div>
                   <label className="block text-orange-300 text-sm mb-2">Amount (sats)</label>
                   <input
@@ -529,7 +529,7 @@ const FamilyFedimintGovernance: React.FC<FamilyFedimintGovernanceProps> = ({
                   />
                 </div>
               )}
-              {(proposalType === 'allowance_distribution' || proposalType === 'spending_limit_change') && (
+              {(proposalType === 'payment_distribution' || proposalType === 'spending_limit_change') && (
                 <div>
                   <label className="block text-orange-300 text-sm mb-2">Recipient</label>
                   <input

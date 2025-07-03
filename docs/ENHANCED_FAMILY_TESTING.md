@@ -9,7 +9,7 @@ The Enhanced Family Banking System includes comprehensive integration tests that
 ### Core System Tests
 
 - **Enhanced Family Coordinator** (`src/lib/__tests__/enhanced-family-coordinator.test.ts`)
-- **Allowance Automation System** (`src/lib/__tests__/allowance-automation.test.ts`)
+- **Payment Automation System** (`src/lib/__tests__/payment-automation.test.ts`)
 - **Liquidity Intelligence System** (`src/lib/__tests__/liquidity-intelligence.test.ts`)
 - **Enhanced Family APIs** (`api/__tests__/enhanced-family-apis.test.ts`)
 
@@ -61,7 +61,7 @@ npm run test:enhanced-family:coverage
 
 # Run specific test files
 npx vitest src/lib/__tests__/enhanced-family-coordinator.test.ts
-npx vitest src/lib/__tests__/allowance-automation.test.ts
+npx vitest src/lib/__tests__/payment-automation.test.ts
 npx vitest src/lib/__tests__/liquidity-intelligence.test.ts
 npx vitest api/__tests__/enhanced-family-apis.test.ts
 ```
@@ -72,8 +72,8 @@ npx vitest api/__tests__/enhanced-family-apis.test.ts
 # Test Enhanced Family Coordinator only
 npx vitest src/lib/__tests__/enhanced-family-coordinator.test.ts
 
-# Test Allowance Automation only
-npx vitest src/lib/__tests__/allowance-automation.test.ts
+# Test Payment Automation only
+npx vitest src/lib/__tests__/payment-automation.test.ts
 
 # Test Liquidity Intelligence only
 npx vitest src/lib/__tests__/liquidity-intelligence.test.ts

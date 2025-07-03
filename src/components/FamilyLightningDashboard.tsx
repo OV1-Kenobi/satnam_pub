@@ -137,7 +137,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
             amount: 25000,
             from: "satoshi@satnam.pub",
             to: "alice@satnam.pub",
-            memo: "Weekly allowance",
+            memo: "Weekly payment",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4),
             privacyRouted: true,
             status: "completed",

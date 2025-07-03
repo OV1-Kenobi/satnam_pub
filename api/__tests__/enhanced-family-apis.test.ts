@@ -22,10 +22,10 @@ import {
 import { supabase } from "../../lib/supabase";
 
 // Import API handlers
-import allowanceScheduleHandler from "../family/allowance-schedule";
 import emergencyLiquidityHandler from "../family/emergency-liquidity";
 import enhancedPaymentHandler from "../family/enhanced-payment";
 import liquidityForecastHandler from "../family/liquidity-forecast";
+import paymentScheduleHandler from "../family/payment-schedule";
 
 // Test configuration
 const TEST_CONFIG = {
@@ -40,7 +40,7 @@ const TEST_CONFIG = {
     process.env.ZEUS_LSP_ENDPOINT &&
       process.env.ZEUS_API_KEY &&
       process.env.VOLTAGE_NODE_ID &&
-      process.env.LNBITS_ADMIN_KEY,
+      process.env.LNBITS_ADMIN_KEY
   ),
 };
 
@@ -77,7 +77,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
             member_count: 2,
             privacy_level: 3,
             encryption_version: "1.0",
-            allowance_automation_enabled: true,
+            payment_automation_enabled: true,
             zeus_integration_enabled: true,
             zeus_lsp_endpoint: TEST_CONFIG.zeusLspEndpoint,
             zeus_api_key_encrypted: TEST_CONFIG.zeusApiKey,
@@ -95,7 +95,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
 
         // Create test family members
         const encryptedFamilyId = await encryptSensitiveData(
-          TEST_CONFIG.familyId,
+          TEST_CONFIG.familyId
         );
         const encryptedParentName = await encryptSensitiveData("Test Parent");
         const encryptedChildName = await encryptSensitiveData("Test Child");
@@ -161,7 +161,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
 
         if (testScheduleId) {
           await supabase
-            .from("secure_allowance_schedules")
+            .from("secure_payment_schedules")
             .delete()
             .eq("schedule_uuid", testScheduleId);
         }
@@ -180,7 +180,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
     test("should handle payment with intelligent routing", async () => {
       if (!TEST_CONFIG.realCredentials) {
         console.log(
-          "⏭️  Skipping enhanced payment test - no credentials provided",
+          "⏭️  Skipping enhanced payment test - no credentials provided"
         );
         return;
       }
@@ -235,7 +235,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
         expect(responseData.intelligence.riskScore).toBeGreaterThanOrEqual(0);
         expect(responseData.intelligence.riskScore).toBeLessThanOrEqual(1);
         expect(Array.isArray(responseData.intelligence.recommendations)).toBe(
-          true,
+          true
         );
       }
 
@@ -275,7 +275,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
       expect(responseData.approval).toBeDefined();
       expect(responseData.approval.approvalId).toBeDefined();
       expect(responseData.approval.requiredApprovers).toContain(
-        TEST_CONFIG.parentMemberId,
+        TEST_CONFIG.parentMemberId
       );
       expect(responseData.approval.expiresAt).toBeDefined();
       expect(responseData.approval.urgency).toBe("high");
@@ -325,7 +325,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
     test("should generate comprehensive liquidity forecast", async () => {
       if (!TEST_CONFIG.realCredentials) {
         console.log(
-          "⏭️  Skipping liquidity forecast test - no credentials provided",
+          "⏭️  Skipping liquidity forecast test - no credentials provided"
         );
         return;
       }
@@ -356,31 +356,31 @@ describe("Enhanced Family APIs Integration Tests", () => {
 
       expect(responseData.forecast.predictions).toBeDefined();
       expect(
-        responseData.forecast.predictions.expectedInflow,
+        responseData.forecast.predictions.expectedInflow
       ).toBeGreaterThanOrEqual(0);
       expect(
-        responseData.forecast.predictions.expectedOutflow,
+        responseData.forecast.predictions.expectedOutflow
       ).toBeGreaterThanOrEqual(0);
       expect(
-        responseData.forecast.predictions.confidenceLevel,
+        responseData.forecast.predictions.confidenceLevel
       ).toBeGreaterThanOrEqual(0.8);
 
       expect(responseData.forecast.liquidityNeeds).toBeDefined();
       expect(
-        responseData.forecast.liquidityNeeds.minimumRequired,
+        responseData.forecast.liquidityNeeds.minimumRequired
       ).toBeGreaterThan(0);
       expect(responseData.forecast.liquidityNeeds.optimalLevel).toBeGreaterThan(
-        0,
+        0
       );
 
       expect(responseData.forecast.recommendations).toBeDefined();
       expect(
-        Array.isArray(responseData.forecast.recommendations.channelAdjustments),
+        Array.isArray(responseData.forecast.recommendations.channelAdjustments)
       ).toBe(true);
       expect(
         Array.isArray(
-          responseData.forecast.recommendations.zeusLspOptimizations,
-        ),
+          responseData.forecast.recommendations.zeusLspOptimizations
+        )
       ).toBe(true);
 
       expect(responseData.metrics).toBeDefined();
@@ -443,11 +443,11 @@ describe("Enhanced Family APIs Integration Tests", () => {
     });
   });
 
-  describe("Allowance Schedule API", () => {
-    test("should create allowance schedule", async () => {
+  describe("Payment Schedule API", () => {
+    test("should create payment schedule", async () => {
       if (!TEST_CONFIG.realCredentials) {
         console.log(
-          "⏭️  Skipping allowance schedule creation test - no credentials provided",
+          "⏭️  Skipping payment schedule creation test - no credentials provided"
         );
         return;
       }
@@ -490,7 +490,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
         },
       });
 
-      await allowanceScheduleHandler(req, res);
+      await paymentScheduleHandler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
 
@@ -506,7 +506,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
 
       expect(responseData.intelligence).toBeDefined();
       expect(Array.isArray(responseData.intelligence.recommendations)).toBe(
-        true,
+        true
       );
       expect(Array.isArray(responseData.intelligence.optimizations)).toBe(true);
       expect(responseData.intelligence.riskAssessment).toBeDefined();
@@ -523,7 +523,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
       });
     }, 20000);
 
-    test("should list allowance schedules", async () => {
+    test("should list payment schedules", async () => {
       const { req, res } = createMocks({
         method: "GET",
         query: {
@@ -531,7 +531,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
         },
       });
 
-      await allowanceScheduleHandler(req, res);
+      await paymentScheduleHandler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
 
@@ -558,10 +558,10 @@ describe("Enhanced Family APIs Integration Tests", () => {
       });
     });
 
-    test("should process pending allowances", async () => {
+    test("should process pending payments", async () => {
       if (!TEST_CONFIG.realCredentials) {
         console.log(
-          "⏭️  Skipping allowance processing test - no credentials provided",
+          "⏭️  Skipping payment processing test - no credentials provided"
         );
         return;
       }
@@ -579,7 +579,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
         },
       });
 
-      await allowanceScheduleHandler(req, res);
+      await paymentScheduleHandler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
 
@@ -623,7 +623,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
         },
       });
 
-      await allowanceScheduleHandler(req, res);
+      await paymentScheduleHandler(req, res);
 
       expect(res._getStatusCode()).toBe(400);
       const responseData = JSON.parse(res._getData());
@@ -636,7 +636,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
     test("should handle emergency liquidity request", async () => {
       if (!TEST_CONFIG.realCredentials) {
         console.log(
-          "⏭️  Skipping emergency liquidity test - no credentials provided",
+          "⏭️  Skipping emergency liquidity test - no credentials provided"
         );
         return;
       }
@@ -692,10 +692,10 @@ describe("Enhanced Family APIs Integration Tests", () => {
       expect(responseData.intelligence).toBeDefined();
       expect(responseData.intelligence.riskAssessment).toBeDefined();
       expect(
-        responseData.intelligence.riskAssessment.currentRisk,
+        responseData.intelligence.riskAssessment.currentRisk
       ).toBeDefined();
       expect(["low", "medium", "high", "critical"]).toContain(
-        responseData.intelligence.riskAssessment.currentRisk,
+        responseData.intelligence.riskAssessment.currentRisk
       );
 
       expect(responseData.metadata).toBeDefined();
@@ -742,7 +742,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
       expect(status.sources.familyBalance).toBeGreaterThanOrEqual(0);
       expect(status.sources.zeusJitAvailable).toBeGreaterThanOrEqual(0);
       expect(status.sources.emergencyReserveAvailable).toBeGreaterThanOrEqual(
-        0,
+        0
       );
 
       expect(status.projectedNeeds).toBeDefined();
@@ -764,7 +764,7 @@ describe("Enhanced Family APIs Integration Tests", () => {
           action: "history",
           familyId: TEST_CONFIG.familyId,
           startDate: new Date(
-            Date.now() - 30 * 24 * 60 * 60 * 1000,
+            Date.now() - 30 * 24 * 60 * 60 * 1000
           ).toISOString(),
           endDate: new Date().toISOString(),
         },
@@ -945,14 +945,14 @@ describe("Enhanced Family APIs Integration Tests", () => {
     test("should handle concurrent API requests", async () => {
       if (!TEST_CONFIG.realCredentials) {
         console.log(
-          "⏭️  Skipping concurrent request test - no credentials provided",
+          "⏭️  Skipping concurrent request test - no credentials provided"
         );
         return;
       }
 
       const requests = [
         liquidityForecastHandler,
-        allowanceScheduleHandler,
+        paymentScheduleHandler,
         emergencyLiquidityHandler,
       ].map(async (handler, index) => {
         const { req, res } = createMocks({

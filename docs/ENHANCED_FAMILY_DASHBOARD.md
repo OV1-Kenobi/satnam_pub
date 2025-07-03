@@ -175,7 +175,7 @@ interface EnhancedFamilyTreasury {
 
 ```typescript
 interface FamilyPaymentRouting {
-  paymentType: "external" | "zap" | "internal_governance" | "allowance";
+  paymentType: "external" | "zap" | "internal_governance" | "recurring_payment";
   recommendedProtocol: "lightning" | "fedimint";
   reason: string;
   estimatedFee: number;
@@ -217,10 +217,10 @@ interface DualProtocolFamilyMember extends SatnamFamilyMember {
 Replace the existing FamilyDashboard component:
 
 ```typescript
-import FamilyDashboardIntegration from './components/FamilyDashboardIntegration';
+import FamilyDashboardIntegration from "./components/FamilyDashboardIntegration";
 
 // In your main app component
-<FamilyDashboardIntegration onBack={() => setCurrentView('home')} />
+<FamilyDashboardIntegration onBack={() => setCurrentView("home")} />;
 ```
 
 ### Individual Component Usage

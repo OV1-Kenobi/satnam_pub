@@ -21,9 +21,9 @@ This enhanced family payment system leverages PhoenixD's automated liquidity man
    - Cost optimization for internal transfers
    - Emergency payment protocols
 
-3. **Allowance Automation** (`api/family/allowance-automation.ts`)
+3. **Payment Automation** (`api/family/payment-automation.ts`)
 
-   - Scheduled allowance distributions
+   - Scheduled payment distributions
    - Parent approval workflows
    - Automatic retry mechanisms
 
@@ -102,12 +102,12 @@ Content-Type: application/json
 }
 ```
 
-### Allowance Automation
+### Payment Automation
 
-#### Create Allowance Schedule
+#### Create Payment Schedule
 
 ```http
-POST /api/family/allowance-automation/create-schedule
+POST /api/family/payment-automation/create-schedule
 Content-Type: application/json
 
 {
@@ -120,16 +120,16 @@ Content-Type: application/json
 }
 ```
 
-#### Distribute Allowance Now
+#### Distribute Payment Now
 
 ```http
-POST /api/family/allowance-automation/distribute-now
+POST /api/family/payment-automation/distribute-now
 Content-Type: application/json
 
 {
   "familyMemberId": "teen1",
   "amount": 20000,
-  "reason": "Bonus allowance",
+  "reason": "Bonus payment",
   "isEmergency": false
 }
 ```

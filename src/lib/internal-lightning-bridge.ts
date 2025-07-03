@@ -16,7 +16,7 @@ interface AtomicSwapRequest {
     | "fedimint_to_cashu"
     | "lightning_to_fedimint"
     | "cashu_to_fedimint";
-  purpose: "allowance" | "gift" | "emergency" | "transfer";
+  purpose: "payment" | "gift" | "emergency" | "transfer";
   requiresApproval: boolean;
 }
 

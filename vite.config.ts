@@ -25,7 +25,7 @@ function getAllEntries(
         file.includes(".hot-update") ||
         file.includes(".vite") ||
         file.startsWith(".") ||
-        file.includes("allowance-automation") || // Node.js-only module
+        file.includes("payment-automation") || // Node.js-only module
         file.includes("server-") ||
         file.includes("-server") ||
         file.includes("node-")

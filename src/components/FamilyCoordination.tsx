@@ -1,89 +1,32 @@
-import {
-    Activity,
-    AlertTriangle,
-    ArrowLeft,
-    Bitcoin,
-    Calendar,
-    CheckCircle,
-    Clock,
-    Crown,
-    Download,
-    ExternalLink,
-    Eye,
-    Home,
-    Network,
-    Plus,
-    Server,
-    Settings,
-    Shield,
-    Sparkles,
-    Target,
-    TrendingUp,
-    Users,
-    Wifi
-} from "lucide-react";
-import React, { useState } from "react";
+/**
+ * FAMILY COORDINATION COMPONENT
+ * 
+ * Replaced with Enhanced Family Coordination Dashboard
+ * This wrapper maintains API compatibility while providing superior features
+ */
+
+import React from 'react';
+import EnhancedFamilyCoordination from './EnhancedFamilyCoordination';
 
 interface FamilyCoordinationProps {
   onBack: () => void;
+  familyId?: string; // Enhanced version requires familyId
 }
 
-interface CoordinationTask {
-  id: string;
-  title: string;
-  description: string;
-  assignee: string;
-  dueDate: Date;
-  status: "pending" | "in-progress" | "completed" | "overdue";
-  priority: "low" | "medium" | "high" | "critical";
-  category:
-    | "security"
-    | "education"
-    | "treasury"
-    | "infrastructure"
-    | "governance";
-}
+const FamilyCoordination: React.FC<FamilyCoordinationProps> = ({ 
+  onBack, 
+  familyId = 'default_family' 
+}) => {
+  // Replace basic family coordination with enhanced intelligence dashboard
+  return (
+    <EnhancedFamilyCoordination 
+      familyId={familyId} 
+      onBack={onBack}
+    />
+  );
+};
 
-interface FamilyMeeting {
-  id: string;
-  title: string;
-  date: Date;
-  duration: number;
-  attendees: string[];
-  agenda: string[];
-  status: "scheduled" | "in-progress" | "completed";
-}
-
-interface GovernanceProposal {
-  id: string;
-  title: string;
-  description: string;
-  proposer: string;
-  votes: { member: string; vote: "yes" | "no" | "abstain" }[];
-  status: "active" | "passed" | "rejected" | "pending";
-  deadline: Date;
-}
-
-const FamilyCoordination: React.FC<FamilyCoordinationProps> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<
-    "overview" | "tasks" | "meetings" | "governance" | "infrastructure"
-  >("overview");
-  const [familyName] = useState("Nakamoto");
-
-  const coordinationTasks: CoordinationTask[] = [
-    {
-      id: "1",
-      title: "Update Family Emergency Plan",
-      description: "Review and update our Bitcoin recovery procedures",
-      assignee: "Satoshi",
-      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      status: "in-progress",
-      priority: "high",
-      category: "security",
-    },
-    {
-      id: "2",
-      title: "Complete Lightning Education Module",
+export default FamilyCoordination;
       description: "All family members complete Lightning Network basics",
       assignee: "All",
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

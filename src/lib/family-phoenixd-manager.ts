@@ -73,7 +73,7 @@ export class FamilyPhoenixdManager {
   private phoenixdClient: PhoenixdClient;
   private emergencyThreshold: number;
   private maxEmergencyAmount: number;
-  private allowancePreparationDays: number;
+  private paymentPreparationDays: number;
 
   constructor() {
     this.phoenixdClient = new PhoenixdClient();
@@ -87,8 +87,8 @@ export class FamilyPhoenixdManager {
       parseInt(getEnvVar("VITE_FAMILY_EMERGENCY_THRESHOLD", "10000")) || 10000; // 10k sats - guard against NaN
     this.maxEmergencyAmount =
       parseInt(getEnvVar("VITE_FAMILY_MAX_EMERGENCY", "100000")) || 100000; // 100k sats - guard against NaN
-    this.allowancePreparationDays =
-      parseInt(getEnvVar("VITE_FAMILY_ALLOWANCE_PREP_DAYS", "2")) || 2; // 2 days ahead - guard against NaN
+    this.paymentPreparationDays =
+      parseInt(getEnvVar("VITE_FAMILY_PAYMENT_PREP_DAYS", "2")) || 2; // 2 days ahead - guard against NaN
 
     console.log("👨‍👩‍👧‍👦 Family PhoenixD Manager initialized");
   }
@@ -424,7 +424,7 @@ export class FamilyPhoenixdManager {
           recommendedAction = "emergency";
         } else if (
           familyMember.allowance_config?.enabled &&
-          allowanceStatus.daysUntilNext <= this.allowancePreparationDays
+          allowanceStatus.daysUntilNext <= this.paymentPreparationDays
         ) {
           recommendedAction = "allowance_prep";
         } else {

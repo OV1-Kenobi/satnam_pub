@@ -91,7 +91,7 @@ interface FamilyChannelConfig {
   username: string;
   minChannelSize: number;
   maxChannelSize: number;
-  allowanceTarget: number;
+  paymentTarget: number;
   autoLiquidity: boolean;
 }
 

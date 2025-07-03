@@ -1,4 +1,4 @@
-# Satnam.pub Bitcoin-Only Family Banking Platform
+# Satnam.pub Sovereign Family Banking & Identity Forge — Master Agent Context
 
 ## 🚨 CRITICAL: READ BEFORE MAKING ANY CHANGES
 
@@ -6,25 +6,42 @@ This document serves as the master context for all development work on the Satna
 
 ---
 
-## Architecture Requirements
+## Mission & Core Principles
+
+**Mission:**  
+Satnam.pub is a Bitcoin-only, privacy-first, sovereign family banking and identity platform. The codebase is architected for maximum user sovereignty, minimal third-party trust, and full auditability. All communications and value transfers are built on open protocols—Bitcoin, Lightning, Nostr, and eCash—without altcoins or unnecessary intermediaries.
+
+**Key Principles:**
+
+- **Bitcoin-only:** No altcoins, no tokens. All value transfer and authentication is Bitcoin-native (Lightning, Fedimint, Cashu).
+- **Privacy-first:** End-to-end encryption, metadata minimization, no external logging, and user-controlled data.
+- **Sovereignty:** Users control their keys, identities, and funds. No custodial risk, no vendor lock-in.
+- **Auditability:** All code, infrastructure, and flows are transparent, documented, and verifiable.
+- **Modularity:** Clear separation of frontend (React/Vite) and backend (Netlify Functions). No Node.js server code in the frontend.
+
+---
+
+## Technical Architecture
 
 ### Browser-Based Serverless Environment
 
 - **ONLY** use browser-compatible APIs - Web Crypto API, fetch, localStorage
 - **NO** Node.js modules: crypto, events, fs, path, stream, util
 - **NO** polyfills or Node.js compatibility layers
-- All code must run in Bolt.new's serverless browser environment
+- All frontend code must be browser-only (React/Vite)
+- All backend logic in Netlify Functions
 - Use TypeScript (.ts/.tsx) for components, JavaScript (.js) for API routes
+- Strict separation of concerns, barrel files for all modules
 
 ### File Structure Compliance
 
 ```
 src/
 ├── components/           # React components (.tsx)
-├── lib/                 # Utility functions (.ts)
-├── types/               # TypeScript definitions (.ts)
-├── hooks/               # React hooks (.ts)
-api/                     # Serverless functions (.js)
+├── lib/                  # Utility functions (.ts)
+├── types/                # TypeScript definitions (.ts)
+├── hooks/                # React hooks (.ts)
+api/                      # Serverless functions (.js)
 ```
 
 ---
@@ -38,24 +55,107 @@ api/                     # Serverless functions (.js)
 - Use Supabase Vault for all sensitive credentials
 - Implement data minimization - collect only essential information
 - All communications must use NIP-59 Gift Wrapped messaging
+- Provide programmable deletability controls for all user data with a unified deletion modal
+- Client-side verification for all security operations
+- User-controlled, locally-stored encrypted audit logs (optional)
+- Differential privacy techniques for any aggregated data
+- Ephemeral computing - process data in memory without persistence
+- Secure multi-party computation for collaborative operations
+- Plausible deniability features for sensitive operations
 
-### Encryption Standards
+### Encryption & Security Standards
 
 - Use Web Crypto API for all cryptographic operations
 - AES-256-GCM for data encryption
 - Store secrets in Supabase Vault, **NOT** .env files
 - Implement end-to-end encryption for all family communications
+- Privacy metrics for all communications and transactions
+- HTTPS enforcement with strict TLS requirements
+- Content Security Policy (CSP) headers for XSS prevention
+- Rate limiting for authentication endpoints
+- Input validation using Zod schemas
+- Secure JWT token management with automatic expiration
+- All destructive operations must have rollback instructions
 
 ### Authentication Layers
 
 1. **NIP-07** Browser extension signing
-2. **NFC + PIN** Physical device authentication (future)
-3. **Nostr nsec** Direct key signing
-4. **OTP System** Existing backup authentication
+2. **Direct nsec import** For secure key management
+3. **OTP invitation** For secure onboarding
+4. **Hardware security** Integration (future)
+
+### Secure Family Operations
+
+1. **Secure Multi-Party Computation (MPC)** For family treasury management
+2. **Threshold Signatures** For distributed approval without revealing keys
+3. **Blind Custody** For parental controls without visibility into child transactions
+4. **Privacy-Preserving Verification** For age/identity verification without data exposure
+
+### Zero-Knowledge Proof Deployment
+
+1. **Client-Side ZKP Generation**
+
+   - All proofs generated in browser using WebAssembly
+   - No server-side proof generation to prevent data leakage
+   - Optimized for mobile devices with limited computational resources
+
+2. **Verification Infrastructure**
+
+   - Decentralized verification through Nostr relays
+   - Trustless verification without central authority
+   - Federated verification for family operations
+
+3. **ZKP Libraries & Implementation**
+
+   - **circom** and **snarkjs** for zk-SNARK implementations
+   - **bulletproofs-js** for range proofs
+   - **stark-wasm** for transparent proofs
+   - Custom WebAssembly optimizations for browser performance
+
+4. **Deployment Phases**
+   - **Phase 1 (Current - Q3 2025)**: Basic transaction verification proofs
+   - **Phase 2 (Q4 2025)**: Identity and authentication proofs
+   - **Phase 3 (Q2 2026)**: Full treasury management with ZKP
+   - **Phase 4 (Q4 2026)**: Cross-protocol ZKP for Lightning/Cashu/Fedimint
+
+### Zero-Knowledge Proof Auditing
+
+1. **Formal Verification**
+
+   - Mathematical verification of ZKP circuits
+   - Formal proof of security properties
+   - Verification of cryptographic assumptions
+
+2. **Independent Security Audits**
+
+   - Proposed audit partners (seeking user feedback):
+     - Least Authority audit of ZKP implementation
+     - Trail of Bits review of cryptographic protocols
+     - Other potential partners under consideration
+   - Comprehensive audit process starting Q3 2025
+   - Initial audit completed Q2 2025
+   - Open-source community review process
+
+3. **Continuous Verification**
+
+   - Automated testing of all ZKP circuits
+   - Fuzzing of proof generation and verification
+   - Stress testing under various network conditions
+
+4. **Transparent Audit Reports**
+
+   - All audit reports published publicly
+   - Detailed explanation of findings and remediations
+   - Regular re-auditing on major version updates
+
+5. **User Verification Tools**
+   - Self-verification tools for users to validate ZKP implementation
+   - Transparency logs for ZKP verification
+   - Educational resources on understanding ZKP security
 
 ---
 
-## Bitcoin-Only Requirements
+## Bitcoin-Only Protocol Stack
 
 ### Lightning Network Stack
 
@@ -63,13 +163,14 @@ api/                     # Serverless functions (.js)
 - **PhoenixD** - Mobile wallet integration
 - **LNProxy** - Privacy routing for all payments
 - **Breez** - SDK integration (development)
+- **Human-readable Lightning addresses** - username@satnam.pub
 
 ### Fedimint Integration
 
 - Family federation with 2-of-3 guardian approval
-- eCash issuance for child allowances
+- eCash issuance for child payments
 - Guardian consensus for large transactions
-- **Currently in demo mode** - production implementation pending
+- Multi-layer Lightning/Cashu/Fedimint bridge
 
 ### Cashu eCash Implementation
 
@@ -85,18 +186,22 @@ api/                     # Serverless functions (.js)
 ### Required NIPs
 
 - **NIP-01** Basic protocol
-- **NIP-04** Encrypted direct messages (fallback)
+- **NIP-04** Encrypted direct messages
 - **NIP-05** DNS-based verification (username@satnam.pub)
 - **NIP-07** Browser extension signing
-- **NIP-59** Gift Wrapped messages (primary)
-- **NIP-65** Relay list metadata
+- **NIP-17** Event treatment recommendations
+- **NIP-28** Public chat channels
+- **NIP-29** Group chat key management
+- **NIP-59** Gift Wrapped messages
 
-### Custom Family Banking NIPs
+### Self-Custody Journey
 
-- Family member roles and permissions
-- Guardian approval workflows
-- Lightning payment coordination
-- Treasury management events
+- Create pathways, maps, sign posts for self-custody
+- Nostr badges to mark self-custodial journey milestones
+- Guided paths from custodial fiat towards self-custodial private keys
+- No custodial risk as the destination at all stages
+- Integration with Citadel Academy for educational tracking
+- Nostr Knowledge Management System for learning progress
 
 ---
 
@@ -108,6 +213,7 @@ api/                     # Serverless functions (.js)
 - Use strict type checking
 - Export types from `src/types/` directory
 - Handle undefined/null states explicitly
+- Use `.boltignore` optimization for AI context window
 
 ### Error Prevention
 
@@ -129,27 +235,12 @@ interface FamilyMember {
 const member: any = {...}
 ```
 
-### API Route Structure
+### Destructive Operations
 
-```javascript
-// ✅ CORRECT: Browser-compatible API route
-export default async function handler(req, res) {
-  // Set CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-
-  try {
-    // Use fetch for external APIs
-    const response = await fetch("https://api.voltage.cloud/...");
-    const data = await response.json();
-
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    // Log only non-sensitive error info
-    console.error("API error:", error.message);
-    res.status(500).json({ success: false, error: "Internal error" });
-  }
-}
-```
+- All destructive operations must have rollback instructions
+- Must be verified before and after execution
+- Provide clear documentation for recovery procedures
+- Test in isolation before integration
 
 ---
 
@@ -163,6 +254,7 @@ export default async function handler(req, res) {
 - Add external dependencies
 - Change API endpoint structures
 - Remove existing functionality
+- Add non-Bitcoin blockchains or third-party analytics
 
 ### ✅ Always Do These
 
@@ -171,79 +263,39 @@ export default async function handler(req, res) {
 - Maintain existing styling and UI patterns
 - Preserve all Bitcoin-only integrations
 - Keep privacy-first protocols intact
-
-### Before Making Changes
-
-1. Ask for clarification if requirements are unclear
-2. Propose the change before implementing
-3. Show code examples for complex modifications
-4. Verify compatibility with existing systems
+- Emphasize privacy, sovereignty, and auditability in all documentation
 
 ---
 
-## Testing Requirements
+## Development Roadmap
 
-### Verification Steps
+1. **Hardware Security Integration**
 
-```bash
-# Always run these after changes
-npm run type-check    # TypeScript compilation
-npm run build        # Production build test
-npm run dev          # Development server test
-```
+   - NFC + PIN physical device authentication
+   - Hardware wallet support (Coldcard, Jade, etc.)
 
-### Component Testing
+2. **Production Federation**
 
-- Verify all imports resolve correctly
-- Test with mock data for demo functionality
-- Ensure responsive design works
-- Validate form inputs and error states
+   - Full Fedimint guardian implementation
+   - Production-ready family federation
 
----
+3. **Advanced Family Banking**
 
-## Integration Points
+   - Enhanced allowance automation
+   - Multi-signature treasury management
+   - Education-linked rewards system
 
-### Existing Systems to Preserve
+4. **Citadel Academy Integration**
 
-- Supabase database and authentication
-- Voltage Lightning node integration
-- Gift Wrapped messaging system
-- Family dashboard components
-- NIP-05 identity verification
-- Guardian approval workflows
+   - Nostr Knowledge Management System
+   - Badge-based learning achievements
+   - Curated educational resources
+   - Tracking and rewarding intellectual journeys
 
-### Mock vs Production States
-
-- **Currently Mock**: Fedimint federation, PhoenixD wallets
-- **Production Ready**: Nostr messaging, Lightning addresses, Voltage integration
-- **Future Implementation**: NFC authentication, full Cashu integration
-
----
-
-## Emergency Protocols
-
-### If Something Breaks
-
-1. **Stop immediately** - don't make additional changes
-2. Report the specific error with code context
-3. Wait for approval before attempting fixes
-4. Use git rollback if necessary: `git checkout HEAD~1`
-
-### Rollback Commands
-
-```bash
-# Verify current state
-git log --oneline -5
-
-# Check differences before merge
-git diff --name-only
-
-# Safe rollback to previous commit
-git checkout HEAD~1
-
-# Verify rollback worked
-ls -la src/components/
-```
+5. **Ecosystem Expansion**
+   - Mobile application
+   - Browser extension integration
+   - Hardware wallet support
 
 ---
 
@@ -264,6 +316,20 @@ ls -la src/components/
 - ✅ Encryption implemented for sensitive data
 - ✅ User data sovereignty maintained
 - ✅ Self-custody principles upheld
+- ✅ Client-side verification for all security operations
+- ✅ All destructive operations have rollback instructions
+- ✅ HTTPS and TLS properly enforced
+- ✅ Input validation implemented for all user inputs
+- ✅ Rate limiting applied to sensitive endpoints
+- ✅ Content Security Policy headers implemented
+- ✅ User-controlled data deletion mechanisms in place
+- ✅ Zero-knowledge proofs for verification without data exposure
+- ✅ Differential privacy for any aggregated statistics
+- ✅ Secure multi-party computation for collaborative operations
+- ✅ Forward secrecy for all communications
+- ✅ Ephemeral computing with no data persistence
+- ✅ Plausible deniability features implemented
+- ✅ Trustless verification mechanisms in place
 
 ---
 
@@ -276,4 +342,4 @@ ls -la src/components/
 ---
 
 _Last Updated: December 2024_
-_Document Version: 1.0_
+_Document Version: 2.0_

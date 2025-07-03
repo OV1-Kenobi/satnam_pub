@@ -17,7 +17,7 @@ export interface FamilyMember {
     lightning: number;
     ecash: number;
   };
-  allowance?: {
+  payment?: {
     weekly: number;
     nextPayment: string;
   };

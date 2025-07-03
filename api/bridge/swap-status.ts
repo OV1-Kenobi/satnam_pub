@@ -26,7 +26,7 @@ async function getSwapStatus(swapId: string) {
       total: 150,
     },
     swap_type: "standard",
-    purpose: "allowance_transfer",
+    purpose: "payment_transfer",
   };
 
   // Mock swap logs

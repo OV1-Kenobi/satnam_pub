@@ -2,10 +2,10 @@
  * FAMILY LIQUIDITY MANAGER
  *
  * Coordinates Lightning liquidity and existing LNbits family wallets
- * for automated liquidity management and allowance distribution.
+ * for automated liquidity management and payment distribution.
  *
  * Features:
- * - Automated allowance distribution for child accounts
+ * - Automated payment distribution for child accounts
  * - Lightning liquidity management for family payments
  * - Emergency liquidity management for large transactions
  * - Integration with existing Voltage + LNbits infrastructure
@@ -19,7 +19,7 @@ import { supabase } from "../../lib/supabase";
 export interface FamilyLiquidityConfig {
   familyId: string;
   liquidityThreshold: number; // Minimum liquidity to maintain (in sats)
-  maxAllowanceAmount: number; // Maximum single allowance amount
+  maxPaymentAmount: number; // Maximum single payment amount
   emergencyReserve: number; // Emergency reserve in sats
   rebalanceEnabled: boolean;
   autoRebalanceThreshold: number; // Trigger rebalance when below this amount
@@ -45,7 +45,7 @@ export interface LiquidityStatus {
   lastUpdated: Date;
 }
 
-export interface AllowanceRequest {
+export interface PaymentRequest {
   memberId: string;
   memberName: string;
   amount: number;
@@ -61,7 +61,7 @@ export interface LiquidityAlert {
   type:
     | "low_liquidity"
     | "critical_liquidity"
-    | "allowance_failed"
+    | "payment_failed"
     | "rebalance_needed";
   severity: "info" | "warning" | "critical";
   message: string;
@@ -157,22 +157,24 @@ export class FamilyLiquidityManager {
     } catch (error) {
       console.error("❌ Failed to get family liquidity status:", error);
       throw new Error(
-        `Liquidity status check failed: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Liquidity status check failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
 
   /**
-   * Process allowance request with liquidity validation
+   * Process payment request with liquidity validation
    */
-  async processAllowanceRequest(request: AllowanceRequest): Promise<{
+  async processPaymentRequest(request: PaymentRequest): Promise<{
     approved: boolean;
     reason: string;
     suggestedAmount?: number;
   }> {
     try {
       console.log(
-        `💰 Processing allowance request: ${request.amount} sats for ${request.memberName}`
+        `💰 Processing payment request: ${request.amount} sats for ${request.memberName}`
       );
 
       // Validate request amount is positive
@@ -194,20 +196,20 @@ export class FamilyLiquidityManager {
         };
       }
 
-      // Check against maximum allowance
-      if (request.amount > this.config.maxAllowanceAmount) {
+      // Check against maximum payment
+      if (request.amount > this.config.maxPaymentAmount) {
         return {
           approved: false,
-          reason: `Amount exceeds maximum allowance limit of ${this.config.maxAllowanceAmount} sats`,
+          reason: `Amount exceeds maximum payment limit of ${this.config.maxPaymentAmount} sats`,
         };
       }
 
       return {
         approved: true,
-        reason: "Allowance approved",
+        reason: "Payment approved",
       };
     } catch (error) {
-      console.error("❌ Failed to process allowance request:", error);
+      console.error("❌ Failed to process payment request:", error);
       return {
         approved: false,
         reason: "Processing error",
@@ -264,7 +266,7 @@ export class FamilyLiquidityManager {
    */
   async getSpendingAnalytics(days: number = 30): Promise<{
     totalSpent: number;
-    allowancesDistributed: number;
+    paymentsDistributed: number;
     averageDailySpend: number;
     topCategories: Array<{ category: string; amount: number }>;
   }> {
@@ -285,7 +287,7 @@ export class FamilyLiquidityManager {
       if (!transactions) {
         return {
           totalSpent: 0,
-          allowancesDistributed: 0,
+          paymentsDistributed: 0,
           averageDailySpend: 0,
           topCategories: [],
         };
@@ -298,10 +300,10 @@ export class FamilyLiquidityManager {
         )
         .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
 
-      const allowancesDistributed = transactions
+      const paymentsDistributed = transactions
         .filter(
           (t: { type: string; amount: number; category: string }) =>
-            t.type === "allowance"
+            t.type === "payment"
         )
         .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
 
@@ -326,7 +328,7 @@ export class FamilyLiquidityManager {
 
       return {
         totalSpent,
-        allowancesDistributed,
+        paymentsDistributed,
         averageDailySpend,
         topCategories,
       };
@@ -344,7 +346,7 @@ export class FamilyLiquidityManager {
 
     if (availableBalance < this.config.alertThresholds.critical) {
       recommendations.push("🚨 Critical: Immediate liquidity top-up required");
-      recommendations.push("Consider reducing allowance amounts temporarily");
+      recommendations.push("Consider reducing payment amounts temporarily");
     } else if (availableBalance < this.config.alertThresholds.low) {
       recommendations.push("⚠️ Low liquidity: Plan for liquidity increase");
       recommendations.push("Review recent spending patterns");
@@ -398,7 +400,9 @@ export class FamilyLiquidityManager {
       await supabase.from("family_alerts").insert(alertData);
 
       console.log(
-        `🚨 ${level.toUpperCase()} liquidity alert sent for family ${this.config.familyId}`
+        `🚨 ${level.toUpperCase()} liquidity alert sent for family ${
+          this.config.familyId
+        }`
       );
     } catch (error) {
       console.error("❌ Failed to send liquidity alert:", error);

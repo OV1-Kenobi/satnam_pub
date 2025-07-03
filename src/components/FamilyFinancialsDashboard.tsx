@@ -3,10 +3,12 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  BookOpen,
   CheckCircle,
   Eye,
   EyeOff,
   Globe,
+  QrCode,
   RefreshCw,
   Send,
   Shield,
@@ -16,14 +18,20 @@ import React, { useState } from 'react';
 
 // Import our enhanced dual-protocol components
 import AtomicSwapModal from './AtomicSwapModal.tsx';
+import ContextualAvatar from './ContextualAvatar.tsx';
+import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
 import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
 import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
-import PhoenixDFamilyManager from './PhoenixDFamilyManager.tsx';
+import PaymentAutomationCard from './PaymentAutomationCard.tsx';
+import PaymentAutomationModal from './PaymentAutomationModal.tsx';
 import { PaymentModal } from './shared';
 import UnifiedFamilyPayments from './UnifiedFamilyPayments.tsx';
 
 // Import Credits Balance
 import { CreditsBalance } from './CreditsBalance.tsx';
+
+// Import Payment Automation System
+import { PaymentSchedule } from '../lib/payment-automation';
 
 // Import enhanced types
 
@@ -236,6 +244,18 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   // Payment Modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  
+  // Education Progress state (from Bolt integration)
+  const [educationProgress, setEducationProgress] = useState(73);
+  
+  // Payment Automation state
+  const [showPaymentAutomationModal, setShowPaymentAutomationModal] = useState(false);
+  const [editingPaymentSchedule, setEditingPaymentSchedule] = useState<PaymentSchedule | undefined>(undefined);
+  const [paymentSchedules, setPaymentSchedules] = useState<PaymentSchedule[]>([]);
+  
+  // QR Modal state (from Bolt integration)
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrAddress, setQrAddress] = useState('');
 
   // Enhanced treasury state
   const [lightningBalance, setLightningBalance] = useState(5435000);
@@ -244,7 +264,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     {
       id: 'approval_1',
       type: 'Allowance Distribution',
-      description: 'Weekly allowance for Alice and Bob',
+      description: 'Weekly payment for Alice and Bob',
       amount: 25000,
       requiredSignatures: 3,
       currentSignatures: 1,
@@ -273,9 +293,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       id: "1",
       username: "satoshi",
       lightningAddress: "satoshi@satnam.pub",
-      role: "adult" as const,
+      role: "parent" as const,
       balance: 1250000,
       nip05Verified: true,
+      avatar: "S", // Avatar support - first letter fallback, allows for future profile photos
       spendingLimits: {
         daily: 100000,
         weekly: 500000
@@ -285,9 +306,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       id: "2", 
       username: "hal",
       lightningAddress: "hal@satnam.pub",
-      role: "adult" as const,
+      role: "parent" as const,
       balance: 850000,
       nip05Verified: true,
+      avatar: "H",
       spendingLimits: {
         daily: 100000,
         weekly: 500000
@@ -300,6 +322,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       role: "child" as const,
       balance: 125000,
       nip05Verified: false,
+      avatar: "A",
       spendingLimits: {
         daily: 50000,
         weekly: 200000,
@@ -312,9 +335,23 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       role: "child" as const,
       balance: 75000,
       nip05Verified: true,
+      avatar: "B",
       spendingLimits: {
         daily: 25000,
         weekly: 100000,
+      },
+    },
+    {
+      id: "5",
+      username: "guardian_eve",
+      lightningAddress: "eve@satnam.pub", 
+      role: "guardian" as const,
+      balance: 500000,
+      nip05Verified: true,
+      avatar: "E",
+      spendingLimits: {
+        daily: 75000,
+        weekly: 300000,
       },
     },
   ];
@@ -342,6 +379,89 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
   const formatSats = (sats: number): string => {
     return new Intl.NumberFormat().format(sats);
+  };
+
+  // QR Modal handler (from Bolt integration)
+  const handleShowQR = (memberId: string, address: string) => {
+    setQrAddress(address);
+    setSelectedMember(memberId);
+    setShowQRModal(true);
+  };
+
+  // Copy NIP-05 to clipboard
+  const handleCopyNIP05 = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      // You could add a toast notification here
+      console.log('NIP-05 copied to clipboard:', address);
+    } catch (err) {
+      console.error('Failed to copy NIP-05:', err);
+    }
+  };
+
+  // Handle Zap payment from QR modal
+  const handleZapPayment = () => {
+    setShowQRModal(false);
+    setShowPaymentModal(true);
+  };
+
+  // Payment Automation Handlers
+  const handleCreatePaymentSchedule = () => {
+    setEditingPaymentSchedule(undefined);
+    setShowPaymentAutomationModal(true);
+  };
+
+  const handleEditPaymentSchedule = (schedule: PaymentSchedule) => {
+    setEditingPaymentSchedule(schedule);
+    setShowPaymentAutomationModal(true);
+  };
+
+  const handleSavePaymentSchedule = async (scheduleData: Partial<PaymentSchedule>) => {
+    try {
+      if (editingPaymentSchedule) {
+        // Update existing schedule
+        console.log('Updating payment schedule:', scheduleData);
+        // In production: await paymentAutomationSystem.updatePaymentSchedule(editingPaymentSchedule.id, scheduleData);
+      } else {
+        // Create new schedule
+        console.log('Creating new payment schedule:', scheduleData);
+        // In production: await paymentAutomationSystem.createPaymentSchedule('family', userId, familyId, scheduleData);
+      }
+      
+      // Refresh schedules list
+      // In production: setPaymentSchedules(await paymentAutomationSystem.getPaymentSchedulesByContext('family', userId, familyId));
+      
+    } catch (error) {
+      console.error('Failed to save payment schedule:', error);
+    }
+  };
+
+  const handleTogglePaymentSchedule = async (scheduleId: string, enabled: boolean) => {
+    try {
+      console.log(`${enabled ? 'Enabling' : 'Disabling'} payment schedule:`, scheduleId);
+      // In production: await paymentAutomationSystem.togglePaymentSchedule(scheduleId, enabled);
+      
+      // Update local state
+      setPaymentSchedules(prev => 
+        prev.map(schedule => 
+          schedule.id === scheduleId ? { ...schedule, enabled } : schedule
+        )
+      );
+    } catch (error) {
+      console.error('Failed to toggle payment schedule:', error);
+    }
+  };
+
+  const handleDeletePaymentSchedule = async (scheduleId: string) => {
+    try {
+      console.log('Deleting payment schedule:', scheduleId);
+      // In production: await paymentAutomationSystem.deletePaymentSchedule(scheduleId);
+      
+      // Update local state
+      setPaymentSchedules(prev => prev.filter(schedule => schedule.id !== scheduleId));
+    } catch (error) {
+      console.error('Failed to delete payment schedule:', error);
+    }
   };
 
   const totalBalance = lightningBalance + fedimintBalance;
@@ -424,6 +544,30 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
         <CreditsBalance variant="family" />
       </div>
 
+      {/* Education Progress Card (from Bolt integration) */}
+      <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-6 border border-yellow-200 shadow-sm">
+        <div className="flex items-center space-x-3 mb-4">
+          <BookOpen className="h-6 w-6 text-yellow-600" />
+          <h3 className="text-lg font-semibold text-yellow-900">Education Progress</h3>
+        </div>
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-yellow-700">Family Progress</span>
+          <span className="text-yellow-900 font-semibold">{educationProgress}%</span>
+        </div>
+        <div className="bg-yellow-200 rounded-full h-3 mb-4">
+          <div 
+            className="bg-gradient-to-r from-yellow-400 to-orange-500 h-3 rounded-full transition-all duration-300"
+            style={{ width: `${educationProgress}%` }}
+          />
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-yellow-600">Bitcoin education modules completed by family members</span>
+          <button className="text-yellow-800 hover:text-yellow-900 font-medium">
+            View Details →
+          </button>
+        </div>
+      </div>
+
       {/* Enhanced Unified Family Payment Interface */}
       <EnhancedUnifiedPayments 
         lightningBalance={lightningBalance}
@@ -475,20 +619,45 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
             {familyMembers.map((member) => (
               <div key={member.id} className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                    {member.username.charAt(0).toUpperCase()}
-                  </div>
+                  <ContextualAvatar
+                    member={member}
+                    context="financial"
+                    onFinancialClick={(memberId) => {
+                      setSelectedMember(memberId);
+                      setShowPaymentModal(true);
+                    }}
+                    size="md"
+                  />
                   <div>
                     <div className="font-medium text-gray-900">{member.username}</div>
-                    <div className="text-sm text-gray-500">{member.role}</div>
+                    <div className="text-sm text-gray-500 capitalize">{member.role}</div>
                   </div>
                 </div>
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleShowQR(member.id, member.lightningAddress)}
+                    className="p-1 text-gray-400 hover:text-orange-600 transition-colors"
+                    title="Show Lightning Address QR Code"
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </button>
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* Payment Automation Section */}
+      <PaymentAutomationCard
+        context="family"
+        schedules={paymentSchedules}
+        onCreateSchedule={handleCreatePaymentSchedule}
+        onEditSchedule={handleEditPaymentSchedule}
+        onToggleSchedule={handleTogglePaymentSchedule}
+        onDeleteSchedule={handleDeletePaymentSchedule}
+      />
     </div>
   );
 
@@ -503,7 +672,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       case 'payments':
         return <UnifiedFamilyPayments familyId={familyId} familyMembers={familyMembers} />;
       case 'phoenixd':
-        return <PhoenixDFamilyManager familyId={familyId} />;
+        return <EnhancedLiquidityDashboard familyId={familyId} />;
       default:
         return renderOverview();
     }
@@ -582,6 +751,90 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
         familyMembers={familyMembers}
         selectedMember={selectedMember}
         onSelectedMemberChange={setSelectedMember}
+      />
+
+      {/* Enhanced QR Code Modal with NIP-05 and Zap Integration */}
+      {showQRModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full border border-gray-200 relative">
+            <button
+              onClick={() => setShowQRModal(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              ✕
+            </button>
+            
+            <div className="text-center">
+              <div className="bg-gray-100 p-4 rounded-lg inline-block mb-4">
+                <QrCode className="h-48 w-48 text-gray-700" />
+              </div>
+              
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Lightning Address</h3>
+              <p className="text-gray-600 mb-2">Scan to pay or copy address:</p>
+              
+              {/* Lightning Address with Copy Button */}
+              <div className="bg-orange-50 rounded-lg p-3 mb-4">
+                <p className="text-orange-700 font-mono text-sm mb-2 break-all">{qrAddress}</p>
+                <button
+                  onClick={() => handleCopyNIP05(qrAddress)}
+                  className="text-orange-600 hover:text-orange-700 text-sm font-medium underline"
+                >
+                  📋 Copy Lightning Address
+                </button>
+              </div>
+
+              {/* NIP-05 Address Section */}
+              <div className="bg-purple-50 rounded-lg p-3 mb-6">
+                <p className="text-purple-700 text-sm font-medium mb-1">NIP-05 Nostr Address:</p>
+                <p className="text-purple-600 font-mono text-sm mb-2 break-all">{qrAddress}</p>
+                <button
+                  onClick={() => handleCopyNIP05(qrAddress)}
+                  className="text-purple-600 hover:text-purple-700 text-sm font-medium underline"
+                >
+                  📋 Copy NIP-05 Address
+                </button>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                <button
+                  onClick={handleZapPayment}
+                  className="w-full bg-orange-500 text-white px-4 py-3 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Zap className="h-4 w-4" />
+                  <span>Send Zap Payment</span>
+                </button>
+                
+                <div className="flex items-center justify-center space-x-2 text-green-600 text-sm">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Ready for Lightning & Nostr payments</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Automation Modal */}
+      <PaymentAutomationModal
+        isOpen={showPaymentAutomationModal}
+        onClose={() => {
+          setShowPaymentAutomationModal(false);
+          setEditingPaymentSchedule(undefined);
+        }}
+        onSave={handleSavePaymentSchedule}
+        context="family"
+        userId="current_user_id" // In production: get from auth context
+        familyId={familyId}
+        familyMembers={familyMembers.map(member => ({
+          id: member.id,
+          name: member.username,
+          role: member.role,
+          avatar: member.avatar,
+          lightningAddress: member.lightningAddress,
+          npub: `npub1${member.id}` // Mock npub - in production get real npub
+        }))}
+        existingSchedule={editingPaymentSchedule}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 /**
- * PRIVACY-FIRST ALLOWANCE AUTOMATION SYSTEM
+ * PRIVACY-FIRST PAYMENT AUTOMATION SYSTEM
  *
- * Automated allowance distribution with Lightning integration,
+ * Automated payment distribution with Lightning integration,
  * end-to-end encryption, and scheduled processing using node-cron.
  */
 
@@ -16,7 +16,7 @@ import {
 
 import { supabase } from "../../lib/supabase";
 
-export interface AllowanceSchedule {
+export interface PaymentSchedule {
   id: string;
   familyId: string;
   familyMemberId: string;
@@ -30,7 +30,7 @@ export interface AllowanceSchedule {
   lastDistribution?: Date;
   distributionCount: number;
   totalDistributed: number;
-  conditions: AllowanceConditions;
+  conditions: PaymentConditions;
   autoApprovalLimit: number;
   parentApprovalRequired: boolean;
   preferredMethod: "lightning" | "ecash" | "auto";
@@ -41,7 +41,7 @@ export interface AllowanceSchedule {
   updatedAt: Date;
 }
 
-export interface AllowanceConditions {
+export interface PaymentConditions {
   maxDailySpend: number;
   maxTransactionSize: number;
   restrictedCategories?: string[];
@@ -77,7 +77,7 @@ export interface NotificationSettings {
   };
 }
 
-export interface AllowanceDistribution {
+export interface PaymentDistribution {
   id: string;
   scheduleId: string;
   familyId: string;
@@ -117,8 +117,8 @@ export interface SpendingTracker {
   categories: { [category: string]: number };
   merchants: { [merchant: string]: number };
   flaggedTransactions: number;
-  allowanceReceived: number;
-  remainingAllowance: number;
+  paymentReceived: number;
+  remainingPayment: number;
   spendingVelocity: {
     transactionsLastHour: number;
     transactionsToday: number;
@@ -128,10 +128,10 @@ export interface SpendingTracker {
   updatedAt: Date;
 }
 
-export interface AllowanceApproval {
+export interface PaymentApproval {
   id: string;
   familyId: string;
-  allowanceDistributionId: string;
+  paymentDistributionId: string;
   requestedBy: string;
   requestedAmount: number;
   reason: string;
@@ -149,7 +149,7 @@ export interface AllowanceApproval {
   };
 }
 
-export interface AllowanceProcessingResult {
+export interface PaymentProcessingResult {
   processed: number;
   successful: number;
   failed: number;
@@ -170,7 +170,7 @@ export interface AllowanceProcessingResult {
   }>;
 }
 
-export class AllowanceAutomationSystem {
+export class PaymentAutomationSystem {
   private lightningClient: LightningClient;
   private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
   private processingQueue: Map<string, any> = new Map();
@@ -197,7 +197,10 @@ export class AllowanceAutomationSystem {
           console.error("❌ Retry processor failed:", error);
         }
       },
-      { scheduled: false },
+      {
+        scheduled: false,
+        timezone: "UTC",
+      } as any
     );
 
     this.scheduledJobs.set("retry-processor", retryJob);
@@ -207,13 +210,13 @@ export class AllowanceAutomationSystem {
   }
 
   /**
-   * Create a new allowance schedule with enhanced privacy protection
+   * Create a new payment schedule with enhanced privacy protection
    */
-  async createAllowanceSchedule(
+  async createPaymentSchedule(
     familyId: string,
     familyMemberId: string,
     schedule: Omit<
-      AllowanceSchedule,
+      PaymentSchedule,
       | "id"
       | "familyId"
       | "familyMemberId"
@@ -222,15 +225,15 @@ export class AllowanceAutomationSystem {
       | "totalDistributed"
       | "createdAt"
       | "updatedAt"
-    >,
-  ): Promise<AllowanceSchedule> {
+    >
+  ): Promise<PaymentSchedule> {
     try {
       console.log(
-        `📅 Creating enhanced allowance schedule for member: ${familyMemberId}`,
+        `📅 Creating enhanced payment schedule for member: ${familyMemberId}`
       );
 
       // Validate schedule parameters
-      this.validateAllowanceSchedule(schedule);
+      this.validatePaymentSchedule(schedule);
 
       // Get and encrypt/decrypt member name
       const { data: member } = await supabase
@@ -255,28 +258,28 @@ export class AllowanceAutomationSystem {
       const encryptedMemberId = await encryptSensitiveData(familyMemberId);
       const encryptedMemberName = await encryptSensitiveData(memberName);
       const encryptedAmount = await encryptSensitiveData(
-        schedule.amount.toString(),
+        schedule.amount.toString()
       );
       const encryptedConditions = await encryptSensitiveData(
-        JSON.stringify(schedule.conditions),
+        JSON.stringify(schedule.conditions)
       );
       const encryptedApprovalLimit = await encryptSensitiveData(
-        schedule.autoApprovalLimit.toString(),
+        schedule.autoApprovalLimit.toString()
       );
       const encryptedNotificationSettings = await encryptSensitiveData(
-        JSON.stringify(schedule.notificationSettings),
+        JSON.stringify(schedule.notificationSettings)
       );
 
       // Calculate next distribution date
       const nextDistribution = this.calculateNextDistribution(
         schedule.frequency,
         schedule.dayOfWeek,
-        schedule.dayOfMonth,
+        schedule.dayOfMonth
       );
 
       // Insert encrypted schedule
       const { data: newSchedule, error } = await supabase
-        .from("secure_allowance_schedules")
+        .from("secure_payment_schedules")
         .insert({
           schedule_uuid: generateSecureUUID(),
           encrypted_family_id: encryptedFamilyId.encrypted,
@@ -309,13 +312,15 @@ export class AllowanceAutomationSystem {
           approval_limit_iv: encryptedApprovalLimit.iv,
           approval_limit_tag: encryptedApprovalLimit.tag,
           parent_approval_required: schedule.parentApprovalRequired,
-          encrypted_distribution_count: (await encryptSensitiveData("0"))
-            .encrypted,
+          encrypted_distribution_count: (
+            await encryptSensitiveData("0")
+          ).encrypted,
           count_salt: (await encryptSensitiveData("0")).salt,
           count_iv: (await encryptSensitiveData("0")).iv,
           count_tag: (await encryptSensitiveData("0")).tag,
-          encrypted_total_distributed: (await encryptSensitiveData("0"))
-            .encrypted,
+          encrypted_total_distributed: (
+            await encryptSensitiveData("0")
+          ).encrypted,
           total_salt: (await encryptSensitiveData("0")).salt,
           total_iv: (await encryptSensitiveData("0")).iv,
           total_tag: (await encryptSensitiveData("0")).tag,
@@ -335,9 +340,7 @@ export class AllowanceAutomationSystem {
         .single();
 
       if (error) {
-        throw new Error(
-          `Failed to create allowance schedule: ${error.message}`,
-        );
+        throw new Error(`Failed to create payment schedule: ${error.message}`);
       }
 
       // Setup individual cron job for this schedule if it's a specific time-based schedule
@@ -353,11 +356,11 @@ export class AllowanceAutomationSystem {
         success: true,
       });
 
-      console.log(`✅ Enhanced allowance schedule created for ${memberName}`);
+      console.log(`✅ Enhanced payment schedule created for ${memberName}`);
 
       return await this.mapDatabaseToSchedule(newSchedule);
     } catch (error) {
-      console.error("❌ Failed to create enhanced allowance schedule:", error);
+      console.error("❌ Failed to create enhanced payment schedule:", error);
 
       logPrivacyOperation({
         action: "encrypt",
@@ -368,25 +371,27 @@ export class AllowanceAutomationSystem {
       });
 
       throw new Error(
-        `Enhanced allowance schedule creation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Enhanced payment schedule creation failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
 
   /**
-   * Process all pending allowance distributions with enhanced retry logic
+   * Process all pending payment distributions with enhanced retry logic
    */
-  async processPendingAllowances(): Promise<AllowanceProcessingResult> {
+  async processPendingPayments(): Promise<PaymentProcessingResult> {
     const startTime = Date.now();
 
     try {
       console.log(
-        "🤖 Processing pending allowance distributions with enhanced features...",
+        "🤖 Processing pending payment distributions with enhanced features..."
       );
 
       // Get all enabled encrypted schedules that are due for distribution
       const { data: dueSchedules, error } = await supabase
-        .from("secure_allowance_schedules")
+        .from("secure_payment_schedules")
         .select("*")
         .eq("enabled", true)
         .lte("next_distribution", new Date().toISOString());
@@ -396,7 +401,7 @@ export class AllowanceAutomationSystem {
       }
 
       if (!dueSchedules || dueSchedules.length === 0) {
-        console.log("No allowances due for distribution");
+        console.log("No payments due for distribution");
         return {
           processed: 0,
           successful: 0,
@@ -409,11 +414,9 @@ export class AllowanceAutomationSystem {
         };
       }
 
-      console.log(
-        `Found ${dueSchedules.length} allowances due for distribution`,
-      );
+      console.log(`Found ${dueSchedules.length} payments due for distribution`);
 
-      const results: AllowanceProcessingResult = {
+      const results: PaymentProcessingResult = {
         processed: 0,
         successful: 0,
         failed: 0,
@@ -424,7 +427,7 @@ export class AllowanceAutomationSystem {
         details: [],
       };
 
-      // Process each due allowance
+      // Process each due payment
       for (const encryptedSchedule of dueSchedules) {
         try {
           results.processed++;
@@ -445,8 +448,9 @@ export class AllowanceAutomationSystem {
           });
 
           // Pre-distribution checks
-          const preCheckResult =
-            await this.performPreDistributionChecks(schedule);
+          const preCheckResult = await this.performPreDistributionChecks(
+            schedule
+          );
 
           if (!preCheckResult.canProceed) {
             if (preCheckResult.requiresApproval) {
@@ -479,8 +483,9 @@ export class AllowanceAutomationSystem {
           }
 
           // Attempt distribution
-          const distributionResult =
-            await this.distributeAllowanceEnhanced(schedule);
+          const distributionResult = await this.distributePaymentEnhanced(
+            schedule
+          );
 
           results.totalAmount += schedule.amount;
           results.totalFees += distributionResult.fee;
@@ -502,7 +507,7 @@ export class AllowanceAutomationSystem {
               schedule.id,
               schedule.frequency,
               schedule.dayOfWeek,
-              schedule.dayOfMonth,
+              schedule.dayOfMonth
             );
 
             // Send success notification
@@ -524,13 +529,13 @@ export class AllowanceAutomationSystem {
 
             await this.createApprovalRequest(
               schedule,
-              distributionResult.failureReason,
+              distributionResult.failureReason
             );
           } else {
             // Failed - check if we should retry
             if (distributionResult.retryCount < schedule.maxRetries) {
               const nextRetryAt = new Date(
-                Date.now() + schedule.retryDelay * 60 * 1000,
+                Date.now() + schedule.retryDelay * 60 * 1000
               );
 
               // Add to retry queue
@@ -552,7 +557,9 @@ export class AllowanceAutomationSystem {
               });
 
               console.log(
-                `📅 Retry scheduled for ${schedule.memberName} at ${nextRetryAt.toISOString()}`,
+                `📅 Retry scheduled for ${
+                  schedule.memberName
+                } at ${nextRetryAt.toISOString()}`
               );
             } else {
               results.failed++;
@@ -589,42 +596,45 @@ export class AllowanceAutomationSystem {
           });
 
           this.processingQueue.delete(encryptedSchedule.schedule_uuid);
-          console.error(`Failed to process encrypted allowance:`, error);
+          console.error(`Failed to process encrypted payment:`, error);
         }
       }
 
       results.processingTimeMs = Date.now() - startTime;
 
       console.log(
-        `✅ Enhanced processing complete: ${results.processed} processed, ${results.successful} successful, ${results.failed} failed, ${results.pendingApproval} pending approval (${results.processingTimeMs}ms)`,
+        `✅ Enhanced processing complete: ${results.processed} processed, ${results.successful} successful, ${results.failed} failed, ${results.pendingApproval} pending approval (${results.processingTimeMs}ms)`
       );
 
       return results;
     } catch (error) {
-      console.error("❌ Failed to process pending allowances:", error);
+      console.error("❌ Failed to process pending payments:", error);
       throw new Error(
-        `Enhanced allowance processing failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Enhanced payment processing failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
 
   /**
-   * Enhanced allowance distribution with Lightning integration
+   * Enhanced payment distribution with Lightning integration
    */
-  private async distributeAllowanceEnhanced(
-    schedule: AllowanceSchedule,
-  ): Promise<AllowanceDistribution> {
+  private async distributePaymentEnhanced(
+    schedule: PaymentSchedule
+  ): Promise<PaymentDistribution> {
     try {
       console.log(
-        `💰 Enhanced allowance distribution: ${schedule.amount} sats to ${schedule.memberName}`,
+        `💰 Enhanced payment distribution: ${schedule.amount} sats to ${schedule.memberName}`
       );
 
       // Determine best distribution method
-      const distributionMethod =
-        await this.determineBestDistributionMethod(schedule);
+      const distributionMethod = await this.determineBestDistributionMethod(
+        schedule
+      );
 
       let result: any;
-      let liquiditySource: AllowanceDistribution["liquiditySource"] =
+      let liquiditySource: PaymentDistribution["liquiditySource"] =
         "family_balance";
 
       switch (distributionMethod) {
@@ -640,11 +650,11 @@ export class AllowanceAutomationSystem {
 
         default:
           throw new Error(
-            `Unsupported distribution method: ${distributionMethod}`,
+            `Unsupported distribution method: ${distributionMethod}`
           );
       }
 
-      const distribution: AllowanceDistribution = {
+      const distribution: PaymentDistribution = {
         id: generateSecureUUID(),
         scheduleId: schedule.id,
         familyId: schedule.familyId,
@@ -668,7 +678,7 @@ export class AllowanceAutomationSystem {
 
       return distribution;
     } catch (error) {
-      console.error("❌ Enhanced allowance distribution failed:", error);
+      console.error("❌ Enhanced payment distribution failed:", error);
 
       return {
         id: generateSecureUUID(),
@@ -689,10 +699,10 @@ export class AllowanceAutomationSystem {
   }
 
   /**
-   * Distribute allowance via Lightning Network
+   * Distribute payment via Lightning Network
    */
   private async distributeViaLightning(
-    schedule: AllowanceSchedule,
+    schedule: PaymentSchedule
   ): Promise<any> {
     try {
       console.log(`⚡ Distributing via Lightning: ${schedule.amount} sats`);
@@ -725,9 +735,9 @@ export class AllowanceAutomationSystem {
   }
 
   /**
-   * Distribute allowance via eCash
+   * Distribute payment via eCash
    */
-  private async distributeViaEcash(schedule: AllowanceSchedule): Promise<any> {
+  private async distributeViaEcash(schedule: PaymentSchedule): Promise<any> {
     try {
       console.log(`🪙 Distributing via eCash: ${schedule.amount} sats`);
 
@@ -755,7 +765,7 @@ export class AllowanceAutomationSystem {
    * Determine the best distribution method based on conditions
    */
   private async determineBestDistributionMethod(
-    schedule: AllowanceSchedule,
+    schedule: PaymentSchedule
   ): Promise<"lightning" | "ecash"> {
     // If explicitly set and not auto
     if (schedule.preferredMethod !== "auto") {
@@ -786,7 +796,7 @@ export class AllowanceAutomationSystem {
   private async processRetryQueue(): Promise<void> {
     const now = new Date();
     const retryItems = Array.from(this.retryQueue.entries()).filter(
-      ([_, item]) => item.nextRetryAt <= now,
+      ([_, item]) => item.nextRetryAt <= now
     );
 
     if (retryItems.length === 0) {
@@ -804,8 +814,8 @@ export class AllowanceAutomationSystem {
         item.distribution.retryCount++;
 
         // Attempt distribution again
-        const distributionResult = await this.distributeAllowanceEnhanced(
-          item.schedule,
+        const distributionResult = await this.distributePaymentEnhanced(
+          item.schedule
         );
 
         if (distributionResult.status === "completed") {
@@ -816,7 +826,7 @@ export class AllowanceAutomationSystem {
             item.schedule.id,
             item.schedule.frequency,
             item.schedule.dayOfWeek,
-            item.schedule.dayOfMonth,
+            item.schedule.dayOfMonth
           );
 
           // Send success notification
@@ -827,12 +837,12 @@ export class AllowanceAutomationSystem {
               amount: item.schedule.amount,
               retryCount: item.distribution.retryCount,
               transactionId: distributionResult.transactionId,
-            },
+            }
           );
         } else if (item.distribution.retryCount < item.schedule.maxRetries) {
           // Schedule another retry
           const nextRetryAt = new Date(
-            Date.now() + item.schedule.retryDelay * 60 * 1000,
+            Date.now() + item.schedule.retryDelay * 60 * 1000
           );
           this.retryQueue.set(id, {
             ...item,
@@ -840,7 +850,9 @@ export class AllowanceAutomationSystem {
           });
 
           console.log(
-            `📅 Retry rescheduled for ${item.schedule.memberName} at ${nextRetryAt.toISOString()}`,
+            `📅 Retry rescheduled for ${
+              item.schedule.memberName
+            } at ${nextRetryAt.toISOString()}`
           );
         } else {
           // Max retries reached
@@ -853,7 +865,7 @@ export class AllowanceAutomationSystem {
               amount: item.schedule.amount,
               retryCount: item.distribution.retryCount,
               reason: distributionResult.failureReason,
-            },
+            }
           );
         }
       } catch (error) {
@@ -891,25 +903,28 @@ export class AllowanceAutomationSystem {
           async () => {
             try {
               const mappedSchedule = await this.mapDatabaseToSchedule(schedule);
-              await this.distributeAllowanceEnhanced(mappedSchedule);
+              await this.distributePaymentEnhanced(mappedSchedule);
             } catch (error) {
               console.error(
                 `❌ Schedule-specific distribution failed for ${schedule.schedule_uuid}:`,
-                error,
+                error
               );
             }
           },
-          { scheduled: false },
+          {
+            scheduled: false,
+            timezone: "UTC",
+          } as any
         );
 
         this.scheduledJobs.set(
           `schedule-${schedule.schedule_uuid}`,
-          scheduleJob,
+          scheduleJob
         );
         scheduleJob.start();
 
         console.log(
-          `⏰ Individual cron job setup for schedule ${schedule.schedule_uuid}: ${cronExpression}`,
+          `⏰ Individual cron job setup for schedule ${schedule.schedule_uuid}: ${cronExpression}`
         );
       }
     } catch (error) {
@@ -919,13 +934,13 @@ export class AllowanceAutomationSystem {
 
   // Helper methods and mock implementations
 
-  private validateAllowanceSchedule(schedule: any): void {
+  private validatePaymentSchedule(schedule: any): void {
     if (schedule.amount < 1000) {
-      throw new Error("Allowance amount must be at least 1000 sats");
+      throw new Error("Payment amount must be at least 1000 sats");
     }
 
     if (schedule.amount > 100000) {
-      throw new Error("Allowance amount cannot exceed 100000 sats");
+      throw new Error("Payment amount cannot exceed 100000 sats");
     }
 
     if (!["daily", "weekly", "monthly"].includes(schedule.frequency)) {
@@ -944,7 +959,7 @@ export class AllowanceAutomationSystem {
   private calculateNextDistribution(
     frequency: string,
     dayOfWeek?: number,
-    dayOfMonth?: number,
+    dayOfMonth?: number
   ): Date {
     const now = new Date();
     const next = new Date(now);
@@ -962,8 +977,8 @@ export class AllowanceAutomationSystem {
         next.setDate(
           Math.min(
             dayOfMonth || 1,
-            new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate(),
-          ),
+            new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()
+          )
         );
         break;
     }
@@ -972,9 +987,7 @@ export class AllowanceAutomationSystem {
     return next;
   }
 
-  private async mapDatabaseToSchedule(
-    dbRecord: any,
-  ): Promise<AllowanceSchedule> {
+  private async mapDatabaseToSchedule(dbRecord: any): Promise<PaymentSchedule> {
     // Decrypt all sensitive fields
     const familyId = await decryptSensitiveData({
       encrypted: dbRecord.encrypted_family_id,
@@ -1003,7 +1016,7 @@ export class AllowanceAutomationSystem {
         salt: dbRecord.amount_salt,
         iv: dbRecord.amount_iv,
         tag: dbRecord.amount_tag,
-      }),
+      })
     );
 
     const conditions = JSON.parse(
@@ -1012,7 +1025,7 @@ export class AllowanceAutomationSystem {
         salt: dbRecord.conditions_salt,
         iv: dbRecord.conditions_iv,
         tag: dbRecord.conditions_tag,
-      }),
+      })
     );
 
     const autoApprovalLimit = parseInt(
@@ -1021,7 +1034,7 @@ export class AllowanceAutomationSystem {
         salt: dbRecord.approval_limit_salt,
         iv: dbRecord.approval_limit_iv,
         tag: dbRecord.approval_limit_tag,
-      }),
+      })
     );
 
     // Decrypt notification settings if available
@@ -1045,7 +1058,7 @@ export class AllowanceAutomationSystem {
             salt: dbRecord.notification_salt,
             iv: dbRecord.notification_iv,
             tag: dbRecord.notification_tag,
-          }),
+          })
         );
       } catch (error) {
         console.warn("Failed to decrypt notification settings, using defaults");
@@ -1062,7 +1075,7 @@ export class AllowanceAutomationSystem {
           salt: dbRecord.count_salt,
           iv: dbRecord.count_iv,
           tag: dbRecord.count_tag,
-        }),
+        })
       );
 
       totalDistributed = parseInt(
@@ -1071,7 +1084,7 @@ export class AllowanceAutomationSystem {
           salt: dbRecord.total_salt,
           iv: dbRecord.total_iv,
           tag: dbRecord.total_tag,
-        }),
+        })
       );
     } catch (error) {
       console.warn("Failed to decrypt counters, using defaults");
@@ -1106,7 +1119,7 @@ export class AllowanceAutomationSystem {
   }
 
   private async performPreDistributionChecks(
-    schedule: AllowanceSchedule,
+    schedule: PaymentSchedule
   ): Promise<{
     canProceed: boolean;
     requiresApproval: boolean;
@@ -1135,29 +1148,29 @@ export class AllowanceAutomationSystem {
   }
 
   private async createApprovalRequest(
-    schedule: AllowanceSchedule,
-    reason?: string,
+    schedule: PaymentSchedule,
+    reason?: string
   ): Promise<void> {
     // Mock implementation for creating approval requests
     console.log(
-      `📋 Approval request created for ${schedule.memberName}: ${reason}`,
+      `📋 Approval request created for ${schedule.memberName}: ${reason}`
     );
   }
 
   private async sendNotification(
-    schedule: AllowanceSchedule,
+    schedule: PaymentSchedule,
     type: string,
-    data: any,
+    data: any
   ): Promise<void> {
     // Mock implementation for sending notifications
     console.log(
       `📨 Notification sent for ${schedule.memberName}: ${type}`,
-      data,
+      data
     );
   }
 
   private async checkFamilyLiquidity(
-    familyId: string,
+    familyId: string
   ): Promise<{ availableBalance: number }> {
     // Mock implementation
     return { availableBalance: Math.random() * 1000000 };
@@ -1169,7 +1182,7 @@ export class AllowanceAutomationSystem {
   }
 
   private async storeEncryptedDistribution(
-    distribution: AllowanceDistribution,
+    distribution: PaymentDistribution
   ): Promise<void> {
     // Mock implementation for storing encrypted distribution records
     console.log(`💾 Stored encrypted distribution record: ${distribution.id}`);
@@ -1179,16 +1192,16 @@ export class AllowanceAutomationSystem {
     scheduleId: string,
     frequency: string,
     dayOfWeek?: number,
-    dayOfMonth?: number,
+    dayOfMonth?: number
   ): Promise<void> {
     const nextDistribution = this.calculateNextDistribution(
       frequency,
       dayOfWeek,
-      dayOfMonth,
+      dayOfMonth
     );
 
     await supabase
-      .from("secure_allowance_schedules")
+      .from("secure_payment_schedules")
       .update({
         next_distribution: nextDistribution.toISOString(),
         updated_at: new Date().toISOString(),
@@ -1201,7 +1214,7 @@ export class AllowanceAutomationSystem {
    */
   async shutdown(): Promise<void> {
     try {
-      console.log("🛑 Shutting down Allowance Automation System...");
+      console.log("🛑 Shutting down Payment Automation System...");
 
       // Stop all cron jobs
       for (const [name, job] of this.scheduledJobs) {
@@ -1210,9 +1223,9 @@ export class AllowanceAutomationSystem {
       }
       this.scheduledJobs.clear();
 
-      console.log("✅ Allowance Automation System shutdown complete");
+      console.log("✅ Payment Automation System shutdown complete");
     } catch (error) {
-      console.error("❌ Error during allowance system shutdown:", error);
+      console.error("❌ Error during payment system shutdown:", error);
     }
   }
 }

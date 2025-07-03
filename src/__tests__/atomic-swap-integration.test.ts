@@ -116,7 +116,7 @@ describe("Atomic Swap Integration Tests", () => {
       toMemberId: "child_001",
       amount: 1000,
       swapType: "fedimint_to_lightning",
-      purpose: "weekly_allowance",
+      purpose: "weekly_payment",
       requiresApproval: false,
     };
 
@@ -139,7 +139,7 @@ describe("Atomic Swap Integration Tests", () => {
         metadata: expect.objectContaining({
           fromMemberId: "parent_001",
           toMemberId: "child_001",
-          purpose: "weekly_allowance",
+          purpose: "weekly_payment",
         }),
       });
       expect(mockFedimint.atomicRedeemToPay).toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe("Atomic Swap Integration Tests", () => {
         toMemberId: "child_001",
         amount: 1000,
         swapType: "fedimint_to_lightning",
-        purpose: "allowance",
+        purpose: "payment",
         requiresApproval: false,
       };
 
@@ -528,7 +528,7 @@ describe("Atomic Swap Integration Tests", () => {
         toMemberId: "child_001",
         amount: 1000,
         swapType: "fedimint_to_lightning",
-        purpose: "allowance",
+        purpose: "payment",
         requiresApproval: false,
       };
 

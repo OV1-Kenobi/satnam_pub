@@ -20,7 +20,7 @@
  *   lnbitsAdminKey: await encryptSensitiveData(adminKey),
  *   liquidityThreshold: 1000000,
  *   emergencyReserve: 500000,
- *   allowanceAutomation: true,
+ *   paymentAutomation: true,
  *   websocketEnabled: true
  * });
  *
@@ -82,10 +82,10 @@ const EnhancedFamilyConfigSchema = z.object({
   emergencyReserve: z
     .number()
     .min(50_000, "Minimum emergency reserve is 50,000 sats"),
-  allowanceAutomation: z.boolean(),
+  paymentAutomation: z.boolean(),
   intelligentRouting: z.boolean(),
   cronSchedules: z.object({
-    allowanceDistribution: CronScheduleSchema,
+    paymentDistribution: CronScheduleSchema,
     liquidityRebalancing: CronScheduleSchema,
     healthChecks: CronScheduleSchema,
   }),
@@ -120,14 +120,14 @@ export interface EnhancedFamilyConfig {
   liquidityThreshold: number;
   /** Emergency reserve amount in satoshis */
   emergencyReserve: number;
-  /** Enable automated allowance distribution */
-  allowanceAutomation: boolean;
+  /** Enable automated payment distribution */
+  paymentAutomation: boolean;
   /** Enable intelligent payment routing */
   intelligentRouting: boolean;
   /** Cron schedule configurations */
   cronSchedules: {
-    /** Cron schedule for allowance distribution */
-    allowanceDistribution: string;
+    /** Cron schedule for payment distribution */
+    paymentDistribution: string;
     /** Cron schedule for liquidity rebalancing */
     liquidityRebalancing: string;
     /** Cron schedule for health checks */
@@ -351,7 +351,7 @@ export class EnhancedFamilyCoordinator {
    *   lnbitsAdminKey: "encrypted_admin_key",
    *   liquidityThreshold: 1000000,
    *   emergencyReserve: 500000,
-   *   allowanceAutomation: true,
+   *   paymentAutomation: true,
    *   websocketEnabled: true
    * });
    * ```
@@ -499,21 +499,21 @@ export class EnhancedFamilyCoordinator {
    * @throws {Error} When cron job setup fails
    * @returns {Promise<void>} Resolves when all jobs are configured
    *
-   * @description Configures scheduled tasks including allowance distribution,
+   * @description Configures scheduled tasks including payment distribution,
    * liquidity rebalancing, and health checks based on the provided configuration.
    */
   private async setupCronJobs(): Promise<void> {
     try {
-      // Allowance distribution job
+      // Payment distribution job
       if (
-        this.config.allowanceAutomation &&
-        this.config.cronSchedules.allowanceDistribution
+        this.config.paymentAutomation &&
+        this.config.cronSchedules.paymentDistribution
       ) {
-        const allowanceJob = cron.schedule(
-          this.config.cronSchedules.allowanceDistribution,
+        const paymentJob = cron.schedule(
+          this.config.cronSchedules.paymentDistribution,
           async () => {
             try {
-              await this.processScheduledAllowances();
+              await this.processScheduledPayments();
             } catch (error) {
               // Log error and broadcast alert without exposing sensitive details
               logPrivacyOperation({
@@ -521,20 +521,20 @@ export class EnhancedFamilyCoordinator {
                 dataType: "family_data",
                 familyId: this.config.familyId,
                 success: false,
-                error: "Scheduled allowance distribution failed",
+                error: "Scheduled payment distribution failed",
               });
 
               await this.broadcastAlert(
                 "critical",
-                "Scheduled allowance distribution encountered an error"
+                "Scheduled payment distribution encountered an error"
               );
             }
           },
           { scheduled: false }
         );
 
-        this.cronJobs.set("allowance-distribution", allowanceJob);
-        allowanceJob.start();
+        this.cronJobs.set("payment-distribution", paymentJob);
+        paymentJob.start();
       }
 
       // Liquidity rebalancing job
@@ -1189,24 +1189,22 @@ export class EnhancedFamilyCoordinator {
   }
 
   /**
-   * Process scheduled allowances
+   * Process scheduled payments
    * @private
    * @returns {Promise<void>}
    */
-  private async processScheduledAllowances(): Promise<void> {
+  private async processScheduledPayments(): Promise<void> {
     try {
-      // Import and use the AllowanceAutomationSystem
-      const { AllowanceAutomationSystem } = await import(
-        "./allowance-automation"
-      );
-      const allowanceSystem = new AllowanceAutomationSystem();
+      // Import and use the PaymentAutomationSystem
+      const { PaymentAutomationSystem } = await import("./payment-automation");
+      const paymentSystem = new PaymentAutomationSystem();
 
-      const result = await allowanceSystem.processPendingAllowances();
+      const result = await paymentSystem.processPendingPayments();
 
       if (result.failed > 0) {
         await this.broadcastAlert(
           "warning",
-          `${result.failed} allowance distributions failed`
+          `${result.failed} payment distributions failed`
         );
       }
 
@@ -1216,7 +1214,7 @@ export class EnhancedFamilyCoordinator {
           familyId: this.config.familyId,
           timestamp: new Date(),
           data: {
-            type: "allowance_distribution",
+            type: "payment_distribution",
             count: result.successful,
             totalAmount: result.totalAmount,
           },

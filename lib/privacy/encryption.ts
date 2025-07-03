@@ -102,7 +102,9 @@ export async function encryptSensitiveData(plaintext: string): Promise<{
     };
   } catch (error) {
     throw new Error(
-      `Encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Encryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -137,7 +139,9 @@ export async function decryptSensitiveData(encryptedData: {
     return decrypted;
   } catch (error) {
     throw new Error(
-      `Decryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Decryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -178,7 +182,9 @@ export async function hashUsername(username: string): Promise<{
     };
   } catch (error) {
     throw new Error(
-      `Username hashing failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Username hashing failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -245,7 +251,9 @@ export async function encryptNsec(nsec: string): Promise<{
     };
   } catch (error) {
     throw new Error(
-      `Nsec encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Nsec encryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -275,7 +283,9 @@ export async function decryptNsec(encryptedData: {
     return decrypted;
   } catch (error) {
     throw new Error(
-      `Nsec decryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Nsec decryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -298,7 +308,9 @@ export async function encryptNpub(npub: string): Promise<{
     return await encryptSensitiveData(npub);
   } catch (error) {
     throw new Error(
-      `Npub encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Npub encryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -328,7 +340,9 @@ export async function decryptNpub(encryptedData: {
     return decrypted;
   } catch (error) {
     throw new Error(
-      `Npub decryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Npub decryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -365,7 +379,15 @@ export interface PrivacyAuditEntry {
   id: string;
   timestamp: Date;
   action: "encrypt" | "decrypt" | "hash" | "verify" | "access";
-  dataType: "nsec" | "npub" | "username" | "family_data" | "guardian_shard";
+  dataType:
+    | "nsec"
+    | "npub"
+    | "username"
+    | "family_data"
+    | "guardian_shard"
+    | "payment_distributions"
+    | "payment_schedule"
+    | "event";
   userId?: string;
   familyId?: string;
   success: boolean;
@@ -456,7 +478,9 @@ export async function doubleEncryptSensitiveData(plaintext: string): Promise<{
     };
   } catch (error) {
     throw new Error(
-      `Double encryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Double encryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }
@@ -488,7 +512,9 @@ export async function doubleDecryptSensitiveData(encryptedData: {
     return innerDecrypted;
   } catch (error) {
     throw new Error(
-      `Double decryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Double decryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 }

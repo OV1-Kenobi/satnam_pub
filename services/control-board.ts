@@ -156,13 +156,13 @@ export class ControlBoardService {
       // Get family members with Lightning addresses
       const familyMembers = await getFamilyMembers(this.familyId);
       const lightningMembers = familyMembers.filter(
-        (member) => member.lightningAddress,
+        (member) => member.lightningAddress
       );
 
       // Calculate totals
       const totalBalance = lightningMembers.reduce(
         (sum, member) => sum + (member.balance || 0),
-        0,
+        0
       );
 
       // Get recent transactions
@@ -239,13 +239,13 @@ export class ControlBoardService {
         (member) =>
           member.lastActivity &&
           Date.now() - new Date(member.lastActivity).getTime() <
-            24 * 60 * 60 * 1000,
+            24 * 60 * 60 * 1000
       ).length;
       const verifiedMembers = familyMembers.filter(
-        (member) => member.nostrPubkey,
+        (member) => member.nostrPubkey
       ).length;
       const privacyEnabledMembers = familyMembers.filter(
-        (member) => member.privacyLevel && member.privacyLevel !== "standard",
+        (member) => member.privacyLevel && member.privacyLevel !== "standard"
       ).length;
 
       return {
@@ -272,7 +272,7 @@ export class ControlBoardService {
         .eq("family_id", this.familyId)
         .gte(
           "created_at",
-          new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
         );
 
       if (error) throw error;
@@ -374,7 +374,7 @@ export class ControlBoardService {
           amount: 25000,
           from: "dad@satnam.pub",
           to: "daughter@satnam.pub",
-          description: "Weekly allowance",
+          description: "Weekly payment",
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4),
           status: "confirmed",
           privacyEnabled: false,
@@ -574,7 +574,7 @@ export class ControlBoardService {
       const result = await this.lightningAddressService.generatePaymentInvoice(
         to.replace("@satnam.pub", ""),
         amount,
-        description,
+        description
       );
 
       // Store transaction in database
@@ -610,7 +610,7 @@ export class ControlBoardService {
     options: {
       readAccess?: boolean;
       writeAccess?: boolean;
-    } = {},
+    } = {}
   ) {
     try {
       const { readAccess = true, writeAccess = true } = options;

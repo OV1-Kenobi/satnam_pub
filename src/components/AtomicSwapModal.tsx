@@ -26,7 +26,7 @@ interface AtomicSwapModalProps {
   fromMemberId: string;
   toMemberId: string;
   defaultAmount?: number;
-  purpose?: 'allowance' | 'gift' | 'emergency' | 'transfer';
+  purpose?: 'payment' | 'gift' | 'emergency' | 'transfer';
 }
 
 interface SwapStep {

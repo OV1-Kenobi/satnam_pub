@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "type-check": "tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -30,6 +31,7 @@
     "crypto-js": "^4.1.1",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.263.1",
+    "node-cron": "^4.2.0",
     "nostr-tools": "^1.17.0",
     "postcss": "^8.5.6",
     "qrcode": "^1.5.4",
@@ -41,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.8",
+    "@types/node-cron": "^3.0.11",
     "@types/react": "^18.0.27",
     "@types/react-dom": "^18.0.10",
     "@vitejs/plugin-react": "^3.1.0",

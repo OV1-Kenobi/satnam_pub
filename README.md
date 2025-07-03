@@ -1,82 +1,149 @@
-# Satnam.pub - Sovereign Bitcoin Identity Forge
+# Satnam.pub - Sovereign Bitcoin Family Banking & Identity Forge
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]()
 [![Bitcoin Only](https://img.shields.io/badge/Bitcoin-Only-f2a900.svg)]()
 [![Nostr Protocol](https://img.shields.io/badge/Protocol-Nostr-purple.svg)]()
+[![Privacy First](https://img.shields.io/badge/Privacy-First-green.svg)]()
 
-> **Forge Your True Name** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians and no compromises.
+> **Forge Your Sovereign Family Legacy** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians, no compromises, and complete privacy.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Core Principles](#core-principles)
 - [Features](#features)
+- [Open Protocols](#open-protocols)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
-- [Security](#security)
+- [Security & Privacy](#security--privacy)
 - [API Documentation](#api-documentation)
+- [Development Roadmap](#development-roadmap)
 - [Contributing](#contributing)
 - [License](#license)
-- [Support](#support)
 
 ## Overview
 
-Satnam.pub is a sovereign Bitcoin identity platform that empowers families and individuals to create and manage decentralized digital identities without relying on custodial services. Built on Bitcoin and the Nostr protocols, the platform provides a comprehensive suite of tools for identity forging, education, family coordination, and account recovery.
+Satnam.pub is a Bitcoin-only, privacy-first, sovereign family banking and identity platform that empowers families and individuals to create and manage decentralized digital identities and finances without relying on custodial services. Built exclusively on Bitcoin, Lightning, Nostr, and eCash protocols, the platform provides a comprehensive suite of tools for identity forging, education, family coordination, and financial sovereignty.
 
-The project combines the security and sovereignty of Bitcoin with the interoperability of Nostr to create human-readable addresses, family dashboards, and educational resources - all while maintaining complete user control over private keys and identity data.
+The project combines the security and sovereignty of Bitcoin with the interoperability of Nostr to create human-readable addresses, family dashboards, and educational resources - all while maintaining complete user control over private keys, identity data, and financial information.
 
-Whether you're a Bitcoin beginner seeking education or an advanced user coordinating family security, Satnam.pub provides the tools to build your digital dynasty with pure Bitcoin sovereignty.
+Whether you're a Bitcoin beginner seeking education or an advanced user coordinating family security, Satnam.pub provides the tools to build your digital dynasty with pure Bitcoin sovereignty and uncompromising privacy.
+
+## Core Principles
+
+### 🛡️ **Bitcoin-Only**
+
+- No altcoins, no tokens, no compromises
+- All value transfer and authentication is Bitcoin-native
+- Lightning Network, Fedimint, and Cashu for all payments
+
+### 🔒 **Privacy-First**
+
+- End-to-end encryption for all communications
+- Metadata minimization in all transactions
+- No external logging or analytics
+- User-controlled data with programmable deletion
+
+### ⚡ **Sovereignty**
+
+- Users control their keys, identities, and funds
+- No custodial risk, no vendor lock-in
+- Self-custody as the destination at all stages
+- Guided paths from custodial services to self-custody
+
+### 📝 **Auditability**
+
+- All code, infrastructure, and flows are transparent
+- Documented and verifiable processes
+- Open-source and community-reviewed
 
 ## Features
 
 ### 🔨 **Identity Forge**
 
 - Create sovereign digital identities with no custodians
-- Generate human-readable reusable social media & wallet accounts
+- Generate human-readable Lightning addresses (username@satnam.pub)
 - Customizable usernames and family names
 - Secure recovery system with encrypted backups
 - Multi-factor authentication with OTP via Nostr DMs
-- Seamless integration with Nostr ecosystem w/curated Nostr client apps
-- Nostr-native authentication NWC/OTP using cryptographic signatures
+- Seamless integration with Nostr ecosystem
+- Nostr-native authentication (NIP-07, direct nsec, OTP)
 - Secure private key management and backup systems
+- Self-custody journey with Nostr badges for milestones
 
 ### 👨‍👩‍👧‍👦 **Family Coordination**
 
-- Family dashboard for coordinated Nostr account, LN Bitcoin, & eCash management
+- Family dashboard for coordinated Bitcoin, Lightning & eCash management
 - Multi-generational onboarding and education
-- Shared security practices and recovery protocols
+- Guardian approval system for large transactions
 - Family-wide Lightning Network & Nostr account integration
+- Privacy-enhanced messaging for family communications
 
-### 📚 **Bitcoin Education Platform Integration**
+### 🔄 **Giftwrapped Messaging**
 
-- Comprehensive Bitcoin education for all skill levels
-- Interactive learning modules and tutorials
+- End-to-end encrypted communications
+- Individual and group messaging
+- Privacy metrics for all communications
+- Metadata minimization
+- Programmable data deletion controls
+
+### 📚 **Citadel Academy Integration**
+
+- Comprehensive Bitcoin education for all skill levels through Citadel Academy
+- Nostr Knowledge Management System for tracking learning progress
+- Nostr badges for intellectual and skill mastery journeys
 - Security best practices and hands-on exercises
-- Integration with Citadel Academy Nostr-based educational resources
+- Self-custody journey with guided pathways
+- Rewards for educational achievements
 
-### 🌐 **Nostr Ecosystem Integration**
+### 🌐 **Nostr Protocol Integration**
 
-- Native Nostr protocol implementation
-- NIP-05 verification system (username@satnam.pub)
-- Lightning addresses for seamless 'Zap'payments
+- Native Nostr protocol implementation (NIP-04, NIP-05, NIP-07, NIP-17, NIP-28, NIP-29, NIP-59)
+- Human-readable verification system (username@satnam.pub)
+- Lightning addresses for seamless 'Zap' payments
 - Cross-platform identity portability
+- Nostr badges for self-custody milestones
 
-### 🔐 **Advanced Security**
+### 🔐 **Advanced Security & Privacy**
 
 - No passwords stored server-side
 - Time-based challenge authentication
 - Encrypted private key backups
 - Multi-factor authentication with OTP via Nostr DMs
 - Comprehensive security guidelines and monitoring
+- Guardian approval for large transactions
+- Hardware security integration (future)
+- Unified data deletion modal
 
-### ⚡ **Lightning Network Support**
+### ⚡ **Multi-Layer Bitcoin Stack**
 
-- Lightning address provisioning
-- Voltage, BTCPayserver, and LN Bits integration
+- Human-readable Lightning addresses (username@satnam.pub)
+- Voltage, PhoenixD, and LNProxy integration
 - Family-wide Lightning Network invoices and payments
 - Multi-signature setup for enhanced security
 - Real-time transaction monitoring
+- Fedimint federation with guardian approval
+- Cashu eCash for private transactions
+- Multi-layer Lightning/Cashu/Fedimint bridge
+
+## Open Protocols
+
+Satnam.pub is built exclusively on open protocols:
+
+- **Bitcoin:** The foundation of all value transfer
+- **Lightning Network:** Instant, low-fee payments
+- **Nostr:** Decentralized identity and messaging
+  - NIP-04: Encrypted direct messages
+  - NIP-05: DNS-based verification
+  - NIP-07: Browser extension signing
+  - NIP-17: Event treatment recommendations
+  - NIP-28: Public chat channels
+  - NIP-29: Group chat key management
+  - NIP-59: Gift Wrapped messages
+- **Fedimint:** Federation-based custody and privacy
+- **Cashu:** Private eCash for Bitcoin
 
 ## Installation
 
@@ -104,14 +171,14 @@ For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md
 2. **Setup environment**
 
    ```bash
-   cp .env.development .env.local
+   cp .env.example .env.local
    ```
 
 3. **Start servers**
 
    ```bash
-   # Terminal 1 - Backend
-   npm run server:dev
+   # Terminal 1 - Backend (Netlify Functions)
+   npm run functions:dev
 
    # Terminal 2 - Frontend
    npm run dev
@@ -119,7 +186,7 @@ For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md
 
 4. **Access application**
    - Frontend: http://localhost:3000
-   - Backend: http://localhost:8000
+   - Backend: http://localhost:8888/.netlify/functions
 
 ### Production Deployment
 
@@ -129,9 +196,9 @@ For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md
    npm run build
    ```
 
-2. **Start production server**
+2. **Deploy to Netlify**
    ```bash
-   npm run server
+   npm run deploy
    ```
 
 ### Testing
@@ -142,14 +209,11 @@ The project uses Vitest for fast, reliable testing with TypeScript support.
 # Run all tests
 npm test
 
-# Run tests in watch mode
-npm run test:watch
-
 # Run tests with coverage
 npm run test:coverage
 
 # Run specific test file
-npm test -- zeus-lsp-client.test.ts
+npm test -- privacy-first-messaging.test.ts
 
 # Run tests with UI
 npm run test:ui
@@ -160,16 +224,6 @@ npm run test:ui
 - Unit tests: `**/*.test.ts`
 - Integration tests: `**/__tests__/**/*.test.ts`
 - Component tests: `**/*.test.tsx`
-
-**Zeus LSP Testing:**
-The Zeus LSP client includes mock implementations for testing without real LSP connections.
-
-```typescript
-import { LSPClient } from "./lib/zeus-lsp-client";
-
-// Create mock client for testing
-const mockClient = LSPClient.createMock();
-```
 
 ## Quick Start
 
@@ -188,16 +242,24 @@ const identity = await forgeIdentity({
 
 ### 2. Authentication Methods
 
-**Option A: Nostr Wallet Connect (Recommended)**
+**Option A: NIP-07 Browser Extension (Recommended)**
 
 ```typescript
-// Sign authentication challenge
+// Sign authentication challenge with browser extension
 const challenge = await getAuthChallenge(npub);
-const signature = await signChallenge(challenge, privateKey);
+const signature = await window.nostr.signEvent(challenge);
 const token = await authenticate(npub, signature);
 ```
 
-**Option B: One-Time Password via Nostr DM**
+**Option B: Direct nsec Import**
+
+```typescript
+// Import private key directly (only in secure contexts)
+const identity = await importIdentity(nsec);
+const token = await authenticateWithNsec(nsec);
+```
+
+**Option C: One-Time Password via Nostr DM**
 
 ```typescript
 // Request OTP
@@ -214,6 +276,7 @@ After authentication, access your family dashboard to:
 - Coordinate multi-signature setups
 - Share educational resources
 - Monitor Lightning Network activity
+- Manage privacy settings and data deletion
 
 ### 4. Recovery Process
 
@@ -230,21 +293,21 @@ const recoveredIdentity = await recoverIdentity(
 
 ## Architecture
 
-### Frontend Stack
+### Frontend Architecture
 
 - **React 18** with TypeScript
 - **Vite** for development and building
 - **Tailwind CSS** for styling
-- **Lucide React** for icons
-- **Built with Bolt.new** - AI-powered full-stack web development platform
+- **Browser-only** code (no Node.js polyfills)
+- **Strict separation** of concerns with barrel files
 
-### Backend Stack
+### Backend Architecture
 
-- **Node.js** with Express.js
+- **Netlify Functions** for serverless backend
 - **TypeScript** for type safety
-- **PostgreSQL** for data persistence
-- **Redis** for session management
-- **JWT** for authentication tokens
+- **Supabase** for database and authentication
+- **Vault** for encrypted local logging (no PII)
+- **No external logging** or analytics
 
 ### Bitcoin & Nostr Integration
 
@@ -252,6 +315,8 @@ const recoveredIdentity = await recoverIdentity(
 - **@noble/secp256k1** for cryptographic operations
 - **bech32** for address encoding
 - **bolt11** for Lightning invoice parsing
+- **Fedimint** for family federation
+- **Cashu** for eCash implementation
 
 ### Project Structure
 
@@ -261,10 +326,12 @@ src/
 │   ├── EducationPlatform.tsx
 │   ├── FamilyDashboard.tsx
 │   ├── IdentityForge.tsx
+│   ├── PrivacyControls.tsx
 │   └── SignInModal.tsx
 ├── services/           # Business logic
 │   ├── auth.ts
 │   ├── identity.ts
+│   ├── privacy.ts
 │   └── lightning.ts
 ├── utils/              # Utility functions
 │   ├── crypto.ts
@@ -272,25 +339,27 @@ src/
 ├── types/              # TypeScript definitions
 └── App.tsx             # Main application component
 
-api/
-├── endpoints/          # API route handlers
-│   ├── auth.ts
-│   ├── family.ts
-│   └── user.ts
-└── index.ts
+netlify/functions/      # Serverless functions
+├── auth/
+│   ├── challenge.ts
+│   ├── nip07-signin.ts
+│   └── otp-verify.ts
+├── family/
+│   ├── members.ts
+│   └── treasury.ts
+└── lightning/
+    ├── address.ts
+    └── payment.ts
 
 lib/
 ├── nostr.ts           # Nostr protocol implementation
 ├── secure-storage.ts  # Encrypted storage utilities
 └── supabase.ts        # Database configuration
-
-database/
-└── migrations/        # Database schema migrations
 ```
 
-## Security
+## Security & Privacy
 
-### 🔐 **Security Model**
+### 🔐 **Zero-Knowledge Security Model**
 
 Satnam.pub implements a zero-knowledge security model where:
 
@@ -298,14 +367,73 @@ Satnam.pub implements a zero-knowledge security model where:
 - All authentication uses cryptographic signatures
 - Private keys remain under user control
 - Recovery systems use encrypted backups
+- No external logging or analytics
+- Programmable data deletion controls
+- Verifiable client-side operations
+- **zk-SNARKs** for transaction verification without revealing amounts or participants
+- **Bulletproofs** for range proofs to verify transaction validity without exposing values
+- **zk-STARKs** for scalable, transparent verification of complex operations
+- **Blind signature schemes** for privacy-preserving authentication
+- **Homomorphic encryption** for secure computations without data exposure
 
-### 🛡️ **Security Features**
+### 🛡️ **Privacy-First Security Features**
 
+- **End-to-End Encryption**: All communications are encrypted
+- **Metadata Minimization**: Reduce transaction fingerprinting
+- **Privacy Metrics**: Measure and improve privacy levels
+- **Unified Deletion Modal**: Control all your data
+- **Self-Custody Journey**: Guided paths to sovereignty
+- **Guardian Approval**: Family-based security model
+- **Local Verification**: Security checks run client-side
+- **Encrypted Audit Logs**: User-controlled, locally stored
 - **HTTPS Enforcement**: All connections use TLS encryption
 - **Input Validation**: Comprehensive validation using Zod schemas
 - **Rate Limiting**: Protection against brute force attacks
 - **Session Management**: Secure JWT tokens with automatic expiration
 - **CSP Headers**: Content Security Policy for XSS prevention
+- **Decentralized Verification**: Nostr-based security attestations
+- **Trustless Security Model**: No reliance on central authorities
+- **Ephemeral Sessions**: Temporary credentials that leave no trace
+- **Secure Enclaves**: Isolated execution environments for sensitive operations
+- **Forward Secrecy**: Protection of past communications if keys are compromised
+
+### 🔍 **Zero-Knowledge Proof Implementation**
+
+Satnam.pub leverages zero-knowledge proofs in several key areas, with a comprehensive audit process starting Q3 2025 (seeking user feedback on potential audit partners):
+
+1. **Transaction Verification** (zk-SNARKs) - Phase 1, Current-Q3 2025
+
+   - Verify Lightning payment amounts without revealing values
+   - Confirm transaction history without exposing transaction graph
+   - Validate spending limits compliance without revealing actual spending
+
+2. **Identity & Authentication** (Bulletproofs) - Phase 2, Q4 2025
+
+   - Age verification without revealing birth date
+   - Guardian approval without exposing transaction details
+   - Account ownership proof without linking identities
+
+3. **Family Treasury Management** (zk-STARKs) - Phase 3, Q2 2026
+
+   - Multi-signature verification without revealing individual signatures
+   - Treasury balance verification without exposing actual amounts
+   - Spending policy compliance without revealing transaction details
+
+4. **Fedimint & Cashu Integration** - Phase 4, Q4 2026
+   - Blind issuance and redemption of eCash tokens
+   - Federated custody verification without revealing guardian identities
+   - Cross-federation transfers without exposing source/destination
+
+### 📊 **Privacy-Preserving Analytics**
+
+Satnam.pub implements a unique approach to analytics that preserves privacy:
+
+- **Local-Only Analytics**: All usage data stays on your device
+- **Differential Privacy**: Any shared metrics have mathematical privacy guarantees
+- **Aggregated Insights**: Only non-identifying statistical data is processed
+- **Opt-In Only**: All analytics are disabled by default and require explicit consent
+- **Self-Sovereign Data**: View and delete your own analytics data at any time
+- **Zero-Knowledge Proofs**: Verify system health without exposing individual data
 
 ### ⚠️ **Security Guidelines**
 
@@ -316,13 +444,16 @@ Please review our comprehensive [Security Guidelines](SECURITY_GUIDELINES.md) be
 - Avoid public WiFi for sensitive operations
 - Consider using Nostr browser extensions
 - Always verify you're on the correct domain
+- All destructive operations have rollback instructions
+- Use hardware security devices when available
+- Regularly rotate encryption keys for long-term storage
 
 ### 🚨 **Security Reporting**
 
 If you discover a security vulnerability, please report it to our security team immediately:
 
 - Email: ov1_kenobi@mailfence.com
-- For sensitive issues, use our Nostr ID: ov1@satnam.pub [Coming Soon, once deployed]
+- For sensitive issues, use our Nostr ID: ov1@satnam.pub
 
 ## API Documentation
 
@@ -331,7 +462,7 @@ If you discover a security vulnerability, please report it to our security team 
 #### Get Authentication Challenge
 
 ```http
-GET /api/auth/challenge/:npub
+GET /.netlify/functions/auth/challenge/:npub
 ```
 
 Response:
@@ -343,10 +474,10 @@ Response:
 }
 ```
 
-#### Authenticate with Signature
+#### Authenticate with NIP-07 Signature
 
 ```http
-POST /api/auth/authenticate
+POST /.netlify/functions/auth/nip07-signin
 Content-Type: application/json
 
 {
@@ -359,7 +490,7 @@ Content-Type: application/json
 #### Request OTP
 
 ```http
-POST /api/auth/otp-request
+POST /.netlify/functions/auth/otp-request
 Content-Type: application/json
 
 {
@@ -367,36 +498,42 @@ Content-Type: application/json
 }
 ```
 
-### Identity Management
-
-#### Create Identity
-
-```http
-POST /api/identity/create
-Authorization: Bearer <jwt_token>
-Content-Type: application/json
-
-{
-  "username": "satoshi",
-  "family_name": "nakamoto",
-  "recovery_password": "secure_password"
-}
-```
-
-#### Recover Identity
-
-```http
-POST /api/identity/recover
-Content-Type: application/json
-
-{
-  "username": "satoshi",
-  "recovery_password": "secure_password",
-  "encrypted_backup": "encrypted_data"
-}
-```
-
 For complete API documentation, see our [API Reference](docs/api-reference.md).
+
+## Development Roadmap
+
+### Phase 1: Core Identity & Privacy ✅
+
+- [x] Nostr-native authentication (NIP-07, direct nsec, OTP)
+- [x] Identity forging and management
+- [x] Privacy-first architecture
+- [x] Recovery system with encrypted backups
+- [x] Giftwrapped messaging implementation
+
+### Phase 2: Family Banking 🚧
+
+- [x] Family dashboard
+- [x] Multi-user onboarding
+- [x] Human-readable Lightning addresses
+- [ ] Guardian approval workflows
+- [ ] Enhanced family coordination tools
+
+### Phase 3: Advanced Bitcoin Stack ⏳
+
+- [ ] Multi-layer Lightning/Cashu/Fedimint bridge
+- [ ] Family federation with guardian consensus
+- [ ] Privacy metrics and enhancement tools
+- [ ] Multi-signature treasury management
+
+### Phase 4: Citadel Academy & Ecosystem ⏳
+
+- [ ] Full Citadel Academy integration
+- [ ] Nostr Knowledge Management System
+- [ ] Badge-based learning achievements
+- [ ] Hardware security integration
+- [ ] Mobile application
+- [ ] Browser extension
+- [ ] Advanced self-custody journey tools
 
 ## Contributing
 
@@ -417,68 +554,17 @@ We welcome contributions from the Bitcoin and Nostr communities! Please read our
 - Write tests for new functionality
 - Update documentation as needed
 - Ensure all security guidelines are followed
-
-### Running Tests
-
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage
-npm run test:coverage
-```
-
-## Roadmap
-
-### Phase 1: Core Identity System ✅
-
-- [x] Nostr-native authentication
-- [x] Identity forging and management
-- [x] Basic security implementation
-- [x] Recovery system
-
-### Phase 2: Family Features 🚧
-
-- [x] Family dashboard
-- [x] Multi-user onboarding
-- [ ] Enhanced family coordination tools
-- [ ] Shared security protocols
-
-### Phase 3: Lightning Integration ⏳
-
-- [ ] Lightning address provisioning
-- [ ] NWC wallet integration
-- [ ] Family payment coordination
-- [ ] Multi-signature support
-
-### Phase 4: Advanced Features ⏳
-
-- [ ] Mobile application
-- [ ] Hardware wallet integration
-- [ ] Advanced privacy features
-- [ ] Citadel Academy integration
-
-## Changelog
-
-### v0.1.0 (Current)
-
-- Initial release with core identity forging
-- Nostr authentication implementation
-- Basic family dashboard
-- Security guidelines and documentation
-- Recovery system implementation
-
-For detailed changes, see [CHANGELOG.md](CHANGELOG.md).
+- Emphasize privacy, sovereignty, and auditability in all code comments
 
 ## Acknowledgments
 
 - **Bitcoin Core** - For the foundation of digital sovereignty
 - **Nostr Protocol** - For decentralized identity infrastructure
-- **Bolt.new** - AI-powered platform that accelerated frontend development
-- **Citadel Academy** - For educational partnership and resources
+- **Lightning Network** - For instant, low-fee Bitcoin payments
+- **Fedimint** - For federation-based custody and privacy
+- **Cashu** - For private eCash for Bitcoin
+- **Citadel Academy** - For educational partnership and knowledge management
+- **Bolt.new** - AI-powered platform that accelerated development
 - **Noble Cryptography** - For robust cryptographic implementations
 - **The Bitcoin Community** - For inspiration and continuous feedback
 

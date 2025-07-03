@@ -1,24 +1,24 @@
 import {
-  Activity,
-  AlertTriangle,
-  ArrowLeft,
-  BarChart3,
-  CheckCircle,
-  Eye,
-  EyeOff,
-  Globe,
-  RefreshCw,
-  Settings,
-  Shield,
-  TrendingUp,
-  Zap
+    Activity,
+    AlertTriangle,
+    ArrowLeft,
+    BarChart3,
+    CheckCircle,
+    Eye,
+    EyeOff,
+    Globe,
+    RefreshCw,
+    Settings,
+    Shield,
+    TrendingUp,
+    Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
 
 // Import our new dual-protocol components
+import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
 import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
 import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
-import PhoenixDFamilyManager from './PhoenixDFamilyManager.tsx';
 import SmartPaymentModal from './SmartPaymentModal.tsx';
 import UnifiedFamilyPayments from './UnifiedFamilyPayments.tsx';
 
@@ -29,8 +29,8 @@ import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal.tsx';
 
 // Import enhanced types
 import {
-  DualProtocolFamilyMember,
-  EnhancedFamilyTreasury
+    DualProtocolFamilyMember,
+    EnhancedFamilyTreasury
 } from '../../types/family';
 
 interface EnhancedFamilyDashboardProps {
@@ -572,7 +572,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
         );
       case 'phoenixd':
         return (
-          <PhoenixDFamilyManager
+          <EnhancedLiquidityDashboard
             familyId={familyId}
             onChannelAction={(action, channelId) => {
               console.log('Channel action:', { action, channelId });

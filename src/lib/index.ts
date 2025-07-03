@@ -16,7 +16,7 @@ export * from "./giftwrapped-communication-service.ts";
 export * from "./privacy/data-sanitizer.ts";
 
 // Lightning & Payments
-// Note: allowance-automation.ts excluded from browser build (uses node-cron)
+// Note: payment-automation.ts excluded from browser build (uses node-cron)
 export * from "./cross-mint-cashu-manager.ts";
 export * from "./enhanced-family-coordinator.ts";
 export * from "./enhanced-phoenixd-manager.ts";
