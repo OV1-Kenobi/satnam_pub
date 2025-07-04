@@ -697,7 +697,7 @@ For technical support:
 - GitHub Issues: Primary support channel
 - Documentation: Comprehensive guides available
 - Community: Bitcoin-focused developer community
-- Security: ov1_kenobi@mailfence.com for security issues
+- Security: email admin@satnam.pub for security related issues
 
 ---
 

@@ -132,11 +132,10 @@ async function handleGetLiquidityStatus(
         channelCapacity: liquidityStatus.channelCapacity,
         needsLiquidity: liquidityStatus.needsLiquidity,
         recommendedAction: liquidityStatus.recommendedAction,
-        allowanceStatus: {
-          nextPayment:
-            liquidityStatus.allowanceStatus.nextPayment.toISOString(),
-          amount: liquidityStatus.allowanceStatus.amount,
-          daysUntilNext: liquidityStatus.allowanceStatus.daysUntilNext,
+        paymentStatus: {
+          nextPayment: liquidityStatus.paymentStatus.nextPayment.toISOString(),
+          amount: liquidityStatus.paymentStatus.amount,
+          daysUntilNext: liquidityStatus.paymentStatus.daysUntilNext,
         },
       },
       timestamp: new Date().toISOString(),
@@ -200,15 +199,15 @@ async function handleLiquidityRequest(
 
     // Process different types of liquidity requests
     switch (requestData.type) {
-      case "allowance": {
-        const allowanceResult = await familyManager.processAllowanceLiquidity(
+      case "scheduled": {
+        const allowanceResult = await familyManager.processPaymentLiquidity(
           familyMember
         );
         liquidityResult = {
-          approved: allowanceResult.liquidityAdded,
-          amount: allowanceResult.amount,
-          fees: allowanceResult.fees,
-          message: allowanceResult.reason,
+          approved: paymentResult.liquidityAdded,
+          amount: paymentResult.amount,
+          fees: paymentResult.fees,
+          message: paymentResult.reason,
         };
         break;
       }
@@ -289,11 +288,10 @@ async function handleLiquidityRequest(
         channelCapacity: liquidityStatus.channelCapacity,
         needsLiquidity: liquidityStatus.needsLiquidity,
         recommendedAction: liquidityStatus.recommendedAction,
-        allowanceStatus: {
-          nextPayment:
-            liquidityStatus.allowanceStatus.nextPayment.toISOString(),
-          amount: liquidityStatus.allowanceStatus.amount,
-          daysUntilNext: liquidityStatus.allowanceStatus.daysUntilNext,
+        paymentStatus: {
+          nextPayment: liquidityStatus.paymentStatus.nextPayment.toISOString(),
+          amount: liquidityStatus.paymentStatus.amount,
+          daysUntilNext: liquidityStatus.paymentStatus.daysUntilNext,
         },
       },
       timestamp: new Date().toISOString(),

@@ -74,7 +74,7 @@ export interface BadgeDefinition {
   criteria: BadgeCriteria;
   issuer_pubkey: string;
   mentor_pubkey?: string;
-  vice_principle_pubkey?: string;
+  vice_principal_pubkey?: string;
   privacy_level: PrivacyLevel;
   wot_required: boolean;
   min_mentor_level?: VerificationLevel;
@@ -122,9 +122,9 @@ export interface MentorVerification {
   verification_artifacts?: string[];
 }
 
-// Vice-Principle Co-Signing
-export interface VicePrincipleCoSigning {
-  vice_principle_pubkey: string;
+// Vice-Principal Co-Signing
+export interface VicePrincipalCoSigning {
+  vice_principal_pubkey: string;
   co_signature: string;
   institutional_verification: boolean;
   institutional_verification_date?: number;
@@ -146,8 +146,8 @@ export interface WoTMentorNotarization {
   verification_notes?: string;
   verification_level: VerificationLevel;
   competency_verified: string[];
-  vice_principle_pubkey?: string;
-  vice_principle_signature?: string;
+  vice_principal_pubkey?: string;
+  vice_principal_signature?: string;
   institutional_verification: boolean;
   institutional_verification_date?: number;
   block_timestamp?: number;
@@ -182,7 +182,7 @@ export interface NFCBadgeIntegration {
     badge_id: string;
     issue_date: number;
     mentor_signature: string;
-    vice_principle_signature?: string;
+    vice_principal_signature?: string;
     qr_code_data: string;
     manufacturer?: string;
     batch_number?: string;
@@ -401,8 +401,8 @@ export interface BadgeAwardRequest {
     verification_notes?: string;
     mentor_signature: string;
   };
-  vicePrincipleCoSigning?: {
-    vice_principle_pubkey: string;
+  vicePrincipalCoSigning?: {
+    vice_principal_pubkey: string;
     institutional_verification: boolean;
   };
 }

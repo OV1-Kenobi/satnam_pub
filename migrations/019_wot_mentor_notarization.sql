@@ -1,11 +1,11 @@
 -- Migration: Web of Trust Mentor Notarization System
 -- Replaces Achievement NFTs with WoT mentor verification
 -- Author: Zencoder
--- Date: 2024-12-04
+-- Date: 2025-07-03
 
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_crypto";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Drop the old achievement_nfts table if it exists
 DROP TABLE IF EXISTS achievement_nfts CASCADE;
@@ -50,8 +50,8 @@ CREATE TABLE wot_mentor_notarizations (
     verification_notes TEXT,
     verification_level VARCHAR(20) NOT NULL DEFAULT 'basic' CHECK (verification_level IN ('basic', 'intermediate', 'advanced')),
     competency_verified TEXT[], -- Specific competencies verified
-    vice_principle_pubkey VARCHAR(64),
-    vice_principle_signature TEXT,
+    vice_principal_pubkey VARCHAR(64),
+    vice_principal_signature TEXT,
     institutional_verification BOOLEAN NOT NULL DEFAULT false,
     institutional_verification_date TIMESTAMP WITH TIME ZONE,
     block_timestamp BIGINT, -- Bitcoin block timestamp

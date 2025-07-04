@@ -86,7 +86,7 @@ interface BadgeDefinition {
   criteria: BadgeCriteria; // Earning requirements
   issuer_pubkey: string; // Citadel Academy issuer
   mentor_pubkey?: string; // Mentor's NIP-05 verified pubkey
-  vice_principle_pubkey?: string; // Vice-principle co-signer
+  vice_principal_pubkey?: string; // Vice-principle co-signer
   privacy_level: "public" | "family" | "private";
   wot_required: boolean; // Whether WoT verification is required
 }
@@ -166,7 +166,7 @@ interface BadgeDefinition {
     ["privacy", "public"],
     ["mentor_sig", "mentor_signature"],
     ["mentor_nip05", "mentor@citadel.academy"],
-    ["vice_principle_sig", "vice_principle_signature"],
+    ["vice_principal_sig", "vice_principlal_signature"],
     ["block_timestamp", "blockchain_timestamp"],
     ["wot_verified", "true"]
   ],
@@ -303,10 +303,10 @@ interface MentorVerification {
 }
 ```
 
-#### Vice-Principle Co-Signing
+#### Vice-Principal Co-Signing
 
 ```typescript
-interface VicePrincipleCoSigning {
+interface VicePrincipalCoSigning {
   vice_principle_pubkey: string;
   co_signature: string;
   block_timestamp: number; // Bitcoin block timestamp
@@ -408,8 +408,8 @@ Content-Type: application/json
     "verification_notes": "Excellent practical demonstration",
     "mentor_signature": "mentor_signature_here"
   },
-  "vicePrincipleCoSigning": {
-    "vice_principle_pubkey": "npub1vp...",
+  "vicePrincipalCoSigning": {
+    "vice_principal_pubkey": "npub1vp...",
     "institutional_verification": true
   }
 }
@@ -521,8 +521,8 @@ CREATE TABLE wot_mentor_notarizations (
     mentor_signature TEXT NOT NULL,
     verification_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     verification_notes TEXT,
-    vice_principle_pubkey VARCHAR(64),
-    vice_principle_signature TEXT,
+    vice_principal_pubkey VARCHAR(64),
+    vice_principal_signature TEXT,
     institutional_verification BOOLEAN NOT NULL DEFAULT false,
     block_timestamp BIGINT, -- Bitcoin block timestamp
     verification_hash VARCHAR(64) NOT NULL,
@@ -694,13 +694,13 @@ function App() {
 1. **NIP-05 Verification**: All mentors must have verified NIP-05 identifiers
 2. **Dual-Signature Validation**: Both mentor and institution signatures required
 3. **Mentor Reputation**: Mentor verification history tracked and auditable
-4. **Institution Key Security**: Vice-principle keys stored with enhanced security
+4. **Institution Key Security**: Vice-principal keys stored with enhanced security
 5. **Block-Time Stamping**: Achievement timestamps anchored to Bitcoin blockchain
 
 ### Enhanced Access Controls
 
 1. **Mentor Authorization**: Only verified mentors can sign achievements
-2. **Institution Approval**: Vice-principle must approve mentor verifications
+2. **Institution Approval**: Vice-principal must approve mentor verifications
 3. **Achievement Integrity**: Tamper-proof verification chain
 4. **Privacy Preservation**: WoT verification with configurable privacy levels
 
