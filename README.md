@@ -92,11 +92,13 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 ### 📚 **Citadel Academy Integration**
 
 - Comprehensive Bitcoin education for all skill levels through Citadel Academy
-- Nostr Knowledge Management System for tracking learning progress
-- Nostr badges for intellectual and skill mastery journeys
-- Security best practices and hands-on exercises
-- Self-custody journey with guided pathways
-- Rewards for educational achievements
+- NIP-58 badge system for tracking educational achievements
+- Web of Trust (WoT) mentor notarization system
+- Dual-signature verification (Mentor + Vice-Principle)
+- Non-transferable, privacy-preserving achievement stamps
+- Future NFC badge integration for physical bearer notes
+- Bitcoin-only rewards for educational milestones
+- Family-coordinated learning with guardian approval
 
 ### 🌐 **Nostr Protocol Integration**
 
@@ -141,6 +143,7 @@ Satnam.pub is built exclusively on open protocols:
   - NIP-17: Event treatment recommendations
   - NIP-28: Public chat channels
   - NIP-29: Group chat key management
+  - NIP-58: Badge system for achievements
   - NIP-59: Gift Wrapped messages
 - **Fedimint:** Federation-based custody and privacy
 - **Cashu:** Private eCash for Bitcoin

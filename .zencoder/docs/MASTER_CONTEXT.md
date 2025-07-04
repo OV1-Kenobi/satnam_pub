@@ -9,14 +9,14 @@ This document serves as the master context for all development work on the Satna
 ## Mission & Core Principles
 
 **Mission:**  
-Satnam.pub is a Bitcoin-only, privacy-first, sovereign family banking and identity platform. The codebase is architected for maximum user sovereignty, minimal third-party trust, and full auditability. All communications and value transfers are built on open protocols—Bitcoin, Lightning, Nostr, and eCash—without altcoins or unnecessary intermediaries.
+Satnam.pub is a Bitcoin-only, privacy-first, sovereign family banking and identity platform. The codebase is architected for maximum user sovereignty, minimal third-party trust, and full self-authentication, as well as progressive self-custody. All communications and payments are built on open protocols—Bitcoin, Lightning, Nostr, and Chaumian eCash—without altcoins or unnecessary intermediaries.
 
 **Key Principles:**
 
-- **Bitcoin-only:** No altcoins, no tokens. All value transfer and authentication is Bitcoin-native (Lightning, Fedimint, Cashu).
-- **Privacy-first:** End-to-end encryption, metadata minimization, no external logging, and user-controlled data.
+- **Bitcoin-only:** No altcoins, no tokens. All payment and authentication is Bitcoin-native and denominated in satoshis as the standard unit of account (on and off-chain Bitcoin, Fedimint, Cashu).
+- **Privacy-first:** End-to-end encryption, metadata minimization, no external logging, and user-controlled data, private by default.
 - **Sovereignty:** Users control their keys, identities, and funds. No custodial risk, no vendor lock-in.
-- **Auditability:** All code, infrastructure, and flows are transparent, documented, and verifiable.
+- **Auditability:** All code, infrastructure, and flows are transparent, documented, and verifiable both personally and programatically.
 - **Modularity:** Clear separation of frontend (React/Vite) and backend (Netlify Functions). No Node.js server code in the frontend.
 
 ---
@@ -160,14 +160,16 @@ api/                      # Serverless functions (.js)
 ### Lightning Network Stack
 
 - **Voltage** - Enterprise Lightning infrastructure
-- **PhoenixD** - Mobile wallet integration
+- **PhoenixD** - Mobile wallet integration (development)
+- **LND** - Desktop wallet integration (development)
+- **Lightning Terminal** - CLI interface for advanced users
 - **LNProxy** - Privacy routing for all payments
 - **Breez** - SDK integration (development)
 - **Human-readable Lightning addresses** - username@satnam.pub
 
 ### Fedimint Integration
 
-- Family federation with 2-of-3 guardian approval
+- Family federations, RBACs, ranging from 1-of-2 to 5-of-7 role based access controls
 - eCash issuance for child payments
 - Guardian consensus for large transactions
 - Multi-layer Lightning/Cashu/Fedimint bridge
@@ -175,9 +177,10 @@ api/                      # Serverless functions (.js)
 ### Cashu eCash Implementation
 
 - **Bearer Instruments**: Tokens, Nuts, Proofs
-- Multi-nut payments for privacy
-- Nut swapping for denomination optimization
-- Integration with Fedimint for family treasury
+- Mult-eNut payments for privacy
+- eNut swapping for denomination optimization
+- Integration with Fedimint through atomic Voltage/LN proxied LN swaps for family eCash cross-protocol payments and transfers between Individual and Family Federated funds and other Fedimint guardians
+- Atomic swaps for cross-protocol payments between Lightning and Fedimint
 
 ---
 
@@ -190,18 +193,22 @@ api/                      # Serverless functions (.js)
 - **NIP-05** DNS-based verification (username@satnam.pub)
 - **NIP-07** Browser extension signing
 - **NIP-17** Event treatment recommendations
+- **NIP-18** Follow lists
 - **NIP-28** Public chat channels
 - **NIP-29** Group chat key management
+- **NIP-58** Badge system for achievements
 - **NIP-59** Gift Wrapped messages
 
 ### Self-Custody Journey
 
 - Create pathways, maps, sign posts for self-custody
-- Nostr badges to mark self-custodial journey milestones
+- WoT mentor-verified-verified badges to mark self-custodial journey milestones
 - Guided paths from custodial fiat towards self-custodial private keys
 - No custodial risk as the destination at all stages
 - Integration with Citadel Academy for educational tracking
-- Nostr Knowledge Management System for learning progress
+- Dual-signature verification system (Mentor + Vice-Principle)
+- Non-transferable achievement stamps with privacy controls
+- Future NFC badge integration for physical bearer notes
 
 ---
 
@@ -282,15 +289,21 @@ const member: any = {...}
 3. **Advanced Family Banking**
 
    - Enhanced allowance automation
-   - Multi-signature treasury management
+   - Multi-signature treasury management stamp
    - Education-linked rewards system
 
 4. **Citadel Academy Integration**
 
-   - Nostr Knowledge Management System
-   - Badge-based learning achievements
-   - Curated educational resources
-   - Tracking and rewarding intellectual journeys
+   - NIP-58 Badge System with WoT mentor notarization
+   - Dual-signature verification (Mentor + Vice-Principle)
+   - Non-transferable, privacy-preserving achievement stamps
+   - Future NFC badge integration for physical bearer notes and collectibles
+   - Bitcoin-only rewards for educational milestones
+   - Nostr Knowledge storage, transmission, and tracking system
+   - NIP-58 Badge based cognitive capital credentials
+   - Curated educational tools, training, and AI tutoring personalized educational resources
+   - Intellectual journey tracking, tracing, and incentivizing systems
+   - Nostr Knowledge Management System for tracking learning progressions
 
 5. **Ecosystem Expansion**
    - Mobile application
