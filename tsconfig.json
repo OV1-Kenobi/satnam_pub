@@ -12,8 +12,8 @@
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
     "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,

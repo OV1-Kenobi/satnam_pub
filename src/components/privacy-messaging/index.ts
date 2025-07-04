@@ -5,7 +5,7 @@
  * with privacy-first defaults and comprehensive security features.
  */
 
-export { default as MessagingIntegration } from "../MessagingIntegration";
+export { default as MessagingIntegration } from "./MessagingIntegration";
 export { default as PrivacyFirstIdentityManager } from "../PrivacyFirstIdentityManager";
 
 // Hook exports

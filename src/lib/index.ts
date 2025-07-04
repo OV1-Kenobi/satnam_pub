@@ -7,8 +7,6 @@ export * from "./api/atomic-swap.ts";
 export * from "./auth/auth-adapter.ts";
 export * from "./auth/privacy-first-auth.ts";
 
-// Communications
-export * from "./communications";
 export * from "./gift-wrapped-messaging/privacy-first-service.ts";
 export * from "./giftwrapped-communication-service.ts";
 
