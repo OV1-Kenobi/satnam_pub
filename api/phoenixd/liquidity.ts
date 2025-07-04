@@ -2,7 +2,7 @@
  * PhoenixD Liquidity Management API Endpoint
  *
  * Handle automated liquidity management, emergency protocols,
- * and allowance preparation for Satnam family banking
+ * and payment preparation for Satnam family banking
  *
  * @fileoverview PhoenixD liquidity management endpoint
  */
@@ -12,7 +12,7 @@ import { FamilyPhoenixdManager } from "../../src/lib/family-phoenixd-manager";
 
 interface LiquidityRequest {
   username: string;
-  type: "allowance" | "emergency" | "manual";
+  type: "scheduled" | "emergency" | "manual";
   amount?: number;
   urgency?: "low" | "medium" | "high" | "critical";
   reason?: string;
@@ -32,7 +32,7 @@ interface LiquidityResponse {
     role: string;
   };
   liquidityOperation: {
-    type: "allowance" | "emergency" | "manual" | "status_check";
+    type: "scheduled" | "emergency" | "manual" | "status_check";
     approved: boolean;
     amount: number;
     fees: number;
@@ -44,7 +44,7 @@ interface LiquidityResponse {
     channelCapacity: number;
     needsLiquidity: boolean;
     recommendedAction: string;
-    allowanceStatus: {
+    paymentStatus: {
       nextPayment: string;
       amount: number;
       daysUntilNext: number;
@@ -109,8 +109,9 @@ async function handleGetLiquidityStatus(
     }
 
     // Get comprehensive liquidity status
-    const liquidityStatus =
-      await familyManager.getFamilyLiquidityStatus(username);
+    const liquidityStatus = await familyManager.getFamilyLiquidityStatus(
+      username
+    );
 
     const response: LiquidityResponse = {
       success: true,
@@ -200,8 +201,9 @@ async function handleLiquidityRequest(
     // Process different types of liquidity requests
     switch (requestData.type) {
       case "allowance": {
-        const allowanceResult =
-          await familyManager.processAllowanceLiquidity(familyMember);
+        const allowanceResult = await familyManager.processAllowanceLiquidity(
+          familyMember
+        );
         liquidityResult = {
           approved: allowanceResult.liquidityAdded,
           amount: allowanceResult.amount,
@@ -300,7 +302,9 @@ async function handleLiquidityRequest(
     const statusCode = liquidityResult.approved ? 200 : 400;
 
     console.log(
-      `${liquidityResult.approved ? "✅" : "❌"} Liquidity request ${liquidityResult.approved ? "approved" : "denied"} for ${requestData.username}:`,
+      `${liquidityResult.approved ? "✅" : "❌"} Liquidity request ${
+        liquidityResult.approved ? "approved" : "denied"
+      } for ${requestData.username}:`,
       {
         type: requestData.type,
         amount: liquidityResult.amount,

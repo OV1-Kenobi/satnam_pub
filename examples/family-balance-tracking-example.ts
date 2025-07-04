@@ -70,7 +70,7 @@ async function demonstrateFamilyBalanceTracking() {
       "payment-charlie-in-1",
       25000,
       0,
-      "Charlie receives allowance"
+      "Charlie receives payment"
     );
 
     // Internal family transfer

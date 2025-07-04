@@ -28,7 +28,7 @@ async function demonstratePrivacyLayer() {
   console.log("\n1. 🏥 Testing Privacy Service Health...");
   const health = await privacyLayer.testPrivacyConnection();
   console.log(
-    `   Status: ${health.available ? "✅ Available" : "❌ Unavailable"}`,
+    `   Status: ${health.available ? "✅ Available" : "❌ Unavailable"}`
   );
   console.log(`   Response Time: ${health.responseTime}ms`);
   if (health.error) {
@@ -58,7 +58,7 @@ async function demonstratePrivacyLayer() {
     const familyInvoice = await lightningClient.createFamilyInvoice(
       "daughter", // Family member
       2500, // 2500 sats
-      "Weekly allowance",
+      "Weekly payment"
     );
 
     console.log("   ✅ Family invoice created!");
@@ -79,7 +79,7 @@ async function demonstratePrivacyLayer() {
   try {
     const wrappedPayment = await privacyLayer.wrapInvoiceForPrivacy(
       existingInvoice,
-      "Payment to son@satnam.pub - video game purchase",
+      "Payment to son@satnam.pub - video game purchase"
     );
 
     console.log("   ✅ Direct wrapping successful!");
@@ -100,12 +100,14 @@ async function demonstratePrivacyLayer() {
   const config = lightningClient.getPrivacyConfig();
   console.log(`   Service URL: ${config.serviceUrl}`);
   console.log(
-    `   Default Routing Budget: ${config.defaultRoutingBudget} PPM (${config.defaultRoutingBudget / 10000}%)`,
+    `   Default Routing Budget: ${config.defaultRoutingBudget} PPM (${
+      config.defaultRoutingBudget / 10000
+    }%)`
   );
 
   console.log("\n6. 💡 Privacy Best Practices:");
   console.log(
-    "   • Always test privacy service health before important payments",
+    "   • Always test privacy service health before important payments"
   );
   console.log("   • Privacy failures gracefully fallback to original invoices");
   console.log("   • Privacy adds a small fee (typically 0.1%) for anonymity");

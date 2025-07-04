@@ -18,7 +18,7 @@ interface LocalFamilyMember {
   name: string;
   role: "parent" | "teen" | "child";
   phoenixd_channel_id?: string;
-  allowance_config?: any;
+  payment_config?: any;
 }
 
 /**
@@ -57,7 +57,7 @@ function convertToLocalFamilyMember(
     name: safeName,
     role: validRole,
     phoenixd_channel_id: (familyMember as any).phoenixd_channel_id,
-    allowance_config: (familyMember as any).allowance_config,
+    payment_config: (familyMember as any).payment_config,
   };
 }
 
@@ -65,7 +65,7 @@ interface CreateInvoiceRequest {
   username: string;
   amountSat: number;
   description?: string;
-  allowancePayment?: boolean;
+  scheduledPayment?: boolean;
 }
 
 interface PayInvoiceRequest {
@@ -185,30 +185,31 @@ async function handleCreateInvoice(
     // Convert family member for local operations
     const localFamilyMember = convertToLocalFamilyMember(familyMember);
 
-    // Check if this is an allowance payment that might need liquidity
+    // Check if this is a scheduled payment that might need liquidity
     let liquidityCheck = {
       needed: false,
       added: false,
       amount: 0,
     };
 
-    if (requestData.allowancePayment) {
+    if (requestData.scheduledPayment) {
       console.log(
-        `💰 Processing allowance invoice for ${requestData.username}`
+        `💰 Processing scheduled payment invoice for ${requestData.username}`
       );
 
-      // Check and prepare liquidity for allowance
-      const allowanceResult =
-        await familyManager.processAllowanceLiquidity(localFamilyMember);
+      // Check and prepare liquidity for scheduled payment
+      const paymentResult = await familyManager.processPaymentLiquidity(
+        localFamilyMember
+      );
       liquidityCheck = {
-        needed: allowanceResult.liquidityAdded,
-        added: allowanceResult.liquidityAdded,
-        amount: allowanceResult.amount,
+        needed: paymentResult.liquidityAdded,
+        added: paymentResult.liquidityAdded,
+        amount: paymentResult.amount,
       };
 
-      if (allowanceResult.liquidityAdded) {
+      if (paymentResult.liquidityAdded) {
         console.log(
-          `✅ Allowance liquidity prepared: ${allowanceResult.amount} sats`
+          `✅ Payment liquidity prepared: ${paymentResult.amount} sats`
         );
       }
     }

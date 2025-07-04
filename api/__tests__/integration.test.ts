@@ -59,7 +59,7 @@ describe("API Integration Tests", () => {
           fromMemberId: "parent1",
           toMemberId: "child1",
           amount: 50000,
-          purpose: "allowance",
+          purpose: "payment",
         }),
       });
 
