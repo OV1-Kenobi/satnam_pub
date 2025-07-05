@@ -3,124 +3,65 @@ import {
   BookOpen,
   ExternalLink,
   Menu,
-  MessageSquare,
   Network,
   Users,
   X,
-  Zap
+  Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { PrivateCommunicationModal } from "./components/communications/PrivateCommunicationModal";
+import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
 import FamilyCoordination from "./components/FamilyCoordination";
-import FamilyFinancialsDashboard from "./components/FamilyFinancialsDashboard";
+import FamilyDashboard from "./components/FamilyDashboard";
 import FamilyOnboarding from "./components/FamilyOnboarding";
-import FamilyWalletDemo from "./components/FamilyWalletDemo";
 import IdentityForge from "./components/IdentityForge";
-import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
-import useAuth from "./hooks/useAuth";
+import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
 
 function App() {
   const [currentView, setCurrentView] = useState<
     | "landing"
+    | "forge"
     | "dashboard"
-    | "financials"
-    | "individual-wallet"
     | "onboarding"
     | "education"
     | "coordination"
     | "recovery"
     | "nostr-ecosystem"
-    | "family-wallets"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
-  const [signinDestination, setSigninDestination] = useState<'individual' | 'family' | null>(null);
-  const [forgeModalOpen, setForgeModalOpen] = useState(false);
-  const [privateCommunicationModalOpen, setPrivateCommunicationModalOpen] = useState(false);
-  const [communicationType, setCommunicationType] = useState<'family' | 'individual'>('individual');
-  
-  // Invitation handling
-  const [invitationToken, setInvitationToken] = useState<string | null>(null);
-  const [showInvitationWelcome, setShowInvitationWelcome] = useState(false);
-  
-  // Authentication state
-  const auth = useAuth();
 
-  // Check for invitation token on app load
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const inviteToken = urlParams.get('invite');
-    
-    if (inviteToken) {
-      setInvitationToken(inviteToken);
-      setShowInvitationWelcome(true);
-      // Clean URL without reloading
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  const openSigninModal = (destination: 'individual' | 'family') => {
-    setSigninDestination(destination);
-    setSignInModalOpen(true);
-  };
-
-  const handleInvitationAccept = () => {
-    setShowInvitationWelcome(false);
-    setForgeModalOpen(true);
-  };
-
-  const handleAuthenticationSuccess = (destination?: 'individual' | 'family') => {
-    setSignInModalOpen(false);
-    setSigninDestination(null);
-    
-    if (destination === 'individual') {
-      setCurrentView("individual-wallet");
-    } else if (destination === 'family') {
-      setCurrentView("financials");
-    }
-  };
-
-  // Removed separate forge view - now handled as modal overlay
+  if (currentView === "forge") {
+    return (
+      <IdentityForge
+        onComplete={() => setCurrentView("nostr-ecosystem")}
+        onBack={() => setCurrentView("landing")}
+      />
+    );
+  }
 
   if (currentView === "dashboard") {
-    return <FamilyFinancialsDashboard onBack={() => setCurrentView("landing")} />;
-  }
-
-  if (currentView === "financials") {
-    return <FamilyFinancialsDashboard onBack={() => setCurrentView("landing")} />;
-  }
-
-  if (currentView === "individual-wallet") {
     return (
-      <IndividualFinancesDashboard 
-        memberId="demo-user"
-        memberData={{
-          username: "user",
-          role: "adult",
-          lightningAddress: "user@satnam.pub",
-          spendingLimits: {
-            daily: 100000,
-            weekly: 500000,
-            requiresApproval: 1000000
-          }
-        }}
-        onBack={() => {
-          setCurrentView("landing");
-        }}
-      />
+      <FamilyFederationAuthProvider>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "child", "guardian"]}>
+          <FamilyDashboard onBack={() => setCurrentView("landing")} />
+        </FamilyFederationAuthWrapper>
+      </FamilyFederationAuthProvider>
     );
   }
 
   if (currentView === "onboarding") {
     return (
-      <FamilyOnboarding
-        familyName="Nakamoto"
-        onComplete={() => setCurrentView("dashboard")}
-        onBack={() => setCurrentView("landing")}
-      />
+      <FamilyFederationAuthProvider>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "guardian"]}>
+          <FamilyOnboarding
+            familyName="Nakamoto"
+            onComplete={() => setCurrentView("dashboard")}
+            onBack={() => setCurrentView("landing")}
+          />
+        </FamilyFederationAuthWrapper>
+      </FamilyFederationAuthProvider>
     );
   }
 
@@ -129,18 +70,18 @@ function App() {
   }
 
   if (currentView === "coordination") {
-    return <FamilyCoordination onBack={() => setCurrentView("landing")} />;
+    return (
+      <FamilyFederationAuthProvider>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "guardian"]}>
+          <FamilyCoordination onBack={() => setCurrentView("landing")} />
+        </FamilyFederationAuthWrapper>
+      </FamilyFederationAuthProvider>
+    );
   }
 
   if (currentView === "nostr-ecosystem") {
     return <NostrEcosystem onBack={() => setCurrentView("landing")} />;
   }
-
-  if (currentView === "family-wallets") {
-    return <FamilyWalletDemo />;
-  }
-
-
 
   if (currentView === "recovery") {
     return (
@@ -190,9 +131,7 @@ function App() {
   }
 
   const navigationItems = [
-    { label: "Family Financials", action: () => openSigninModal('family') },
-    { label: "Individual Finances", action: () => openSigninModal('individual') },
-    { label: "Family Wallets", action: () => setCurrentView("family-wallets") },
+    { label: "Family Dashboard", action: () => setCurrentView("dashboard") },
     { label: "Bitcoin Education", action: () => setCurrentView("education") },
     {
       label: "Nostr Resources",
@@ -292,45 +231,12 @@ function App() {
         </svg>
       </div>
 
-      {/* Invitation Welcome Banner */}
-      {showInvitationWelcome && (
-        <div className="relative z-30 bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 shadow-lg">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                🎁
-              </div>
-              <div>
-                <div className="font-semibold">You've been invited to Satnam.pub!</div>
-                <div className="text-sm text-green-100">
-                  Create your sovereign identity and earn course credits
-                </div>
-              </div>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={handleInvitationAccept}
-                className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-medium transition-colors"
-              >
-                Get Started
-              </button>
-              <button
-                onClick={() => setShowInvitationWelcome(false)}
-                className="text-white/80 hover:text-white p-2"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Enhanced Navigation */}
       <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center h-16">
-            {/* Logo with SatNam.Pub Custom Logo - Protected Brand Section */}
-            <div className="flex items-center space-x-3 flex-shrink-0 mr-8 lg:mr-12">
+          <div className="flex justify-between items-center h-16">
+            {/* Logo with SatNam.Pub Custom Logo */}
+            <div className="flex items-center space-x-3">
               <img
                 src="/SatNam.Pub logo.png"
                 alt="SatNam.Pub"
@@ -340,47 +246,44 @@ function App() {
               <span className="text-white text-xl font-bold">Satnam.pub</span>
             </div>
 
-            {/* Desktop Navigation - Properly Spaced */}
-            <div className="hidden lg:flex items-center space-x-4 xl:space-x-6 flex-1 justify-end">
+            {/* Desktop Navigation */}
+            <div className="hidden lg:flex items-center space-x-6">
+              {/* Sign In Button */}
+              <button
+                onClick={() => setSignInModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
+              >
+                <span>Sign In</span>
+              </button>
+
               {/* Primary CTA */}
               <button
-                onClick={() => setForgeModalOpen(true)}
-                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
+                onClick={() => setCurrentView("forge")}
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
               >
                 <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
-                <span>New ID Forge</span>
+                <span>Forge Identity</span>
               </button>
 
               {/* Navigation Links */}
               <button
-                onClick={() => openSigninModal('family')}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                onClick={() => setCurrentView("dashboard")}
+                className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium"
               >
-                Family Financials
+                Family Dashboard
               </button>
 
               <button
-                onClick={() => openSigninModal('individual')}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
+                onClick={() => setCurrentView("education")}
+                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
               >
-                <Zap className="h-4 w-4" />
-                <span>Individual Finances</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setCommunicationType('individual');
-                  setPrivateCommunicationModalOpen(true);
-                }}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
-              >
-                <MessageSquare className="h-4 w-4" />
-                <span>Private Communications</span>
+                <BookOpen className="h-4 w-4" />
+                <span>Bitcoin Education</span>
               </button>
 
               <button
                 onClick={() => setCurrentView("nostr-ecosystem")}
-                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg"
+                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
               >
                 <Network className="h-4 w-4" />
                 <span>Nostr Resources</span>
@@ -400,14 +303,6 @@ function App() {
                 <span>Enter Citadel Academy</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
-
-              {/* Nostrich Sign-in Button - Positioned Before Recovery */}
-              <button
-                onClick={() => setSignInModalOpen(true)}
-                className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg border-2 border-black"
-              >
-                <span>Nostrich Sign-in</span>
-              </button>
 
               <button
                 onClick={() => setCurrentView("recovery")}
@@ -439,14 +334,14 @@ function App() {
                     setSignInModalOpen(true);
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full bg-purple-800 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 border-2 border-black"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                 >
-                  <span>Nostrich Sign-in</span>
+                  <span>Sign In</span>
                 </button>
 
                 <button
                   onClick={() => {
-                    setForgeModalOpen(true);
+                    setCurrentView("forge");
                     setMobileMenuOpen(false);
                   }}
                   className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
@@ -457,18 +352,6 @@ function App() {
                     className="h-4 w-4"
                   />
                   <span>Forge Identity</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setCommunicationType('individual');
-                    setPrivateCommunicationModalOpen(true);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  <span>Private Communications</span>
                 </button>
 
                 {navigationItems.map((item, index) => (
@@ -509,12 +392,12 @@ function App() {
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
             <button
               onClick={() => setSignInModalOpen(true)}
-              className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
             >
-              <span>Nostrich Sign-in</span>
+              <span>Sign In</span>
             </button>
             <button
-              onClick={() => setForgeModalOpen(true)}
+              onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
             >
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
@@ -536,18 +419,11 @@ function App() {
           {/* Secondary Navigation Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
-              onClick={() => openSigninModal('family')}
-              className="bg-orange-500/90 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
+              onClick={() => setCurrentView("dashboard")}
+              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <Users className="h-4 w-4" />
-              <span>View Family Financials</span>
-            </button>
-            <button
-              onClick={() => openSigninModal('individual')}
-              className="bg-orange-500/90 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
-            >
-              <Zap className="h-4 w-4" />
-              <span>Individual Finances</span>
+              <span>View Family Dashboard</span>
             </button>
             <button
               onClick={() => setCurrentView("education")}
@@ -590,7 +466,7 @@ function App() {
           {/* Decentralized Interoperable Identities Card */}
           <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
-            onClick={() => setForgeModalOpen(true)}
+            onClick={() => setCurrentView("forge")}
           >
             <div className="w-16 h-16 mx-auto mb-6 relative">
               <img
@@ -614,10 +490,10 @@ function App() {
             </button>
           </div>
 
-          {/* Enhanced Family Financials Card */}
+          {/* Human-Readable Bitcoin Addresses Card */}
           <div
             className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/20 cursor-pointer group shadow-lg hover:shadow-xl"
-            onClick={() => setCurrentView("financials")}
+            onClick={() => setCurrentView("dashboard")}
           >
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-6 relative">
               <img
@@ -628,15 +504,15 @@ function App() {
               />
             </div>
             <h3 className="text-2xl font-bold text-white mb-4">
-              Enhanced Family Financials
+              Human-Readable Bitcoin Addresses
             </h3>
             <p className="text-purple-100 leading-relaxed mb-6">
-              Dual-protocol sovereign banking with Lightning Network + Fedimint eCash.
-              Smart routing, guardian consensus, and automated liquidity management.
+              Receive bitcoin instantly with reusable human-readable addresses.
+              No more complex invoice management or payment friction.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
               <Zap className="h-4 w-4" />
-              <span>Family Banking</span>
+              <span>Manage Payments</span>
             </button>
           </div>
 
@@ -714,10 +590,10 @@ function App() {
               <h3 className="text-white font-bold mb-4">Quick Links</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => openSigninModal('family')}
-                  className="block text-orange-300 hover:text-orange-400 font-semibold transition-colors duration-200"
+                  onClick={() => setCurrentView("dashboard")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Family Financials
+                  Family Dashboard
                 </button>
                 <button
                   onClick={() => setCurrentView("education")}
@@ -753,7 +629,7 @@ function App() {
               <h3 className="text-white font-bold mb-4">Features</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => setForgeModalOpen(true)}
+                  onClick={() => setCurrentView("forge")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Identity Forge
@@ -883,42 +759,17 @@ function App() {
         </div>
       </footer>
 
-      {/* Unified Sign-in Modal */}
+      {/* Sign In Modal */}
       <SignInModal
         isOpen={signInModalOpen}
-        onClose={() => {
+        onClose={() => setSignInModalOpen(false)}
+        onSignInSuccess={() => {
           setSignInModalOpen(false);
-          setSigninDestination(null);
+          setCurrentView("dashboard");
         }}
-        onSignInSuccess={handleAuthenticationSuccess}
         onCreateNew={() => {
           setSignInModalOpen(false);
-          setSigninDestination(null);
-          setForgeModalOpen(true);
-        }}
-        destination={signinDestination}
-      />
-
-      {/* Identity Forge Modal */}
-      {forgeModalOpen && (
-        <IdentityForge
-          onComplete={() => {
-            setForgeModalOpen(false);
-            setCurrentView("nostr-ecosystem");
-          }}
-          onBack={() => setForgeModalOpen(false)}
-        />
-      )}
-
-      {/* Private Communication Modal */}
-      <PrivateCommunicationModal
-        isOpen={privateCommunicationModalOpen}
-        onClose={() => setPrivateCommunicationModalOpen(false)}
-        communicationType={communicationType}
-        userProfile={{
-          username: auth.user?.username || 'user',
-          npub: auth.user?.npub || '',
-          familyRole: 'adult' // This should come from actual user profile
+          setCurrentView("forge");
         }}
       />
     </div>

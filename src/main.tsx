@@ -1,14 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import { FamilyFederationAuthProvider } from "./components/auth/FamilyFederationAuth.tsx";
+import App from "./App";
 import "./index.css";
 
-// Simple browser-only initialization
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <FamilyFederationAuthProvider>
-      <App />
-    </FamilyFederationAuthProvider>
+    <App />
   </StrictMode>,
 );

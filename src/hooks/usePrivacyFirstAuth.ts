@@ -67,41 +67,69 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
 
   const auth = createPrivacyFirstAuth();
 
-  // Check existing session on mount
+  // Check existing session on mount - FIXED: Only run once
   useEffect(() => {
-    checkExistingSession();
-  }, []);
+    let mounted = true;
+    
+    const checkSession = async () => {
+      try {
+        if (!mounted) return;
+        
+        setState((prev) => ({ ...prev, loading: true, error: null }));
 
-  const checkExistingSession = useCallback(async () => {
-    try {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
+        const session = await auth.getSession();
+        if (session && session.expiresAt > Date.now()) {
+          // Valid session found
+          if (mounted) {
+            setState((prev) => ({
+              ...prev,
+              session,
+              authenticated: true,
+              loading: false,
+            }));
+          }
+        } else {
+          if (mounted) {
+            setState((prev) => ({
+              ...prev,
+              authenticated: false,
+              loading: false,
+            }));
+          }
+        }
+      } catch (error) {
+        console.debug("Privacy session check failed:", error);
+        if (mounted) {
+          setState((prev) => ({
+            ...prev,
+            authenticated: false,
+            loading: false,
+            error: null, // Don't show errors for session checks
+          }));
+        }
+      }
+    };
 
-      const session = await auth.getSession();
-      if (session && session.expiresAt > Date.now()) {
-        // Valid session found
-        setState((prev) => ({
-          ...prev,
-          session,
-          authenticated: true,
-          loading: false,
-        }));
-      } else {
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.debug("Privacy session check timeout - setting loading to false");
         setState((prev) => ({
           ...prev,
           authenticated: false,
           loading: false,
+          error: null,
         }));
       }
-    } catch (error) {
-      console.debug("Privacy session check failed:", error);
-      setState((prev) => ({
-        ...prev,
-        authenticated: false,
-        loading: false,
-        error: null, // Don't show errors for session checks
-      }));
-    }
-  }, []);
+    }, 3000); // 3 second timeout
+
+    checkSession();
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, []); // Empty dependency array - only run once
 
   const handleAuthResult = useCallback((result: AuthResult): boolean => {
     if (result.success && result.user && result.session) {
@@ -252,8 +280,31 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   }, []);
 
   const refreshSession = useCallback(async () => {
-    await checkExistingSession();
-  }, [checkExistingSession]);
+    try {
+      setState((prev) => ({ ...prev, loading: true }));
+      const session = await auth.getSession();
+      if (session && session.expiresAt > Date.now()) {
+        setState((prev) => ({
+          ...prev,
+          session,
+          authenticated: true,
+          loading: false,
+        }));
+      } else {
+        setState((prev) => ({
+          ...prev,
+          authenticated: false,
+          loading: false,
+        }));
+      }
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        authenticated: false,
+        loading: false,
+      }));
+    }
+  }, []);
 
   // RBAC Permission Check
   const checkPermission = useCallback(
@@ -267,30 +318,11 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   // Privacy controls
   const updatePrivacyLevel = useCallback(
     async (level: "standard" | "enhanced" | "maximum"): Promise<boolean> => {
-      if (!state.user) return false;
-
-      try {
-        const success = await auth.updatePrivacySettings(
-          state.user.hashedUUID,
-          {
-            privacyLevel: level,
-          }
-        );
-
-        if (success) {
-          setState((prev) => ({
-            ...prev,
-            user: prev.user ? { ...prev.user, privacyLevel: level } : null,
-          }));
-        }
-
-        return success;
-      } catch (error) {
-        console.error("Privacy level update failed:", error);
-        return false;
-      }
+      // Privacy-first auth always uses maximum privacy - no changes needed
+      console.log("Privacy-first auth: Always maximum privacy level");
+      return true;
     },
-    [state.user]
+    []
   );
 
   const rotateKeys = useCallback(async (): Promise<boolean> => {
@@ -323,6 +355,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
         state.user.authMethod === "nip07" ? "otp" : state.user.authMethod, // Map to supported types
       isWhitelisted: state.user.isWhitelisted,
       votingPower: state.user.votingPower,
+      stewardApproved: state.user.stewardApproved,
       guardianApproved: state.user.guardianApproved,
       sessionToken: state.session.sessionId,
     };

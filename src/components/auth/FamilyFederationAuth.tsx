@@ -74,7 +74,7 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
 interface FamilyFederationAuthWrapperProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  allowedRoles?: ('adult' | 'child' | 'guardian')[];
+  allowedRoles?: ('adult' | 'child' | 'guardian' | 'private')[];
   fallback?: React.ReactNode;
 }
 
@@ -86,7 +86,8 @@ export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperPr
 }) => {
   const { isAuthenticated, userAuth, isLoading } = useAuthContext();
 
-  if (isLoading) {
+  // Only show loading screen for protected routes that require authentication
+  if (isLoading && requireAuth) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center">
         <div className="bg-purple-900 rounded-2xl p-8 border border-yellow-400/20">
@@ -100,6 +101,11 @@ export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperPr
         </div>
       </div>
     );
+  }
+
+  // For non-protected routes or when not loading, render children immediately
+  if (!requireAuth || !isLoading) {
+    return <>{children}</>;
   }
 
   if (requireAuth && !isAuthenticated) {

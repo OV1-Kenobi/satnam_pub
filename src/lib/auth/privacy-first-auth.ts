@@ -384,7 +384,8 @@ export class PrivacyFirstAuth {
       }
 
       return null;
-    } catch {
+    } catch (error) {
+      console.debug("Supabase session check failed:", error);
       return null;
     }
   }
