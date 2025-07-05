@@ -155,8 +155,22 @@ export class ApiClient {
   }
 }
 
-// Create singleton instance
-export const apiClient = new ApiClient();
+// Create singleton instance lazily to avoid circular dependencies
+let _apiClient: ApiClient | null = null;
+
+export function getApiClient(): ApiClient {
+  if (!_apiClient) {
+    _apiClient = new ApiClient();
+  }
+  return _apiClient;
+}
+
+// Export a getter for backward compatibility
+export const apiClient = new Proxy({} as ApiClient, {
+  get(target, prop) {
+    return getApiClient()[prop as keyof ApiClient];
+  }
+});
 
 // ===========================================
 // AUTHENTICATION API

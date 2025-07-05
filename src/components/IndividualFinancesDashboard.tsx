@@ -16,7 +16,9 @@ import {
   Send,
   Shield,
   Wallet,
-  Zap
+  Zap,
+  Split,
+  AlertTriangle,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -24,13 +26,22 @@ import React, { useEffect, useState } from 'react';
 import { PaymentModal, Transaction } from './shared';
 
 // Import Credits Balance
-import { CreditsBalance } from './CreditsBalance.tsx';
+import { CreditsBalance } from './CreditsBalance';
 
 // Import API service
 import { IndividualApiService, handleApiError } from '../services/individualApi';
 
 // Import Cross-Mint Manager
 import { CrossMintSettings, MultiNutPayment, NutSwapTransaction, SatnamCrossMintCashuManager } from '../lib/cross-mint-cashu-manager';
+
+// Import Payment Cascade Modal
+import PaymentCascadeModal from './PaymentCascadeModal';
+import { PaymentCascadeNode } from '../lib/payment-automation';
+
+// Import Emergency Recovery Modal
+import EmergencyRecoveryModal from './EmergencyRecoveryModal';
+import { useAuth } from '../hooks/useAuth';
+import { FederationRole } from '../types/auth';
 
 interface IndividualFinancesDashboardProps {
   memberId: string;
@@ -1385,6 +1396,7 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
 
 // Main Enhanced Component
 export function IndividualFinancesDashboard({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
+  const { user, authenticated } = useAuth();
   const [wallet, setWallet] = useState<EnhancedIndividualWallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'privacy'>('overview');
@@ -1392,6 +1404,17 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   // Payment Modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
+
+  // Payment Cascade Modal state
+  const [showCascadeModal, setShowCascadeModal] = useState(false);
+  const [paymentCascade, setPaymentCascade] = useState<PaymentCascadeNode[]>([]);
+
+  // Emergency Recovery Modal state
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+
+  // Use memberData for role and fallback values
+  const userRole = memberData.role as FederationRole;
+  const familyId = 'family123'; // This would come from context in a real implementation
 
   // Create individual member for PaymentModal (representing self)
   const individualMember = wallet ? [{
@@ -1403,6 +1426,17 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
     nip05Verified: true,
     spendingLimits: memberData.spendingLimits,
   }] : [];
+
+  // Create family members for cascade modal (representing contacts/family)
+  const familyMembersForCascade = wallet ? [
+    {
+      id: memberId,
+      name: memberData.username,
+      npub: '', // Would be populated from user's Nostr profile
+      role: memberData.role as 'guardian' | 'steward' | 'adult' | 'offspring'
+    }
+    // Additional family members would be loaded from user's contacts/family
+  ] : [];
 
   // Enhanced wallet loading with Lightning + Cashu data
   const loadEnhancedWallet = async () => {
@@ -1445,6 +1479,21 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
     loadEnhancedWallet();
   };
 
+  const handleCascadeSave = (cascade: PaymentCascadeNode[]) => {
+    setPaymentCascade(cascade);
+    setShowCascadeModal(false);
+    // Here you would integrate with the payment automation service
+    console.log('Payment cascade configured:', cascade);
+  };
+
+  const handleEmergencyRecovery = () => {
+    setShowRecoveryModal(true);
+  };
+
+  const handleCloseRecoveryModal = () => {
+    setShowRecoveryModal(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1476,7 +1525,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
 
   return (
     <div className="enhanced-individual-finances-dashboard max-w-7xl mx-auto p-6">
-      {/* Enhanced Header with Dual Protocol Display */}
+      {/* Enhanced Header with Recovery Button */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
@@ -1484,7 +1533,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
               Individual Finances
             </h1>
             <p className="text-gray-600 mb-4">
-              Personal Lightning + Cashu wallet for {wallet.username}
+              Personal Lightning + Cashu wallet for {wallet?.username || memberData.username}
             </p>
             
             {/* Protocol Status Indicators */}
@@ -1500,6 +1549,15 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            {/* Emergency Recovery Button */}
+            <button
+              onClick={handleEmergencyRecovery}
+              className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="text-sm font-medium">Emergency Recovery</span>
+            </button>
+            
             {onBack && (
               <button
                 onClick={onBack}
@@ -1541,10 +1599,11 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
             <span>Send Lightning Payment</span>
           </button>
           <button
-            className="flex items-center justify-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            onClick={() => setShowCascadeModal(true)}
+            className="flex items-center justify-center space-x-2 bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
           >
-            <Gift className="h-5 w-5" />
-            <span>Create Bearer Note</span>
+            <Split className="h-5 w-5" />
+            <span>Setup Payment Cascade</span>
           </button>
           <button
             className="flex items-center justify-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
@@ -1586,13 +1645,38 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
       {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
 
       {/* Payment Modal */}
-      <PaymentModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        familyMembers={individualMember}
-        selectedMember={selectedMember}
-        onSelectedMemberChange={setSelectedMember}
+      {showPaymentModal && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          familyMembers={individualMember}
+          selectedMember={selectedMember}
+          onSelectedMemberChange={setSelectedMember}
+        />
+      )}
+
+      {/* Payment Cascade Modal */}
+      <PaymentCascadeModal
+        isOpen={showCascadeModal}
+        onClose={() => setShowCascadeModal(false)}
+        onSave={handleCascadeSave}
+        familyMembers={familyMembersForCascade}
+        totalAmount={wallet?.lightningBalance || 0}
+        defaultCurrency="sats"
+        title="Individual Payment Cascade Setup"
       />
+
+      {/* Emergency Recovery Modal */}
+      {showRecoveryModal && (
+        <EmergencyRecoveryModal
+          isOpen={showRecoveryModal}
+          onClose={handleCloseRecoveryModal}
+          userRole={userRole}
+          userId={user?.id || memberId}
+          userNpub={user?.npub || ''}
+          familyId={familyId}
+        />
+      )}
     </div>
   );
 }

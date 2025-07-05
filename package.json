@@ -19,9 +19,14 @@
     "privacy-migration:help": "tsx scripts/execute-privacy-migration.ts help",
     "test:privacy-migration": "vitest run tests/privacy-migration-integration.test.ts",
     "test:db-connection": "tsx scripts/test-supabase-connection.ts",
-    "migrate:privacy-schema": "tsx scripts/run-privacy-standardization-migration.ts"
+    "migrate:privacy-schema": "tsx scripts/run-privacy-standardization-migration.ts",
+    "test:emergency-recovery": "tsx scripts/test-emergency-recovery.ts",
+    "test:emergency-recovery:all": "tsx scripts/test-emergency-recovery.ts all",
+    "test:emergency-recovery:rbac": "tsx scripts/test-emergency-recovery.ts rbac",
+    "test:emergency-recovery:specific": "tsx scripts/test-emergency-recovery.ts specific"
   },
   "dependencies": {
+    "@netlify/functions": "^4.1.9",
     "@noble/secp256k1": "^1.7.1",
     "@scure/bip32": "^1.1.5",
     "@scure/bip39": "^1.1.1",
@@ -33,6 +38,7 @@
     "lucide-react": "^0.263.1",
     "node-cron": "^4.2.0",
     "nostr-tools": "^2.15.0",
+    "phoenix-server-js": "^1.1.1",
     "postcss": "^8.5.6",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",

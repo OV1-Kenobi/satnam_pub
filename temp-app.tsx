@@ -460,17 +460,17 @@ function App() {
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
-            <button
-              onClick={() => setCurrentView("onboarding")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
-            >
-              <img
-                src="/Rebuilding_Camelot_logo__transparency_v3.png"
-                alt="Rebuilding Camelot"
-                className="h-5 w-5"
-              />
-              <span>Family Onboarding</span>
-            </button>
+                          <button
+                onClick={() => setCurrentView("onboarding")}
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              >
+                <img
+                  src="/Rebuilding_Camelot_logo__transparency_v3.png"
+                  alt="Rebuilding Camelot"
+                  className="h-5 w-5"
+                />
+                <span>Family Foundry</span>
+              </button>
           </div>
 
           {/* Secondary Navigation Buttons */}
@@ -708,7 +708,7 @@ function App() {
                   onClick={() => setCurrentView("onboarding")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Family Onboarding
+                  Family Foundry
                 </button>
               </div>
             </div>

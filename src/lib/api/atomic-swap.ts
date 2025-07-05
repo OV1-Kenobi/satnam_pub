@@ -3,7 +3,6 @@
  * @description Client-side API for atomic swaps between Fedimint and Cashu via Lightning
  */
 
-import { ApiClient } from "../api";
 import type {
   AtomicSwapRequest,
   AtomicSwapResult,
@@ -51,12 +50,31 @@ interface SwapStatusResponse {
   error?: string;
 }
 
-class AtomicSwapAPI extends ApiClient {
+// Lazy ApiClient import to avoid circular dependencies
+let ApiClient: any = null;
+
+class AtomicSwapAPI {
+  private apiClient: any = null;
+
+  constructor() {
+    // Lazy initialization of ApiClient using dynamic import
+    this.initializeApiClient();
+  }
+
+  private async initializeApiClient() {
+    if (!ApiClient) {
+      const apiModule = await import("../api");
+      ApiClient = apiModule.ApiClient;
+    }
+    this.apiClient = new ApiClient();
+  }
+
   /**
    * Get a quote for an atomic swap
    */
   async getSwapQuote(request: SwapQuoteRequest): Promise<SwapQuote> {
-    return this.request("/api/atomic-swap/quote", {
+    await this.ensureApiClient();
+    return this.apiClient.request("/api/atomic-swap/quote", {
       method: "POST",
       body: JSON.stringify(request),
     });
@@ -66,7 +84,8 @@ class AtomicSwapAPI extends ApiClient {
    * Execute an atomic swap
    */
   async executeSwap(request: AtomicSwapRequest): Promise<AtomicSwapResult> {
-    return this.request("/api/atomic-swap/execute", {
+    await this.ensureApiClient();
+    return this.apiClient.request("/api/atomic-swap/execute", {
       method: "POST",
       body: JSON.stringify(request),
     });
@@ -76,7 +95,8 @@ class AtomicSwapAPI extends ApiClient {
    * Get swap status and transaction history
    */
   async getSwapStatus(swapId: string): Promise<SwapStatusResponse> {
-    return this.request(`/api/atomic-swap/status/${swapId}`, {
+    await this.ensureApiClient();
+    return this.apiClient.request(`/api/atomic-swap/status/${swapId}`, {
       method: "GET",
     });
   }
@@ -92,7 +112,8 @@ class AtomicSwapAPI extends ApiClient {
     swaps?: Array<any>;
     error?: string;
   }> {
-    return this.request(`/api/atomic-swap/history/${memberId}?limit=${limit}`, {
+    await this.ensureApiClient();
+    return this.apiClient.request(`/api/atomic-swap/history/${memberId}?limit=${limit}`, {
       method: "GET",
     });
   }
@@ -105,14 +126,36 @@ class AtomicSwapAPI extends ApiClient {
     message?: string;
     error?: string;
   }> {
-    return this.request(`/api/atomic-swap/cancel/${swapId}`, {
+    await this.ensureApiClient();
+    return this.apiClient.request(`/api/atomic-swap/cancel/${swapId}`, {
       method: "POST",
     });
   }
+
+  private async ensureApiClient() {
+    if (!this.apiClient) {
+      await this.initializeApiClient();
+    }
+  }
 }
 
-// Export singleton instance
-export const atomicSwapAPI = new AtomicSwapAPI();
+// Export singleton instance lazily to avoid circular dependencies
+let _atomicSwapAPI: AtomicSwapAPI | null = null;
+
+export function getAtomicSwapAPI(): AtomicSwapAPI {
+  if (!_atomicSwapAPI) {
+    _atomicSwapAPI = new AtomicSwapAPI();
+  }
+  return _atomicSwapAPI;
+}
+
+// Export a getter for backward compatibility
+export const atomicSwapAPI = new Proxy({} as AtomicSwapAPI, {
+  get(target, prop) {
+    return getAtomicSwapAPI()[prop as keyof AtomicSwapAPI];
+  }
+});
+
 export type {
   AtomicSwapRequest,
   AtomicSwapResult,

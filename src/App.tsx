@@ -13,9 +13,12 @@ import EducationPlatform from "./components/EducationPlatform";
 import FamilyCoordination from "./components/FamilyCoordination";
 import FamilyDashboard from "./components/FamilyDashboard";
 import FamilyOnboarding from "./components/FamilyOnboarding";
+import FamilyFoundryWizard from "./components/FamilyFoundryWizard";
 import IdentityForge from "./components/IdentityForge";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
+import EmergencyRecoveryModal from './components/EmergencyRecoveryModal';
+import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
 import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
 
 function App() {
@@ -55,8 +58,7 @@ function App() {
     return (
       <FamilyFederationAuthProvider>
         <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "guardian"]}>
-          <FamilyOnboarding
-            familyName="Nakamoto"
+          <FamilyFoundryWizard
             onComplete={() => setCurrentView("dashboard")}
             onBack={() => setCurrentView("landing")}
           />
@@ -85,48 +87,11 @@ function App() {
 
   if (currentView === "recovery") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center max-w-2xl border border-white/20">
-          <img
-            src="/Citadel Academy Logo.png"
-            alt="Citadel Academy"
-            className="h-16 w-16 mx-auto mb-6"
-          />
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Account Recovery
-          </h2>
-          <p className="text-purple-100 mb-8">
-            Recover your sovereign identity using your backup phrase or recovery
-            keys.
-          </p>
-          <div className="bg-white/10 rounded-lg p-6 mb-8">
-            <img
-              src="/SatNam.Pub logo.png"
-              alt="SatNam.Pub"
-              className="h-12 w-12 mx-auto mb-4 rounded-full"
-            />
-            <p className="text-purple-200 mb-4">
-              Enter your 12 or 24-word recovery phrase to restore your identity
-            </p>
-            <textarea
-              className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white placeholder-purple-200 resize-none"
-              rows={3}
-              placeholder="Enter your recovery phrase here..."
-            />
-          </div>
-          <div className="flex space-x-4 justify-center">
-            <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300">
-              Recover Identity
-            </button>
-            <button
-              onClick={() => setCurrentView("landing")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
-            >
-              Back to Home
-            </button>
-          </div>
-        </div>
-      </div>
+      <FamilyFederationAuthProvider>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "child", "guardian", "steward"]}>
+          <EmergencyRecoveryPage onBack={() => setCurrentView("landing")} />
+        </FamilyFederationAuthWrapper>
+      </FamilyFederationAuthProvider>
     );
   }
 
@@ -403,17 +368,17 @@ function App() {
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
-            <button
-              onClick={() => setCurrentView("onboarding")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
-            >
-              <img
-                src="/Rebuilding_Camelot_logo__transparency_v3.png"
-                alt="Rebuilding Camelot"
-                className="h-5 w-5"
-              />
-              <span>Family Onboarding</span>
-            </button>
+                          <button
+                onClick={() => setCurrentView("onboarding")}
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              >
+                <img
+                  src="/Rebuilding_Camelot_logo__transparency_v3.png"
+                  alt="Rebuilding Camelot"
+                  className="h-5 w-5"
+                />
+                <span>Family Foundry</span>
+              </button>
           </div>
 
           {/* Secondary Navigation Buttons */}
@@ -644,7 +609,7 @@ function App() {
                   onClick={() => setCurrentView("onboarding")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Family Onboarding
+                  Family Foundry
                 </button>
               </div>
             </div>

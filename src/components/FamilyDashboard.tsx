@@ -20,11 +20,15 @@ import {
   Clock,
   TrendingUp,
   QrCode,
+  Shield,
 } from "lucide-react";
 import PhoenixDNodeStatus from "./PhoenixDNodeStatus";
 import FamilyWalletCard from "./FamilyWalletCard";
 import SmartPaymentModal from "./SmartPaymentModal";
 import TransactionHistory from "./TransactionHistory";
+import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
+import { useAuth } from "../hooks/useAuth";
+import { FederationRole } from "../types/auth";
 
 interface FamilyMember {
   id: string;
@@ -51,6 +55,7 @@ interface Transaction {
 }
 
 const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const { user, userRole, familyId } = useAuth();
   const [familyName] = useState("Johnson");
   const [relayStatus] = useState<"connected" | "disconnected" | "syncing">(
     "connected",
@@ -137,6 +142,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>();
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrAddress, setQrAddress] = useState("");
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   const totalBalance = familyMembers.reduce(
     (sum, member) => sum + member.lightningBalance,
@@ -203,32 +209,50 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setShowQRModal(true);
   };
 
+  const handleEmergencyRecovery = () => {
+    setShowRecoveryModal(true);
+  };
+
+  const handleCloseRecoveryModal = () => {
+    setShowRecoveryModal(false);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700">
-      {/* Header */}
-      <div className="bg-white/10 backdrop-blur-sm border-b border-white/20">
+    <div className="min-h-screen bg-gray-50">
+      {/* Enhanced Header with Recovery Button */}
+      <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
                 onClick={onBack}
-                className="text-white hover:text-yellow-400 transition-colors duration-200"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <ArrowLeft className="h-6 w-6" />
+                <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-xl font-bold text-white">
+                <h1 className="text-xl font-semibold text-gray-900">
                   {familyName} Family Dashboard
                 </h1>
-                <p className="text-purple-200 text-sm">
-                  {familyMembers.length} members • {verifiedMembers} verified
+                <p className="text-sm text-gray-600">
+                  Sovereign family banking & coordination
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2">
-                <Settings className="h-4 w-4" />
-                <span>Settings</span>
+            
+            <div className="flex items-center space-x-3">
+              {/* Emergency Recovery Button */}
+              <button
+                onClick={handleEmergencyRecovery}
+                className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm"
+              >
+                <Shield className="h-4 w-4" />
+                <span className="text-sm font-medium">Emergency Recovery</span>
+              </button>
+              
+              {/* Settings Button */}
+              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                <Settings className="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -343,6 +367,18 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Emergency Recovery Modal */}
+      {showRecoveryModal && (
+        <EmergencyRecoveryModal
+          isOpen={showRecoveryModal}
+          onClose={handleCloseRecoveryModal}
+          userRole={userRole as FederationRole}
+          userId={user?.id || 'unknown'}
+          userNpub={user?.npub || ''}
+          familyId={familyId}
+        />
       )}
     </div>
   );

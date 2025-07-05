@@ -419,7 +419,7 @@ export class CitadelDatabase {
 
       const issues: string[] = [];
       const username = profile.username;
-      const expectedIdentifier = `${username}@${process.env.LIGHTNING_DOMAIN || "satnam.pub"}`;
+      const expectedIdentifier = `${username}@${import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"}`;
 
       // Check Lightning address
       const lightningAddress = profile.lightning_addresses?.[0]?.address;
@@ -473,7 +473,7 @@ export class CitadelDatabase {
         throw new Error("User profile not found");
       }
 
-      const correctIdentifier = `${profile.username}@${process.env.LIGHTNING_DOMAIN || "satnam.pub"}`;
+      const correctIdentifier = `${profile.username}@${import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"}`;
 
       // Fix Lightning address if inconsistent
       const lightningAddress = profile.lightning_addresses?.[0];

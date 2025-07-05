@@ -11,7 +11,7 @@
 import { Event, getPublicKey, nip04 } from "nostr-tools";
 import * as nip59 from "nostr-tools/nip59";
 import { SimplePool } from "nostr-tools/pool";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../src/lib/supabase";
 
 /**
  * Security Configuration
