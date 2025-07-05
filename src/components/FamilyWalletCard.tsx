@@ -17,7 +17,7 @@ interface FamilyMember {
   id: string;
   username: string;
   lightningAddress: string;
-  role: 'adult' | 'child' | 'guardian';
+  role: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
   spendingLimits?: {
     daily: number;
     weekly: number;
@@ -81,7 +81,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
   };
 
   const getSpendingLimitDisplay = () => {
-    if (member.role === 'adult' || member.role === 'guardian') {
+    if (member.role === 'adult' || member.role === 'steward' || member.role === 'guardian') {
       return "Unlimited";
     }
     if (member.spendingLimits) {
@@ -169,7 +169,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
         <div className="space-y-2 text-xs">
           <div className="flex items-center justify-between">
             <span className="text-amber-200">Status</span>
-            <span className={`font-medium ${(member.role === 'adult' || member.role === 'guardian') ? 'text-green-400' : 'text-amber-400'}`}>
+            <span className={`font-medium ${(member.role === 'adult' || member.role === 'steward' || member.role === 'guardian') ? 'text-green-400' : 'text-amber-400'}`}>
               {getSpendingLimitDisplay()}
             </span>
           </div>
@@ -275,7 +275,7 @@ export const mockFamilyMembers: FamilyMember[] = [
     id: "3",
     username: "arjun_teen",
     lightningAddress: "arjun_teen@satnam.pub",
-    role: "child",
+    role: "offspring",
     spendingLimits: {
       daily: 100000,
       weekly: 500000
@@ -291,7 +291,7 @@ export const mockFamilyMembers: FamilyMember[] = [
     id: "4",
     username: "priya_kid",
     lightningAddress: "priya_kid@satnam.pub",
-    role: "child",
+    role: "offspring",
     spendingLimits: {
       daily: 50000,
       weekly: 200000

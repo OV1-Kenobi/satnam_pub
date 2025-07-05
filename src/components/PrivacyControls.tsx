@@ -9,13 +9,12 @@ import { PrivacyLevel } from '../types/privacy';
 interface PrivacyControlsProps {
   currentLevel: PrivacyLevel;
   onLevelChange: (level: PrivacyLevel) => void;
-  userRole: 'adult' | 'child' | 'guardian';
+  userRole: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
   showMetrics?: boolean;
   privacyMetrics?: {
-    transactionsRouted: number;
     privacyScore: number;
-    lnproxyUsage: number;
-    cashuPrivacy: number;
+    lnproxyUsage: string;
+    cashuPrivacy: string;
   };
 }
 
@@ -35,21 +34,21 @@ function getAvailablePrivacyLevels(userRole: string): PrivacyLevelOption[] {
       label: 'Minimal Privacy',
       description: 'Basic privacy with direct Lightning routing',
       icon: <Eye className="h-4 w-4" />,
-      roles: ['adult', 'guardian']
+      roles: ['private', 'adult', 'steward', 'guardian']
     },
     {
       id: PrivacyLevel.ENCRYPTED,
       label: 'Enhanced Privacy',
       description: 'Balanced privacy with Fedimint and enhanced Lightning',
       icon: <Users className="h-4 w-4" />,
-      roles: ['adult', 'child', 'guardian']
+      roles: ['private', 'offspring', 'adult', 'steward', 'guardian']
     },
     {
       id: PrivacyLevel.GIFTWRAPPED,
       label: 'Maximum Privacy',
       description: 'Maximum privacy with Cashu tokens and LNProxy routing',
       icon: <Lock className="h-4 w-4" />,
-      roles: ['adult', 'child', 'guardian']
+      roles: ['private', 'offspring', 'adult', 'steward', 'guardian']
     }
   ];
 

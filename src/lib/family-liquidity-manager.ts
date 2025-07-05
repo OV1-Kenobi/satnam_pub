@@ -12,9 +12,9 @@
  * - Comprehensive logging and monitoring
  */
 
-import { FamilyAPI } from "../../lib/family-api";
-import { LightningClient } from "../../lib/lightning-client";
-import { supabase } from "../../lib/supabase";
+import { FamilyAPI } from "./family-api";
+import { LightningClient } from "./lightning-client";
+import { supabase } from "./supabase";
 
 export interface FamilyLiquidityConfig {
   familyId: string;

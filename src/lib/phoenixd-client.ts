@@ -11,7 +11,7 @@ import axios, { AxiosResponse } from "axios";
 import {
   SatnamPrivacyLayer,
   type PrivacyWrappedInvoice,
-} from "../../lib/privacy/lnproxy-privacy";
+} from "./privacy/lnproxy-privacy";
 
 // PhoenixD API Types
 interface PhoenixdNodeInfo {

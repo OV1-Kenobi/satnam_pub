@@ -6,7 +6,7 @@
  * components initialize simultaneously.
  */
 
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 
 interface AuthResult {
   authenticated: boolean;

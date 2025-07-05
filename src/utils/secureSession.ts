@@ -5,7 +5,7 @@
  * It handles authentication flows securely using Supabase's built-in session management.
  */
 
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { authManager } from "./authManager";
 
 export interface SessionInfo {

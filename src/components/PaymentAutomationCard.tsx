@@ -6,10 +6,10 @@ import {
     CreditCard,
     Edit3,
     Globe,
-    Lightning,
+    Zap,
     Pause,
     Play,
-    Route,
+    Router,
     Settings,
     Shield,
     Trash2,
@@ -46,19 +46,19 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
 
   const getRoutingIcon = (routing: PaymentRouting) => {
     const iconMap = {
-      'breez': Lightning,
-      'phoenixd': Lightning,
+      'breez': Zap,
+      'phoenixd': Zap,
       'voltage': Building,
       'cashu_mint': Coins,
       'internal_fedimint': Users,
       'external_ln': Globe
     };
-    return iconMap[routing] || Route;
+    return iconMap[routing] || Router;
   };
 
   const getRecipientIcon = (recipientType: RecipientType) => {
     const iconMap = {
-      'ln_address': Lightning,
+      'ln_address': Zap,
       'family_member': Users,
       'cashu_token': Coins,
       'fedimint_internal': Building,

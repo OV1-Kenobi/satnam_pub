@@ -6,7 +6,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   PrivacyConsentResponse,
   SatnamPrivacyFirstCommunications,
-} from "../../lib/gift-wrapped-messaging/privacy-first-service";
+} from "../lib/gift-wrapped-messaging/privacy-first-service";
 
 export interface PrivacyMessagingState {
   communications: SatnamPrivacyFirstCommunications | null;

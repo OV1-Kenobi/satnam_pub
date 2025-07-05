@@ -4,16 +4,15 @@ import {
     Clock,
     Coins,
     Globe,
-    Lightning,
+    Zap,
     Mail,
-    Route,
+    Router,
     Save,
     Settings,
     Shield,
     UserCheck,
     Users,
-    X,
-    Zap
+    X
 } from 'lucide-react';
 import React, { useState } from 'react';
 
@@ -36,7 +35,7 @@ interface PaymentAutomationModalProps {
   familyMembers?: Array<{
     id: string;
     name: string;
-    role: 'parent' | 'child' | 'guardian';
+    role: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
     avatar: string;
     lightningAddress?: string;
     npub?: string;
@@ -111,12 +110,12 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
   // Available routing methods based on context
   const availableRoutingMethods = context === 'individual' 
     ? [
-        { value: 'breez', label: 'Breez Node', description: 'Primary Lightning node for individuals', icon: Lightning },
+        { value: 'breez', label: 'Breez Node', description: 'Primary Lightning node for individuals', icon: Zap },
         { value: 'cashu_mint', label: 'Cashu eCash', description: 'Private eCash payments via mint', icon: Coins },
         { value: 'external_ln', label: 'External Lightning', description: 'Route via external Lightning network', icon: Globe }
       ]
     : [
-        { value: 'phoenixd', label: 'PhoenixD', description: 'Family Lightning channels', icon: Lightning },
+        { value: 'phoenixd', label: 'PhoenixD', description: 'Family Lightning channels', icon: Zap },
         { value: 'voltage', label: 'Voltage Enterprise', description: 'Enterprise Lightning infrastructure', icon: Building },
         { value: 'internal_fedimint', label: 'Family Fedimint', description: 'Internal federation transfers', icon: Users },
         { value: 'cashu_mint', label: 'Cashu eCash', description: 'Family eCash via mint', icon: Coins },
@@ -127,12 +126,12 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
   const availableRecipientTypes = context === 'family'
     ? [
         { value: 'family_member', label: 'Family Member', description: 'Send to family member', icon: Users },
-        { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Lightning },
+        { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
         { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: UserCheck },
         { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
       ]
     : [
-        { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Lightning },
+        { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
         { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: UserCheck },
         { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
       ];

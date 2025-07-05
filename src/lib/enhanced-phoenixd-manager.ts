@@ -7,11 +7,13 @@
  * @fileoverview Enhanced PhoenixD dual-mode management system
  */
 
-import * as cron from "node-cron";
+import { browserCron, type BrowserCronJob } from '../types/cron';
+
+const cron = browserCron;
 import {
   generateSecureUUID,
   logPrivacyOperation,
-} from "../../lib/privacy/encryption";
+} from "./privacy/encryption";
 import { LiquidityIntelligenceSystem } from "./liquidity-intelligence";
 import { PhoenixdClient } from "./phoenixd-client";
 
@@ -185,7 +187,7 @@ export class EnhancedPhoenixdManager {
   private emergencyProtocols: Map<string, EmergencyProtocol> = new Map();
   private rebalanceStrategies: Map<string, RebalanceStrategy> = new Map();
   private activeEmergencies: Map<string, EmergencyEvent> = new Map();
-  private rebalanceJobs: Map<string, cron.ScheduledTask> = new Map();
+  private rebalanceJobs: Map<string, BrowserCronJob> = new Map();
   private monitoringJobs: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(liquiditySystem?: LiquidityIntelligenceSystem) {

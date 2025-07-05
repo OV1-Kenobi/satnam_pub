@@ -1,0 +1,98 @@
+[build]
+  # Build settings for Vite React app
+  publish = "dist"
+  command = "npm run build"
+  
+  # Environment variables for build
+  [build.environment]
+    NODE_VERSION = "18"
+    NPM_FLAGS = "--legacy-peer-deps"
+
+# Redirects for SPA and API endpoints
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+# SPA redirects - all non-API routes go to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  conditions = {Role = ["admin"]}
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Security headers
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    
+    # Content Security Policy for Bitcoin-only, privacy-first app
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
+    
+    # CORS headers for API
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With"
+    Access-Control-Max-Age = "86400"
+
+# API-specific headers
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
+    Access-Control-Max-Age = "86400"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+
+# Static assets caching
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Service worker caching
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Environment-specific settings
+[context.production]
+  [context.production.environment]
+    NODE_ENV = "production"
+    VITE_API_BASE_URL = "/.netlify/functions"
+
+[context.deploy-preview]
+  [context.deploy-preview.environment]
+    NODE_ENV = "preview"
+    VITE_API_BASE_URL = "/.netlify/functions"
+
+[context.branch-deploy]
+  [context.branch-deploy.environment]
+    NODE_ENV = "development"
+    VITE_API_BASE_URL = "/.netlify/functions"
+
+# Functions configuration
+[functions]
+  # Node.js version for functions
+  node_bundler = "esbuild"
+  
+  # Function timeout (30 seconds for complex Bitcoin operations)
+  timeout = 30
+  
+  # Memory allocation for functions
+  memory = 1024
+
+# Edge functions (if needed for global performance)
+[[edge_functions]]
+  function = "api-proxy"
+  path = "/api/*" 

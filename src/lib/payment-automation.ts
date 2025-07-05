@@ -5,16 +5,18 @@
  * end-to-end encryption, and scheduled processing using node-cron.
  */
 
-import * as cron from "node-cron";
-import { LightningClient } from "../../lib/lightning-client";
+import { browserCron, type BrowserCronJob } from '../types/cron';
+
+const cron = browserCron;
+import { LightningClient } from "./lightning-client";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
   generateSecureUUID,
   logPrivacyOperation,
-} from "../../lib/privacy/encryption";
+} from "./privacy/encryption";
 
-import { supabase } from "../../lib/supabase";
+import { supabase } from "./supabase";
 
 export interface PaymentSchedule {
   id: string;
@@ -172,7 +174,7 @@ export interface PaymentProcessingResult {
 
 export class PaymentAutomationSystem {
   private lightningClient: LightningClient;
-  private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
+  private scheduledJobs: Map<string, BrowserCronJob> = new Map();
   private processingQueue: Map<string, any> = new Map();
   private retryQueue: Map<string, any> = new Map();
 

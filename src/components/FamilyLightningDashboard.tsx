@@ -12,7 +12,7 @@ import {
     PaymentModal,
     QRCodeModal,
     TransactionHistorySection,
-} from "./FamilyLightningDashboard";
+} from "./FamilyLightningDashboard/index";
 import { NodeStatus, Transaction } from "./FamilyLightningDashboard/types";
 
 interface FamilyLightningDashboardProps {

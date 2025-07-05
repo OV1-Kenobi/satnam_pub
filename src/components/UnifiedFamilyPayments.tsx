@@ -3,7 +3,7 @@ import {
     CheckCircle,
     Info,
     Loader2,
-    Route,
+    Router,
     Send,
     Shield,
     Zap
@@ -207,7 +207,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
     switch (protocol) {
       case 'lightning': return <Zap className="h-4 w-4 text-yellow-400" />;
       case 'fedimint': return <Shield className="h-4 w-4 text-purple-400" />;
-      default: return <Route className="h-4 w-4 text-blue-400" />;
+      default: return <Router className="h-4 w-4 text-blue-400" />;
     }
   };
 
@@ -234,7 +234,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-            <Route className="h-6 w-6 text-white" />
+            <Router className="h-6 w-6 text-white" />
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">Unified Family Payments</h2>
@@ -372,7 +372,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
             disabled={loading || !paymentForm.amount || !paymentForm.fromMember}
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Route className="h-4 w-4" />}
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Router className="h-4 w-4" />}
             <span>Get Routing</span>
           </button>
           

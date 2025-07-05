@@ -19,15 +19,59 @@ export interface NIP07AuthChallenge {
   expiresAt: number;
 }
 
+// New hierarchical role system for Family Federations
+export type FederationRole = "private" | "offspring" | "adult" | "steward" | "guardian";
+
+// Role hierarchy: Guardian > Steward > Adult > Offspring > Private (no hierarchy)
+export interface RolePermissions {
+  can_view_own_balance?: boolean;
+  can_view_family_balances?: boolean;
+  can_view_all_balances?: boolean;
+  can_make_small_payments?: boolean;
+  can_approve_offspring_payments?: boolean;
+  can_approve_adult_payments?: boolean;
+  can_approve_all_payments?: boolean;
+  can_create_offspring?: boolean;
+  can_create_adults?: boolean;
+  can_create_any_role?: boolean;
+  can_manage_offspring?: boolean;
+  can_manage_adults?: boolean;
+  can_manage_all_roles?: boolean;
+  can_remove_stewards?: boolean;
+  can_view_family_events?: boolean;
+  can_view_federation_settings?: boolean;
+  can_propose_changes?: boolean;
+  can_manage_federation?: boolean;
+  can_emergency_override?: boolean;
+  // Private user permissions
+  can_manage_own_funds?: boolean;
+  can_set_own_spending_limits?: boolean;
+  can_manage_own_custody?: boolean;
+  no_rbac_restrictions?: boolean;
+}
+
+export interface RoleHierarchy {
+  role: FederationRole;
+  permissions: RolePermissions;
+  can_promote_to: FederationRole[];
+  can_demote_from: FederationRole[];
+  can_remove: boolean;
+  daily_spending_limit: number;
+  requires_approval_for: string[];
+}
+
 export interface FamilyFederationUser {
   npub: string;
   nip05?: string;
-  federationRole: "adult" | "child" | "guardian";
+  federationRole: FederationRole;
   authMethod: "nwc" | "otp";
   isWhitelisted: boolean;
   votingPower: number;
+  stewardApproved: boolean;
   guardianApproved: boolean;
   sessionToken: string;
+  createdBy?: string; // Hash of creator's npub
+  rolePermissions?: RolePermissions;
 }
 
 export interface AuthResponse {
@@ -58,10 +102,11 @@ export interface VerificationResponse {
     userAuth: {
       npub: string;
       nip05?: string;
-      federationRole: string | null;
+      federationRole: FederationRole | null;
       authMethod: string;
       isWhitelisted: boolean;
       votingPower: number;
+      stewardApproved: boolean;
       guardianApproved: boolean;
     };
     message: string;
@@ -103,10 +148,11 @@ export interface NWCAuthResponse {
     userAuth: {
       npub: string;
       nip05: string;
-      federationRole: "adult" | "child" | "guardian";
+      federationRole: FederationRole;
       authMethod: "nwc";
       isWhitelisted: boolean;
       votingPower: number;
+      stewardApproved: boolean;
       guardianApproved: boolean;
     };
     message: string;
@@ -189,7 +235,7 @@ export interface IndividualUser {
   nip05?: string;
   lightningAddress: string;
   authMethod: "lightning" | "cashu" | "nwc";
-  walletType: "personal" | "child" | "guardian";
+  walletType: "personal" | "offspring" | "adult" | "steward" | "guardian";
   spendingLimits?: {
     daily: number;
     weekly: number;
@@ -212,7 +258,7 @@ export interface IndividualAuthResponse {
       nip05?: string;
       lightningAddress: string;
       authMethod: "lightning" | "cashu" | "nwc";
-      walletType: "personal" | "child" | "guardian";
+      walletType: "personal" | "offspring" | "adult" | "steward" | "guardian";
       spendingLimits?: {
         daily: number;
         weekly: number;

@@ -9,7 +9,7 @@
  * @deprecated Use EnhancedPhoenixdManager instead
  */
 
-import { getFamilyMember } from "../../lib/family-api";
+import { getFamilyMember } from "./family-api";
 import { PhoenixdClient } from "./phoenixd-client";
 
 // Family Banking Types

@@ -1,6 +1,6 @@
 // Internal Lightning Bridge - Base Class and Configuration
 // File: src/lib/internal-lightning-bridge.ts
-import { supabase } from "../../lib/supabase";
+import { supabase } from "./supabase";
 import { SatnamCrossMintCashuManager } from "./cross-mint-cashu-manager";
 import { FedimintClient } from "./fedimint-client";
 import { PhoenixdClient } from "./phoenixd-client";

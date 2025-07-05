@@ -13,6 +13,8 @@
 - [Overview](#overview)
 - [Core Principles](#core-principles)
 - [Features](#features)
+- [Hierarchical Role-Based Access Control](#hierarchical-role-based-access-control)
+- [Privacy & Sovereignty Controls](#privacy--sovereignty-controls)
 - [Open Protocols](#open-protocols)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -77,6 +79,7 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 
 - Family dashboard for coordinated Bitcoin, Lightning & eCash management
 - Multi-generational onboarding and education
+- **Hierarchical Role-Based Access Control (RBAC)** with roles: Private, Offspring, Adult, Steward, and Guardian
 - Guardian approval system for large transactions
 - Family-wide Lightning Network & Nostr account integration
 - Privacy-enhanced messaging for family communications
@@ -117,6 +120,8 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Comprehensive security guidelines and monitoring
 - Guardian approval for large transactions
 - Hardware security integration (future)
+- **Privacy Controls Modal** - User-configurable privacy levels with real-time metrics
+- **Sovereign Family Banking Modal** - Family treasury management with privacy protection
 - Unified data deletion modal
 
 ### ⚡ **Multi-Layer Bitcoin Stack**
@@ -129,6 +134,174 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Fedimint federation with guardian approval
 - Cashu eCash for private transactions
 - Multi-layer Lightning/Cashu/Fedimint bridge
+
+## Hierarchical Role-Based Access Control
+
+Satnam.pub implements a sophisticated hierarchical Role-Based Access Control (RBAC) system designed for family sovereignty and privacy:
+
+### 🏛️ **Role Hierarchy**
+
+```
+Guardian (Level 4)
+├── Steward (Level 3)
+│   ├── Adult (Level 2)
+│   │   └── Offspring (Level 1)
+│   └── Private (Level 0)
+```
+
+### 👥 **Role Definitions**
+
+#### **Private** (Level 0)
+- **Description**: Autonomous users not part of any Family Federation
+- **Permissions**: Full autonomy over funds and custody
+- **Restrictions**: No RBAC restrictions, no hierarchy level
+- **Use Case**: Individual users who prefer complete independence
+
+#### **Offspring** (Level 1)
+- **Description**: Family members under adult supervision
+- **Permissions**: Limited spending, educational access, basic family features
+- **Controlled By**: Adults, Stewards, Guardians
+- **Restrictions**: Spending limits, approval requirements for large transactions
+- **Use Case**: Children and teenagers learning financial responsibility
+
+#### **Adult** (Level 2)
+- **Description**: Family members with full financial capabilities
+- **Permissions**: Full family features, can manage offspring accounts
+- **Controlled By**: Stewards, Guardians
+- **Restrictions**: Subject to family policies and steward oversight
+- **Use Case**: Parents and adult family members
+
+#### **Steward** (Level 3)
+- **Description**: Family administrators with creation and control authority
+- **Permissions**: Can create/manage families, assign roles, control adults
+- **Controlled By**: Guardians only
+- **Restrictions**: Cannot remove guardians, subject to guardian oversight
+- **Use Case**: Family organizers and administrators
+
+#### **Guardian** (Level 4)
+- **Description**: Ultimate protectors with removal authority
+- **Permissions**: Can remove stewards, ultimate family authority
+- **Controlled By**: No one (top of hierarchy)
+- **Restrictions**: Cannot be removed by other roles
+- **Use Case**: Family protectors and emergency contacts
+
+### 🔐 **Permission System**
+
+- **Hierarchical Inheritance**: Higher roles inherit permissions from lower roles
+- **Role-Based Permissions**: Each role has specific capabilities and restrictions
+- **Safe Migration**: Automatic role transitions with proper validation
+- **Emergency Protocols**: Guardian override capabilities for critical situations
+- **Audit Trail**: Complete logging of all role changes and permissions
+
+### 🛡️ **Security Features**
+
+- **Role Validation**: All role changes require proper authorization
+- **Permission Checks**: Real-time validation of user capabilities
+- **Hierarchy Enforcement**: Automatic enforcement of role relationships
+- **Safe Defaults**: New users default to "private" role for maximum autonomy
+- **Migration Safety**: Secure transition from legacy role systems
+
+## Privacy & Sovereignty Controls
+
+Satnam.pub provides comprehensive privacy and sovereignty control modals that give users complete control over their data and financial operations:
+
+### 🛡️ **Privacy Controls Modal**
+
+The `PrivacyControls` component provides granular privacy level management:
+
+#### **Privacy Levels**
+- **Minimal Privacy**: Basic privacy with direct Lightning routing
+- **Enhanced Privacy**: Balanced privacy with Fedimint and enhanced Lightning
+- **Maximum Privacy**: Maximum privacy with Cashu tokens and LNProxy routing
+
+#### **Features**
+- **Role-Based Access**: Privacy levels available based on user role
+- **Privacy Metrics**: Real-time privacy score and metrics display
+- **LNProxy Integration**: Automatic privacy routing configuration
+- **Cashu Privacy**: eCash privacy level indicators
+- **Privacy Tips**: Contextual advice based on selected privacy level
+
+#### **Privacy Metrics**
+- **Privacy Score**: Overall privacy rating (0-100%)
+- **LNProxy Usage**: Lightning Network proxy routing status
+- **Cashu Privacy**: eCash privacy implementation status
+- **Real-time Monitoring**: Live privacy level tracking
+
+### ⚡ **Sovereign Family Banking Modal**
+
+The `SovereignFamilyBanking` component provides comprehensive family financial management:
+
+#### **Core Features**
+- **Lightning Network Integration**: Instant Bitcoin payments with PhoenixD
+- **Family Wallets**: Manage allowances and spending limits
+- **Bitcoin Treasury**: Secure family savings and long-term holdings
+- **Privacy Protection**: LNProxy privacy routing for all transactions
+
+#### **Family Management**
+- **Multi-Generational Support**: Tools for all family member types
+- **Role-Based Access**: Different interfaces based on user role
+- **Guardian Oversight**: Family protector features and controls
+- **Educational Integration**: Learning tools for financial literacy
+
+#### **Security Features**
+- **Demo Mode**: Safe testing environment with clear indicators
+- **Real-time Monitoring**: Live transaction and balance tracking
+- **Emergency Protocols**: Guardian override capabilities
+- **Audit Trails**: Complete transaction history and logging
+
+### 🔧 **Enhanced Privacy Components**
+
+#### **Privacy Enhanced Payment Modal**
+- **Multi-Layer Privacy**: Lightning, Cashu, and Fedimint payment options
+- **Privacy Level Selection**: Choose privacy level per transaction
+- **Metadata Minimization**: Reduce transaction fingerprinting
+- **Route Optimization**: Automatic selection of most private payment path
+
+#### **Privacy Enhanced Individual Dashboard**
+- **Personal Privacy Metrics**: Individual privacy score and recommendations
+- **Transaction Privacy**: Per-transaction privacy level tracking
+- **Privacy Settings**: Granular control over data sharing
+- **Privacy Education**: Tips and guidance for improving privacy
+
+#### **Privacy Preferences Modal**
+- **Global Privacy Settings**: System-wide privacy configuration
+- **Family Privacy Policies**: Family-wide privacy rule management
+- **Notification Preferences**: Privacy-focused notification settings
+- **Data Retention**: Control over data storage and deletion
+
+### 🎯 **Sovereignty Features**
+
+#### **Self-Custody Journey**
+- **Guided Progression**: Step-by-step path to full sovereignty
+- **Educational Milestones**: Learning checkpoints with rewards
+- **Badge System**: Achievement tracking for sovereignty progress
+- **Hardware Integration**: Support for hardware security devices
+
+#### **Family Sovereignty**
+- **Multi-Signature Setup**: Family treasury with guardian oversight
+- **Decentralized Decision Making**: Family governance without central authority
+- **Emergency Protocols**: Guardian override for critical situations
+- **Sovereign Identity**: Family identity independent of external services
+
+#### **Data Sovereignty**
+- **Local Storage**: All sensitive data stored locally
+- **Encrypted Backups**: Secure, user-controlled backup systems
+- **Programmable Deletion**: Complete control over data retention
+- **Zero External Dependencies**: No reliance on third-party services
+
+### 📊 **Privacy Analytics**
+
+#### **Local Analytics**
+- **Device-Only Processing**: All analytics run on user device
+- **No External Sharing**: Analytics data never leaves user control
+- **Privacy-Preserving Metrics**: Mathematical guarantees of privacy
+- **Opt-In Only**: Analytics disabled by default
+
+#### **Privacy Score Calculation**
+- **Multi-Factor Assessment**: Comprehensive privacy evaluation
+- **Real-Time Updates**: Live privacy score adjustments
+- **Recommendation Engine**: Personalized privacy improvement suggestions
+- **Historical Tracking**: Privacy score trends over time
 
 ## Open Protocols
 
@@ -596,6 +769,14 @@ copies or substantial portions of the Software.
 ### Getting Help
 
 - **Documentation**: Comprehensive guides available in the `/docs` directory
+  - [Setup Guide](docs/SETUP-GUIDE.md)
+  - [Hierarchical RBAC System](docs/HIERARCHICAL_RBAC_SYSTEM.md)
+  - [Privacy & Sovereignty Controls](docs/PRIVACY_SOVEREIGNTY_CONTROLS.md)
+  - [Security Guidelines](docs/PRIVACY_FIRST_SECURITY.md)
+  - [Family Federation Auth](docs/FAMILY_FEDERATION_AUTH.md)
+  - [Lightning Integration](docs/LIGHTNING_ADDRESSES.md)
+  - [PhoenixD Integration](docs/PHOENIXD_INTEGRATION.md)
+  - [Privacy Protection](docs/PRIVACY-PROTECTION.md)
 - **GitHub Issues**: Report bugs and request features
 - **Community**: Join our discussions on Nostr
 - **Email**: support@satnam.pub

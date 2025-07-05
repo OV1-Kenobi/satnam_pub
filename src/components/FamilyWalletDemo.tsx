@@ -1,13 +1,13 @@
 import { AlertTriangle, RefreshCw, Users, Zap } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import FamilyWalletCard, { mockFamilyMembers } from './FamilyWalletCard.tsx';
+import FamilyWalletCard, { mockFamilyMembers } from './FamilyWalletCard';
 
-// Family Member interface
+// Import the FamilyMember interface from FamilyWalletCard
 interface FamilyMember {
   id: string;
   username: string;
   lightningAddress: string;
-  role: 'adult' | 'child' | 'guardian';
+  role: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
   spendingLimits?: {
     daily: number;
     weekly: number;
@@ -91,8 +91,8 @@ const FamilyWalletDemo: React.FC = () => {
     alert(`Show QR code for Lightning Address: ${address}`);
   };
 
-  const adultMembers = members.filter(member => member.role === 'adult' || member.role === 'guardian');
-  const childMembers = members.filter(member => member.role === 'child');
+  const adultMembers = members.filter(member => member.role === 'adult' || member.role === 'steward' || member.role === 'guardian');
+  const offspringMembers = members.filter(member => member.role === 'offspring');
 
   if (isLoading) {
     return (
@@ -161,18 +161,18 @@ const FamilyWalletDemo: React.FC = () => {
           )}
         </div>
 
-        {/* Parents Section */}
-        {parentMembers.length > 0 && (
+        {/* Adults Section */}
+        {adultMembers.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center space-x-2 mb-6">
               <Users className="h-6 w-6 text-orange-400" />
-              <h2 className="text-2xl font-bold text-white">Parents</h2>
+              <h2 className="text-2xl font-bold text-white">Adults</h2>
               <span className="bg-orange-500/20 text-orange-300 px-3 py-1 rounded-full text-sm font-medium">
                 Unlimited Spending
               </span>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {parentMembers.map((member) => (
+              {adultMembers.map((member) => (
                 <FamilyWalletCard
                   key={member.id}
                   member={member}
@@ -186,18 +186,18 @@ const FamilyWalletDemo: React.FC = () => {
           </div>
         )}
 
-        {/* Children Section */}
-        {childMembers.length > 0 && (
+        {/* Offspring Section */}
+        {offspringMembers.length > 0 && (
           <div>
             <div className="flex items-center space-x-2 mb-6">
               <Users className="h-6 w-6 text-amber-400" />
-              <h2 className="text-2xl font-bold text-white">Children</h2>
+              <h2 className="text-2xl font-bold text-white">Offspring</h2>
               <span className="bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full text-sm font-medium">
                 Spending Limits Applied
               </span>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {childMembers.map((member) => (
+              {offspringMembers.map((member) => (
                 <FamilyWalletCard
                   key={member.id}
                   member={member}

@@ -10,16 +10,17 @@
  * 6. RBAC via secure UUID verification
  */
 
-import { supabase } from "../../../lib/supabase";
+import { supabase } from "../supabase";
 
 // Privacy-first types - NO npubs/nip05 stored
 export interface PrivacyUser {
   hashedUUID: string; // Dynamic hashed UUID (unique per user)
   userSalt: string; // Per-user salt for UUID generation
-  federationRole: "adult" | "child" | "guardian";
+  federationRole: "private" | "offspring" | "adult" | "steward" | "guardian";
   authMethod: "nwc" | "otp" | "nip07";
   isWhitelisted: boolean;
   votingPower: number;
+  stewardApproved: boolean;
   guardianApproved: boolean;
   sessionHash: string; // Ephemeral session identifier
   createdAt: number;
@@ -158,10 +159,11 @@ export class PrivacyFirstAuth {
         const newUser: PrivacyUser = {
           hashedUUID,
           userSalt,
-          federationRole: "child", // Default
+          federationRole: "private", // Default - no RBAC restrictions
           authMethod: "nwc",
           isWhitelisted: false,
           votingPower: 1,
+          stewardApproved: false,
           guardianApproved: false,
           sessionHash: PrivacyEngine.generateSessionId(),
           createdAt: Date.now(),
@@ -222,10 +224,11 @@ export class PrivacyFirstAuth {
         const newUser: PrivacyUser = {
           hashedUUID,
           userSalt,
-          federationRole: "child",
+          federationRole: "private",
           authMethod: "otp",
           isWhitelisted: true, // OTP users are pre-approved
           votingPower: 1,
+          stewardApproved: false,
           guardianApproved: false,
           sessionHash: PrivacyEngine.generateSessionId(),
           createdAt: Date.now(),
@@ -292,10 +295,11 @@ export class PrivacyFirstAuth {
         const newUser: PrivacyUser = {
           hashedUUID,
           userSalt,
-          federationRole: "child",
+          federationRole: "private",
           authMethod: "nip07",
           isWhitelisted: false,
           votingPower: 1,
+          stewardApproved: false,
           guardianApproved: false,
           sessionHash: PrivacyEngine.generateSessionId(),
           createdAt: Date.now(),

@@ -6,7 +6,7 @@ import {
   DollarSign,
   Eye,
   EyeOff,
-  Lightning,
+  Zap,
   RefreshCw,
   Settings,
   TrendingUp,
@@ -281,7 +281,7 @@ const IndividualPaymentDashboard: React.FC<IndividualPaymentDashboardProps> = ({
             <h3 className="text-lg font-semibold text-blue-900">
               Breez Lightning
             </h3>
-            <Lightning className="h-6 w-6 text-blue-500" />
+            <Zap className="h-6 w-6 text-blue-500" />
           </div>
           <div className="text-3xl font-bold text-blue-700 mb-2">
             {showPrivateBalances ? formatSats(breezBalance) : '•••••••'} sats

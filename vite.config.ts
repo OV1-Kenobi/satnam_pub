@@ -25,9 +25,6 @@ function getAllEntries(
         file.includes(".hot-update") ||
         file.includes(".vite") ||
         file.startsWith(".") ||
-        file.includes("payment-automation") || // Node.js-only module
-        file.includes("server-") ||
-        file.includes("-server") ||
         file.includes("node-")
       ) {
         return;
@@ -117,7 +114,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, "index.html"),
-        // Automatically include all component and lib entries
+        // Only include component and lib entries from src/
         ...componentEntries,
         ...libEntries,
       },

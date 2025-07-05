@@ -29,18 +29,20 @@
  * ```
  */
 
-import * as cron from "node-cron";
+import { browserCron, type BrowserCronJob } from '../types/cron';
+
+const cron = browserCron;
 import type { WebSocket as WSType } from "ws";
 import WebSocket from "ws";
 import { z } from "zod";
 
-import { LightningClient } from "../../lib/lightning-client";
+import { LightningClient } from "./lightning-client";
 import {
   encryptSensitiveData,
   generateSecureUUID,
   logPrivacyOperation,
-} from "../../lib/privacy/encryption";
-import { supabase } from "../../lib/supabase";
+} from "./privacy/encryption";
+import { supabase } from "./supabase";
 import { FamilyLiquidityManager } from "./family-liquidity-manager";
 
 /**
@@ -332,7 +334,7 @@ export class EnhancedFamilyCoordinator {
   private readonly lightningClient: LightningClient;
   private lspClient: unknown; // Phoenix LSP client - typed as unknown for safety
   private readonly encryptionKey: string;
-  private readonly cronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private readonly cronJobs: Map<string, BrowserCronJob> = new Map();
   private wsServer?: WebSocket.Server;
   private readonly connectedClients: Set<WSType> = new Set();
   private isInitialized = false;
@@ -408,6 +410,7 @@ export class EnhancedFamilyCoordinator {
         maxRoutingFee: 1_000, // 1000 sats max
         maxRebalanceFee: 500, // 500 sats max
       },
+      maxPaymentAmount: 5_000_000, // 5M sats max payment
     };
 
     // Initialize components with error handling
@@ -1377,7 +1380,8 @@ export class EnhancedFamilyCoordinator {
    */
   private async handleWebSocketMessage(
     client: WSType,
-    data: any
+    data: unknown,
+    info?: unknown
   ): Promise<void> {
     try {
       switch (data.type) {

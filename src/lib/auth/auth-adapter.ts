@@ -4,17 +4,18 @@
  * Supports: NIP-07, NWC, OTP, NIP-05 only
  */
 
-import { supabase } from "../../../lib/supabase";
+import { supabase } from "../supabase";
 
 // Privacy-first types (Nostr-only)
 export interface PrivateAuthUser {
   id: string; // Hashed UUID
   npub: string;
   nip05?: string;
-  federationRole: "adult" | "child" | "guardian";
+  federationRole: "offspring" | "adult" | "steward" | "guardian";
   authMethod: "nip07" | "nwc" | "otp" | "nip05";
   isWhitelisted: boolean;
   votingPower: number;
+  stewardApproved: boolean;
   guardianApproved: boolean;
   pubkey: string;
   sessionHash: string;
@@ -90,18 +91,24 @@ export class SupabaseAuthAdapter {
       }
 
       // Store Nostr data in Supabase user metadata
-      const { data, error } = await supabase.auth.signInAnonymously({
-        data: {
-          pubkey: credentials.pubkey,
-          npub: this.pubkeyToNpub(credentials.pubkey),
-          authMethod: "nip07",
-          signature: credentials.signature,
-          federationRole: "child", // Default, can be updated
-          isWhitelisted: false,
-          votingPower: 1,
-          guardianApproved: false,
-        },
-      });
+      const { data, error } = await supabase.auth.signInAnonymously();
+      
+      if (data.user) {
+        // Update user metadata after sign in
+        await supabase.auth.updateUser({
+          data: {
+            pubkey: credentials.pubkey,
+            npub: this.pubkeyToNpub(credentials.pubkey),
+            authMethod: "nip07",
+            signature: credentials.signature,
+            federationRole: "private", // Default for new users - no RBAC restrictions
+            isWhitelisted: false,
+            votingPower: 1,
+            stewardApproved: false,
+            guardianApproved: false,
+          },
+        });
+      }
 
       if (error) return { success: false, error: error.message };
 
@@ -126,18 +133,24 @@ export class SupabaseAuthAdapter {
       // Parse NWC connection string to get pubkey
       const pubkey = this.parseNwcPubkey(credentials.connectionString);
 
-      const { data, error } = await supabase.auth.signInAnonymously({
-        data: {
-          pubkey,
-          npub: this.pubkeyToNpub(pubkey),
-          authMethod: "nwc",
-          connectionString: credentials.connectionString,
-          federationRole: "child",
-          isWhitelisted: false,
-          votingPower: 1,
-          guardianApproved: false,
-        },
-      });
+      const { data, error } = await supabase.auth.signInAnonymously();
+      
+      if (data.user) {
+        // Update user metadata after sign in
+        await supabase.auth.updateUser({
+          data: {
+            pubkey,
+            npub: this.pubkeyToNpub(pubkey),
+            authMethod: "nwc",
+            connectionString: credentials.connectionString,
+            federationRole: "private",
+            isWhitelisted: false,
+            votingPower: 1,
+            stewardApproved: false,
+            guardianApproved: false,
+          },
+        });
+      }
 
       if (error) return { success: false, error: error.message };
 
@@ -164,16 +177,22 @@ export class SupabaseAuthAdapter {
         return { success: false, error: "Invalid OTP code" };
       }
 
-      const { data, error } = await supabase.auth.signInAnonymously({
-        data: {
-          identifier: credentials.identifier,
-          authMethod: "otp",
-          federationRole: "child",
-          isWhitelisted: true, // OTP users are pre-whitelisted
-          votingPower: 1,
-          guardianApproved: false,
-        },
-      });
+      const { data, error } = await supabase.auth.signInAnonymously();
+      
+      if (data.user) {
+        // Update user metadata after sign in
+        await supabase.auth.updateUser({
+          data: {
+            identifier: credentials.identifier,
+            authMethod: "otp",
+            federationRole: "private",
+            isWhitelisted: true, // OTP users are pre-whitelisted
+            votingPower: 1,
+            stewardApproved: false,
+            guardianApproved: false,
+          },
+        });
+      }
 
       if (error) return { success: false, error: error.message };
 
@@ -201,18 +220,24 @@ export class SupabaseAuthAdapter {
         return { success: false, error: "Invalid NIP-05 identifier" };
       }
 
-      const { data, error } = await supabase.auth.signInAnonymously({
-        data: {
-          pubkey,
-          npub: this.pubkeyToNpub(pubkey),
-          nip05: credentials.nip05,
-          authMethod: "nip05",
-          federationRole: "child",
-          isWhitelisted: false,
-          votingPower: 1,
-          guardianApproved: false,
-        },
-      });
+      const { data, error } = await supabase.auth.signInAnonymously();
+      
+      if (data.user) {
+        // Update user metadata after sign in
+        await supabase.auth.updateUser({
+          data: {
+            pubkey,
+            npub: this.pubkeyToNpub(pubkey),
+            nip05: credentials.nip05,
+            authMethod: "nip05",
+            federationRole: "private",
+            isWhitelisted: false,
+            votingPower: 1,
+            stewardApproved: false,
+            guardianApproved: false,
+          },
+        });
+      }
 
       if (error) return { success: false, error: error.message };
 
@@ -271,10 +296,11 @@ export class SupabaseAuthAdapter {
       id: PrivacyUtils.hashId(supabaseUser.id),
       npub: metadata.npub || "",
       nip05: metadata.nip05,
-      federationRole: metadata.federationRole || "child",
+      federationRole: metadata.federationRole || "private",
       authMethod: authMethod as any,
       isWhitelisted: metadata.isWhitelisted || false,
       votingPower: metadata.votingPower || 1,
+      stewardApproved: metadata.stewardApproved || false,
       guardianApproved: metadata.guardianApproved || false,
       pubkey: metadata.pubkey || "",
       sessionHash: PrivacyUtils.generateSessionId(),

@@ -5,14 +5,16 @@
  * with Lightning integration and privacy-first data handling.
  */
 
-import * as cron from "node-cron";
+import { browserCron, type BrowserCronJob } from '../types/cron';
+
+const cron = browserCron;
 import {
   decryptSensitiveData,
   encryptSensitiveData,
   generateSecureUUID,
   logPrivacyOperation,
-} from "../../lib/privacy/encryption";
-import { supabase } from "../../lib/supabase";
+} from "./privacy/encryption";
+import { supabase } from "./supabase";
 
 export interface LiquidityForecast {
   id: string;
@@ -167,7 +169,7 @@ export interface PhoenixLspConfig {
 }
 
 export class LiquidityIntelligenceSystem {
-  private forecastingJobs: Map<string, cron.ScheduledTask> = new Map();
+  private forecastingJobs: Map<string, BrowserCronJob> = new Map();
   private historicalDataCache: Map<string, any> = new Map();
   private patternModels: Map<string, any> = new Map();
   private phoenixLspConfig?: PhoenixLspConfig;

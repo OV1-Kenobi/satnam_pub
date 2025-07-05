@@ -24,17 +24,15 @@ interface PrivacyPreferences {
 interface PrivacyPreferencesModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userId: string;
-  userRole: 'adult' | 'child' | 'guardian';
-  onPreferencesUpdated?: (preferences: PrivacyPreferences) => void;
+  userRole: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
+  onPreferencesUpdate?: (prefs: PrivacyPreferences) => void;
 }
 
 const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
   isOpen,
   onClose,
-  userId,
   userRole,
-  onPreferencesUpdated,
+  onPreferencesUpdate,
 }) => {
   const [preferences, setPreferences] = useState<PrivacyPreferences>({
     default_privacy_level: PrivacyLevel.GIFTWRAPPED,
@@ -60,7 +58,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
     if (isOpen) {
       loadUserPreferences();
     }
-  }, [isOpen, userId]);
+  }, [isOpen]);
 
   const loadUserPreferences = async () => {
     try {
@@ -70,7 +68,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       const mockPreferences: PrivacyPreferences = {
         default_privacy_level: PrivacyLevel.GIFTWRAPPED,
         auto_upgrade_threshold: 100000,
-        require_guardian_approval: userRole === 'child',
+        require_guardian_approval: userRole === 'offspring',
         guardian_approval_threshold: 500000,
         metadata_protection: true,
         transaction_unlinkability: true,
@@ -99,8 +97,8 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       errors.push('Guardian approval threshold must be higher than auto-upgrade threshold');
     }
 
-    if (userRole === 'child' && !prefs.require_guardian_approval) {
-      errors.push('Children must have guardian approval enabled');
+    if (userRole === 'offspring' && !prefs.require_guardian_approval) {
+      errors.push('Offspring must have guardian approval enabled');
     }
 
     return errors;
@@ -122,8 +120,8 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       
       console.log('Saved privacy preferences:', preferences);
       
-      if (onPreferencesUpdated) {
-        onPreferencesUpdated(preferences);
+      if (onPreferencesUpdate) {
+        onPreferencesUpdate(preferences);
       }
 
       onClose();
@@ -248,14 +246,14 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
             </div>
 
             {/* Guardian Approval Settings */}
-            {(userRole === 'child' || userRole === 'adult') && (
+            {(userRole === 'offspring' || userRole === 'adult') && (
               <div className="space-y-3">
                 <div className="flex items-center space-x-3">
                   <input
                     type="checkbox"
                     checked={preferences.require_guardian_approval}
                     onChange={(e) => updatePreference('require_guardian_approval', e.target.checked)}
-                    disabled={userRole === 'child'}
+                    disabled={userRole === 'offspring'}
                     className="text-purple-600"
                   />
                   <label className="text-white font-semibold">Require Guardian Approval</label>
