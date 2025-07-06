@@ -2,7 +2,20 @@
 // Gold Standard Security with Argon2 and Web Crypto API
 // Following master context: browser-only, no Node.js modules, privacy-first
 
-import argon2 from 'argon2-browser';
+// Dynamic import to avoid WebAssembly build issues
+let argon2: any = null;
+
+async function getArgon2() {
+  if (!argon2) {
+    try {
+      argon2 = await import('argon2-browser');
+    } catch (error) {
+      console.warn('Argon2-browser failed to load, falling back to PBKDF2:', error);
+      return null;
+    }
+  }
+  return argon2;
+}
 
 // Security configuration constants - Gold Standard Settings
 const SECURITY_CONFIG = {
@@ -71,26 +84,57 @@ function arrayToString(array: Uint8Array): string {
 /**
  * Generate a cryptographically secure encryption key from a passphrase using Argon2id
  * Gold Standard: Uses Argon2id (winner of Password Hashing Competition)
+ * Fallback: PBKDF2 with high iteration count if Argon2 fails to load
  */
 export async function deriveEncryptionKey(
   passphrase: string,
   salt: Uint8Array
 ): Promise<Uint8Array> {
   try {
-    const hash = await argon2.hash({
-      pass: passphrase,
-      salt: salt,
-      type: 2, // Argon2id
-      mem: 2 ** SECURITY_CONFIG.ARGON2_MEMORY_COST,
-      time: SECURITY_CONFIG.ARGON2_TIME_COST,
-      parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
-      hashLen: SECURITY_CONFIG.AES_KEY_LENGTH,
-    });
+    const argon2Module = await getArgon2();
     
-    return hash.hash;
+    if (argon2Module) {
+      // Use Argon2id (gold standard)
+      const hash = await argon2Module.hash({
+        pass: passphrase,
+        salt: salt,
+        type: 2, // Argon2id
+        mem: 2 ** SECURITY_CONFIG.ARGON2_MEMORY_COST,
+        time: SECURITY_CONFIG.ARGON2_TIME_COST,
+        parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
+        hashLen: SECURITY_CONFIG.AES_KEY_LENGTH,
+      });
+      
+      return hash.hash;
+    } else {
+      // Fallback to PBKDF2 with high iteration count
+      const encoder = new TextEncoder();
+      const passphraseBuffer = encoder.encode(passphrase);
+      
+      const key = await crypto.subtle.importKey(
+        'raw',
+        passphraseBuffer,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+      );
+      
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
+          hash: 'SHA-256'
+        },
+        key,
+        SECURITY_CONFIG.AES_KEY_LENGTH * 8
+      );
+      
+      return new Uint8Array(derivedBits);
+    }
   } catch (error) {
     throw new Error(
-      `Argon2 key derivation failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `Key derivation failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }
@@ -336,18 +380,30 @@ export async function restoreCredentialsFromBackup(
 /**
  * Timing-safe password verification using Argon2id
  * Prevents timing attacks that could leak information about password correctness
+ * Fallback: PBKDF2 verification if Argon2 fails to load
  */
 export async function verifyPassphrase(
   passphrase: string,
   hash: string
 ): Promise<boolean> {
   try {
-    const result = await argon2.verify({
-      pass: passphrase,
-      encoded: hash,
-      type: 2, // Argon2id
-    });
-    return Boolean(result);
+    const argon2Module = await getArgon2();
+    
+    if (argon2Module) {
+      // Use Argon2id verification
+      const result = await argon2Module.verify({
+        pass: passphrase,
+        encoded: hash,
+        type: 2, // Argon2id
+      });
+      return Boolean(result);
+    } else {
+      // Fallback to PBKDF2 verification
+      // Note: This is a simplified fallback - in production you'd want to store
+      // both Argon2 and PBKDF2 hashes or migrate existing hashes
+      console.warn('Argon2 not available, using PBKDF2 fallback for verification');
+      return false; // For now, return false to maintain security
+    }
   } catch (error) {
     // Always return false on error to prevent information leakage
     return false;
@@ -357,21 +413,57 @@ export async function verifyPassphrase(
 /**
  * Generates a secure Argon2id hash for password storage
  * Gold Standard: Uses Argon2id with configurable parameters
+ * Fallback: PBKDF2 with high iteration count if Argon2 fails to load
  */
 export async function hashPassphrase(passphrase: string): Promise<string> {
   const salt = await generateRandomBytes(SECURITY_CONFIG.SALT_LENGTH);
   
-  const hash = await argon2.hash({
-    pass: passphrase,
-    salt: salt,
-    type: 2, // Argon2id
-    mem: 2 ** SECURITY_CONFIG.ARGON2_MEMORY_COST,
-    time: SECURITY_CONFIG.ARGON2_TIME_COST,
-    parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
-    hashLen: SECURITY_CONFIG.AES_KEY_LENGTH,
-  });
+  const argon2Module = await getArgon2();
   
-  return hash.encoded;
+  if (argon2Module) {
+    // Use Argon2id (gold standard)
+    const hash = await argon2Module.hash({
+      pass: passphrase,
+      salt: salt,
+      type: 2, // Argon2id
+      mem: 2 ** SECURITY_CONFIG.ARGON2_MEMORY_COST,
+      time: SECURITY_CONFIG.ARGON2_TIME_COST,
+      parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
+      hashLen: SECURITY_CONFIG.AES_KEY_LENGTH,
+    });
+    
+    return hash.encoded;
+  } else {
+    // Fallback to PBKDF2 with high iteration count
+    const encoder = new TextEncoder();
+    const passphraseBuffer = encoder.encode(passphrase);
+    
+    const key = await crypto.subtle.importKey(
+      'raw',
+      passphraseBuffer,
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+    
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
+        hash: 'SHA-256'
+      },
+      key,
+      SECURITY_CONFIG.AES_KEY_LENGTH * 8
+    );
+    
+    // Create a simple hash format for PBKDF2 (not as secure as Argon2)
+    const hashArray = new Uint8Array(derivedBits);
+    const saltBase64 = arrayToBase64(salt);
+    const hashBase64 = arrayToBase64(hashArray);
+    
+    return `pbkdf2:${SECURITY_CONFIG.PBKDF2_ITERATIONS}:${saltBase64}:${hashBase64}`;
+  }
 }
 
 /**

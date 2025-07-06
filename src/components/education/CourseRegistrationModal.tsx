@@ -200,19 +200,19 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
   const handleRegistration = async () => {
     try {
       setRegistrationStep('processing');
-      const selectedCourse = availableCourses.find(c => c.id === selectedCourseId);
+      const courseToRegister = availableCourses.find(c => c.id === selectedCourseId);
       
-      if (!selectedCourse) {
+      if (!courseToRegister) {
         throw new Error('Course not found');
       }
 
       // Handle different enrollment types
-      if (selectedCourse.provider === 'satnam') {
+      if (courseToRegister.provider === 'satnam') {
         // Direct enrollment for Satnam courses
-        await registerSatnamCourse(selectedCourse);
+        await registerSatnamCourse(courseToRegister);
       } else {
         // External enrollment for Citadel Academy courses
-        await registerExternalCourse(selectedCourse);
+        await registerExternalCourse(courseToRegister);
       }
 
       onRegistrationComplete();
@@ -289,7 +289,7 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
     return true;
   });
 
-  const selectedCourse = availableCourses.find(c => c.id === selectedCourseId);
+  const currentSelectedCourse = availableCourses.find(c => c.id === selectedCourseId);
 
   if (!isOpen) return null;
 
@@ -434,44 +434,44 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
             </div>
           )}
 
-          {registrationStep === 'details' && selectedCourse && (
+          {registrationStep === 'details' && currentSelectedCourse && (
             <div className="space-y-6">
               {/* Course Details */}
               <div className="border border-gray-200 rounded-lg p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{selectedCourse.title}</h3>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{currentSelectedCourse.title}</h3>
                     <div className="flex items-center space-x-4 text-sm text-gray-600">
                       <div className="flex items-center space-x-1">
-                        {getProviderIcon(selectedCourse.provider)}
-                        <span>{selectedCourse.provider === 'satnam' ? 'Satnam.pub' : 'Citadel Academy'}</span>
+                        {getProviderIcon(currentSelectedCourse.provider)}
+                        <span>{currentSelectedCourse.provider === 'satnam' ? 'Satnam.pub' : 'Citadel Academy'}</span>
                       </div>
-                      <span className={`px-2 py-1 rounded-full border ${getDifficultyColor(selectedCourse.difficulty)}`}>
-                        {selectedCourse.difficulty}
+                      <span className={`px-2 py-1 rounded-full border ${getDifficultyColor(currentSelectedCourse.difficulty)}`}>
+                        {currentSelectedCourse.difficulty}
                       </span>
                       <span className="flex items-center space-x-1">
                         <Clock className="h-4 w-4" />
-                        <span>{selectedCourse.duration} hours</span>
+                        <span>{currentSelectedCourse.duration} hours</span>
                       </span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-gray-900">{formatCost(selectedCourse.cost)}</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCost(currentSelectedCourse.cost)}</div>
                     <div className="text-sm text-gray-600">
-                      {selectedCourse.enrollmentType === 'immediate' ? 'Start immediately' : 
-                       selectedCourse.enrollmentType === 'approval-required' ? 'Approval required' : 'External course'}
+                      {currentSelectedCourse.enrollmentType === 'immediate' ? 'Start immediately' : 
+                       currentSelectedCourse.enrollmentType === 'approval-required' ? 'Approval required' : 'External course'}
                     </div>
                   </div>
                 </div>
 
-                <p className="text-gray-700 mb-6">{selectedCourse.description}</p>
+                <p className="text-gray-700 mb-6">{currentSelectedCourse.description}</p>
 
                 {/* Prerequisites */}
-                {selectedCourse.prerequisites.length > 0 && (
+                {currentSelectedCourse.prerequisites.length > 0 && (
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-gray-900 mb-2">Prerequisites</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedCourse.prerequisites.map((prereq: string) => (
+                      {currentSelectedCourse.prerequisites.map((prereq: string) => (
                         <span key={prereq} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
                           {prereq}
                         </span>
@@ -487,7 +487,7 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
                     <div>
                       <h5 className="font-medium text-gray-900 mb-2">Syllabus</h5>
                       <ul className="space-y-1">
-                        {selectedCourse.syllabus.map((item: string, index: number) => (
+                        {currentSelectedCourse.syllabus.map((item: string, index: number) => (
                           <li key={index} className="flex items-start space-x-2 text-sm text-gray-600">
                             <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
                             <span>{item}</span>
@@ -498,7 +498,7 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
                     <div>
                       <h5 className="font-medium text-gray-900 mb-2">Learning Outcomes</h5>
                       <ul className="space-y-1">
-                        {selectedCourse.learningOutcomes.map((outcome: string, index: number) => (
+                        {currentSelectedCourse.learningOutcomes.map((outcome: string, index: number) => (
                           <li key={index} className="flex items-start space-x-2 text-sm text-gray-600">
                             <Target className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                             <span>{outcome}</span>
@@ -512,16 +512,16 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
                 {/* Course Info */}
                 <div className="grid md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-900">{selectedCourse.badges.length}</div>
+                    <div className="text-2xl font-bold text-gray-900">{currentSelectedCourse.badges.length}</div>
                     <div className="text-sm text-gray-600">Badges Available</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-900">{selectedCourse.certificateType}</div>
+                    <div className="text-2xl font-bold text-gray-900">{currentSelectedCourse.certificateType}</div>
                     <div className="text-sm text-gray-600">Certificate Type</div>
                   </div>
-                  {selectedCourse.instructor && (
+                  {currentSelectedCourse.instructor && (
                     <div className="text-center">
-                      <div className="text-lg font-semibold text-gray-900">{selectedCourse.instructor}</div>
+                      <div className="text-lg font-semibold text-gray-900">{currentSelectedCourse.instructor}</div>
                       <div className="text-sm text-gray-600">Instructor</div>
                     </div>
                   )}
@@ -540,52 +540,52 @@ const CourseRegistrationModal: React.FC<CourseRegistrationModalProps> = ({
                   onClick={() => setRegistrationStep('confirm')}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  {selectedCourse.provider === 'satnam' ? 'Enroll Now' : 'Apply for Enrollment'}
+                  {currentSelectedCourse.provider === 'satnam' ? 'Enroll Now' : 'Apply for Enrollment'}
                 </button>
               </div>
             </div>
           )}
 
-          {registrationStep === 'confirm' && selectedCourse && (
+          {registrationStep === 'confirm' && currentSelectedCourse && (
             <div className="space-y-6">
               <div className="text-center">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Confirm Enrollment</h3>
-                <p className="text-gray-600">You're about to enroll in <strong>{selectedCourse.title}</strong></p>
+                <p className="text-gray-600">You're about to enroll in <strong>{currentSelectedCourse.title}</strong></p>
               </div>
 
               <div className="border border-gray-200 rounded-lg p-4">
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Course</span>
-                    <span className="font-medium">{selectedCourse.title}</span>
+                    <span className="font-medium">{currentSelectedCourse.title}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Provider</span>
-                    <span className="font-medium">{selectedCourse.provider === 'satnam' ? 'Satnam.pub' : 'Citadel Academy'}</span>
+                    <span className="font-medium">{currentSelectedCourse.provider === 'satnam' ? 'Satnam.pub' : 'Citadel Academy'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Duration</span>
-                    <span className="font-medium">{selectedCourse.duration} hours</span>
+                    <span className="font-medium">{currentSelectedCourse.duration} hours</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Cost</span>
-                    <span className="font-medium">{formatCost(selectedCourse.cost)}</span>
+                    <span className="font-medium">{formatCost(currentSelectedCourse.cost)}</span>
                   </div>
-                  {selectedCourse.startDate && (
+                  {currentSelectedCourse.startDate && (
                     <div className="flex justify-between">
                       <span className="text-gray-600">Start Date</span>
                       <span className="font-medium">
-                        {new Date(selectedCourse.startDate).toLocaleDateString()}
+                        {new Date(currentSelectedCourse.startDate).toLocaleDateString()}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {selectedCourse.provider === 'citadel-academy' && (
+              {currentSelectedCourse.provider === 'citadel-academy' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <div className="flex items-start space-x-3">
                     <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />

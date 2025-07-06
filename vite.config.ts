@@ -2,6 +2,8 @@ import react from "@vitejs/plugin-react";
 import fs from "fs";
 import path from "path";
 import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 
 // Plugin to copy .well-known directory
 function copyWellKnownPlugin() {
@@ -26,6 +28,29 @@ function copyWellKnownPlugin() {
           fs.copyFileSync(nostrJsonPath, distNostrJsonPath);
           console.log('✅ Copied .well-known/nostr.json to dist');
         }
+      }
+    }
+  };
+}
+
+// Plugin to copy argon2 WebAssembly file
+function copyArgon2WasmPlugin() {
+  return {
+    name: 'copy-argon2-wasm',
+    generateBundle() {
+      const wasmSourcePath = path.resolve(__dirname, 'node_modules/argon2-browser/dist/argon2.wasm');
+      const wasmDestPath = path.resolve(__dirname, 'dist/assets/wasm/argon2.wasm');
+      
+      if (fs.existsSync(wasmSourcePath)) {
+        // Ensure wasm directory exists
+        const wasmDir = path.dirname(wasmDestPath);
+        if (!fs.existsSync(wasmDir)) {
+          fs.mkdirSync(wasmDir, { recursive: true });
+        }
+        
+        // Copy the WebAssembly file
+        fs.copyFileSync(wasmSourcePath, wasmDestPath);
+        console.log('✅ Copied argon2.wasm to dist/assets/wasm/');
       }
     }
   };
@@ -93,7 +118,13 @@ console.log(`Found ${Object.keys(libEntries).length} lib entries`);
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), copyWellKnownPlugin()],
+  plugins: [
+    react(), 
+    copyWellKnownPlugin(),
+    copyArgon2WasmPlugin(),
+    wasm(),
+    topLevelAwait()
+  ],
 
   resolve: {
     alias: {
@@ -146,6 +177,11 @@ export default defineConfig({
         ...componentEntries,
         ...libEntries,
       },
+      external: [
+        // Externalize WebAssembly modules to prevent bundling issues
+        'argon2-browser/dist/argon2.wasm',
+        'argon2-browser'
+      ],
       output: {
         // Simplified manual chunking to avoid empty chunks
         manualChunks: {
@@ -198,6 +234,11 @@ export default defineConfig({
             return `assets/styles/[name]-[hash][extname]`;
           }
 
+          // Handle WebAssembly files
+          if (/wasm/i.test(ext || "")) {
+            return `assets/wasm/[name][extname]`;
+          }
+
           return `assets/[name]-[hash][extname]`;
         },
       },
@@ -224,6 +265,7 @@ export default defineConfig({
       "@scure/bip32",
       "@scure/bip39",
       "@noble/secp256k1",
+      "argon2-browser",
     ],
     esbuildOptions: {
       // Node.js global to browser globalThis
@@ -232,4 +274,7 @@ export default defineConfig({
       },
     },
   },
+
+  // Handle assets properly
+  assetsInclude: ['**/*.wasm'],
 });

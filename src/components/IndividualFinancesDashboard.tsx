@@ -6,8 +6,11 @@ import {
   ArrowDownLeft,
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   BarChart3,
   Brain,
+  CheckCircle,
+  Copy,
   CreditCard,
   DollarSign,
   Download,
@@ -53,15 +56,13 @@ import { useAuth } from '../hooks/useAuth';
 import { FederationRole } from '../types/auth';
 
 // Import our enhanced dual-protocol components
-import { CashuWalletCard } from './CashuWalletCard';
-import { LightningWalletCard } from './LightningWalletCard';
 import EducationalDashboard from './education/EducationalDashboard';
 
 interface IndividualFinancesDashboardProps {
   memberId: string;
   memberData: {
     username: string;
-    role: 'adult' | 'child' | 'guardian';
+    role: 'adult' | 'offspring' | 'guardian';
     lightningAddress: string;
     spendingLimits?: {
       daily: number;
@@ -169,6 +170,47 @@ interface CashuTransaction {
   tokenId: string;
 }
 
+// Cashu Wallet Card Component
+const CashuWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) => {
+  const [showBalance, setShowBalance] = useState(false);
+  
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-2">
+          <Shield className="h-6 w-6 text-blue-600" />
+          <h3 className="text-lg font-semibold text-blue-900">Cashu Wallet</h3>
+        </div>
+        <button
+          onClick={() => setShowBalance(!showBalance)}
+          className="text-blue-600 hover:text-blue-700"
+        >
+          {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+      
+      <div className="space-y-3">
+        <div>
+          <p className="text-2xl font-bold text-blue-900">
+            {showBalance ? `${wallet.ecashBalance.toLocaleString()} sats` : '••••••'}
+          </p>
+          <p className="text-sm text-blue-600">Private bearer instruments</p>
+        </div>
+        
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-blue-700">Bearer Notes:</span>
+          <span className="font-medium text-blue-900">{wallet.bearerInstruments?.length || 0}</span>
+        </div>
+        
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-blue-700">Privacy Level:</span>
+          <span className="font-medium text-blue-900">Maximum</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Lightning Wallet Card Component
 const LightningWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) => {
   const [showBalance, setShowBalance] = useState(false);
@@ -206,47 +248,6 @@ const LightningWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
           <span className="font-mono text-xs text-orange-800 truncate ml-2">
             {wallet.lightningAddress}
           </span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Cashu Wallet Card Component
-const CashuWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) => {
-  const [showBalance, setShowBalance] = useState(false);
-  
-  return (
-    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <Shield className="h-6 w-6 text-blue-600" />
-          <h3 className="text-lg font-semibold text-blue-900">Cashu Wallet</h3>
-        </div>
-        <button
-          onClick={() => setShowBalance(!showBalance)}
-          className="text-blue-600 hover:text-blue-700"
-        >
-          {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
-      </div>
-      
-      <div className="space-y-3">
-        <div>
-          <p className="text-2xl font-bold text-blue-900">
-            {showBalance ? `${wallet.ecashBalance.toLocaleString()} sats` : '••••••'}
-          </p>
-          <p className="text-sm text-blue-600">Private bearer instruments</p>
-        </div>
-        
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-blue-700">Bearer Notes:</span>
-          <span className="font-medium text-blue-900">{wallet.bearerInstruments?.length || 0}</span>
-        </div>
-        
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-blue-700">Offline Ready:</span>
-          <CheckCircle className="h-4 w-4 text-green-600" />
         </div>
       </div>
     </div>
@@ -1869,7 +1870,6 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
 
       {/* Balance Overview with Credits */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <LightningWalletCard wallet={wallet} />
         <CashuWalletCard wallet={wallet} />
         <ExternalMintsCard wallet={wallet} />
         <CreditsBalance variant="individual" />
