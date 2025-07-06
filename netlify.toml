@@ -15,6 +15,13 @@
   status = 200
   force = true
 
+# NIP-05 verification - serve .well-known directory
+[[redirects]]
+  from = "/.well-known/*"
+  to = "/.well-known/:splat"
+  status = 200
+  force = true
+
 # SPA redirects - all non-API routes go to index.html
 [[redirects]]
   from = "/*"
@@ -85,12 +92,6 @@
 [functions]
   # Node.js version for functions
   node_bundler = "esbuild"
-  
-  # Function timeout (30 seconds for complex Bitcoin operations)
-  timeout = 30
-  
-  # Memory allocation for functions
-  memory = 1024
 
 # Edge functions (if needed for global performance)
 [[edge_functions]]

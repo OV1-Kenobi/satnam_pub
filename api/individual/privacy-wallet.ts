@@ -3,7 +3,7 @@
  * Handles individual wallet operations with privacy level support
  */
 
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { PrivacyLevel } from "../../src/types/privacy";
 import {
   IndividualWalletWithPrivacy,

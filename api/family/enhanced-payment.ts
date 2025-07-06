@@ -11,7 +11,7 @@ import {
   generateSecureUUID,
   logPrivacyOperation,
 } from "../../lib/privacy/encryption";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { EnhancedFamilyCoordinator } from "../../src/lib/enhanced-family-coordinator";
 import { LiquidityIntelligenceSystem } from "../../src/lib/liquidity-intelligence";
 import type { LiquidityMetrics } from "../../types/common";

@@ -7,7 +7,7 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { logPrivacyOperation } from "../../lib/privacy/encryption";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { PaymentAutomationSystem } from "../../src/lib/payment-automation";
 
 interface PaymentScheduleRequest {

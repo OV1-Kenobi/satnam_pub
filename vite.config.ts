@@ -3,6 +3,34 @@ import fs from "fs";
 import path from "path";
 import { defineConfig } from "vite";
 
+// Plugin to copy .well-known directory
+function copyWellKnownPlugin() {
+  return {
+    name: 'copy-well-known',
+    generateBundle() {
+      // Copy .well-known directory to dist
+      const wellKnownPath = path.resolve(__dirname, 'public/.well-known');
+      const distWellKnownPath = path.resolve(__dirname, 'dist/.well-known');
+      
+      if (fs.existsSync(wellKnownPath)) {
+        // Ensure dist/.well-known directory exists
+        if (!fs.existsSync(distWellKnownPath)) {
+          fs.mkdirSync(distWellKnownPath, { recursive: true });
+        }
+        
+        // Copy nostr.json
+        const nostrJsonPath = path.join(wellKnownPath, 'nostr.json');
+        const distNostrJsonPath = path.join(distWellKnownPath, 'nostr.json');
+        
+        if (fs.existsSync(nostrJsonPath)) {
+          fs.copyFileSync(nostrJsonPath, distNostrJsonPath);
+          console.log('✅ Copied .well-known/nostr.json to dist');
+        }
+      }
+    }
+  };
+}
+
 // Helper function to recursively collect all entry points in a directory
 function getAllEntries(
   dir: string,
@@ -65,7 +93,7 @@ console.log(`Found ${Object.keys(libEntries).length} lib entries`);
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), copyWellKnownPlugin()],
 
   resolve: {
     alias: {

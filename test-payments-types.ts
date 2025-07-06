@@ -99,3 +99,6 @@ console.log(
   localMember.username === "testuser"
 );
 console.log("Privacy handling test passed:", privacyResult.enabled === true);
+
+// Export to make this a module
+export { convertToLocalFamilyMember, testPrivacyHandling };

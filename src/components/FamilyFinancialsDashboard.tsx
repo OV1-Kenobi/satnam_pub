@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BarChart3,
   BookOpen,
+  Brain,
   CheckCircle,
   Eye,
   EyeOff,
@@ -19,6 +20,7 @@ import React, { useState } from 'react';
 // Import our enhanced dual-protocol components
 import AtomicSwapModal from './AtomicSwapModal.tsx';
 import ContextualAvatar from './ContextualAvatar.tsx';
+import EducationalDashboard from './education/EducationalDashboard';
 import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
 import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
 import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
@@ -286,6 +288,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     totalCapacity: 50000000,
     liquidityRatio: 0.72,
   });
+
+  const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
 
   // Mock family members
   const familyMembers = [
@@ -742,6 +746,42 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
         {/* Content */}
         {renderContent()}
+
+        {/* Quick Actions Section */}
+        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Family Quick Actions</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <button
+              onClick={() => setCurrentView('payments')}
+              className="flex items-center justify-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              <Send className="h-5 w-5" />
+              <span>Send Family Payment</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('fedimint')}
+              className="flex items-center justify-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              <Shield className="h-5 w-5" />
+              <span>Family Governance</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('phoenixd')}
+              className="flex items-center justify-center space-x-2 bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              <Globe className="h-5 w-5" />
+              <span>Liquidity Management</span>
+            </button>
+            <button
+              onClick={() => setShowEducationalDashboard(true)}
+              className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              <Brain className="h-5 w-5" />
+              <span>Cognitive Capital Accounting</span>
+            </button>
+          </div>
+        </div>
+
       </div>
 
       {/* Payment Modal */}
@@ -836,6 +876,15 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
         }))}
         existingSchedule={editingPaymentSchedule}
       />
+
+      {/* Educational Dashboard Modal */}
+      {showEducationalDashboard && (
+        <EducationalDashboard
+          userPubkey={familyData?.adminPubkey || 'demo_family_admin'}
+          familyId={familyData?.id || 'demo_family_id'}
+          onClose={() => setShowEducationalDashboard(false)}
+        />
+      )}
     </div>
   );
 };

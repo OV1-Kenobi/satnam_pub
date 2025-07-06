@@ -6,7 +6,7 @@
 [![Nostr Protocol](https://img.shields.io/badge/Protocol-Nostr-purple.svg)]()
 [![Privacy First](https://img.shields.io/badge/Privacy-First-green.svg)]()
 
-> **Forge Your Sovereign Family Legacy** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians, no compromises, and complete privacy.
+> **Forge Your Sovereign Family Legacy** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians, no compromises, and complete privacy. Establishing your Cognitive Capital Accounting system that tracks knowledge, skills, and achievements for self-sovereign Individuals and Families.
 
 ## Table of Contents
 
@@ -100,7 +100,7 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Dual-signature verification (Mentor + Vice-Principle)
 - Non-transferable, privacy-preserving achievement stamps
 - Future NFC badge integration for physical bearer notes
-- Bitcoin-only rewards for educational milestones
+- Bitcoin-only rewards for educational milestones provided by families for family members
 - Family-coordinated learning with guardian approval
 
 ### 🌐 **Nostr Protocol Integration**
@@ -109,7 +109,7 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Human-readable verification system (username@satnam.pub)
 - Lightning addresses for seamless 'Zap' payments
 - Cross-platform identity portability
-- Nostr badges for self-custody milestones
+- Nostr badges for self-custody milestones and for knowledge, skills, & achievements
 
 ### 🔐 **Advanced Security & Privacy**
 
@@ -121,19 +121,70 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Guardian approval for large transactions
 - Hardware security integration (future)
 - **Privacy Controls Modal** - User-configurable privacy levels with real-time metrics
-- **Sovereign Family Banking Modal** - Family treasury management with privacy protection
+- **Sovereign Family Banking Modal** - Family treasury management with privacy protection for UTXO control, balance, and history tracking, as well as channel, and liquidity tracking and management
 - Unified data deletion modal
 
 ### ⚡ **Multi-Layer Bitcoin Stack**
 
 - Human-readable Lightning addresses (username@satnam.pub)
-- Voltage, PhoenixD, and LNProxy integration
+- Voltage, PhoenixD, and LNProxy node integration
 - Family-wide Lightning Network invoices and payments
 - Multi-signature setup for enhanced security
 - Real-time transaction monitoring
 - Fedimint federation with guardian approval
 - Cashu eCash for private transactions
 - Multi-layer Lightning/Cashu/Fedimint bridge
+
+### 🔄 **Atomic Swap & Cross-Mint Operations**
+
+- **Atomic Swaps** between Fedimint, Lightning, and Cashu contexts
+- **Cross-Mint Cashu Management** with multi-nut payments
+- **Nut Swaps** between different Cashu mints for optimal privacy
+- **External Token Reception** with configurable storage preferences
+- **Automatic Liquidity Management** across multiple payment layers
+- **Bridge Operations** for seamless value transfer between protocols
+
+### 🤖 **Payment Automation System**
+
+- **Automated Payment Schedules** for family members with configurable frequencies
+- **Smart Payment Distribution** with PhoenixD Lightning integration
+- **Parental Approval Workflows** for large transactions
+- **Emergency Payment Protocols** for urgent financial needs
+- **Intelligent Routing** with privacy and cost optimization
+- **Payment History Tracking** with comprehensive audit trails
+- **Retry Logic** for failed payments with escalation protocols
+- **Notification Systems** for payment events and approvals
+
+### 🏦 **Family Treasury Management**
+
+- **Multi-Signature Treasury** with guardian oversight
+- **Emergency Liquidity Protocols** for urgent financial needs
+- **Liquidity Health Monitoring** with real-time metrics
+- **Automatic Rebalancing** of Lightning channels
+- **Spending Limits** and approval workflows
+- **Treasury Analytics** with privacy-preserving insights
+- **Emergency Reserve Management** for critical situations
+
+### 🚨 **Emergency Recovery System**
+
+- **Multi-Method Recovery** using passwords, multi-sig, and Shamir Secret Sharing
+- **Guardian Consensus** for critical recovery operations
+- **Emergency Liquidity Access** with guardian approval
+- **Account Restoration** protocols for compromised accounts
+- **Recovery Request Management** with timeout and expiration controls
+- **Audit Trail** for all recovery operations
+- **Privacy-Preserving Recovery** with encrypted evidence storage
+
+### 🏆 **Enhanced Badge & Reward System**
+
+- **NIP-58 Badge System** with Web of Trust verification
+- **Mentor Notarization** for educational achievements
+- **Bitcoin-Only Rewards** including Lightning sats and family treasury credits
+- **Achievement NFTs** for permanent record keeping
+- **Premium Access Tokens** for advanced educational content
+- **Mentorship Sessions** with Bitcoin experts
+- **Hardware Discounts** and conference access
+- **Citadel Equity** for community ownership
 
 ## Hierarchical Role-Based Access Control
 
@@ -207,7 +258,7 @@ Satnam.pub provides comprehensive privacy and sovereignty control modals that gi
 
 ### 🛡️ **Privacy Controls Modal**
 
-The `PrivacyControls` component provides granular privacy level management:
+The Privacy Controls component provides granular privacy level management:
 
 #### **Privacy Levels**
 - **Minimal Privacy**: Basic privacy with direct Lightning routing
@@ -229,11 +280,11 @@ The `PrivacyControls` component provides granular privacy level management:
 
 ### ⚡ **Sovereign Family Banking Modal**
 
-The `SovereignFamilyBanking` component provides comprehensive family financial management:
+The Sovereign Family Banking component provides comprehensive family financial management:
 
 #### **Core Features**
 - **Lightning Network Integration**: Instant Bitcoin payments with PhoenixD
-- **Family Wallets**: Manage allowances and spending limits
+- **Family Wallets**: Manage payments and spending limits
 - **Bitcoin Treasury**: Secure family savings and long-term holdings
 - **Privacy Protection**: LNProxy privacy routing for all transactions
 
@@ -318,14 +369,13 @@ Satnam.pub is built exclusively on open protocols:
   - NIP-29: Group chat key management
   - NIP-58: Badge system for achievements
   - NIP-59: Gift Wrapped messages
-- **Fedimint:** Federation-based custody and privacy
+- **Fedimint:** Federation-based custody, privacy, and Nsec key protection/rotation
 - **Cashu:** Private eCash for Bitcoin
 
 ## Installation
 
 ### Prerequisites
 
-- **Node.js** 20.x or higher
 - **npm** 9.x or higher
 - **PostgreSQL** 14.x or higher (for production)
 - **Redis** 6.x or higher (for session management)
@@ -334,115 +384,31 @@ Satnam.pub is built exclusively on open protocols:
 
 For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
-**Quick Start:**
-
-1. **Clone and install**
-
-   ```bash
-   git clone https://github.com/OV1_kenobi/satnam.git
-   cd satnam
-   npm install
-   ```
-
-2. **Setup environment**
-
-   ```bash
-   cp .env.example .env.local
-   ```
-
-3. **Start servers**
-
-   ```bash
-   # Terminal 1 - Backend (Netlify Functions)
-   npm run functions:dev
-
-   # Terminal 2 - Frontend
-   npm run dev
-   ```
-
-4. **Access application**
-   - Frontend: http://localhost:3000
-   - Backend: http://localhost:8888/.netlify/functions
-
-### Production Deployment
-
-1. **Build the application**
-
-   ```bash
-   npm run build
-   ```
-
-2. **Deploy to Netlify**
-   ```bash
-   npm run deploy
-   ```
-
-### Testing
-
-The project uses Vitest for fast, reliable testing with TypeScript support.
-
-```bash
-# Run all tests
-npm test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Run specific test file
-npm test -- privacy-first-messaging.test.ts
-
-# Run tests with UI
-npm run test:ui
-```
-
-**Test Structure:**
-
-- Unit tests: `**/*.test.ts`
-- Integration tests: `**/__tests__/**/*.test.ts`
-- Component tests: `**/*.test.tsx`
-
 ## Quick Start
 
 ### 1. Forge Your Identity
 
-Visit `http://localhost:3000` and click "Forge Identity" to create your sovereign digital identity:
-
-```typescript
-// Example: Creating a new identity
-const identity = await forgeIdentity({
-  username: "satoshi",
-  familyName: "nakamoto",
-  recoveryPassword: "your-secure-recovery-password",
-});
-```
+Visit 'satnam.pub' and click "Forge Identity" to create your sovereign digital identity.
 
 ### 2. Authentication Methods
 
 **Option A: NIP-07 Browser Extension (Recommended)**
-
-```typescript
-// Sign authentication challenge with browser extension
-const challenge = await getAuthChallenge(npub);
-const signature = await window.nostr.signEvent(challenge);
-const token = await authenticate(npub, signature);
-```
+Sign authentication challenge with browser extension
 
 **Option B: Direct nsec Import**
-
-```typescript
-// Import private key directly (only in secure contexts)
-const identity = await importIdentity(nsec);
-const token = await authenticateWithNsec(nsec);
-```
+Import private key directly (only in secure contexts)
 
 **Option C: One-Time Password via Nostr DM**
+Request Gift-wrapped private OTP and check your Nostr DMs for the code
 
-```typescript
-// Request OTP
-await requestOTP(npub);
-// Check your Nostr DMs for the code
-const token = await authenticateWithOTP(npub, otpCode);
-```
+### 3. Individual Dashboard access
+
+After authentication, access your family dashboard to:
+
+- Coordinate multi-signature setups
+- Access educational resources and Cognitive Capital Accounting system
+- Monitor Lightning Network activity, channels, and liquidity through Individual Finances dashboard
+- Manage privacy settings and data deletion
 
 ### 3. Family Dashboard Access
 
@@ -450,22 +416,13 @@ After authentication, access your family dashboard to:
 
 - View family members and their Bitcoin addresses
 - Coordinate multi-signature setups
-- Share educational resources
-- Monitor Lightning Network activity
+- Access educational resources and Cognitive Capital Accounting system
+- Monitor Lightning Network activity, channels, and liquidity through Family Financials dashboard
 - Manage privacy settings and data deletion
 
 ### 4. Recovery Process
 
-If you lose access, use the recovery system:
-
-```typescript
-// Recover identity using backup
-const recoveredIdentity = await recoverIdentity(
-  username,
-  recoveryPassword,
-  encryptedBackup
-);
-```
+If you lose access, use the password protected recovery system with encrypted backups.
 
 ## Architecture
 
@@ -546,6 +503,7 @@ Satnam.pub implements a zero-knowledge security model where:
 - No external logging or analytics
 - Programmable data deletion controls
 - Verifiable client-side operations
+In the pipeline:
 - **zk-SNARKs** for transaction verification without revealing amounts or participants
 - **Bulletproofs** for range proofs to verify transaction validity without exposing values
 - **zk-STARKs** for scalable, transparent verification of complex operations
@@ -575,7 +533,7 @@ Satnam.pub implements a zero-knowledge security model where:
 
 ### 🔍 **Zero-Knowledge Proof Implementation**
 
-Satnam.pub leverages zero-knowledge proofs in several key areas, with a comprehensive audit process starting Q3 2025 (seeking user feedback on potential audit partners):
+Satnam.pub will be leveraging zero-knowledge proofs in several key areas, with a comprehensive audit process starting Q3 2025 (seeking user feedback on potential audit partners):
 
 1. **Transaction Verification** (zk-SNARKs) - Phase 1, Current-Q3 2025
 
@@ -628,53 +586,8 @@ Please review our comprehensive [Security Guidelines](SECURITY_GUIDELINES.md) be
 
 If you discover a security vulnerability, please report it to our security team immediately:
 
-- Email: ov1_kenobi@mailfence.com
+- Email: admin@satnam.pub
 - For sensitive issues, use our Nostr ID: ov1@satnam.pub
-
-## API Documentation
-
-### Authentication Endpoints
-
-#### Get Authentication Challenge
-
-```http
-GET /.netlify/functions/auth/challenge/:npub
-```
-
-Response:
-
-```json
-{
-  "challenge": "auth_challenge_1234567890",
-  "expires_at": "2024-01-01T12:00:00Z"
-}
-```
-
-#### Authenticate with NIP-07 Signature
-
-```http
-POST /.netlify/functions/auth/nip07-signin
-Content-Type: application/json
-
-{
-  "npub": "npub1...",
-  "signature": "signature_hex",
-  "challenge": "auth_challenge_1234567890"
-}
-```
-
-#### Request OTP
-
-```http
-POST /.netlify/functions/auth/otp-request
-Content-Type: application/json
-
-{
-  "npub": "npub1..."
-}
-```
-
-For complete API documentation, see our [API Reference](docs/api-reference.md).
 
 ## Development Roadmap
 
@@ -683,30 +596,37 @@ For complete API documentation, see our [API Reference](docs/api-reference.md).
 - [x] Nostr-native authentication (NIP-07, direct nsec, OTP)
 - [x] Identity forging and management
 - [x] Privacy-first architecture
-- [x] Recovery system with encrypted backups
-- [x] Giftwrapped messaging implementation
+- [x] Recovery system with password protected & encrypted backups
+- [x] Giftwrapped individual Nostr DMs and group messaging implementation
 
 ### Phase 2: Family Banking 🚧
 
 - [x] Family dashboard
 - [x] Multi-user onboarding
 - [x] Human-readable Lightning addresses
-- [ ] Guardian approval workflows
-- [ ] Enhanced family coordination tools
+- [x] Guardian approval workflows
+- [x] Enhanced family coordination tools
+- [x] Payment automation system
+- [x] Family treasury management
+- [x] Emergency recovery protocols
 
-### Phase 3: Advanced Bitcoin Stack ⏳
+### Phase 3: Advanced Bitcoin Stack 🚧
 
-- [ ] Multi-layer Lightning/Cashu/Fedimint bridge
-- [ ] Family federation with guardian consensus
-- [ ] Privacy metrics and enhancement tools
-- [ ] Multi-signature treasury management
+- [x] Multi-layer Lightning/Cashu/Fedimint bridge
+- [x] Family federation with guardian consensus
+- [x] Privacy metrics and enhancement tools
+- [x] Multi-signature treasury management
+- [x] Atomic swap operations
+- [x] Cross-mint Cashu management
+- [x] Emergency liquidity protocols
 
 ### Phase 4: Citadel Academy & Ecosystem ⏳
 
-- [ ] Full Citadel Academy integration
-- [ ] Nostr Knowledge Management System
-- [ ] Badge-based learning achievements
-- [ ] Hardware security integration
+- [x] Full Citadel Academy integration
+- [x] Nostr Knowledge Management System
+- [x] Badge-based learning achievements
+- [x] Enhanced badge and reward system
+- [x] Hardware security integration, w/pin protected N424 NFCs
 - [ ] Mobile application
 - [ ] Browser extension
 - [ ] Advanced self-custody journey tools
@@ -797,10 +717,10 @@ If you've lost access to your identity:
 
 ---
 
-**Last Updated**: December 2024  
+**Last Updated**: July 2025  
 **Version**: 0.1.0  
 **Maintainers**: Satnam.pub Team
 
 ---
 
-_Built with ⚡ and 🧡 for Bitcoin sovereignty_
+_Built with ⚡ and 🧡 for Bitcoin, Identity, Credential, and Knowledge sovereignty_

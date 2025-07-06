@@ -3,11 +3,13 @@
  * Standardized types for all API endpoints with privacy level support
  */
 
+import { PrivacyLevel } from "../src/types/privacy";
+
 // Re-export the standardized privacy types
-export {
-  PrivacyLevel,
+export type {
   PrivacyMetrics,
   PrivacySettings,
+  PrivacyLevel,
 } from "../src/types/privacy";
 
 // Enhanced request types with privacy support

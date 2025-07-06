@@ -158,13 +158,14 @@ class SatnamInternalLightningBridge {
         status: "processing",
       });
 
-      const lightningPayment = await this.phoenixd.payInvoice({
-        invoice: lightningInvoice.paymentRequest,
-        amount: request.amount,
-      });
+      const lightningPayment = await this.phoenixd.sendPayment(
+        lightningInvoice.paymentRequest,
+        request.amount,
+        `Atomic swap ${swapId}`
+      );
 
       if (!lightningPayment.success) {
-        throw new Error(`Lightning payment failed: ${lightningPayment.error}`);
+        throw new Error(`Lightning payment failed: ${lightningPayment.error || 'Unknown error'}`);
       }
 
       await this.logSwapStep(swapId, {

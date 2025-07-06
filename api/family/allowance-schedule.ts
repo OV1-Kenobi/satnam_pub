@@ -10,7 +10,7 @@ import {
   decryptSensitiveData,
   logPrivacyOperation,
 } from "../../lib/privacy/encryption";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { AllowanceAutomationSystem } from "../../src/lib/allowance-automation";
 
 interface AllowanceScheduleRequest {

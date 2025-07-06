@@ -1,33 +1,35 @@
 // Library modules export file - All lib components and services
 // API Services
-export * from "./api.ts";
-export * from "./api/atomic-swap.ts";
+export * from "./api";
+export * from "./api/atomic-swap";
 
 // Authentication
-export * from "./auth/auth-adapter.ts";
-export * from "./auth/privacy-first-auth.ts";
+export * from "./auth/auth-adapter";
+// Remove export * from './auth/privacy-first-auth' to avoid AuthResult duplicate
+// export * from "./auth/privacy-first-auth";
 
-export * from "./gift-wrapped-messaging/privacy-first-service.ts";
-export * from "./giftwrapped-communication-service.ts";
+export * from "./gift-wrapped-messaging/privacy-first-service";
+// Remove export * from './giftwrapped-communication-service' to avoid GiftwrappedMessageConfig duplicate
+// export * from "./giftwrapped-communication-service";
 
 // Privacy
-export * from "./privacy/data-sanitizer.ts";
+export * from "./privacy/data-sanitizer";
 
 // Lightning & Payments
 // Note: payment-automation.ts excluded from browser build (uses node-cron)
-export * from "./cross-mint-cashu-manager.ts";
-export * from "./enhanced-family-coordinator.ts";
-export * from "./enhanced-phoenixd-manager.ts";
-export * from "./family-liquidity-manager.ts";
-export * from "./family-phoenixd-manager.ts";
-export * from "./internal-lightning-bridge.ts";
-export * from "./liquidity-intelligence.ts";
-export * from "./phoenixd-client.ts";
+export * from "./cross-mint-cashu-manager";
+export * from "./enhanced-family-coordinator";
+export * from "./enhanced-phoenixd-manager";
+// Remove export * from './family-liquidity-manager' to avoid LiquidityStatus duplicate
+// export * from "./family-liquidity-manager";
+export * from "./family-phoenixd-manager";
+export * from "./internal-lightning-bridge";
+export * from "./liquidity-intelligence";
+export * from "./phoenixd-client";
 
 // Fedimint
-export * from "./fedimint-client.ts";
+export * from "./fedimint-client";
 export * from "./fedimint/family-nostr-federation.js";
 
 // Utilities
 export * from "./utils";
-export * from "./utils.ts";

@@ -1,13 +1,41 @@
-import { createRequest, createResponse } from "node-mocks-http";
 import { beforeEach, describe, expect, it } from "vitest";
-import { decryptCredentials, encryptCredentials } from "../../lib/security";
-import { generateSecureToken } from "../../utils/crypto-factory";
+import { decryptCredentials, encryptCredentials } from "../security";
+import { generateSecureToken } from "../../../utils/crypto-factory";
 import { checkFederationWhitelist } from "../auth/federation-whitelist";
 import { nwcSignIn, verifyNWCConnection } from "../auth/nwc-signin";
 import { initiateOTP, validateSession } from "../auth/otp-signin";
 
 // Import real Supabase for production-ready tests
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../src/lib/supabase";
+
+// Browser-compatible mock request/response
+interface MockRequest {
+  method: string;
+  body?: any;
+  headers?: Record<string, string>;
+}
+
+interface MockResponse {
+  statusCode?: number;
+  data?: any;
+  headers?: Record<string, string>;
+}
+
+function createMockRequest(options: { method: string; body?: any; headers?: Record<string, string> }): MockRequest {
+  return {
+    method: options.method,
+    body: options.body,
+    headers: options.headers || {},
+  };
+}
+
+function createMockResponse(): MockResponse {
+  return {
+    statusCode: 200,
+    data: null,
+    headers: {},
+  };
+}
 
 describe("Family Federation Authentication Integration", () => {
   beforeEach(() => {
@@ -63,11 +91,11 @@ describe("Family Federation Authentication Integration", () => {
     });
 
     it("should validate federation whitelist functionality", async () => {
-      const req = createRequest({
+      const req = createMockRequest({
         method: "POST",
         body: { nip05: "test@example.com" },
       });
-      const res = createResponse();
+      const res = createMockResponse();
 
       // Test with real database
       await checkFederationWhitelist(req, res);
@@ -79,13 +107,13 @@ describe("Family Federation Authentication Integration", () => {
 
   describe("Authentication Flow Integration", () => {
     it("should handle NWC connection verification", async () => {
-      const req = createRequest({
+      const req = createMockRequest({
         method: "POST",
         body: {
           nwcUrl: "nostr+walletconnect://test",
         },
       });
-      const res = createResponse();
+      const res = createMockResponse();
 
       await verifyNWCConnection(req, res);
 
@@ -94,14 +122,14 @@ describe("Family Federation Authentication Integration", () => {
     });
 
     it("should handle OTP initiation", async () => {
-      const req = createRequest({
+      const req = createMockRequest({
         method: "POST",
         body: {
           npub: "npub1test123456789abcdef",
           federationRole: "parent",
         },
       });
-      const res = createResponse();
+      const res = createMockResponse();
 
       await initiateOTP(req, res);
 
@@ -112,11 +140,11 @@ describe("Family Federation Authentication Integration", () => {
     it("should handle session validation", async () => {
       const sessionToken = await generateSecureToken(64);
 
-      const req = createRequest({
+      const req = createMockRequest({
         method: "POST",
         body: { sessionToken },
       });
-      const res = createResponse();
+      const res = createMockResponse();
 
       await validateSession(req, res);
 
@@ -133,15 +161,15 @@ describe("Family Federation Authentication Integration", () => {
         nwcUrl: "nostr+walletconnect://test-secret-key",
       };
 
-      const req = createRequest({
+      const req = createMockRequest({
         method: "POST",
         body: { nwcUrl: testCredentials.nwcUrl },
       });
-      const res = createResponse();
+      const res = createMockResponse();
 
       await nwcSignIn(req, res);
 
-      const responseData = res._getData();
+      const responseData = res.data;
       if (responseData) {
         const responseStr = JSON.stringify(responseData);
         expect(responseStr).not.toContain(testCredentials.nsec);
@@ -149,4 +177,4 @@ describe("Family Federation Authentication Integration", () => {
       }
     });
   });
-});
+}); 

@@ -5,7 +5,7 @@ import { nip19 } from "nostr-tools";
 import { z } from "zod";
 import { RebuildingCamelotOTPService } from "../../lib/nostr-otp-service";
 import { SecureSessionManager } from "../../lib/security/session-manager";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { generateSecureToken } from "../../utils/crypto";
 
 // In-memory OTP storage (in production, use Redis or database)

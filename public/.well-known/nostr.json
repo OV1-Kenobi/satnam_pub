@@ -1,0 +1,29 @@
+{
+  "names": {
+    "admin": "npub1satnamadmin123456789abcdef",
+    "bitcoin_mentor": "npub1mentorbitcoinexample123456789abcdef",
+    "lightning_mentor": "npub1mentorligthningexample123456789abcdef",
+    "family_mentor": "npub1mentorfamilyexample123456789abcdef",
+    "support": "npub1satnamsupport123456789abcdef",
+    "info": "npub1satnaminfo123456789abcdef"
+  },
+  "relays": {
+    "npub1satnamadmin123456789abcdef": [
+      "wss://relay.satnam.pub",
+      "wss://nos.lol",
+      "wss://relay.damus.io"
+    ],
+    "npub1mentorbitcoinexample123456789abcdef": [
+      "wss://relay.satnam.pub",
+      "wss://nos.lol"
+    ],
+    "npub1mentorligthningexample123456789abcdef": [
+      "wss://relay.satnam.pub",
+      "wss://nos.lol"
+    ],
+    "npub1mentorfamilyexample123456789abcdef": [
+      "wss://relay.satnam.pub",
+      "wss://nos.lol"
+    ]
+  }
+} 

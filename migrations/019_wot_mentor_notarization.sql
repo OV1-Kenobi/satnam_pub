@@ -70,13 +70,13 @@ CREATE TABLE wot_mentor_notarizations (
 );
 
 -- Create indexes for wot_mentor_notarizations
-CREATE INDEX idx_wot_notarizations_redemption ON wot_mentor_notarizations(redemption_id);
-CREATE INDEX idx_wot_notarizations_badge ON wot_mentor_notarizations(badge_id);
-CREATE INDEX idx_wot_notarizations_student ON wot_mentor_notarizations(student_pubkey_hash);
-CREATE INDEX idx_wot_notarizations_mentor ON wot_mentor_notarizations(mentor_pubkey);
-CREATE INDEX idx_wot_notarizations_verification_hash ON wot_mentor_notarizations(verification_hash);
-CREATE INDEX idx_wot_notarizations_privacy ON wot_mentor_notarizations(privacy_level);
-CREATE INDEX idx_wot_notarizations_active ON wot_mentor_notarizations(revoked);
+CREATE INDEX idx_credentializations_redemption ON wot_mentor_notarizations(redemption_id);
+CREATE INDEX idx_credentializations_badge ON wot_mentor_notarizations(badge_id);
+CREATE INDEX idx_credentializations_student ON wot_mentor_notarizations(student_pubkey_hash);
+CREATE INDEX idx_credentializations_mentor ON wot_mentor_notarizations(mentor_pubkey);
+CREATE INDEX idx_credentializations_verification_hash ON wot_mentor_notarizations(verification_hash);
+CREATE INDEX idx_credentializations_privacy ON wot_mentor_notarizations(privacy_level);
+CREATE INDEX idx_credentializations_active ON wot_mentor_notarizations(revoked);
 
 -- Create NFC badge integrations table for future use
 CREATE TABLE nfc_badge_integrations (

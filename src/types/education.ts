@@ -1,6 +1,7 @@
 /**
  * Education and Badge System Types
  * Includes NIP-58 badges and WoT mentor notarization
+ * @compliance Master Context - Privacy-first, browser-compatible, Bitcoin-only
  */
 
 // Achievement Levels
@@ -74,7 +75,7 @@ export interface BadgeDefinition {
   criteria: BadgeCriteria;
   issuer_pubkey: string;
   mentor_pubkey?: string;
-  vice_principle_pubkey?: string;
+  vice_principal_pubkey?: string;
   privacy_level: PrivacyLevel;
   wot_required: boolean;
   min_mentor_level?: VerificationLevel;
@@ -122,9 +123,9 @@ export interface MentorVerification {
   verification_artifacts?: string[];
 }
 
-// Vice-Principle Co-Signing
-export interface VicePrincipleCoSigning {
-  vice_principle_pubkey: string;
+// Vice-Principal Co-Signing
+export interface VicePrincipalCoSigning {
+  vice_principal_pubkey: string;
   co_signature: string;
   institutional_verification: boolean;
   institutional_verification_date?: number;
@@ -146,8 +147,8 @@ export interface WoTMentorNotarization {
   verification_notes?: string;
   verification_level: VerificationLevel;
   competency_verified: string[];
-  vice_principle_pubkey?: string;
-  vice_principle_signature?: string;
+  vice_principal_pubkey?: string;
+  vice_principal_signature?: string;
   institutional_verification: boolean;
   institutional_verification_date?: number;
   block_timestamp?: number;
@@ -165,7 +166,7 @@ export interface WoTMentorNotarization {
   updated_at: number;
 }
 
-// NFC Badge Integration
+// NFC Badge Integration (Future - Hardware Security)
 export interface NFCBadgeIntegration {
   id: string;
   notarization_id: string;
@@ -182,7 +183,7 @@ export interface NFCBadgeIntegration {
     badge_id: string;
     issue_date: number;
     mentor_signature: string;
-    vice_principle_signature?: string;
+    vice_principal_signature?: string;
     qr_code_data: string;
     manufacturer?: string;
     batch_number?: string;
@@ -289,7 +290,7 @@ export interface StudentDashboardData {
   available_badges: BadgeDefinition[];
   achievements_summary: AchievementsSummary;
   mentor_interactions: MentorInteraction[];
-  wot_notarizations: WoTMentorNotarization[];
+  credentializations: WoTMentorNotarization[];
 }
 
 // Achievements Summary
@@ -401,8 +402,8 @@ export interface BadgeAwardRequest {
     verification_notes?: string;
     mentor_signature: string;
   };
-  vicePrincipleCoSigning?: {
-    vice_principle_pubkey: string;
+  vicePrincipalCoSigning?: {
+    vice_principal_pubkey: string;
     institutional_verification: boolean;
   };
 }
@@ -426,5 +427,19 @@ export interface MentorRegistrationRequest {
   yearsExperience?: number;
 }
 
-// Export types for reward system integration
-export * from "./rewards";
+// Browser-compatible crypto utilities for WoT
+export interface WoTVerificationUtils {
+  hashPubkey: (pubkey: string) => Promise<string>;
+  verifySignature: (message: string, signature: string, pubkey: string) => Promise<boolean>;
+  encryptMetadata: (data: any, recipientPubkey: string) => Promise<string>;
+  decryptMetadata: (encryptedData: string, privateKey: string) => Promise<any>;
+  generateVerificationHash: (data: any) => Promise<string>;
+}
+
+// Nostr integration for WoT
+export interface NostrWoTIntegration {
+  publishNotarization: (notarization: WoTMentorNotarization) => Promise<string>;
+  verifyNotarization: (eventId: string, relays: string[]) => Promise<boolean>;
+  subscribeToMentorEvents: (mentorPubkey: string, callback: (event: any) => void) => void;
+  unsubscribeFromEvents: () => void;
+}

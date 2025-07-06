@@ -2,23 +2,32 @@
 // File: src/components/IndividualFinancesDashboard.tsx
 import {
   Activity,
+  AlertTriangle,
   ArrowDownLeft,
-  ArrowUpRight,
-  CheckCircle,
-  Copy,
+  ArrowLeft,
+  ArrowRight,
+  BarChart3,
+  Brain,
   CreditCard,
+  DollarSign,
+  Download,
   Eye,
   EyeOff,
+  ExternalLink,
   Gift,
   Globe,
+  History,
+  Info,
+  Lock,
   QrCode,
   RefreshCw,
   Send,
   Shield,
+  Split,
+  TrendingUp,
+  Upload,
   Wallet,
   Zap,
-  Split,
-  AlertTriangle,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -43,6 +52,11 @@ import EmergencyRecoveryModal from './EmergencyRecoveryModal';
 import { useAuth } from '../hooks/useAuth';
 import { FederationRole } from '../types/auth';
 
+// Import our enhanced dual-protocol components
+import { CashuWalletCard } from './CashuWalletCard';
+import { LightningWalletCard } from './LightningWalletCard';
+import EducationalDashboard from './education/EducationalDashboard';
+
 interface IndividualFinancesDashboardProps {
   memberId: string;
   memberData: {
@@ -54,6 +68,8 @@ interface IndividualFinancesDashboardProps {
       weekly: number;
       requiresApproval: number;
     };
+    familyId?: string;
+    npub?: string;
   };
   onBack?: () => void;
 }
@@ -1494,6 +1510,8 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
     setShowRecoveryModal(false);
   };
 
+  const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1587,7 +1605,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
       {/* Quick Actions */}
       <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm mb-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <button
             onClick={() => {
               setSelectedMember(memberId);
@@ -1610,6 +1628,13 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
           >
             <QrCode className="h-5 w-5" />
             <span>Receive Payment</span>
+          </button>
+          <button
+            onClick={() => setShowEducationalDashboard(true)}
+            className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+          >
+            <Brain className="h-5 w-5" />
+            <span>Cognitive Capital Accounting</span>
           </button>
         </div>
       </div>
@@ -1675,6 +1700,15 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
           userId={user?.id || memberId}
           userNpub={user?.npub || ''}
           familyId={familyId}
+        />
+      )}
+
+      {/* Educational Dashboard Modal */}
+      {showEducationalDashboard && (
+        <EducationalDashboard
+          userPubkey={memberData.npub || 'demo_user_pubkey'}
+          familyId={memberData.familyId}
+          onClose={() => setShowEducationalDashboard(false)}
         />
       )}
     </div>

@@ -6,12 +6,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 // Import real dependencies for integration testing
-import { supabase } from "../../lib/supabase";
-import { generateSecureToken } from "../../utils/crypto-factory";
+import { supabase } from "../supabase";
+import { generateSecureToken } from "../../../utils/crypto-factory";
 
 describe("Lightning Address API Integration", () => {
   beforeEach(() => {
-    process.env.FRONTEND_URL = "http://localhost:5173";
+    // Browser-compatible environment setup
+    if (typeof window !== 'undefined') {
+      // Set up any browser-specific test environment
+      window.location.href = "http://localhost:5173";
+    }
   });
 
   describe("Lightning Address System", () => {
@@ -49,4 +53,4 @@ describe("Lightning Address API Integration", () => {
       });
     });
   });
-});
+}); 

@@ -567,7 +567,12 @@ export type KeysOfType<T, U> = {
 
 // ==================== Export all types ====================
 
-export type * from "./database";
-export type * from "./family";
-export type * from "./index";
-export type * from "./user";
+// TODO: Replace with named type re-exports as needed, e.g.:
+// export type { DatabaseType } from "./database";
+// export type { FamilyType } from "./family";
+// export type { UserType } from "./user";
+// For now, comment out invalid lines:
+// export type * from "./database";
+// export type * from "./family";
+// export type * from "./index";
+// export type * from "./user";

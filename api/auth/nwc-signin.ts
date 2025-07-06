@@ -2,7 +2,7 @@ import NDK from "@nostr-dev-kit/ndk";
 import { Request, Response } from "express";
 import { nip19 } from "nostr-tools";
 import { z } from "zod";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { generateSecureToken } from "../../utils/crypto-factory";
 import { createLogger } from "../../utils/logger";
 import { validateNWCUri } from "../../utils/nwc-validation";

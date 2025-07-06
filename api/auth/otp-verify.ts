@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../src/lib/supabase";
 import { ApiRequest, ApiResponse } from "../../types/api";
 import { generateSessionToken } from "../../utils/auth-crypto";
 import { setCorsHeadersForCustomAPI } from "../../utils/cors";

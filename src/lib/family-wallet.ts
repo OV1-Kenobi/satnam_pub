@@ -384,7 +384,7 @@ export class FamilyWalletService {
       status: 'pending',
       approvers: approvers.map(approver => ({
         npub: approver.npub,
-        role: approver.role,
+        role: approver.role as 'adult' | 'guardian' | 'steward',
         status: 'pending'
       })),
       requiredApprovals: memberWallet.spendingLimits.requiredApprovals,
@@ -424,7 +424,10 @@ export class FamilyWalletService {
       return [];
     }
 
-    return members || [];
+    return members?.map(member => ({
+      npub: member.member_npub,
+      role: member.role
+    })) || [];
   }
 
   /**
