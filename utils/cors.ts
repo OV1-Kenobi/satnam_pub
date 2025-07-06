@@ -1,4 +1,3 @@
-import { Request, Response } from "express";
 import { ApiRequest, ApiResponse } from "../types/api";
 import { getCorsHeaders, validateOrigin } from "./auth-crypto";
 
@@ -34,13 +33,13 @@ export function getAllowedOrigins(): string[] {
 /**
  * Handle CORS for API endpoints with environment-aware configuration
  *
- * @param req - Express request object
- * @param res - Express response object
+ * @param req - API request object
+ * @param res - API response object
  * @param options - CORS options
  */
 export function setCorsHeaders(
-  req: Request,
-  res: Response,
+  req: ApiRequest,
+  res: ApiResponse,
   options: {
     methods?: string;
     credentials?: boolean;
@@ -77,13 +76,13 @@ export function setCorsHeaders(
 /**
  * Set CORS headers using the shared getCorsHeaders function
  *
- * @param req - Express request object
- * @param res - Express response object
+ * @param req - API request object
+ * @param res - API response object
  * @param options - CORS options
  */
 export function setCorsHeadersFromShared(
-  req: Request,
-  res: Response,
+  req: ApiRequest,
+  res: ApiResponse,
   options: {
     methods?: string;
     credentials?: boolean;

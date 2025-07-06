@@ -12,7 +12,7 @@ import {
   Shield,
   X
 } from 'lucide-react';
-import { nip19 } from 'nostr-tools';
+import { nip19 } from '../lib/nostr-browser';
 import React, { useEffect, useState } from 'react';
 import { NIP07AuthChallenge } from '../types/auth';
 import { getSessionInfo, SessionInfo } from '../utils/secureSession';

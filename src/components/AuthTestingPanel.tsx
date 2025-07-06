@@ -4,7 +4,7 @@ import {
   generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
-} from "nostr-tools";
+} from "../lib/nostr-browser";
 import React, { useState } from "react";
 import { ApiClient } from "../../utils/api-client";
 

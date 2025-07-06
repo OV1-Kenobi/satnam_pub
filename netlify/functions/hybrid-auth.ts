@@ -1,6 +1,5 @@
 // lib/hybrid-auth.ts
-import { webcrypto } from "crypto";
-import type { Event as NostrEvent } from "nostr-tools";
+import type { NostrEvent } from "../../src/lib/nostr-browser";
 import {
   finalizeEvent as finishEvent,
   generateSecretKey as generatePrivateKey,
@@ -8,7 +7,7 @@ import {
   nip19,
   SimplePool,
   verifyEvent,
-} from "nostr-tools";
+} from "../../src/lib/nostr-browser";
 import { sanitizeNWCData, validateNWCUri } from "../utils/nwc-validation";
 import { supabase } from "./supabase";
 
@@ -252,7 +251,7 @@ export class HybridAuth {
     const { data: newProfile, error } = await supabase
       .from("profiles")
       .insert({
-        id: webcrypto.randomUUID(),
+        id: crypto.randomUUID(),
         username: npub.slice(0, 16), // Temporary username
         npub,
         nip05: null,

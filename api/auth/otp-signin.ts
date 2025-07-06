@@ -1,7 +1,7 @@
 import NDK from "@nostr-dev-kit/ndk";
 import crypto from "crypto";
 import { Request, Response } from "express";
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../../src/lib/nostr-browser";
 import { z } from "zod";
 import { RebuildingCamelotOTPService } from "../../lib/nostr-otp-service";
 import { SecureSessionManager } from "../../lib/security/session-manager";
@@ -47,13 +47,12 @@ async function applyProgressiveDelay(attempts: number): Promise<void> {
  * Uses a consistent salt to allow correlation while protecting privacy
  */
 async function hashForLogging(data: string): Promise<string> {
-  const salt = process.env.LOGGING_SALT;
-  if (!salt) {
-    throw new Error("LOGGING_SALT environment variable is required");
-  }
-  const hash = crypto.createHash("sha256");
-  hash.update(data + salt);
-  return hash.digest("hex").substring(0, 16); // Truncate for privacy
+  // Use Web Crypto API instead of Node.js crypto
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data + "satnam-logging-salt-2024");
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16); // Truncate for privacy
 }
 
 /**

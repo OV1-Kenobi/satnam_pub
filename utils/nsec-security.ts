@@ -1,5 +1,5 @@
 // utils/nsec-security.ts
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../src/lib/nostr-browser";
 
 export interface SecureNsecValidator {
   isValidNsec: boolean;
@@ -26,7 +26,7 @@ export function validateNsecSecurity(
     const decoded = nip19.decode(nsec);
     isValidNsec =
       decoded.type === "nsec" &&
-      (decoded.data instanceof Uint8Array || typeof decoded.data === "string");
+      (typeof decoded.data === "string" || Array.isArray(decoded.data));
   } catch {
     isValidNsec = false;
   }

@@ -4,7 +4,7 @@
  * @compliance Master Context - Privacy-first, browser-compatible, Bitcoin-only
  */
 
-import { nip05 } from "nostr-tools";
+import { nip05 } from "./nostr-browser";
 
 export interface NIP05VerificationResult {
   verified: boolean;
@@ -102,7 +102,7 @@ export class NIP05VerificationService {
       }
 
       // Check domain security
-      const domainCheck = this.checkDomainSecurity(validation.domain);
+      const domainCheck = this.checkDomainSecurity(validation.domain!);
       if (!domainCheck.allowed) {
         return {
           verified: false,
@@ -113,7 +113,7 @@ export class NIP05VerificationService {
       }
 
       // Perform NIP-05 verification
-      const result = await this.performNIP05Verification(request, validation);
+      const result = await this.performNIP05Verification(request, { domain: validation.domain!, username: validation.username! });
       
       // Cache the result
       this.cacheVerification(request.identifier, result);
@@ -222,7 +222,7 @@ export class NIP05VerificationService {
   }
 
   /**
-   * Perform actual NIP-05 verification using nostr-tools
+   * Perform actual NIP-05 verification using browser-compatible implementation
    */
   private async performNIP05Verification(
     request: NIP05VerificationRequest,
@@ -230,7 +230,7 @@ export class NIP05VerificationService {
   ): Promise<NIP05VerificationResult> {
     const timeout = request.timeout_ms || this.config.default_timeout_ms;
     
-    // Use nostr-tools nip05.verify with retry logic
+    // Use browser-compatible nip05.verify with retry logic
     for (let attempt = 1; attempt <= this.config.max_retries; attempt++) {
       try {
         const result = await Promise.race([
@@ -245,14 +245,16 @@ export class NIP05VerificationService {
           return {
             verified: false,
             error: `NIP-05 verification failed: expected ${request.expected_pubkey}, got ${result}`,
-            verification_timestamp: Math.floor(Date.now() / 1000)
+            verification_timestamp: Math.floor(Date.now() / 1000),
+            response_time_ms: 0
           };
         }
 
         return {
           verified: true,
           pubkey: result,
-          verification_timestamp: Math.floor(Date.now() / 1000)
+          verification_timestamp: Math.floor(Date.now() / 1000),
+          response_time_ms: 0
         };
 
       } catch (error) {

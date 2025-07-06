@@ -13,26 +13,19 @@ export {
   // Lightweight utilities (always available)
   constantTimeEquals,
   createCryptoLoadingManager,
-  decodeBase32,
   decryptData,
-  deriveKey,
   encryptData,
-  generateHOTP,
   // High-level crypto functions (async, browser-compatible)
   generateNostrKeyPair,
   generateRandomHex,
-  generateRecoveryPhrase,
   generateSecureToken,
-  generateTOTP,
   getCryptoEnvironmentInfo,
   getCryptoStrategy,
   getPreferredCryptoImplementation,
-  isBase32,
+  hashPassword,
   isCryptoSupported,
   // Module loading utilities
   preloadCryptoModules,
-  privateKeyFromPhrase,
-  privateKeyFromPhraseWithAccount,
   sha256,
 } from "./crypto-factory";
 

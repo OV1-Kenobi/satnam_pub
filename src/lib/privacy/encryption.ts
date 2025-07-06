@@ -375,21 +375,111 @@ export function validateDataIntegrity(
 }
 
 /**
- * Secure memory clearing (browser-compatible)
+ * Zero out sensitive data from memory (best effort)
  */
 export function secureClearMemory(sensitiveString: string): void {
-  // In browsers, we can't guarantee memory clearing
-  // This is a best-effort approach
-  sensitiveString = "";
+  try {
+    // This is a best-effort attempt to clear sensitive data from memory
+    // JavaScript doesn't provide guaranteed memory clearing, but we can overwrite
+    if (typeof sensitiveString === "string") {
+      for (let i = 0; i < sensitiveString.length; i++) {
+        (sensitiveString as any)[i] = "0";
+      }
+    }
+  } catch (error) {
+    // Silent fail - this is best effort
+  }
 }
 
-// Export browser-compatible utilities
+/**
+ * Double-encrypt sensitive data (for guardian shares and ultra-sensitive data)
+ * Each encryption layer uses a unique salt
+ */
+export async function doubleEncryptSensitiveData(plaintext: string): Promise<{
+  encrypted: string;
+  salt: string;
+  iv: string;
+  tag: string;
+  doubleEncrypted: string;
+  doubleSalt: string;
+  doubleIv: string;
+  doubleTag: string;
+}> {
+  try {
+    // First encryption layer with unique salt
+    const firstEncryption = await encryptSensitiveData(plaintext);
+
+    // Second encryption layer with another unique salt
+    const secondEncryption = await encryptSensitiveData(
+      JSON.stringify(firstEncryption)
+    );
+
+    return {
+      // First layer
+      encrypted: firstEncryption.encrypted,
+      salt: firstEncryption.salt,
+      iv: firstEncryption.iv,
+      tag: firstEncryption.tag,
+      // Second layer
+      doubleEncrypted: secondEncryption.encrypted,
+      doubleSalt: secondEncryption.salt,
+      doubleIv: secondEncryption.iv,
+      doubleTag: secondEncryption.tag,
+    };
+  } catch (error) {
+    throw new Error(
+      `Double encryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}
+
+/**
+ * Decrypt double-encrypted data
+ */
+export async function doubleDecryptSensitiveData(encryptedData: {
+  doubleEncrypted: string;
+  doubleSalt: string;
+  doubleIv: string;
+  doubleTag: string;
+}): Promise<string> {
+  try {
+    // First decrypt the outer layer
+    const outerDecrypted = await decryptSensitiveData({
+      encrypted: encryptedData.doubleEncrypted,
+      salt: encryptedData.doubleSalt,
+      iv: encryptedData.doubleIv,
+      tag: encryptedData.doubleTag,
+    });
+
+    // Parse the inner encryption data
+    const innerEncryptionData = JSON.parse(outerDecrypted);
+
+    // Decrypt the inner layer
+    const innerDecrypted = await decryptSensitiveData(innerEncryptionData);
+
+    return innerDecrypted;
+  } catch (error) {
+    throw new Error(
+      `Double decryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}
+
+/**
+ * Export privacy utilities
+ */
 export const PrivacyUtils = {
   generateSecureUUID,
   generateSalt,
   generateUniqueSalts,
   encryptSensitiveData,
   decryptSensitiveData,
+  doubleEncryptSensitiveData,
+  doubleDecryptSensitiveData,
   hashUsername,
   verifyUsername,
   encryptNsec,

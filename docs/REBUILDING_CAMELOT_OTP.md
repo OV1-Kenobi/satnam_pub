@@ -111,7 +111,7 @@ You can generate new Nostr keys for the Rebuilding Camelot account:
 ⚠️ **Security Warning**: Never log or expose private keys in production. The example below should only be run in a secure environment.
 
 ```javascript
-import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
+import { generateSecretKey, getPublicKey, nip19 } from "../src/lib/nostr-browser";
 
 // Generate new keys
 const privateKey = generateSecretKey();

@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { ApiRequest, ApiResponse } from "../../types/api";
 import { setCorsHeadersForCustomAPI } from "../../utils/cors";
 
@@ -18,8 +17,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
-    // Generate a cryptographically secure random challenge
-    const challenge = crypto.randomBytes(32).toString("hex");
+    // Generate a cryptographically secure random challenge using Web Crypto API
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const challenge = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     const domain = req.headers.host || "localhost:3000";
     const timestamp = Date.now();
 

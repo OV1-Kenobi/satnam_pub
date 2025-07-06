@@ -1,6 +1,6 @@
 import NDK from "@nostr-dev-kit/ndk";
 import { Request, Response } from "express";
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../../src/lib/nostr-browser";
 import { z } from "zod";
 import { supabase } from "../lib/supabase";
 import { generateSecureToken } from "../../utils/crypto-factory";

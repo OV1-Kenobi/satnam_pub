@@ -4,15 +4,15 @@
  * for flexible family configurations from 2-of-2 to 5-of-7
  */
 
-import { generateSecretKey, nip19 } from "nostr-tools";
+import { generateSecretKey, nip19 } from "../../src/lib/nostr-browser";
 import {
   FamilyGuardian,
   FamilySSLConfig,
   NostrShamirSecretSharing,
   SecretShare,
-} from "../crypto/shamir-secret-sharing";
-import db from "../db";
-import { PrivacyUtils } from "../privacy/encryption";
+} from "../../netlify/functions/crypto/shamir-secret-sharing";
+import db from "../../netlify/functions/db";
+import { PrivacyUtils } from "../../src/lib/privacy/encryption";
 
 /**
  * Guardian share with encryption for secure storage
@@ -112,8 +112,8 @@ export class FamilyGuardianManager {
 
       // Generate new Nostr key pair for the family
       const privateKeyBytes = generateSecretKey();
-      const nsec = nip19.nsecEncode(privateKeyBytes);
-      const npub = nip19.npubEncode(nip19.decode(nsec).data as Uint8Array);
+      const nsec = nip19.nsecEncode(Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+      const npub = nip19.npubEncode(Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
 
       // Create guardians in database
       const familyGuardians: FamilyGuardian[] = [];
@@ -170,15 +170,15 @@ export class FamilyGuardianManager {
             encryptedPublicKey.salt,
             encryptedPublicKey.iv,
             encryptedPublicKey.tag,
-            encryptedContactInfo?.encrypted,
-            encryptedContactInfo?.salt,
-            encryptedContactInfo?.iv,
-            encryptedContactInfo?.tag,
+            encryptedContactInfo?.encrypted || null,
+            encryptedContactInfo?.salt || null,
+            encryptedContactInfo?.iv || null,
+            encryptedContactInfo?.tag || null,
             guardian.role,
             true,
-            new Date(),
+            new Date().toISOString(),
             true,
-            new Date(),
+            new Date().toISOString(),
           ],
         );
 
@@ -337,8 +337,8 @@ export class FamilyGuardianManager {
             doubleEncryptedShare.doubleTag,
             shareIndex,
             share.threshold,
-            new Date(),
-            share.expiresAt,
+            new Date().toISOString(),
+            share.expiresAt ? share.expiresAt.toISOString() : null,
           ],
         );
       }
@@ -386,7 +386,7 @@ export class FamilyGuardianManager {
         config.threshold,
         true,
         true,
-        new Date(),
+        new Date().toISOString(),
         true,
       ],
     );
@@ -467,13 +467,13 @@ export class FamilyGuardianManager {
           JSON.stringify([]),
           JSON.stringify([]),
           "pending",
-          new Date(),
-          expiresAt,
+          new Date().toISOString(),
+          expiresAt.toISOString(),
         ],
       );
 
       // Get available guardians
-      const guardianIds = config.shareDistribution.map((d) => d.guardianId);
+      const guardianIds = config.shareDistribution.map((d: { guardianId: string }) => d.guardianId);
 
       return {
         success: true,
@@ -565,6 +565,15 @@ export class FamilyGuardianManager {
         };
       }
 
+      // Create SHA-256 hash using Web Crypto API
+      const createHash = async (data: string): Promise<string> => {
+        const encoder = new TextEncoder();
+        const dataBuffer = encoder.encode(data);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      };
+
       guardianResponses.push({
         guardianId,
         approved: true,
@@ -573,16 +582,10 @@ export class FamilyGuardianManager {
         deviceInfo: deviceInfo
           ? {
               userAgent: deviceInfo.userAgent
-                ? crypto
-                    .createHash("sha256")
-                    .update(deviceInfo.userAgent)
-                    .digest("hex")
+                ? await createHash(deviceInfo.userAgent)
                 : "",
               ipAddress: deviceInfo.ipAddress
-                ? crypto
-                    .createHash("sha256")
-                    .update(deviceInfo.ipAddress)
-                    .digest("hex")
+                ? await createHash(deviceInfo.ipAddress)
                 : "",
             }
           : undefined,
@@ -644,7 +647,7 @@ export class FamilyGuardianManager {
       [
         encryptedGuardianId.encrypted,
         encryptedFamilyId.encrypted,
-        shareIndices,
+        JSON.stringify(shareIndices),
       ],
     );
 

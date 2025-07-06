@@ -3,7 +3,7 @@
  * @description Comprehensive input validation to prevent injection attacks
  */
 
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../../../src/lib/nostr-browser";
 
 /**
  * Validation result interface

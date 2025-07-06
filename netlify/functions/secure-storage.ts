@@ -1,5 +1,5 @@
 // lib/secure-storage.ts
-import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
+import { generateSecretKey, getPublicKey, nip19 } from "../../src/lib/nostr-browser";
 import { decryptCredentials, encryptCredentials } from "./security";
 import { supabase } from "./supabase";
 
@@ -11,7 +11,7 @@ export interface EncryptedKeyData {
 }
 
 export interface NewAccountKeyPair {
-  nsec: string;
+  nsec: string; // Required for Nostr event signing - keep secure
   npub: string;
   hexPrivateKey: string;
   hexPublicKey: string;
@@ -142,11 +142,11 @@ export class SecureStorage {
    */
   static generateNewAccountKeyPair(): NewAccountKeyPair {
     const privateKeyBytes = generateSecretKey();
-    const hexPrivateKey = Buffer.from(privateKeyBytes).toString("hex");
+    const hexPrivateKey = Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     const hexPublicKey = getPublicKey(privateKeyBytes);
 
     return {
-      nsec: nip19.nsecEncode(privateKeyBytes),
+      nsec: nip19.nsecEncode(hexPrivateKey), // Required for signing - keep secure
       npub: nip19.npubEncode(hexPublicKey),
       hexPrivateKey,
       hexPublicKey,
@@ -443,7 +443,7 @@ export class SecureStorage {
 
           // Decrypt with old password
           try {
-            const decryptedNsec = await decryptData(
+            const decryptedNsec = await decryptCredentials(
               currentData.encrypted_nsec,
               oldPasswordBuffer.toString()
             );
@@ -454,7 +454,7 @@ export class SecureStorage {
           }
 
           // Re-encrypt with new password
-          const newEncryptedNsec = await encryptData(
+          const newEncryptedNsec = await encryptCredentials(
             decryptedNsecBuffer.toString(),
             newPasswordBuffer.toString()
           );

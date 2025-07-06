@@ -4,23 +4,19 @@
  * @compliance Master Context - NIP-59 Gift Wrapped messaging, privacy-first, no email storage
  */
 
-import { nip04, nip19, nip59, SimplePool } from "nostr-tools";
-import type { Event } from "nostr-tools";
+import {
+  Filter,
+  finalizeEvent,
+  generateSecretKey,
+  getPublicKey,
+  nip04,
+  nip19,
+  nip59,
+  NostrEvent,
+  SimplePool,
+} from "./nostr-browser";
 
-// Browser-compatible nostr-tools utilities
-const getPublicKey = (privateKey: Uint8Array): string => {
-  // Simple implementation for testing - in production use proper nostr-tools
-  return btoa(String.fromCharCode(...privateKey)).slice(0, 64);
-};
-
-const finalizeEvent = (event: any, privateKey: Uint8Array): Event => {
-  // Simple implementation for testing - in production use proper nostr-tools
-  return {
-    ...event,
-    id: btoa(JSON.stringify(event)).slice(0, 64),
-    sig: btoa(String.fromCharCode(...privateKey)).slice(0, 128),
-  } as Event;
-};
+type Event = NostrEvent;
 import { SatnamPrivacyFirstCommunications } from "../../lib/gift-wrapped-messaging/privacy-first-service";
 
 // NIP-28/29/59 Group Types
@@ -473,8 +469,8 @@ export class GroupMessagingService {
           ],
           created_at: now,
         },
-        this.getNsecBytes(),
-        recipientNpub
+        recipientNpub,
+        this.getNsecBytes()
       );
 
       // Publish with privacy delay
@@ -496,9 +492,9 @@ export class GroupMessagingService {
   ): Promise<void> {
     try {
       const encryptedContent = await nip04.encrypt(
-        this.getNsecBytes(),
+        JSON.stringify(messageContent),
         recipientNpub,
-        JSON.stringify(messageContent)
+        this.getNsecBytes()
       );
 
       const dmEvent = {
@@ -545,8 +541,8 @@ export class GroupMessagingService {
           ],
           created_at: now,
         },
-        this.getNsecBytes(),
-        recipientNpub
+        recipientNpub,
+        this.getNsecBytes()
       );
 
       // Publish with privacy delay
@@ -568,9 +564,9 @@ export class GroupMessagingService {
   ): Promise<void> {
     try {
       const encryptedContent = await nip04.encrypt(
-        this.userNsec,
+        JSON.stringify(invitationContent),
         recipientNpub,
-        JSON.stringify(invitationContent)
+        this.getNsecBytes()
       );
 
       const dmEvent = {
@@ -629,8 +625,8 @@ export class GroupMessagingService {
           ],
           created_at: now,
         },
-        this.getNsecBytes(),
-        guardianPubkey
+        guardianPubkey,
+        this.getNsecBytes()
       );
 
       // Publish with privacy delay
@@ -686,7 +682,7 @@ export class GroupMessagingService {
       const relays = this.config.relays;
       const publishPromises = relays.map(async (relay) => {
         try {
-          await this.pool.publish([relay], event);
+          await this.pool.publish(relay, event);
         } catch (error) {
           console.warn(`Failed to publish to ${relay}:`, error);
         }
@@ -747,7 +743,7 @@ export class GroupMessagingService {
   async cleanup(): Promise<void> {
     // Close all relay connections
     this.config.relays.forEach(relay => {
-      this.pool.close([relay]);
+      this.pool.close(relay);
     });
   }
 } 

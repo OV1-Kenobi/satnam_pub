@@ -4,7 +4,7 @@
  * without ever exposing the private key to individual family members
  */
 
-import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools";
+import { finalizeEvent, getPublicKey, verifyEvent } from "../../src/lib/nostr-browser";
 import { CitadelRelay } from "../citadel/relay";
 import db from "../db";
 import { FamilyGuardianManager } from "../family/guardian-management";

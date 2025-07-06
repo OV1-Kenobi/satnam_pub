@@ -93,6 +93,11 @@
   # Node.js version for functions
   node_bundler = "esbuild"
 
+# Scheduled functions for cleanup tasks
+[[functions]]
+  function = "cleanup-expired-credentials"
+  schedule = "0 */6 * * *"  # Run every 6 hours
+
 # Edge functions (if needed for global performance)
 [[edge_functions]]
   function = "api-proxy"

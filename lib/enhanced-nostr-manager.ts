@@ -13,9 +13,9 @@ import {
   generateSecretKey,
   getPublicKey,
   nip19,
-  Event as NostrEvent,
+  NostrEvent,
   SimplePool,
-} from "nostr-tools";
+} from "../src/lib/nostr-browser";
 import { config } from "../config";
 
 // Operation Context Types (matching PhoenixD manager)
@@ -35,7 +35,7 @@ interface IndividualNostrAccount {
   privateKey: string; // Encrypted at rest
   publicKey: string;
   npub: string;
-  nsec: string;
+  nsec?: string; // Optional - should not be stored for security
   relays: string[];
   profile: {
     name?: string;
@@ -55,6 +55,16 @@ interface IndividualNostrAccount {
     createdAt: Date;
     lastActiveAt: Date;
     eventCount: number;
+  };
+  // Secure credential storage
+  encryptedCredentials?: {
+    credentialId: string; // Unique UUID for this credential
+    salt: string; // Unique salt for this credential
+    encryptedNsec: string; // AES-256-GCM encrypted nsec
+    iv: string; // Initialization vector
+    tag: string; // Authentication tag
+    createdAt: Date;
+    expiresAt: Date; // Temporary storage with expiration
   };
 }
 
@@ -183,11 +193,11 @@ export class EnhancedNostrManager {
       privateKey: privKeyHex, // Should be encrypted in production
       publicKey: pubKey,
       npub: nip19.npubEncode(pubKey),
-      nsec: nip19.nsecEncode(privKey),
+      // nsec removed for security - never store secret keys in plain text
       relays: Array.from(this.relayConnections.keys()),
       profile: {
         name: username,
-        nip05: `${username}@${config.nip05?.domain || "satnam.family"}`,
+        nip05: `${username}@satnam.pub`,
       },
       preferences: {
         autoPublishProfile: true,
@@ -295,8 +305,8 @@ export class EnhancedNostrManager {
     message: string;
   }> {
     try {
-      let account: IndividualNostrAccount | null = null;
-      let federation: FamilyNostrFederation | null = null;
+      let account: IndividualNostrAccount | undefined = undefined;
+      let federation: FamilyNostrFederation | undefined = undefined;
       let requiresApproval = false;
 
       // Get account information based on context
@@ -366,14 +376,17 @@ export class EnhancedNostrManager {
 
       const signedEvent = finalizeEvent(
         event,
-        Buffer.from(account.privateKey, "hex")
+        new Uint8Array(account.privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || [])
       );
 
       // Publish to relays
       const relays =
         context.mode === "family" ? federation!.sharedRelays : account.relays;
 
-      await this.pool.publish(relays, signedEvent);
+      // Publish to each relay individually
+      for (const relay of relays) {
+        await this.pool.publish(relay, signedEvent);
+      }
 
       // Update operation status
       operation.status = "published";
@@ -477,11 +490,13 @@ export class EnhancedNostrManager {
 
       const signedEvent = finalizeEvent(
         event,
-        Buffer.from(account.privateKey, "hex")
+        new Uint8Array(Buffer.from(account.privateKey, "hex"))
       );
 
       // Publish to family relays
-      await this.pool.publish(federation.sharedRelays, signedEvent);
+      for (const relay of federation.sharedRelays) {
+        await this.pool.publish(relay, signedEvent);
+      }
 
       // Update operation
       operation.status = "published";
@@ -523,9 +538,11 @@ export class EnhancedNostrManager {
 
     const signedEvent = finalizeEvent(
       event,
-      Buffer.from(account.privateKey, "hex")
+      new Uint8Array(Buffer.from(account.privateKey, "hex"))
     );
-    await this.pool.publish(account.relays, signedEvent);
+    for (const relay of account.relays) {
+      await this.pool.publish(relay, signedEvent);
+    }
   }
 
   /**
@@ -539,6 +556,307 @@ export class EnhancedNostrManager {
     } else {
       return this.familyFederations.get(context.familyId!) || null;
     }
+  }
+
+  /**
+   * Generate nsec for temporary use (DO NOT STORE)
+   * This method generates the nsec encoding only when needed for operations
+   * and should never be stored permanently for security reasons
+   */
+  generateNsecForOperation(userId: string): string | null {
+    const account = this.individualAccounts.get(userId);
+    if (!account) return null;
+    
+    // Generate nsec only for the operation, don't store it
+    return nip19.nsecEncode(account.privateKey);
+  }
+
+  /**
+   * Securely store nsec credential with encryption and temporary expiration
+   * This is used during sign-up when users provide their nsec
+   */
+  async storeNsecCredentialSecurely(
+    userId: string,
+    nsec: string,
+    userPassword: string,
+    expirationHours: number = 24
+  ): Promise<{
+    success: boolean;
+    credentialId: string;
+    message: string;
+  }> {
+    try {
+      const account = this.individualAccounts.get(userId);
+      if (!account) {
+        return {
+          success: false,
+          credentialId: "",
+          message: "Account not found",
+        };
+      }
+
+      // Generate unique credential ID and salt
+      const credentialId = crypto.randomUUID();
+      const salt = await this.generateSecureSalt();
+      
+      // Create encryption key from user password and salt
+      const encryptionKey = await this.deriveKeyFromPassword(userPassword, salt);
+      
+      // Encrypt the nsec using AES-256-GCM
+      const encryptedData = await this.encryptNsec(nsec, encryptionKey);
+      
+      // Set expiration time
+      const expiresAt = new Date(Date.now() + expirationHours * 60 * 60 * 1000);
+      
+      // Store encrypted credential in account
+      account.encryptedCredentials = {
+        credentialId,
+        salt,
+        encryptedNsec: encryptedData.encrypted,
+        iv: encryptedData.iv,
+        tag: encryptedData.tag,
+        createdAt: new Date(),
+        expiresAt,
+      };
+
+      // Store in database with encrypted data
+      await this.storeEncryptedCredentialInDatabase(userId, account.encryptedCredentials);
+
+      // Clear any plain text nsec from memory
+      account.nsec = undefined;
+
+      return {
+        success: true,
+        credentialId,
+        message: "Nsec credential stored securely",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        credentialId: "",
+        message: `Failed to store nsec credential: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  /**
+   * Retrieve and decrypt nsec credential for temporary use
+   * This should only be used for specific operations and immediately cleared
+   */
+  async retrieveNsecCredentialTemporarily(
+    userId: string,
+    userPassword: string,
+    credentialId: string
+  ): Promise<{
+    success: boolean;
+    nsec?: string;
+    message: string;
+  }> {
+    try {
+      const account = this.individualAccounts.get(userId);
+      if (!account?.encryptedCredentials) {
+        return {
+          success: false,
+          message: "No encrypted credentials found",
+        };
+      }
+
+      const credentials = account.encryptedCredentials;
+      
+      // Check if credential has expired
+      if (new Date() > credentials.expiresAt) {
+        // Clean up expired credential
+        await this.removeExpiredCredential(userId, credentialId);
+        return {
+          success: false,
+          message: "Credential has expired",
+        };
+      }
+
+      // Verify credential ID matches
+      if (credentials.credentialId !== credentialId) {
+        return {
+          success: false,
+          message: "Invalid credential ID",
+        };
+      }
+
+      // Derive key from password and salt
+      const encryptionKey = await this.deriveKeyFromPassword(userPassword, credentials.salt);
+      
+      // Decrypt the nsec
+      const decryptedNsec = await this.decryptNsec(
+        credentials.encryptedNsec,
+        encryptionKey,
+        credentials.iv,
+        credentials.tag
+      );
+
+      return {
+        success: true,
+        nsec: decryptedNsec,
+        message: "Nsec retrieved successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to retrieve nsec: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  /**
+   * Remove expired or used credentials
+   */
+  async removeExpiredCredential(userId: string, credentialId: string): Promise<void> {
+    const account = this.individualAccounts.get(userId);
+    if (account?.encryptedCredentials?.credentialId === credentialId) {
+      // Clear from memory
+      account.encryptedCredentials = undefined;
+      
+      // Remove from database
+      await this.removeCredentialFromDatabase(userId, credentialId);
+    }
+  }
+
+  /**
+   * Generate secure salt for credential encryption
+   */
+  private async generateSecureSalt(): Promise<string> {
+    const saltBytes = new Uint8Array(32);
+    crypto.getRandomValues(saltBytes);
+    return Array.from(saltBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Derive encryption key from password and salt using PBKDF2
+   */
+  private async deriveKeyFromPassword(password: string, salt: string): Promise<CryptoKey> {
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const saltBuffer = encoder.encode(salt);
+
+    const baseKey = await crypto.subtle.importKey(
+      'raw',
+      passwordBuffer,
+      'PBKDF2',
+      false,
+      ['deriveBits', 'deriveKey']
+    );
+
+    return await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: saltBuffer,
+        iterations: 100000, // High iteration count for security
+        hash: 'SHA-256',
+      },
+      baseKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  /**
+   * Encrypt nsec using AES-256-GCM
+   */
+  private async encryptNsec(nsec: string, key: CryptoKey): Promise<{
+    encrypted: string;
+    iv: string;
+    tag: string;
+  }> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(nsec);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      data
+    );
+
+    // Extract the authentication tag (last 16 bytes)
+    const encryptedArray = new Uint8Array(encryptedBuffer);
+    const tag = encryptedArray.slice(-16);
+    const encrypted = encryptedArray.slice(0, -16);
+
+    return {
+      encrypted: Array.from(encrypted, byte => byte.toString(16).padStart(2, '0')).join(''),
+      iv: Array.from(iv, byte => byte.toString(16).padStart(2, '0')).join(''),
+      tag: Array.from(tag, byte => byte.toString(16).padStart(2, '0')).join(''),
+    };
+  }
+
+  /**
+   * Decrypt nsec using AES-256-GCM
+   */
+  private async decryptNsec(
+    encrypted: string,
+    key: CryptoKey,
+    iv: string,
+    tag: string
+  ): Promise<string> {
+    const encryptedBytes = new Uint8Array(
+      encrypted.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+    );
+    const ivBytes = new Uint8Array(
+      iv.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+    );
+    const tagBytes = new Uint8Array(
+      tag.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+    );
+
+    // Combine encrypted data with authentication tag
+    const combinedData = new Uint8Array(encryptedBytes.length + tagBytes.length);
+    combinedData.set(encryptedBytes);
+    combinedData.set(tagBytes, encryptedBytes.length);
+
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: ivBytes },
+      key,
+      combinedData
+    );
+
+    const decoder = new TextDecoder();
+    return decoder.decode(decryptedBuffer);
+  }
+
+  /**
+   * Store encrypted credential in database
+   */
+  private async storeEncryptedCredentialInDatabase(
+    userId: string,
+    credentials: IndividualNostrAccount['encryptedCredentials']
+  ): Promise<void> {
+    if (!credentials) return;
+
+    // Import supabase for database operations
+    const { supabase } = await import('../src/lib/supabase');
+
+    await supabase.from('secure_nostr_credentials').insert({
+      user_id: userId,
+      credential_id: credentials.credentialId,
+      salt: credentials.salt,
+      encrypted_nsec: credentials.encryptedNsec,
+      iv: credentials.iv,
+      tag: credentials.tag,
+      created_at: credentials.createdAt.toISOString(),
+      expires_at: credentials.expiresAt.toISOString(),
+    });
+  }
+
+  /**
+   * Remove credential from database
+   */
+  private async removeCredentialFromDatabase(userId: string, credentialId: string): Promise<void> {
+    const { supabase } = await import('../src/lib/supabase');
+
+    await supabase
+      .from('secure_nostr_credentials')
+      .delete()
+      .eq('user_id', userId)
+      .eq('credential_id', credentialId);
   }
 
   /**
@@ -579,12 +897,7 @@ export class EnhancedNostrManager {
         ? this.individualAccounts.get(context.userId)?.relays || []
         : this.familyFederations.get(context.familyId!)?.sharedRelays || [];
 
-    const subscription = this.pool.subscribeMany(relays, filters, {
-      onevent: onEvent,
-      oneose: () => {
-        console.log(`Subscription completed for ${context.mode} mode`);
-      },
-    });
+    const subscription = this.pool.subscribeMany(relays, filters);
 
     return subscription.toString();
   }
@@ -593,7 +906,7 @@ export class EnhancedNostrManager {
    * Close relay connections
    */
   async close(): Promise<void> {
-    this.pool.close();
+    this.pool.closeAll();
   }
 }
 

@@ -1,5 +1,4 @@
-import crypto from "crypto";
-import { verifyEvent } from "nostr-tools";
+import { verifyEvent } from "../../src/lib/nostr-browser";
 import { ApiRequest, ApiResponse } from "../../types/api";
 import { setCorsHeadersForCustomAPI } from "../../utils/cors";
 
@@ -55,8 +54,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       });
     }
 
-    // Generate session token
-    const sessionToken = crypto.randomBytes(32).toString("hex");
+    // Generate session token using Web Crypto API
+    const sessionTokenBytes = crypto.getRandomValues(new Uint8Array(32));
+    const sessionToken = Array.from(sessionTokenBytes, byte => byte.toString(16).padStart(2, '0')).join('');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     // In production, store session in database

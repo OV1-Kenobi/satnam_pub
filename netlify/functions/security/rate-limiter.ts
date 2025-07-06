@@ -51,13 +51,13 @@ async function logSecurityEvent(
  * Create privacy-preserving hash for rate limiting keys
  * Ensures user identifiers are not stored in plaintext
  */
-function hashRateLimitKey(data: string): string {
-  const salt =
-    process.env.RATE_LIMIT_SALT ||
-    "default-rate-limit-salt-change-in-production";
-  const hash = crypto.createHash("sha256");
-  hash.update(data + salt);
-  return hash.digest("hex").substring(0, 32); // Use first 32 chars for uniqueness
+async function hashRateLimitKey(data: string): Promise<string> {
+  const salt = "satnam-rate-limit-salt-2024";
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data + salt);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32); // Use first 32 chars for uniqueness
 }
 
 class MemoryRateLimiter {

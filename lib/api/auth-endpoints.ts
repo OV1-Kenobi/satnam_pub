@@ -1,6 +1,6 @@
 // lib/api/auth-endpoints.ts
 import type { Request, Response } from "express";
-import type { Event as NostrEvent } from "nostr-tools";
+import type { Event as NostrEvent } from "../../src/lib/nostr-browser";
 import { HybridAuth } from "../hybrid-auth";
 import { SecureSessionManager } from "../security/session-manager";
 import { CitadelDatabase } from "../supabase";

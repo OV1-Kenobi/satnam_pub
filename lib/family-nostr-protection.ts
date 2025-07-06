@@ -4,7 +4,7 @@
  * with guardian-based recovery mechanisms for family coordination
  */
 
-import { getPublicKey, nip19 } from "nostr-tools";
+import { getPublicKey, nip19 } from "../src/lib/nostr-browser";
 import { EventSigner } from "./crypto/event-signer";
 import { createDatabase } from "./db";
 import { FederationManager } from "./fedimint/federation-manager";

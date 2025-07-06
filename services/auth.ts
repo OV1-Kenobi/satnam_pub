@@ -2,24 +2,18 @@
  * Nostr-Native Authentication Service
  *
  * This service handles sovereign identity authentication using Nostr protocol.
+ * Browser-compatible version without Node.js dependencies.
  */
 
-import * as jwt from "jsonwebtoken";
-import { config } from "../config";
+import { nip05Config, authConfig } from "../src/lib/browser-config";
 import { db } from "../lib";
-// These imports will be used in future implementations
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-enable @typescript-eslint/no-unused-vars */
 import {
   generateSecretKey as generatePrivateKey,
   getEventHash,
   getPublicKey,
   nip19,
   verifyEvent,
-} from "nostr-tools";
-// createDecipheriv will be used in future implementations for key recovery
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-enable @typescript-eslint/no-unused-vars */
+} from "../src/lib/nostr-browser";
 import { NostrEvent, User } from "../types/user";
 import {
   constantTimeEquals,
@@ -35,6 +29,61 @@ interface TokenPayload {
   id: string;
   npub: string;
   role: string;
+}
+
+/**
+ * Browser-compatible JWT signing using Web Crypto API
+ */
+async function signJWT(payload: TokenPayload, secret: string): Promise<string> {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = btoa(JSON.stringify(header));
+  const encodedPayload = btoa(JSON.stringify(payload));
+  const data = `${encodedHeader}.${encodedPayload}`;
+  
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  
+  return `${data}.${encodedSignature}`;
+}
+
+/**
+ * Browser-compatible JWT verification using Web Crypto API
+ */
+async function verifyJWT(token: string, secret: string): Promise<TokenPayload> {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    throw new Error('Invalid JWT format');
+  }
+  
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const data = `${encodedHeader}.${encodedPayload}`;
+  
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify']
+  );
+  
+  const signature = Uint8Array.from(atob(encodedSignature), c => c.charCodeAt(0));
+  const isValid = await crypto.subtle.verify('HMAC', key, signature, encoder.encode(data));
+  
+  if (!isValid) {
+    throw new Error('Invalid JWT signature');
+  }
+  
+  return JSON.parse(atob(encodedPayload));
 }
 
 /**
@@ -63,27 +112,36 @@ export async function createNostrIdentity(
 
   // Generate Nostr keypair
   const privateKeyBytes = generatePrivateKey();
-  const privateKey = Buffer.from(privateKeyBytes).toString("hex");
+  const privateKey = Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
   const publicKey = getPublicKey(privateKeyBytes);
   const npub = nip19.npubEncode(publicKey);
 
   // Create NIP-05 identifier and lightning address
-  const nip05 = `${username}@${config.nip05.domain}`;
+  const nip05 = `${username}@${nip05Config.domain}`;
   const lightning_address = nip05;
 
   // Generate recovery code
-  const recovery_code = generateRandomHex(16);
+  const recovery_code = await generateRandomHex(16);
 
-  // Encrypt private key with recovery password
-  const iv = randomBytes(16);
-  const key = Buffer.from(
-    sha256(recovery_password + recovery_code).slice(0, 32),
-    "hex"
+  // Encrypt private key with recovery password using Web Crypto API
+  const iv = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await sha256(recovery_password + recovery_code);
+  // Convert hex string to bytes
+  const keyBytes = new Uint8Array(keyMaterial.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+  const cipher = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-CBC" },
+    false,
+    ["encrypt"]
   );
-  const cipher = createCipheriv("aes-256-cbc", key, iv);
-  let encrypted_backup: string = cipher.update(privateKey, "hex", "hex");
-  encrypted_backup += cipher.final("hex");
-  encrypted_backup = iv.toString("hex") + ":" + encrypted_backup;
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-CBC", iv },
+    cipher,
+    new TextEncoder().encode(privateKey)
+  );
+  const encrypted_backup = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('') + ":" + 
+                          Array.from(new Uint8Array(encrypted)).map(b => b.toString(16).padStart(2, '0')).join('');
 
   // Insert new user
   const result = await db.query(
@@ -109,9 +167,10 @@ export async function createNostrIdentity(
   const user = result.rows[0];
 
   // Store recovery code hash (not the code itself)
+  const recoveryCodeHash = await sha256(recovery_code);
   await db.query(
     "INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)",
-    [user.id, sha256(recovery_code)]
+    [user.id, recoveryCodeHash]
   );
 
   return {
@@ -130,8 +189,8 @@ export async function generateAuthChallenge(
   npub: string
 ): Promise<{ id: string; challenge: string }> {
   // Generate a random challenge
-  const challenge = generateRandomHex(32);
-  const id = generateRandomHex(16);
+  const challenge = await generateRandomHex(32);
+  const id = await generateRandomHex(16);
 
   // Store the challenge with expiration (5 minutes)
   const expiresAt = new Date();
@@ -197,41 +256,145 @@ export async function authenticateWithNWC(
 
   if (
     expected.rows.length === 0 ||
-    !constantTimeEquals(expected.rows[0].challenge, signed_event.content) ||
+    !(await constantTimeEquals(expected.rows[0].challenge, signed_event.content)) ||
     expected.rows[0].used ||
     new Date(expected.rows[0].expires_at) < new Date()
   ) {
     throw new Error("Invalid or expired challenge");
   }
 
-  // Mark challenge as used to prevent replay attacks
-  await db.query("UPDATE auth_challenges SET used = TRUE WHERE id = $1", [
-    challengeId,
-  ]);
+  // Mark challenge as used
+  await db.query(
+    "UPDATE auth_challenges SET used = TRUE WHERE id = $1",
+    [challengeId]
+  );
 
-  // Get the npub from the pubkey
-  const npub = nip19.npubEncode(signed_event.pubkey);
+  // Find or create user
+  let user = await db.query(
+    "SELECT * FROM users WHERE npub = $1",
+    [expected.rows[0].npub]
+  );
 
-  // Verify that the npub matches the one associated with the challenge using constant-time comparison
-  if (!constantTimeEquals(expected.rows[0].npub, npub)) {
-    throw new Error("Challenge was not issued for this public key");
+  if (user.rows.length === 0) {
+    // Create new user with default values
+    const username = `user_${Math.random().toString(36).substr(2, 9)}`;
+    const nip05 = `${username}@${nip05Config.domain}`;
+    
+    const result = await db.query(
+      `INSERT INTO users (
+        username, 
+        npub, 
+        nip05, 
+        lightning_address, 
+        role, 
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6) 
+      RETURNING id, username, npub, nip05, lightning_address, role, created_at`,
+      [
+        username,
+        expected.rows[0].npub,
+        nip05,
+        nip05,
+        "user",
+        Math.floor(Date.now() / 1000),
+      ]
+    );
+    user = result;
   }
 
-  // Find user by npub
-  const result = await db.query("SELECT * FROM users WHERE npub = $1", [npub]);
+  // Generate JWT token
+  const token = await signJWT({
+    id: user.rows[0].id,
+    npub: user.rows[0].npub,
+    role: user.rows[0].role,
+  }, authConfig.jwtSecret);
 
-  // If user doesn't exist, create a new one with a generated username
-  let user: User;
-  if (result.rows.length === 0) {
-    // Generate a username based on npub
-    const username = `user_${signed_event.pubkey.substring(0, 8)}`;
+  return {
+    user: user.rows[0],
+    token,
+  };
+}
 
-    // Create NIP-05 identifier and lightning address
-    const nip05 = `${username}@${config.nip05.domain}`;
-    const lightning_address = nip05;
+/**
+ * Generate OTP for user authentication
+ * @param npub User's Nostr public key (npub)
+ * @returns OTP code
+ */
+export async function generateOTPForUser(npub: string): Promise<string> {
+  // Generate a random OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const id = await generateRandomHex(16);
 
-    // Insert new user
-    const newUserResult = await db.query(
+  // Store the OTP with expiration (10 minutes)
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+  // Create otp_codes table if it doesn't exist
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS otp_codes (
+      id TEXT PRIMARY KEY,
+      npub TEXT NOT NULL,
+      otp TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMP NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE
+    )
+  `);
+
+  // Insert the OTP
+  await db.query(
+    "INSERT INTO otp_codes (id, npub, otp, expires_at) VALUES ($1, $2, $3, $4)",
+    [id, npub, otp, expiresAt.toISOString()]
+  );
+
+  return otp;
+}
+
+/**
+ * Authenticate with OTP
+ * @param npub User's Nostr public key (npub)
+ * @param otp_code OTP code
+ * @param session_token Session token
+ * @returns User object and JWT token
+ */
+export async function authenticateWithOTP(
+  npub: string,
+  otp_code: string,
+  session_token: string
+): Promise<{ user: User; token: string }> {
+  // Verify OTP
+  const otpResult = await db.query(
+    "SELECT otp, used, expires_at FROM otp_codes WHERE npub = $1 ORDER BY created_at DESC LIMIT 1",
+    [npub]
+  );
+
+  if (
+    otpResult.rows.length === 0 ||
+    otpResult.rows[0].otp !== otp_code ||
+    otpResult.rows[0].used ||
+    new Date(otpResult.rows[0].expires_at) < new Date()
+  ) {
+    throw new Error("Invalid or expired OTP");
+  }
+
+  // Mark OTP as used
+  await db.query(
+    "UPDATE otp_codes SET used = TRUE WHERE npub = $1 AND otp = $2",
+    [npub, otp_code]
+  );
+
+  // Find or create user
+  let user = await db.query(
+    "SELECT * FROM users WHERE npub = $1",
+    [npub]
+  );
+
+  if (user.rows.length === 0) {
+    // Create new user with default values
+    const username = `user_${Math.random().toString(36).substr(2, 9)}`;
+    const nip05 = `${username}@${nip05Config.domain}`;
+    
+    const result = await db.query(
       `INSERT INTO users (
         username, 
         npub, 
@@ -245,171 +408,45 @@ export async function authenticateWithNWC(
         username,
         npub,
         nip05,
-        lightning_address,
+        nip05,
         "user",
         Math.floor(Date.now() / 1000),
       ]
     );
-
-    user = newUserResult.rows[0];
-  } else {
-    user = result.rows[0];
-
-    // Update last login time
-    await db.query("UPDATE users SET last_login = $1 WHERE id = $2", [
-      Math.floor(Date.now() / 1000),
-      user.id,
-    ]);
+    user = result;
   }
 
   // Generate JWT token
-  const token = generateToken({
-    id: user.id,
-    npub: user.npub,
-    role: user.role,
-  });
+  const token = await signJWT({
+    id: user.rows[0].id,
+    npub: user.rows[0].npub,
+    role: user.rows[0].role,
+  }, authConfig.jwtSecret);
 
-  return { user, token };
-}
-
-/**
- * Generate a one-time password for a user
- * @param npub User's Nostr public key
- * @returns Session token for OTP verification
- */
-export async function generateOTPForUser(npub: string): Promise<string> {
-  // Find user by npub
-  const result = await db.query("SELECT id FROM users WHERE npub = $1", [npub]);
-
-  if (result.rows.length === 0) {
-    throw new Error("User not found");
-  }
-
-  const userId = result.rows[0].id;
-
-  // Generate a 6-digit OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Generate a session token
-  const sessionToken = generateRandomHex(32);
-
-  // Store OTP with expiration (10 minutes)
-  const expiresAt = new Date();
-  expiresAt.setMinutes(expiresAt.getMinutes() + 10);
-
-  await db.query(
-    "INSERT INTO otp_codes (user_id, otp_hash, session_token, expires_at) VALUES ($1, $2, $3, $4)",
-    [userId, sha256(otp), sessionToken, expiresAt]
-  );
-
-  /*
-   * OTP delivery mechanism
-   * In production, this would send the OTP via a secure Nostr DM
-   * using the user's public key for encryption
-   */
-
-  return sessionToken;
-}
-
-/**
- * Authenticate with a one-time password
- * @param npub User's Nostr public key
- * @param otp_code The OTP code
- * @param session_token The session token from generateOTPForUser
- * @returns User object and JWT token
- */
-export async function authenticateWithOTP(
-  npub: string,
-  otp_code: string,
-  session_token: string
-): Promise<{ user: User; token: string }> {
-  // Find user by npub
-  const userResult = await db.query("SELECT * FROM users WHERE npub = $1", [
-    npub,
-  ]);
-
-  if (userResult.rows.length === 0) {
-    throw new Error("User not found");
-  }
-
-  const user = userResult.rows[0];
-
-  // Find OTP record
-  const otpResult = await db.query(
-    "SELECT * FROM otp_codes WHERE user_id = $1 AND session_token = $2 AND expires_at > NOW()",
-    [user.id, session_token]
-  );
-
-  if (otpResult.rows.length === 0) {
-    throw new Error("Invalid or expired session");
-  }
-
-  const otpRecord = otpResult.rows[0];
-
-  // Verify OTP using constant-time comparison to prevent timing attacks
-  if (!constantTimeEquals(sha256(otp_code), otpRecord.otp_hash)) {
-    // Increment failed attempts
-    await db.query(
-      "UPDATE otp_codes SET failed_attempts = failed_attempts + 1 WHERE id = $1",
-      [otpRecord.id]
-    );
-
-    // If too many failed attempts, invalidate the OTP
-    if (otpRecord.failed_attempts >= 3) {
-      await db.query("UPDATE otp_codes SET expires_at = NOW() WHERE id = $1", [
-        otpRecord.id,
-      ]);
-    }
-
-    throw new Error("Invalid OTP code");
-  }
-
-  // OTP is valid, invalidate it to prevent reuse
-  await db.query("UPDATE otp_codes SET expires_at = NOW() WHERE id = $1", [
-    otpRecord.id,
-  ]);
-
-  // Update last login time
-  await db.query("UPDATE users SET last_login = $1 WHERE id = $2", [
-    Math.floor(Date.now() / 1000),
-    user.id,
-  ]);
-
-  // Generate JWT token
-  const token = generateToken({
-    id: user.id,
-    npub: user.npub,
-    role: user.role,
-  });
-
-  return { user, token };
-}
-
-/**
- * Generate a JWT token
- */
-export function generateToken(payload: TokenPayload): string {
-  // Convert the secret to a Buffer which is one of the accepted types
-  const secretBuffer = Buffer.from(config.auth.jwtSecret, "utf8");
-
-  // Define options with the correct type
-  const options: jwt.SignOptions = {
-    expiresIn: config.auth.jwtExpiresIn as jwt.SignOptions["expiresIn"],
+  return {
+    user: user.rows[0],
+    token,
   };
-
-  return jwt.sign(payload, secretBuffer, options);
 }
 
 /**
- * Verify a JWT token
+ * Generate JWT token
+ * @param payload Token payload
+ * @returns JWT token
  */
-export function verifyToken(token: string): TokenPayload {
-  try {
-    // Convert the secret to a Buffer which is one of the accepted types
-    const secretBuffer = Buffer.from(config.auth.jwtSecret, "utf8");
+export async function generateToken(payload: TokenPayload): Promise<string> {
+  return await signJWT(payload, authConfig.jwtSecret);
+}
 
-    return jwt.verify(token, secretBuffer) as TokenPayload;
-  } catch {
+/**
+ * Verify JWT token
+ * @param token JWT token
+ * @returns Token payload
+ */
+export async function verifyToken(token: string): Promise<TokenPayload> {
+  try {
+    return await verifyJWT(token, authConfig.jwtSecret);
+  } catch (error) {
     throw new Error("Invalid token");
   }
 }

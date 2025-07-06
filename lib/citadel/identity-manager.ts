@@ -3,8 +3,7 @@ import {
   generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
-} from "nostr-tools";
-import { webcrypto } from "crypto";
+} from "../../src/lib/nostr-browser";
 
 export interface NostrIdentity {
   privateKey: string;
@@ -84,10 +83,10 @@ export class CitadelIdentityManager {
   /**
    * Derive private key from recovery phrase
    */
-  static deriveFromRecoveryPhrase(phrase: string): NostrIdentity {
+  static async deriveFromRecoveryPhrase(phrase: string): Promise<NostrIdentity> {
     // For now, use a simple hash of the phrase
     // In production, use proper BIP39 derivation
-    const hash = webcrypto.subtle.digest(
+    const hashBuffer = await crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(phrase),
     );

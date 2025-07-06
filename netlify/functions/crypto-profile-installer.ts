@@ -39,13 +39,13 @@ const CRYPTO_PROFILES: Record<CryptoProfile, CryptoModuleSet> = {
     dependencies: ["minimal"],
   },
   nostr: {
-    modules: ["crypto-modules/nostr", "nostr-tools", "@noble/secp256k1"],
+    modules: ["crypto-modules/nostr", "src/lib/nostr-browser", "@noble/secp256k1"],
     description: "Nostr protocol support (key generation, NIP-07)",
     size: "medium",
     dependencies: ["minimal"],
   },
   messaging: {
-    modules: ["crypto-modules/hash", "nostr-tools/nip04", "nostr-tools/nip59"],
+    modules: ["crypto-modules/hash", "src/lib/nostr-browser/nip04", "src/lib/nostr-browser/nip59"],
     description: "End-to-end messaging encryption",
     size: "medium",
     dependencies: ["nostr"],

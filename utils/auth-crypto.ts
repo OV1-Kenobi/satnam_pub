@@ -12,7 +12,7 @@
  * - Fallback mechanisms for different runtime environments
  */
 
-import { getCrypto } from "./crypto-unified";
+import { CryptoUnified } from "./crypto-unified";
 
 /**
  * Configuration for crypto utilities
@@ -49,18 +49,6 @@ export const AUTH_CRYPTO_CONFIG = {
 export async function generateSecureChallenge(
   length: number = AUTH_CRYPTO_CONFIG.CHALLENGE_LENGTH
 ): Promise<string> {
-  const isNode = typeof process !== "undefined" && process.versions?.node;
-
-  if (isNode) {
-    // Server-side Node.js crypto
-    try {
-      const crypto = await getCrypto();
-      return crypto.randomBytes(length / 2).toString("hex");
-    } catch (error) {
-      console.error("Node crypto failed, falling back to Web Crypto:", error);
-    }
-  }
-
   // Web Crypto API (browsers and modern environments)
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     const array = new Uint8Array(length / 2);
@@ -94,17 +82,6 @@ export async function generateSecureChallenge(
 export async function generateSessionToken(
   length: number = AUTH_CRYPTO_CONFIG.SESSION_TOKEN_LENGTH
 ): Promise<string> {
-  const isNode = typeof process !== "undefined" && process.versions?.node;
-
-  if (isNode) {
-    try {
-      const crypto = await getCrypto();
-      return crypto.randomBytes(length).toString("hex");
-    } catch (error) {
-      console.error("Node crypto failed for session token:", error);
-    }
-  }
-
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
@@ -239,7 +216,7 @@ export function checkRateLimit(
  * @param currentTime - Current timestamp (default: Date.now())
  */
 export function cleanupRateLimitStore(currentTime: number = Date.now()): void {
-  for (const [ip, record] of rateLimitStore.entries()) {
+  for (const [ip, record] of Array.from(rateLimitStore.entries())) {
     if (currentTime > record.resetTime) {
       rateLimitStore.delete(ip);
     }
@@ -255,11 +232,22 @@ export function cleanupRateLimitStore(currentTime: number = Date.now()): void {
 export function validateOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
 
-  return (
-    AUTH_CRYPTO_CONFIG.ALLOWED_ORIGINS.includes(origin) ||
-    origin.includes("netlify.app") || // Netlify preview URLs
-    origin.includes("localhost") // Development
-  );
+  // Check if origin is in the allowed list
+  if (AUTH_CRYPTO_CONFIG.ALLOWED_ORIGINS.includes(origin as any)) {
+    return true;
+  }
+
+  // Allow Netlify preview URLs
+  if (origin.includes("netlify.app")) {
+    return true;
+  }
+
+  // Allow localhost for development
+  if (origin.includes("localhost")) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -340,7 +328,7 @@ export function getCorsHeaders(
 ): Record<string, string> {
   const corsAllowed = validateOrigin(origin);
 
-  const headers = {
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": methods,
     "Access-Control-Max-Age": "86400",
@@ -368,7 +356,7 @@ export function getSecurityHeaders(
 ): Record<string, string> {
   const corsHeaders = getCorsHeaders(origin);
 
-  const headers = {
+  const headers: Record<string, string> = {
     ...SECURITY_HEADERS,
     ...corsHeaders,
   };

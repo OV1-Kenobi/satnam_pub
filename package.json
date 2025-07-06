@@ -31,6 +31,8 @@
     "@scure/bip32": "^1.1.5",
     "@scure/bip39": "^1.1.1",
     "@supabase/supabase-js": "^2.50.2",
+    "@types/argon2-browser": "^1.18.4",
+    "argon2-browser": "^1.18.0",
     "autoprefixer": "^10.4.21",
     "clsx": "^2.1.1",
     "crypto-js": "^4.1.1",

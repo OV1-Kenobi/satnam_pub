@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { ApiRequest, ApiResponse } from "../../types/api";
 import { setCorsHeaders } from "../../utils/cors";
 
@@ -16,7 +15,7 @@ interface GiftwrappedMessageRequest {
  * POST /api/communications/giftwrapped - Send encrypted message
  */
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -44,8 +43,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       });
     }
 
-    // Generate message ID
-    const messageId = crypto.randomBytes(16).toString("hex");
+    // Generate message ID using Web Crypto API
+    const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+    const messageId = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
     // In production, this would:
     // 1. Encrypt the message according to encryptionLevel

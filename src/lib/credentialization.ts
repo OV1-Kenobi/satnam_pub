@@ -4,7 +4,7 @@
  * @compliance Master Context - Privacy-first, browser-compatible, Bitcoin-only
  */
 
-import { nip04, nip19 } from "nostr-tools";
+import { nip04, nip19 } from "./nostr-browser";
 import { nip05VerificationService, nip05Utils } from "./nip05-verification";
 import type {
   BadgeAward,
@@ -40,7 +40,7 @@ class BrowserCryptoUtils implements WoTVerificationUtils {
       const signatureData = encoder.encode(signature);
       
       // Mock verification - replace with actual nostr signature verification
-      return signatureData.length > 0 && messageData.length > 0;
+      return signatureData.byteLength > 0 && messageData.byteLength > 0;
     } catch (error) {
       console.error('Signature verification error:', error);
       return false;
@@ -69,10 +69,10 @@ class BrowserCryptoUtils implements WoTVerificationUtils {
       
       // Export key and combine with encrypted data
       const exportedKey = await crypto.subtle.exportKey('raw', key);
-      const combined = new Uint8Array(iv.length + exportedKey.length + encryptedBuffer.byteLength);
+      const combined = new Uint8Array(iv.length + exportedKey.byteLength + encryptedBuffer.byteLength);
       combined.set(iv, 0);
       combined.set(new Uint8Array(exportedKey), iv.length);
-      combined.set(new Uint8Array(encryptedBuffer), iv.length + exportedKey.length);
+      combined.set(new Uint8Array(encryptedBuffer), iv.length + exportedKey.byteLength);
       
       return btoa(String.fromCharCode(...combined));
     } catch (error) {

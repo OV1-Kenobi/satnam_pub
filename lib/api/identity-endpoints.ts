@@ -1,5 +1,5 @@
 // lib/api/identity-endpoints.ts
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../../src/lib/nostr-browser";
 import { HybridAuth } from "../hybrid-auth";
 import { SecureStorage } from "../secure-storage";
 import { CitadelDatabase, supabase } from "../supabase";

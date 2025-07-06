@@ -1,14 +1,14 @@
 // Secure Nostr OTP DM service using Rebuilding Camelot account
 // File: lib/nostr-otp-service.ts
-import crypto from "crypto";
 import {
-  Event,
+  NostrEvent,
   finalizeEvent,
   getPublicKey,
   nip04,
   nip19,
+  nip59,
   SimplePool,
-} from "nostr-tools";
+} from "../../src/lib/nostr-browser";
 import { supabase } from "./supabase";
 
 interface OTPDMConfig {
@@ -22,6 +22,7 @@ interface OTPResult {
   otp: string;
   messageId: string;
   expiresAt: Date;
+  messageType?: "gift-wrap" | "nip04";
   error?: string;
 }
 
@@ -78,8 +79,8 @@ class RebuildingCamelotOTPService {
         Date.now() + this.config.expiryMinutes * 60 * 1000
       );
 
-      // Create encrypted DM content
-      const dmContent = this.createOTPMessage(
+      // Create OTP message content (will be updated with correct type after encryption)
+      let dmContent = this.createOTPMessage(
         otp,
         userNip05 || recipientNpub,
         expiresAt
@@ -88,19 +89,41 @@ class RebuildingCamelotOTPService {
       // Convert npub to hex pubkey for encryption
       const recipientPubkey = this.npubToHex(recipientNpub);
 
-      // Encrypt DM using NIP-04
-      const encryptedContent = await nip04.encrypt(
-        nsecData,
-        recipientPubkey,
-        dmContent
-      );
+      // Convert nsec to Uint8Array for encryption
+      const privateKeyBytes = this.nsecToBytes(nsecData);
 
-      // Create and sign DM event
-      const dmEvent = await this.createSignedDMEvent(
-        nsecData,
-        recipientPubkey,
-        encryptedContent
-      );
+      // Try gift-wrapped messaging first, fallback to NIP-04
+      let dmEvent: NostrEvent;
+      let messageType: "gift-wrap" | "nip04" = "nip04";
+
+      try {
+        // Attempt gift-wrapped messaging (NIP-59)
+        dmContent = this.createOTPMessage(otp, userNip05 || recipientNpub, expiresAt, "gift-wrap");
+        dmEvent = await this.createGiftWrappedOTPEvent(
+          privateKeyBytes,
+          recipientPubkey,
+          dmContent
+        );
+        messageType = "gift-wrap";
+        console.log(`Gift-wrapped OTP sent to ${recipientNpub}`);
+      } catch (giftWrapError) {
+        console.warn(`Gift-wrap failed for ${recipientNpub}, falling back to NIP-04:`, giftWrapError);
+        
+        // Fallback to NIP-04 encryption
+        dmContent = this.createOTPMessage(otp, userNip05 || recipientNpub, expiresAt, "nip04");
+        const encryptedContent = await nip04.encrypt(
+          dmContent,
+          recipientPubkey,
+          privateKeyBytes
+        );
+
+        dmEvent = await this.createSignedDMEvent(
+          privateKeyBytes,
+          recipientPubkey,
+          encryptedContent
+        );
+        messageType = "nip04";
+      }
 
       // Publish to relays
       await this.publishToRelays(dmEvent);
@@ -113,6 +136,7 @@ class RebuildingCamelotOTPService {
         otp,
         messageId: dmEvent.id,
         expiresAt,
+        messageType, // Include message type for tracking
       };
     } catch (error) {
       console.error("OTP DM sending failed:", error);
@@ -126,11 +150,11 @@ class RebuildingCamelotOTPService {
     }
   }
 
-  // Generate secure OTP
+  // Generate secure OTP using Web Crypto API
   private generateOTP(): string {
     const digits = "0123456789";
     let otp = "";
-    const randomBytes = crypto.randomBytes(this.config.otpLength);
+    const randomBytes = crypto.getRandomValues(new Uint8Array(this.config.otpLength));
 
     for (let i = 0; i < this.config.otpLength; i++) {
       const randomIndex = randomBytes[i] % digits.length;
@@ -144,8 +168,13 @@ class RebuildingCamelotOTPService {
   private createOTPMessage(
     otp: string,
     userIdentifier: string,
-    expiresAt: Date
+    expiresAt: Date,
+    messageType: "gift-wrap" | "nip04" = "nip04"
   ): string {
+    const encryptionNotice = messageType === "gift-wrap" 
+      ? "🎁 This message is gift-wrapped for enhanced privacy"
+      : "🔒 This message is encrypted with standard Nostr encryption";
+
     return `🔐 Satnam.pub Family Federation Authentication
 
 Your OTP code: ${otp}
@@ -159,6 +188,8 @@ Expires: ${expiresAt.toLocaleString()}
 - Code expires in ${this.config.expiryMinutes} minutes
 - Only use for Satnam.pub Family Financials access
 
+${encryptionNotice}
+
 If you didn't request this code, please ignore this message.
 
 🏰 Rebuilding Camelot - Sovereign Family Banking`;
@@ -171,7 +202,7 @@ If you didn't request this code, please ignore this message.
       if (type !== "npub") {
         throw new Error("Invalid npub format");
       }
-      return Buffer.from(data).toString("hex");
+      return data as string; // nip19.decode returns the hex string directly
     } catch (error) {
       throw new Error(
         `Failed to decode npub: ${error instanceof Error ? error.message : String(error)}`
@@ -179,13 +210,61 @@ If you didn't request this code, please ignore this message.
     }
   }
 
+  // Convert nsec to Uint8Array
+  private nsecToBytes(nsec: string): Uint8Array {
+    try {
+      const { type, data } = nip19.decode(nsec);
+      if (type !== "nsec") {
+        throw new Error("Invalid nsec format");
+      }
+      // Convert hex string to Uint8Array
+      const hex = data as string;
+      return new Uint8Array(hex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+    } catch (error) {
+      throw new Error(
+        `Failed to decode nsec: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // Create gift-wrapped OTP event (NIP-59)
+  private async createGiftWrappedOTPEvent(
+    privateKeyBytes: Uint8Array,
+    recipientPubkey: string,
+    content: string
+  ): Promise<NostrEvent> {
+    const senderPubkey = getPublicKey(privateKeyBytes);
+
+    // Create the base event for gift-wrapping
+    const baseEvent = {
+      kind: 4, // DM event kind
+      pubkey: senderPubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [
+        ["p", recipientPubkey],
+        ["message-type", "otp"],
+        ["encryption", "gift-wrap"],
+      ],
+      content: content,
+    };
+
+    // Wrap the event using NIP-59
+    const giftWrappedEvent = await nip59.wrapEvent(
+      baseEvent,
+      recipientPubkey,
+      privateKeyBytes
+    );
+
+    return giftWrappedEvent;
+  }
+
   // Create and sign DM event
   private async createSignedDMEvent(
-    nsec: string,
+    privateKeyBytes: Uint8Array,
     recipientPubkey: string,
     encryptedContent: string
-  ): Promise<Event> {
-    const senderPubkey = getPublicKey(nsec);
+  ): Promise<NostrEvent> {
+    const senderPubkey = getPublicKey(privateKeyBytes);
 
     const event = {
       kind: 4, // DM event kind
@@ -195,14 +274,20 @@ If you didn't request this code, please ignore this message.
       content: encryptedContent,
     };
 
-    return finalizeEvent(event, nsec);
+    return finalizeEvent(event, privateKeyBytes);
   }
 
   // Publish to multiple relays for reliability
-  private async publishToRelays(event: Event): Promise<boolean[]> {
-    const publishPromises = this.config.relays.map((relay) =>
-      this.pool.publish([relay], event)
-    );
+  private async publishToRelays(event: NostrEvent): Promise<boolean[]> {
+    const publishPromises = this.config.relays.map(async (relay) => {
+      try {
+        await this.pool.publish(relay, event);
+        return true;
+      } catch (error) {
+        console.warn(`Failed to publish to ${relay}:`, error);
+        return false;
+      }
+    });
     return Promise.all(publishPromises);
   }
 
@@ -212,11 +297,12 @@ If you didn't request this code, please ignore this message.
     otp: string,
     expiresAt: Date
   ): Promise<void> {
-    const otpHash = await this.hashOTP(otp);
+    const { hash: otpHash, salt: otpSalt } = await this.hashOTP(otp);
 
     const { error } = await supabase.from("family_otp_verification").insert({
       recipient_npub: recipientNpub,
       otp_hash: otpHash, // Store hash, not plaintext
+      otp_salt: otpSalt, // Store salt for verification
       expires_at: expiresAt.toISOString(),
       used: false,
       created_at: new Date().toISOString(),
@@ -227,15 +313,19 @@ If you didn't request this code, please ignore this message.
     }
   }
 
-  // Hash OTP for secure storage
-  private async hashOTP(otp: string): Promise<string> {
-    const salt = process.env.OTP_SALT;
-    if (!salt) {
-      throw new Error("OTP_SALT environment variable is required");
-    }
-    const hash = crypto.createHash("sha256");
-    hash.update(otp + salt);
-    return hash.digest("hex");
+  // Hash OTP for secure storage using Web Crypto API with unique salt
+  private async hashOTP(otp: string, salt?: string): Promise<{ hash: string; salt: string }> {
+    // Generate unique salt for each OTP to prevent rainbow table attacks
+    const uniqueSalt = salt || Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    const encoder = new TextEncoder();
+    const data = encoder.encode(otp + uniqueSalt + "satnam-otp-2024");
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return { hash, salt: uniqueSalt };
   }
 
   // Verify OTP during authentication
@@ -244,24 +334,41 @@ If you didn't request this code, please ignore this message.
     providedOTP: string
   ): Promise<OTPVerificationResult> {
     try {
-      const otpHash = await this.hashOTP(providedOTP);
-
-      const { data: otpRecord, error } = await supabase
+      // Get the most recent unused OTP for this recipient
+      const { data: otpRecords, error } = await supabase
         .from("family_otp_verification")
         .select("*")
         .eq("recipient_npub", recipientNpub)
-        .eq("otp_hash", otpHash)
         .eq("used", false)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .limit(5); // Check last 5 OTPs
 
-      if (error || !otpRecord) {
+      if (error || !otpRecords || otpRecords.length === 0) {
+        return { valid: false, expired: false, error: "No OTP found" };
+      }
+
+      // Try to match the provided OTP against stored hashes
+      let validOTP = null;
+      for (const otpRecord of otpRecords) {
+        try {
+          // Recreate the hash using the stored salt
+          const { hash: otpHash } = await this.hashOTP(providedOTP, otpRecord.otp_salt);
+          if (otpHash === otpRecord.otp_hash) {
+            validOTP = otpRecord;
+            break;
+          }
+        } catch (hashError) {
+          console.warn("Hash verification failed for OTP record:", hashError);
+          continue;
+        }
+      }
+
+      if (!validOTP) {
         return { valid: false, expired: false, error: "Invalid OTP" };
       }
 
       const now = new Date();
-      const expiresAt = new Date(otpRecord.expires_at);
+      const expiresAt = new Date(validOTP.expires_at);
 
       if (now > expiresAt) {
         return { valid: false, expired: true, error: "OTP has expired" };
@@ -271,7 +378,7 @@ If you didn't request this code, please ignore this message.
       const { error: updateError } = await supabase
         .from("family_otp_verification")
         .update({ used: true, used_at: now.toISOString() })
-        .eq("id", otpRecord.id);
+        .eq("id", validOTP.id);
 
       if (updateError) {
         console.error("Failed to mark OTP as used:", updateError);
@@ -332,11 +439,12 @@ If you didn't request this code, please ignore this message.
 
       for (let i = 0; i < count; i++) {
         const testOTP = this.generateOTP();
-        const otpHash = await this.hashOTP(testOTP);
+        const { hash: otpHash, salt: otpSalt } = await this.hashOTP(testOTP);
 
         testOTPs.push({
           recipient_npub: `npub1test${i}expired`,
           otp_hash: otpHash,
+          otp_salt: otpSalt,
           expires_at: expiredTime.toISOString(),
           used: false,
           created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago

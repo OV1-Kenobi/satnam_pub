@@ -4,7 +4,7 @@
  * Maintains your existing auth.ts functionality while adding privacy protection
  */
 
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../src/lib/nostr-browser";
 import { db } from "../lib";
 import { PrivacyManager } from "../lib/crypto/privacy-manager";
 import { NostrEvent, User } from "../types/user";

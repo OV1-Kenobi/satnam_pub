@@ -1,20 +1,20 @@
 /**
  * ENHANCED FAMILY PAYMENT API ENDPOINT
  *
- * Advanced payment processing with Zeus LSP integration,
+ * Advanced payment processing with Voltage Lightning and PhoenixD LSP integration,
  * intelligent routing, and real-time WebSocket updates.
  */
 
-import type { NextApiRequest, NextApiResponse } from "next";
+import type { ApiRequest, ApiResponse } from "../../types/api";
 import {
   encryptSensitiveData,
   generateSecureUUID,
   logPrivacyOperation,
-} from "../../lib/privacy/encryption";
-import { supabase } from "../lib/supabase";
+} from "../../src/lib/privacy/encryption";
+import { supabase } from "../../src/lib/supabase";
 import { EnhancedFamilyCoordinator } from "../../src/lib/enhanced-family-coordinator";
 import { LiquidityIntelligenceSystem } from "../../src/lib/liquidity-intelligence";
-import type { LiquidityMetrics } from "../../types/common";
+import type { LiquidityMetrics } from "../../src/lib/liquidity-intelligence";
 
 interface EnhancedPaymentRequest {
   familyId: string;
@@ -26,7 +26,7 @@ interface EnhancedPaymentRequest {
     maxFee?: number;
     maxTime?: number;
     privacy?: "high" | "medium" | "low";
-    layer?: "lightning" | "ecash" | "zeus_lsp" | "auto";
+    layer?: "lightning" | "ecash" | "auto";
     useJit?: boolean;
     requireApproval?: boolean;
   };
@@ -44,7 +44,7 @@ interface EnhancedPaymentResponse {
     estimatedFee: number;
     estimatedTime: number;
     privacy: string;
-    zeusJitRequired?: boolean;
+    phoenixdJitRequired?: boolean;
   };
   execution?: {
     transactionId?: string;
@@ -73,14 +73,14 @@ interface EnhancedPaymentResponse {
   metadata: {
     timestamp: string;
     coordinatorVersion: string;
-    zeusLspUsed: boolean;
+    phoenixdLspUsed: boolean;
     liquiditySourceUsed: string;
   };
 }
 
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<EnhancedPaymentResponse>
+  req: ApiRequest,
+  res: ApiResponse<EnhancedPaymentResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -90,7 +90,7 @@ export default async function handler(
       metadata: {
         timestamp: new Date().toISOString(),
         coordinatorVersion: "2.0",
-        zeusLspUsed: false,
+        phoenixdLspUsed: false,
         liquiditySourceUsed: "none",
       },
     });
@@ -118,7 +118,7 @@ export default async function handler(
         metadata: {
           timestamp: new Date().toISOString(),
           coordinatorVersion: "2.0",
-          zeusLspUsed: false,
+          phoenixdLspUsed: false,
           liquiditySourceUsed: "none",
         },
       });
@@ -133,7 +133,7 @@ export default async function handler(
         metadata: {
           timestamp: new Date().toISOString(),
           coordinatorVersion: "2.0",
-          zeusLspUsed: false,
+          phoenixdLspUsed: false,
           liquiditySourceUsed: "none",
         },
       });
@@ -154,7 +154,7 @@ export default async function handler(
         metadata: {
           timestamp: new Date().toISOString(),
           coordinatorVersion: "2.0",
-          zeusLspUsed: false,
+          phoenixdLspUsed: false,
           liquiditySourceUsed: "none",
         },
       });
@@ -166,15 +166,15 @@ export default async function handler(
       voltageNodeId: process.env.VOLTAGE_NODE_ID || "mock-voltage-node",
       lnbitsAdminKey: process.env.LNBITS_ADMIN_KEY || "mock-lnbits-key",
       lnproxyEnabled: true,
-      zeusLspEnabled: familyConfig.zeus_integration_enabled,
-      zeusLspEndpoint: familyConfig.zeus_lsp_endpoint,
-      zeusApiKey: familyConfig.zeus_api_key_encrypted, // Would be decrypted in real implementation
+      phoenixLspEnabled: familyConfig.phoenixd_integration_enabled,
+      phoenixLspEndpoint: familyConfig.phoenixd_endpoint,
+      phoenixApiKey: familyConfig.phoenixd_api_key_encrypted, // Would be decrypted in real implementation
       liquidityThreshold: 5000000, // 5M sats
       emergencyReserve: 1000000, // 1M sats
-      allowanceAutomation: familyConfig.allowance_automation_enabled,
+      paymentAutomation: familyConfig.allowance_automation_enabled,
       intelligentRouting: true,
       cronSchedules: {
-        allowanceDistribution: "0 9 * * *",
+        paymentDistribution: "0 9 * * *",
         liquidityRebalancing: "0 */6 * * *",
         healthChecks: "*/15 * * * *",
       },
@@ -187,8 +187,8 @@ export default async function handler(
 
     // Initialize liquidity intelligence for risk assessment
     const intelligence = new LiquidityIntelligenceSystem({
-      endpoint: familyConfig.zeus_lsp_endpoint,
-      apiKey: familyConfig.zeus_api_key_encrypted, // Would be decrypted
+      endpoint: familyConfig.phoenixd_endpoint,
+      apiKey: familyConfig.phoenixd_api_key_encrypted, // Would be decrypted
     });
 
     // Get current liquidity metrics for intelligence analysis
@@ -242,7 +242,7 @@ export default async function handler(
         metadata: {
           timestamp: new Date().toISOString(),
           coordinatorVersion: "2.0",
-          zeusLspUsed: familyConfig.zeus_integration_enabled,
+          phoenixdLspUsed: familyConfig.phoenixd_integration_enabled,
           liquiditySourceUsed: "pending_approval",
         },
       };
@@ -267,14 +267,19 @@ export default async function handler(
             riskScore,
             recommendations: [
               "Check liquidity status",
-              "Consider enabling Zeus JIT liquidity",
+              "Consider enabling PhoenixD JIT liquidity",
             ],
-            costOptimization: null,
+            costOptimization: {
+              originalCost: 0,
+              optimizedCost: 0,
+              savings: 0,
+              method: "No routes available",
+            },
           },
           metadata: {
             timestamp: new Date().toISOString(),
             coordinatorVersion: "2.0",
-            zeusLspUsed: familyConfig.zeus_integration_enabled,
+            phoenixdLspUsed: false,
             liquiditySourceUsed: "none",
           },
         });
@@ -310,13 +315,13 @@ export default async function handler(
             estimatedFee: routes[0].estimatedFee,
             estimatedTime: routes[0].estimatedTime,
             privacy: routes[0].privacy,
-            zeusJitRequired: routes[0].zeusJitRequired,
+            phoenixdJitRequired: false, // Will be determined by route analysis
           },
           execution: {
             transactionId: executionResult.transactionId,
             actualFee: executionResult.actualFee,
             executionTime: executionResult.executionTime,
-            routingHops: routes[0].path.length,
+            routingHops: executionResult.routingHops,
           },
           intelligence: {
             riskScore,
@@ -332,7 +337,7 @@ export default async function handler(
           metadata: {
             timestamp: new Date().toISOString(),
             coordinatorVersion: "2.0",
-            zeusLspUsed: routes[0].zeusJitRequired || false,
+            phoenixdLspUsed: executionResult.routeType === "lightning",
             liquiditySourceUsed: determineLiquiditySource(routes[0]),
           },
         };
@@ -347,7 +352,7 @@ export default async function handler(
             estimatedFee: routes[0].estimatedFee,
             estimatedTime: routes[0].estimatedTime,
             privacy: routes[0].privacy,
-            zeusJitRequired: routes[0].zeusJitRequired,
+            phoenixdJitRequired: false,
           },
           error: executionResult.error,
           intelligence: {
@@ -368,7 +373,7 @@ export default async function handler(
           metadata: {
             timestamp: new Date().toISOString(),
             coordinatorVersion: "2.0",
-            zeusLspUsed: routes[0].zeusJitRequired || false,
+            phoenixdLspUsed: executionResult.routeType === "lightning",
             liquiditySourceUsed: "failed",
           },
         };
@@ -398,7 +403,7 @@ export default async function handler(
       metadata: {
         timestamp: new Date().toISOString(),
         coordinatorVersion: "2.0",
-        zeusLspUsed: false,
+        phoenixdLspUsed: false,
         liquiditySourceUsed: "error",
       },
     };
@@ -523,8 +528,8 @@ async function createPaymentApproval(
     risk_score: riskScore,
     urgency: request.urgency || "medium",
     expires_at: expiresAt,
-    zeus_jit_required: request.preferences?.useJit || false,
-    zeus_jit_amount: request.preferences?.useJit ? request.amount : null,
+    phoenixd_jit_required: request.preferences?.useJit || false,
+    phoenixd_jit_amount: request.preferences?.useJit ? request.amount : null,
   });
 
   console.log(`📋 Payment approval request created: ${approvalId}`);
@@ -570,29 +575,21 @@ async function generateCostOptimization(
   request: EnhancedPaymentRequest,
   metrics: LiquidityMetrics
 ): Promise<CostOptimization> {
+  const originalCost = Math.ceil(request.amount * 0.001);
+  const optimizedCost = Math.ceil(request.amount * 0.0005);
+  
   return {
-    currentPath: {
-      estimatedFee: Math.ceil(request.amount * 0.001),
-      estimatedTime: 15000,
-      reliabilityScore: 0.95,
-    },
-    optimizedPath: {
-      potentialSavings: Math.ceil(request.amount * 0.0005),
-      fasterRoute: request.preferences?.layer === "ecash",
-      morePrivate: request.preferences?.privacy === "high",
-    },
-    recommendations: [
-      "Current route is optimal for the requested preferences",
-      "Consider using eCash for faster internal transfers",
-      "Zeus JIT liquidity available if needed",
-    ],
+    originalCost,
+    optimizedCost,
+    savings: originalCost - optimizedCost,
+    method: "PhoenixD JIT liquidity optimization",
   };
 }
 
 function determineLiquiditySource(route: any): string {
-  if (route.zeusJitRequired) return "zeus_jit";
   if (route.type === "internal") return "family_balance";
   if (route.path[0]?.layer === "ecash") return "ecash_federation";
+  if (route.path[0]?.layer === "voltage") return "voltage_lightning";
   return "lightning_network";
 }
 
@@ -621,7 +618,7 @@ async function storeEnhancedPaymentRecord(data: {
       ? await encryptSensitiveData(data.paymentRequest.memo)
       : null;
     const encryptedTxId = await encryptSensitiveData(
-      data.executionResult.transactionId
+      data.executionResult.transactionId || generateSecureUUID()
     );
     const encryptedFee = await encryptSensitiveData(
       data.executionResult.actualFee.toString()
@@ -656,7 +653,6 @@ async function storeEnhancedPaymentRecord(data: {
       tx_id_salt: encryptedTxId.salt,
       tx_id_iv: encryptedTxId.iv,
       tx_id_tag: encryptedTxId.tag,
-      route_type: data.route.type,
       encrypted_route_path: encryptedRoutePath.encrypted,
       route_path_salt: encryptedRoutePath.salt,
       route_path_iv: encryptedRoutePath.iv,
@@ -669,10 +665,11 @@ async function storeEnhancedPaymentRecord(data: {
       confirmation_time: data.executionResult.executionTime,
       routing_hops: data.route.path.length,
       status: "completed",
-      zeus_lsp_used: data.route.zeusJitRequired || false,
-      zeus_jit_liquidity_used: data.route.zeusJitRequired || false,
+      phoenixd_lsp_used: data.executionResult.routeType === "lightning",
+      phoenixd_jit_liquidity_used: false, // Will be determined by actual route analysis
       payment_category: "transfer",
       payment_type: "transfer",
+      route_type: data.executionResult.routeType,
     });
 
     console.log(`💾 Enhanced payment record stored successfully`);

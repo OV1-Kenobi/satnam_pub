@@ -5,8 +5,9 @@ import {
   getPublicKey,
   finalizeEvent as finishEvent,
   nip19,
-} from "nostr-tools";
-import type { Event as NostrEvent } from "nostr-tools";
+} from "../../src/lib/nostr-browser";
+import type { NostrEvent } from "../../src/lib/nostr-browser";
+import { supabase } from "../../src/lib/supabase";
 
 export interface RelayPublishResponse {
   success: boolean;
@@ -18,16 +19,50 @@ export interface RelayPublishResponse {
 export class CitadelRelay {
   private static pool = new SimplePool();
   private static serverKey: Uint8Array = (() => {
-    const envKey = process.env.NOSTR_SERVER_NSEC;
-    if (envKey) {
-      try {
-        return nip19.decode(envKey).data as Uint8Array;
-      } catch {
-        return generatePrivateKey();
-      }
-    }
+    // Generate a new server key for each session - no persistent storage
+    // This follows privacy-first principles and avoids env variable dependencies
     return generatePrivateKey();
   })();
+
+  /**
+   * Get relay URL from Supabase database or use default
+   */
+  private static async getRelayUrl(familyId?: string): Promise<string> {
+    try {
+      // If familyId is provided, try to get family-specific relay
+      if (familyId) {
+        const { data: familyData, error: familyError } = await supabase
+          .from('families')
+          .select('relay_url')
+          .eq('id', familyId)
+          .single();
+
+        if (!familyError && familyData?.relay_url) {
+          return familyData.relay_url;
+        }
+
+        // Try to get from nostr_relays table
+        const { data: relayData, error: relayError } = await supabase
+          .from('nostr_relays')
+          .select('url')
+          .eq('family_id', familyId)
+          .eq('status', 'connected')
+          .order('message_count', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!relayError && relayData?.url) {
+          return relayData.url;
+        }
+      }
+
+      // Fallback to default relay
+      return "wss://relay.citadel.academy";
+    } catch (error) {
+      console.warn("Error fetching relay URL from database:", error);
+      return "wss://relay.citadel.academy";
+    }
+  }
 
   /**
    * Publish Identity Event to Private Relay
@@ -35,10 +70,10 @@ export class CitadelRelay {
   static async publishIdentityEvent(
     nostrIdentity: any,
     relayUrl?: string,
+    familyId?: string,
   ): Promise<RelayPublishResponse> {
     try {
-      const relay =
-        relayUrl || process.env.RELAY_URL || "wss://relay.citadel.academy";
+      const relay = relayUrl || await this.getRelayUrl(familyId);
 
       // Create identity event
       const identityEvent = finishEvent(
@@ -98,10 +133,10 @@ export class CitadelRelay {
   static async retrieveIdentityEvent(
     eventId: string,
     relayUrl?: string,
+    familyId?: string,
   ): Promise<NostrEvent | null> {
     try {
-      const relay =
-        relayUrl || process.env.RELAY_URL || "wss://relay.citadel.academy";
+      const relay = relayUrl || await this.getRelayUrl(familyId);
 
       return new Promise((resolve) => {
         const sub = this.pool.subscribeMany([relay], [{ ids: [eventId] }], {
@@ -132,9 +167,10 @@ export class CitadelRelay {
     userId: string,
     encryptedData: string,
     backupType: string = "profile_backup",
+    familyId?: string,
   ): Promise<RelayPublishResponse> {
     try {
-      const relay = process.env.RELAY_URL || "wss://relay.citadel.academy";
+      const relay = await this.getRelayUrl(familyId);
 
       const backupEvent = finishEvent(
         {
@@ -180,10 +216,10 @@ export class CitadelRelay {
   static async getUserBackups(
     userId: string,
     relayUrl?: string,
+    familyId?: string,
   ): Promise<NostrEvent[]> {
     try {
-      const relay =
-        relayUrl || process.env.RELAY_URL || "wss://relay.citadel.academy";
+      const relay = relayUrl || await this.getRelayUrl(familyId);
       const backups: NostrEvent[] = [];
 
       return new Promise((resolve) => {
@@ -200,7 +236,7 @@ export class CitadelRelay {
               backups.push(event);
             },
             oneose() {
-              resolve(backups.sort((a, b) => b.created_at - a.created_at));
+              resolve(backups);
             },
           },
         );
@@ -218,7 +254,7 @@ export class CitadelRelay {
   }
 
   /**
-   * Publish Family Event
+   * Publish Family Event to Relay
    */
   static async publishFamilyEvent(familyData: {
     family_id: string;
@@ -227,25 +263,26 @@ export class CitadelRelay {
     domain?: string;
   }): Promise<RelayPublishResponse> {
     try {
-      const relay = process.env.RELAY_URL || "wss://relay.citadel.academy";
+      const relay = await this.getRelayUrl(familyData.family_id);
 
       const familyEvent = finishEvent(
         {
-          kind: 30002, // Parameterized replaceable event for families
+          kind: 30002, // Parameterized replaceable event for family data
           created_at: Math.floor(Date.now() / 1000),
           tags: [
             ["d", familyData.family_id], // Unique identifier
             ["family_name", familyData.family_name],
             ["domain", familyData.domain || ""],
-            ...familyData.members.map((member) => ["p", member]), // Family members
             ["server", "identity-forge"],
           ],
           content: JSON.stringify({
-            type: "family_registry",
+            type: "family_backup",
             family_id: familyData.family_id,
             family_name: familyData.family_name,
-            member_count: familyData.members.length,
+            members: familyData.members,
+            domain: familyData.domain,
             created_at: new Date().toISOString(),
+            backup_type: "family_reference",
           }),
         },
         this.serverKey,
@@ -274,52 +311,50 @@ export class CitadelRelay {
   }
 
   /**
-   * Wait for relay confirmation
+   * Wait for event confirmation from relay
    */
   private static async waitForConfirmation(
     relayUrl: string,
     eventId: string,
   ): Promise<boolean> {
     return new Promise((resolve) => {
-      let confirmed = false;
-
-      const sub = this.pool.subscribeMany([relayUrl], [{ ids: [eventId] }], {
-        onevent(event) {
-          if (event.id === eventId) {
-            confirmed = true;
-            resolve(true);
-          }
-        },
-        oneose() {
-          if (!confirmed) {
+      const sub = this.pool.subscribeMany(
+        [relayUrl],
+        [{ ids: [eventId] }],
+        {
+          onevent(event) {
+            if (event.id === eventId) {
+              sub.close();
+              resolve(true);
+            }
+          },
+          oneose() {
             resolve(false);
-          }
+          },
         },
-      });
+      );
 
       // Timeout after 5 seconds
       setTimeout(() => {
         sub.close();
-        resolve(confirmed);
+        resolve(false);
       }, 5000);
     });
   }
 
   /**
-   * Test Relay Connection
+   * Test relay connection
    */
-  static async testRelayConnection(relayUrl?: string): Promise<{
+  static async testRelayConnection(relayUrl?: string, familyId?: string): Promise<{
     success: boolean;
     relayUrl: string;
     latency?: number;
     error?: string;
   }> {
-    const relay =
-      relayUrl || process.env.RELAY_URL || "wss://relay.citadel.academy";
-    const startTime = Date.now();
-
     try {
-      // Test with a simple subscription
+      const relay = relayUrl || await this.getRelayUrl(familyId);
+      const startTime = Date.now();
+
       return new Promise((resolve) => {
         const sub = this.pool.subscribeMany(
           [relay],
@@ -346,7 +381,7 @@ export class CitadelRelay {
           },
         );
 
-        // Timeout after 5 seconds
+        // Timeout after 10 seconds
         setTimeout(() => {
           sub.close();
           resolve({
@@ -354,21 +389,21 @@ export class CitadelRelay {
             relayUrl: relay,
             error: "Connection timeout",
           });
-        }, 5000);
+        }, 10000);
       });
     } catch (error) {
       return {
         success: false,
-        relayUrl: relay,
+        relayUrl: relayUrl || "unknown",
         error: error instanceof Error ? error.message : String(error),
       };
     }
   }
 
   /**
-   * Close all connections
+   * Cleanup pool connections
    */
   static cleanup() {
-    this.pool.close([]);
+    this.pool.close();
   }
 }

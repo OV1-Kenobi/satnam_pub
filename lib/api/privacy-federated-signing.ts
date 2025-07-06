@@ -4,7 +4,7 @@
  * zero-knowledge principles, and privacy-first data protection
  */
 
-import { finalizeEvent, nip19, verifyEvent } from "nostr-tools";
+import { finalizeEvent, nip19, verifyEvent } from "../../src/lib/nostr-browser";
 import { CitadelRelay } from "../citadel/relay";
 import db from "../db";
 import { PrivacyUtils } from "../privacy/encryption";

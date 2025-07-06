@@ -177,7 +177,7 @@ export class NostrCommunicationService extends CommunicationService {
       // 4. Wait for confirmation
 
       // For now, simulate the process
-      if (process.env.NODE_ENV === "development") {
+      if (typeof window !== 'undefined' && (window as any).__DEV__) {
         console.log(`🔐 [DEV] OTP: ${message.metadata?.otp}`);
       }
 
@@ -324,7 +324,7 @@ export class CommunicationServiceFactory {
   static async getDefaultService(): Promise<CommunicationService> {
     // Use development service in development, Nostr in production
     const serviceType =
-      process.env.NODE_ENV === "production" ? "nostr" : "development";
+      (typeof window !== 'undefined' && (window as any).__DEV__) ? "development" : "nostr";
     return this.createService(serviceType);
   }
 

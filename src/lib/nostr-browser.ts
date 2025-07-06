@@ -194,4 +194,38 @@ export const nip59 = {
       kind: 1059 // Gift wrapped event kind
     };
   }
+};
+
+// NIP-05 verification (browser-compatible)
+export const nip05 = {
+  verify: async (identifier: string): Promise<string> => {
+    try {
+      // Parse identifier (e.g., "alice@satnam.pub")
+      const [username, domain] = identifier.split('@');
+      if (!username || !domain) {
+        throw new Error('Invalid NIP-05 identifier format');
+      }
+
+      // Fetch the well-known JSON file
+      const response = await fetch(`https://${domain}/.well-known/nostr.json`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch NIP-05 data from ${domain}`);
+      }
+
+      const data = await response.json();
+      
+      // Find the matching username
+      const names = data.names || {};
+      const pubkey = names[username];
+      
+      if (!pubkey) {
+        throw new Error(`Username ${username} not found in NIP-05 data`);
+      }
+
+      return pubkey;
+    } catch (error) {
+      console.error('NIP-05 verification failed:', error);
+      throw error;
+    }
+  }
 }; 

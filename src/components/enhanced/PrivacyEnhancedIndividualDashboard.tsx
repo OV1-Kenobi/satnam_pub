@@ -16,7 +16,8 @@ import {
     Settings,
     Shield,
     Wallet,
-    Zap
+    Zap,
+    TestTube
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { formatSats } from '../../lib/utils';
@@ -24,9 +25,10 @@ import { PrivacyEnhancedApiService } from '../../services/privacyEnhancedApi';
 import { PrivacyLevel } from '../../types/privacy';
 import { SatnamFamilyMember, Transaction } from '../../types/shared';
 import { PrivacyControls } from '../PrivacyControls';
-import PrivacyDashboardIndicators from './PrivacyDashboardIndicators.tsx';
-import PrivacyEnhancedPaymentModal from './PrivacyEnhancedPaymentModal.tsx';
-import PrivacyPreferencesModal from './PrivacyPreferencesModal.tsx';
+import PrivacyDashboardIndicators from './PrivacyDashboardIndicators';
+import PrivacyEnhancedPaymentModal from './PrivacyEnhancedPaymentModal';
+import PrivacyPreferencesModal from './PrivacyPreferencesModal';
+import Argon2SecurityTest from '../Argon2SecurityTest';
 
 interface PrivacyEnhancedIndividualDashboardProps {
   memberId: string;
@@ -59,6 +61,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
   const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
   const [currentPrivacyLevel, setCurrentPrivacyLevel] = useState<PrivacyLevel>(PrivacyLevel.GIFTWRAPPED);
   const [refreshing, setRefreshing] = useState(false);
+  const [securityTestOpen, setSecurityTestOpen] = useState(false);
 
   const apiService = new PrivacyEnhancedApiService();
 
@@ -316,6 +319,21 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                   <span className="text-white text-sm font-medium">Exchange</span>
                 </button>
               </div>
+              
+              {/* Security Test Section */}
+              <div className="mt-6 pt-6 border-t border-white/20">
+                <h4 className="text-md font-semibold text-white mb-3">Security & Privacy</h4>
+                <button
+                  onClick={() => setSecurityTestOpen(true)}
+                  className="w-full flex items-center justify-center space-x-2 p-3 bg-red-700 hover:bg-red-800 rounded-lg transition-colors"
+                >
+                  <TestTube className="h-5 w-5 text-white" />
+                  <span className="text-white text-sm font-medium">Run Security Tests</span>
+                </button>
+                <p className="text-purple-300 text-xs mt-2 text-center">
+                  Test Argon2 encryption, AES-GCM, and privacy protocols
+                </p>
+              </div>
             </div>
 
             {/* Privacy Controls */}
@@ -472,6 +490,26 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
           handleRefresh();
         }}
       />
+
+      {/* Security Test Modal */}
+      {securityTestOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">Security & Privacy Tests</h2>
+              <button
+                onClick={() => setSecurityTestOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4">
+              <Argon2SecurityTest />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

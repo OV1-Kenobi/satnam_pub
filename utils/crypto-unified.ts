@@ -1,4 +1,4 @@
-import CryptoJS from "crypto-js";
+const CryptoJS = require("crypto-js");
 import { generateSecretKey, getPublicKey } from "../src/lib/nostr-browser";
 
 export class CryptoUnified {

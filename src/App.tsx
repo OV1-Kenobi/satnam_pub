@@ -23,6 +23,7 @@ import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
 import { useAuth } from "./hooks/useAuth";
+import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 
@@ -45,6 +46,9 @@ function App() {
   
   // Authentication hook
   const { authenticated, loading } = useAuth();
+  
+  // Initialize credential cleanup system
+  useCredentialCleanup();
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications') => {

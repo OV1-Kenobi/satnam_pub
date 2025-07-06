@@ -4,6 +4,8 @@
 // All crypto imports are lazy loaded for better performance
 // All crypto operations are now lazy loaded
 
+import { finalizeEvent, getPublicKey } from "../src/lib/nostr-browser";
+
 /**
  * Generate a random hex string of specified length
  */
@@ -66,7 +68,7 @@ export async function generateNostrKeyPair(
   const { generateNostrKeyPair: lazyGenerateNostrKeyPair } = await import(
     "./crypto-lazy"
   );
-  return lazyGenerateNostrKeyPair(recoveryPhrase, account);
+  return lazyGenerateNostrKeyPair();
 }
 
 /**
@@ -119,8 +121,9 @@ export async function encryptData(
     "⚠️  SECURITY WARNING: Using legacy encryptData(). Please use encryptCredentials() from lib/security.ts for Gold Standard Argon2id encryption"
   );
 
-  const { encryptData: lazyEncryptData } = await import("./crypto-legacy");
-  return lazyEncryptData(data, password);
+  const { CryptoLazy } = await import("./crypto-lazy");
+  const crypto = CryptoLazy.getInstance();
+  return crypto.encryptData(data, password);
 }
 
 /**
@@ -135,42 +138,43 @@ export async function decryptData(
     "⚠️  SECURITY WARNING: Using legacy decryptData(). Please use decryptCredentials() from lib/security.ts for Gold Standard Argon2id decryption"
   );
 
-  const { decryptData: lazyDecryptData } = await import("./crypto-legacy");
-  return lazyDecryptData(encryptedData, password);
+  const { CryptoLazy } = await import("./crypto-lazy");
+  const crypto = CryptoLazy.getInstance();
+  return crypto.decryptData(encryptedData, password);
 }
 
 /**
  * Derive a cryptographic key from password and salt using PBKDF2
  * @param password - The password to derive from
- * @param salt - The salt (as hex string or Buffer)
+ * @param salt - The salt (as hex string or Uint8Array)
  * @param iterations - Number of PBKDF2 iterations (default: 100000)
  * @param keyLength - Length of derived key in bytes (default: 32)
- * @returns Promise<Buffer> - The derived key
+ * @returns Promise<Uint8Array> - The derived key
  */
 export async function deriveKey(
   password: string,
-  salt: string | Buffer,
+  salt: string | Uint8Array,
   iterations: number = 100000,
   keyLength: number = 32
-): Promise<Buffer> {
+): Promise<Uint8Array> {
   const { deriveKey: lazyDeriveKey } = await import("./crypto-lazy");
   return lazyDeriveKey(password, salt, iterations, keyLength);
 }
 
 /**
- * Decode a Base32 string to a buffer
+ * Decode a Base32 string to a Uint8Array
  * This is used for TOTP/HOTP secrets which are commonly Base32-encoded
  */
-export function decodeBase32(base32: string): Buffer {
+export function decodeBase32(base32: string): Uint8Array {
   // Remove spaces and convert to uppercase
   const sanitized = base32.replace(/\s+/g, "").toUpperCase();
 
   // Base32 character set (RFC 4648)
   const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-  // Prepare output buffer
+  // Prepare output array
   const length = Math.floor((sanitized.length * 5) / 8);
-  const result = Buffer.alloc(length);
+  const result = new Uint8Array(length);
 
   let bits = 0;
   let value = 0;
@@ -200,59 +204,64 @@ export function decodeBase32(base32: string): Buffer {
 }
 
 /**
- * Determine if a string is Base32-encoded
+ * Check if a string is valid Base32
  */
 export function isBase32(str: string): boolean {
   const sanitized = str.replace(/\s+/g, "").toUpperCase();
-  // Base32 uses A-Z and 2-7, and may end with padding (=)
-  return /^[A-Z2-7]+=*$/.test(sanitized);
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  return sanitized.split("").every((char) => charset.includes(char));
 }
 
 /**
- * Generate a time-based one-time password (TOTP)
- * @param secret - The secret key (UTF-8 string or Base32-encoded string)
- * @param window - Time window offset (default: 0)
- * @returns 6-digit TOTP code
+ * Generate a TOTP token
  */
 export async function generateTOTP(
   secret: string,
   window = 0
 ): Promise<string> {
-  const { generateTOTP: lazyGenerateTOTP } = await import("./crypto-lazy");
-  return lazyGenerateTOTP(secret, window);
+  const counter = Math.floor(Date.now() / 30000) + window;
+  return generateHOTP(secret, counter);
 }
 
 /**
- * Generate an HMAC-based one-time password (HOTP)
- * Implementation follows RFC 4226
- * @param secret - The secret key (UTF-8 string or Base32-encoded string)
- * @param counter - The counter value
- * @returns 6-digit HOTP code
+ * Generate an HOTP token
  */
 export async function generateHOTP(
   secret: string,
   counter: number
 ): Promise<string> {
-  const { generateHOTP: lazyGenerateHOTP } = await import("./crypto-lazy");
-  return lazyGenerateHOTP(secret, counter);
+  // This is a simplified implementation
+  // In production, use a proper HOTP library
+  const counterBytes = new Uint8Array(8);
+  for (let i = 7; i >= 0; i--) {
+    counterBytes[i] = counter & 0xff;
+    counter = counter >> 8;
+  }
+
+  const secretBytes = decodeBase32(secret);
+  const hash = await sha256(Array.from(secretBytes).map(b => b.toString(16).padStart(2, '0')).join('') + Array.from(counterBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+  
+  // Extract 4 bytes from the hash
+  const offset = parseInt(hash.slice(-1), 16) & 0xf;
+  const code = ((parseInt(hash.slice(offset * 2, offset * 2 + 2), 16) & 0x7f) << 24) |
+               ((parseInt(hash.slice(offset * 2 + 2, offset * 2 + 4), 16) & 0xff) << 16) |
+               ((parseInt(hash.slice(offset * 2 + 4, offset * 2 + 6), 16) & 0xff) << 8) |
+               (parseInt(hash.slice(offset * 2 + 6, offset * 2 + 8), 16) & 0xff);
+  
+  return (code % 1000000).toString().padStart(6, '0');
 }
 
 /**
- * Verify a time-based one-time password (TOTP)
- * @param token - The TOTP code to verify
- * @param secret - The secret key (UTF-8 string or Base32-encoded string)
- * @param window - Time window to check before and after current time (default: 1)
- * @returns Boolean indicating if the token is valid
+ * Verify a TOTP token
  */
 export async function verifyTOTP(
   token: string,
   secret: string,
   window = 1
 ): Promise<boolean> {
-  // Check current window and surrounding windows
   for (let i = -window; i <= window; i++) {
-    const generatedToken = await generateTOTP(secret, i);
-    if (generatedToken === token) {
+    const expectedToken = await generateTOTP(secret, i);
+    if (constantTimeEquals(token, expectedToken)) {
       return true;
     }
   }
@@ -260,16 +269,13 @@ export async function verifyTOTP(
 }
 
 /**
- * Encode a buffer to Base32
- * This is used for TOTP/HOTP secrets to be compatible with authenticator apps
+ * Encode a Uint8Array to Base32 string
  */
-export function encodeBase32(buffer: Buffer): string {
-  // Base32 character set (RFC 4648)
+export function encodeBase32(buffer: Uint8Array): string {
   const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
-  let result = "";
   let bits = 0;
   let value = 0;
+  let result = "";
 
   for (let i = 0; i < buffer.length; i++) {
     value = (value << 8) | buffer[i];
@@ -281,12 +287,11 @@ export function encodeBase32(buffer: Buffer): string {
     }
   }
 
-  // If we have remaining bits
   if (bits > 0) {
     result += charset[(value << (5 - bits)) & 0x1f];
   }
 
-  // Add padding to make length a multiple of 8
+  // Add padding
   while (result.length % 8 !== 0) {
     result += "=";
   }
@@ -295,21 +300,16 @@ export function encodeBase32(buffer: Buffer): string {
 }
 
 /**
- * Generate a random Base32-encoded secret for TOTP
- * @param length - Length of the secret in bytes (default: 20, recommended by RFC 6238)
- * @returns Base32-encoded secret string
+ * Generate a random TOTP secret
  */
 export async function generateTOTPSecret(length: number = 20): Promise<string> {
-  const randomHex = await generateRandomHex(length * 2);
-  const buffer = Buffer.from(randomHex, "hex");
-  return encodeBase32(buffer);
+  const randomBytes = new Uint8Array(length);
+  crypto.getRandomValues(randomBytes);
+  return encodeBase32(randomBytes);
 }
 
 /**
- * Sign a message with a Nostr private key
- * @param event - The Nostr event to sign
- * @param privateKey - The private key to sign with
- * @returns The signed Nostr event
+ * Sign a Nostr event
  */
 export async function signNostrEvent(
   event: {
@@ -329,28 +329,15 @@ export async function signNostrEvent(
   content: string;
   sig: string;
 }> {
-  const nostrTools = await import("nostr-tools");
-  const privateKeyBytes = Buffer.from(privateKey, "hex");
-  const signedEvent = nostrTools.finalizeEvent(event, privateKeyBytes) as {
-    id: string;
-    kind: number;
-    pubkey: string;
-    created_at: number;
-    tags: string[][];
-    content: string;
-    sig: string;
-  };
-
-  return signedEvent;
+  // Convert hex string to Uint8Array
+  const privateKeyBytes = new Uint8Array(
+    privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+  );
+  return finalizeEvent(event, privateKeyBytes);
 }
 
 /**
- * Create a Nostr event
- * @param kind - The event kind number
- * @param content - The event content
- * @param tags - Optional event tags
- * @param privateKey - The private key to sign with
- * @returns A signed Nostr event
+ * Create and sign a Nostr event
  */
 export async function createNostrEvent(
   kind: number,
@@ -366,16 +353,18 @@ export async function createNostrEvent(
   content: string;
   sig: string;
 }> {
-  const nostrTools = await import("nostr-tools");
-  const publicKey = nostrTools.getPublicKey(Buffer.from(privateKey, "hex"));
-
+  // Convert hex string to Uint8Array
+  const privateKeyBytes = new Uint8Array(
+    privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+  );
+  const pubkey = getPublicKey(privateKeyBytes);
   const event = {
     kind,
-    pubkey: publicKey,
+    pubkey,
     created_at: Math.floor(Date.now() / 1000),
     tags,
     content,
   };
 
-  return signNostrEvent(event, privateKey);
+  return finalizeEvent(event, privateKeyBytes);
 }

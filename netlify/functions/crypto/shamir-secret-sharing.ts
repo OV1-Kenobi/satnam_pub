@@ -4,8 +4,7 @@
  * Supports 2-of-2 to 5-of-7 configurations for different family sizes
  */
 
-import * as crypto from "crypto";
-import { nip19 } from "nostr-tools";
+import { nip19 } from "../../../src/lib/nostr-browser";
 import { PrivacyUtils } from "../privacy/encryption";
 
 /**
@@ -226,7 +225,8 @@ export class NostrShamirSecretSharing {
 
       // Decode nsec to get the private key bytes
       const decoded = nip19.decode(nsec);
-      const privateKeyBytes = decoded.data as Uint8Array;
+      const privateKeyHex = decoded.data as string;
+      const privateKeyBytes = new Uint8Array(privateKeyHex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
 
       if (privateKeyBytes.length !== 32) {
         throw new Error("Invalid private key length");
@@ -245,7 +245,9 @@ export class NostrShamirSecretSharing {
         // Generate random coefficients for polynomial
         const coefficients = [secret]; // a0 = secret
         for (let i = 1; i < threshold; i++) {
-          coefficients.push(crypto.randomInt(1, 256)); // a1, a2, ..., a(threshold-1)
+          // Use Web Crypto API for random number generation
+          const randomBytes = crypto.getRandomValues(new Uint8Array(1));
+          coefficients.push(randomBytes[0] % 256); // a1, a2, ..., a(threshold-1)
         }
 
         // Evaluate polynomial at x = 1, 2, ..., totalShares
@@ -373,7 +375,8 @@ export class NostrShamirSecretSharing {
       }
 
       // Encode back to nsec format
-      const nsec = nip19.nsecEncode(reconstructedKey);
+      const hexKey = Array.from(reconstructedKey).map(b => b.toString(16).padStart(2, '0')).join('');
+      const nsec = nip19.nsecEncode(hexKey);
 
       // Clear reconstructed key from memory
       reconstructedKey.fill(0);

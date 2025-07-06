@@ -11,7 +11,7 @@ import {
   getPublicKey,
   finalizeEvent as finishEvent,
   nip19,
-} from "nostr-tools";
+} from "../src/lib/nostr-browser";
 
 const API_BASE = "http://localhost:3000/api";
 
