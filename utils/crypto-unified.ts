@@ -1,5 +1,5 @@
 import CryptoJS from "crypto-js";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { generateSecretKey, getPublicKey } from "../src/lib/nostr-browser";
 
 export class CryptoUnified {
   // Use Web Crypto API for modern browsers
@@ -7,8 +7,11 @@ export class CryptoUnified {
     privateKey: string;
     publicKey: string;
   }> {
-    const privateKey = generateSecretKey();
-    const publicKey = getPublicKey(privateKey);
+    const privateKeyBytes = generateSecretKey();
+    const privateKey = Array.from(privateKeyBytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    const publicKey = getPublicKey(privateKeyBytes);
 
     return { privateKey, publicKey };
   }

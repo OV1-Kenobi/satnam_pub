@@ -240,7 +240,7 @@ export interface FamilyMember {
   id: string;
   userId: string;
   familyId: string;
-  role: "parent" | "child" | "guardian";
+  role: "offspring" | "adult" | "steward" | "guardian";
   permissions: FamilyPermissions;
   profile: {
     displayName: string;

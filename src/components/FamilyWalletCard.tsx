@@ -12,26 +12,11 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 
-// Updated interface to match requirements
-interface FamilyMember {
-  id: string;
-  username: string;
-  lightningAddress: string;
-  role: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
-  spendingLimits?: {
-    daily: number;
-    weekly: number;
-  };
-  nip05Verified: boolean;
-  balance?: number;
-  recentActivity?: {
-    lastTransaction: string;
-    transactionCount24h: number;
-  };
-}
+// Import the shared type
+import { SatnamFamilyMember } from "../types/shared";
 
 interface FamilyWalletCardProps {
-  member: FamilyMember;
+  member: SatnamFamilyMember;
   onCopyAddress: () => void;
   onSend?: (memberId: string) => void;
   onReceive?: (memberId: string) => void;
@@ -62,11 +47,11 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
     }
   };
 
-  const getStatusColor = (verified: boolean): string => {
+  const getStatusColor = (verified: boolean | undefined): string => {
     return verified ? "text-green-400" : "text-amber-400";
   };
 
-  const getStatusIcon = (verified: boolean) => {
+  const getStatusIcon = (verified: boolean | undefined) => {
     return verified ? (
       <CheckCircle className="h-4 w-4" />
     ) : (
@@ -181,35 +166,14 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-amber-200">Weekly Limit</span>
-                <span className="text-white">{formatSats(member.spendingLimits.weekly)} sats</span>
+                <span className="text-white">{formatSats(member.spendingLimits.weekly || 0)} sats</span>
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Recent Activity Section */}
-      {member.recentActivity && (
-        <div className="bg-white/10 rounded-lg p-4 mb-4">
-          <h4 className="text-white font-semibold mb-2 text-sm flex items-center space-x-2">
-            <Activity className="h-4 w-4 text-amber-400" />
-            <span>Recent Activity</span>
-          </h4>
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-amber-200">Last Transaction</span>
-              <span className="text-white">{member.recentActivity.lastTransaction}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-amber-200">24h Transactions</span>
-              <div className="flex items-center space-x-1">
-                <span className="text-white">{member.recentActivity.transactionCount24h}</span>
-                <TrendingUp className="h-3 w-3 text-green-400" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Action Buttons */}
       <div className="flex space-x-2">
@@ -246,7 +210,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
 };
 
 // Mock data for demonstration
-export const mockFamilyMembers: FamilyMember[] = [
+export const mockFamilyMembers: SatnamFamilyMember[] = [
   {
     id: "1",
     username: "satnam_dad",
@@ -254,10 +218,6 @@ export const mockFamilyMembers: FamilyMember[] = [
     role: "adult",
     nip05Verified: true,
     balance: 5000000,
-    recentActivity: {
-      lastTransaction: "2 hours ago",
-      transactionCount24h: 12
-    }
   },
   {
     id: "2",
@@ -266,10 +226,6 @@ export const mockFamilyMembers: FamilyMember[] = [
     role: "adult",
     nip05Verified: true,
     balance: 3500000,
-    recentActivity: {
-      lastTransaction: "5 minutes ago",
-      transactionCount24h: 8
-    }
   },
   {
     id: "3",
@@ -282,10 +238,6 @@ export const mockFamilyMembers: FamilyMember[] = [
     },
     nip05Verified: true,
     balance: 150000,
-    recentActivity: {
-      lastTransaction: "1 hour ago",
-      transactionCount24h: 3
-    }
   },
   {
     id: "4",
@@ -298,10 +250,6 @@ export const mockFamilyMembers: FamilyMember[] = [
     },
     nip05Verified: false,
     balance: 75000,
-    recentActivity: {
-      lastTransaction: "3 hours ago",
-      transactionCount24h: 1
-    }
   }
 ];
 

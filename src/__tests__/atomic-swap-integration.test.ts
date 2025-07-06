@@ -330,9 +330,9 @@ describe("Atomic Swap Integration Tests", () => {
         raw: vi.fn((query, params) => `${query} ${params?.join(", ") || ""}`),
       };
 
-      // Create bridge with child mock and sufficient balance
-      const childBridge = new SatnamInternalLightningBridge();
-      (childBridge as any).supabase = childMockSupabase;
+      // Create bridge with offspring mock and sufficient balance
+      const offspringBridge = new SatnamInternalLightningBridge();
+      (offspringBridge as any).supabase = childMockSupabase;
 
       // Create a mock fedimint with sufficient balance for this test
       const mockFedimintWithBalance = {
@@ -347,19 +347,19 @@ describe("Atomic Swap Integration Tests", () => {
         rollbackRedemption: vi.fn(() => Promise.resolve()),
       };
 
-      (childBridge as any).fedimint = mockFedimintWithBalance;
-      (childBridge as any).phoenixd = mockPhoenixd;
-      (childBridge as any).cashuManager = mockCashuManager;
+      (offspringBridge as any).fedimint = mockFedimintWithBalance;
+      (offspringBridge as any).phoenixd = mockPhoenixd;
+      (offspringBridge as any).cashuManager = mockCashuManager;
 
-      const result = await childBridge.executeAtomicSwap(highAmountRequest);
+      const result = await offspringBridge.executeAtomicSwap(highAmountRequest);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("guardian approval required");
     });
 
     it("should proceed when guardian approval exists", async () => {
-      // Create a new bridge instance with child role and approval mock
-      const approvedChildMockSupabase = {
+      // Create a new bridge instance with offspring role and approval mock
+      const approvedOffspringMockSupabase = {
         from: vi.fn((table: string) => {
           const mockChain = {
             select: vi.fn(() => mockChain),
@@ -369,7 +369,7 @@ describe("Atomic Swap Integration Tests", () => {
                 return {
                   data: {
                     id: "1",
-                    role: "child",
+                    role: "offspring",
                     spending_limits: { requiresApproval: 10000 },
                   },
                   error: null,
@@ -395,9 +395,9 @@ describe("Atomic Swap Integration Tests", () => {
         raw: vi.fn((query, params) => `${query} ${params?.join(", ") || ""}`),
       };
 
-      // Create bridge with approved child mock and sufficient balance
-      const approvedChildBridge = new SatnamInternalLightningBridge();
-      (approvedChildBridge as any).supabase = approvedChildMockSupabase;
+      // Create bridge with approved offspring mock and sufficient balance
+      const approvedOffspringBridge = new SatnamInternalLightningBridge();
+      (approvedOffspringBridge as any).supabase = approvedOffspringMockSupabase;
 
       // Create a mock fedimint with sufficient balance for this test
       const mockFedimintWithBalance = {
@@ -412,11 +412,11 @@ describe("Atomic Swap Integration Tests", () => {
         rollbackRedemption: vi.fn(() => Promise.resolve()),
       };
 
-      (approvedChildBridge as any).fedimint = mockFedimintWithBalance;
-      (approvedChildBridge as any).phoenixd = mockPhoenixd;
-      (approvedChildBridge as any).cashuManager = mockCashuManager;
+      (approvedOffspringBridge as any).fedimint = mockFedimintWithBalance;
+      (approvedOffspringBridge as any).phoenixd = mockPhoenixd;
+      (approvedOffspringBridge as any).cashuManager = mockCashuManager;
 
-      const result = await approvedChildBridge.executeAtomicSwap(
+      const result = await approvedOffspringBridge.executeAtomicSwap(
         highAmountRequest
       );
 

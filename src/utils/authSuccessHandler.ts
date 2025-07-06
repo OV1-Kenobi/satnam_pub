@@ -54,13 +54,14 @@ export function handleAuthenticationSuccess(
     npub: responseData.userAuth.npub,
     nip05: responseData.userAuth.nip05,
     federationRole: responseData.userAuth.federationRole as
-      | "parent"
-      | "child"
+      | "adult"
+      | "offspring"
       | "guardian",
     authMethod,
     isWhitelisted: responseData.userAuth.isWhitelisted,
     votingPower: responseData.userAuth.votingPower,
     guardianApproved: responseData.userAuth.guardianApproved,
+    stewardApproved: responseData.userAuth.stewardApproved || false,
     sessionToken: responseData.sessionToken,
   };
 

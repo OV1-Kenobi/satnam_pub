@@ -162,8 +162,8 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData })
               onChange={(e) => setInviteeRole(e.target.value)}
               className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:bg-white/20 focus:border-purple-400 transition-all duration-300"
             >
-              <option value="child" className="bg-purple-900 text-white">Child (Limited spending, guardian protection)</option>
-              <option value="parent" className="bg-purple-900 text-white">Parent (Full access, guardian responsibilities)</option>
+                          <option value="offspring" className="bg-purple-900 text-white">Offspring (Limited spending, guardian protection)</option>
+            <option value="adult" className="bg-purple-900 text-white">Adult (Full access, guardian responsibilities)</option>
               <option value="guardian" className="bg-purple-900 text-white">Guardian (Approval authority, family oversight)</option>
             </select>
           </div>

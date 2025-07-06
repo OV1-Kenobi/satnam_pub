@@ -31,21 +31,21 @@ const TEST_FAMILY = {
       username: "dad_smith",
       publicKey:
         "02a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
-      role: "parent" as const,
+      role: "adult" as const,
     },
     {
-      userId: "user_teen",
+      userId: "user_offspring",
       username: "alice_smith",
       publicKey:
         "03b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-      role: "teen" as const,
+      role: "offspring" as const,
     },
     {
       userId: "user_child",
       username: "bobby_smith",
       publicKey:
         "04c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789abc2",
-      role: "child" as const,
+      role: "offspring" as const,
     },
   ],
 };
@@ -65,7 +65,7 @@ const familyParentContext: OperationContext = {
 
 const familyTeenContext: OperationContext = {
   mode: "family",
-  userId: "user_teen",
+  userId: "user_offspring",
   familyId: TEST_FAMILY.familyId,
   parentUserId: TEST_FAMILY.parentUserId,
 };
@@ -77,7 +77,7 @@ const individualNostrContext: NostrOperationContext = {
 
 const familyNostrContext: NostrOperationContext = {
   mode: "family",
-  userId: "user_teen",
+  userId: "user_offspring",
   familyId: TEST_FAMILY.familyId,
   parentUserId: TEST_FAMILY.parentUserId,
 };
@@ -159,17 +159,9 @@ describe("Dual-Mode Integration Tests", () => {
             username: member.username,
             role: member.role,
             limits: {
-              dailyLimit: member.role === "child" ? 10000 : 50000,
-              weeklyLimit: member.role === "child" ? 50000 : 200000,
+              dailyLimit: member.role === "offspring" ? 10000 : 50000,
+              weeklyLimit: member.role === "offspring" ? 50000 : 200000,
             },
-            allowance:
-              member.role !== "parent"
-                ? {
-                    enabled: true,
-                    amount: member.role === "child" ? 5000 : 20000,
-                    frequency: "weekly",
-                  }
-                : undefined,
           }))
         );
 
@@ -180,29 +172,26 @@ describe("Dual-Mode Integration Tests", () => {
 
         // Check member structure and types
         const parentMember = familyAccount.members.find(
-          (m) => m.role === "parent"
+          (m) => m.role === "adult"
         );
-        const childMember = familyAccount.members.find(
-          (m) => m.role === "child"
+        const offspringMember = familyAccount.members.find(
+          (m) => m.role === "offspring"
         );
 
         expect(parentMember).toBeDefined();
-        expect(childMember).toBeDefined();
+        expect(offspringMember).toBeDefined();
 
         if (parentMember) {
           expect(typeof parentMember.allocatedBalanceSat).toBe("number");
-          expect(parentMember.allowance).toBeUndefined();
         }
 
-        if (childMember) {
-          expect(childMember.limits?.dailyLimit).toBe(10000);
-          expect(childMember.allowance?.enabled).toBe(true);
-          expect(childMember.allowance?.amount).toBe(5000);
+        if (offspringMember) {
+          expect(offspringMember.limits?.dailyLimit).toBe(10000);
         }
       });
 
-      test("should process family allowances with proper validation", async () => {
-        const result = await phoenixdManager.processFamilyAllowances(
+      test("should process family recurring payments with proper validation", async () => {
+        const result = await phoenixdManager.processFamilyRecurringPayments(
           TEST_FAMILY.familyId
         );
 
@@ -212,7 +201,7 @@ describe("Dual-Mode Integration Tests", () => {
         expect(Array.isArray(result.operations)).toBe(true);
 
         // Verify operation types
-        result.operations.forEach((op) => {
+        result.operations.forEach((op: any) => {
           expect(typeof op.id).toBe("string");
           expect(op.context.mode).toBe("family");
           expect(typeof op.amountSat).toBe("number");
@@ -312,17 +301,17 @@ describe("Dual-Mode Integration Tests", () => {
         expect(federation.members).toHaveLength(3);
 
         // Check permission structure
-        const parentMember = federation.members.find(
-          (m) => m.role === "parent"
+        const adultMember = federation.members.find(
+          (m) => m.role === "adult"
         );
-        const childMember = federation.members.find((m) => m.role === "child");
+        const offspringMember = federation.members.find((m) => m.role === "offspring");
 
-        expect(parentMember?.permissions.canPublishEvents).toBe(true);
-        expect(parentMember?.permissions.requiresApproval).toBe(false);
+        expect(adultMember?.permissions.canPublishEvents).toBe(true);
+        expect(adultMember?.permissions.requiresApproval).toBe(false);
 
-        expect(childMember?.permissions.canPublishEvents).toBe(false);
-        expect(childMember?.permissions.requiresApproval).toBe(true);
-        expect(childMember?.restrictions?.contentFilter).toBe("strict");
+        expect(offspringMember?.permissions.canPublishEvents).toBe(false);
+        expect(offspringMember?.permissions.requiresApproval).toBe(true);
+        expect(offspringMember?.restrictions?.contentFilter).toBe("strict");
       });
 
       test("should handle family event approval workflow", async () => {

@@ -24,15 +24,17 @@ interface Transaction {
 }
 
 interface TransactionHistoryProps {
-  familyId: string;
+  familyId?: string;
   limit?: number;
   showFilters?: boolean;
+  transactions?: Transaction[];
 }
 
 const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   familyId,
   limit = 10,
   showFilters = false,
+  transactions: propTransactions,
 }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,8 +44,14 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [satsToDollars, setSatsToDollars] = useState(0.0004); // Mock rate: 1 sat = $0.0004 (1 BTC = $40,000)
 
-  // Fetch transactions
+  // Use provided transactions or fetch them
   useEffect(() => {
+    if (propTransactions) {
+      setTransactions(propTransactions);
+      setIsLoading(false);
+      return;
+    }
+
     const fetchTransactions = async () => {
       try {
         setIsLoading(true);
@@ -153,7 +161,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
     };
 
     fetchTransactions();
-  }, [familyId, limit]);
+  }, [familyId, limit, propTransactions]);
 
   const refreshTransactions = async () => {
     setIsRefreshing(true);

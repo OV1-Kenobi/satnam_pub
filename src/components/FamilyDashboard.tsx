@@ -30,29 +30,9 @@ import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
 import { useAuth } from "../hooks/useAuth";
 import { FederationRole } from "../types/auth";
 
-interface FamilyMember {
-  id: string;
-  name: string;
-  avatar: string;
-  nipStatus: "verified" | "pending" | "none";
-  lightningBalance: number;
-  lightningAddress: string;
-  role: "parent" | "child" | "teen" | "guardian";
-  spendingLimits?: {
-    daily?: number;
-    weekly?: number;
-    transaction?: number;
-  };
-}
+import { SatnamFamilyMember } from "../types/shared";
 
-interface Transaction {
-  id: string;
-  type: "sent" | "received";
-  amount: number;
-  from: string;
-  to: string;
-  timestamp: Date;
-}
+import { Transaction } from "../types/shared";
 
 const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { user, userRole, familyId } = useAuth();
@@ -61,51 +41,47 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     "connected",
   );
 
-  const [familyMembers] = useState<FamilyMember[]>([
+  const [familyMembers] = useState<SatnamFamilyMember[]>([
     {
       id: "1",
-      name: "David",
-      avatar: "D",
-      nipStatus: "verified",
-      lightningBalance: 125000,
+      username: "David",
       lightningAddress: "david@satnam.pub",
-      role: "parent",
+      role: "adult",
+      balance: 125000,
+      nip05Verified: true,
     },
     {
       id: "2",
-      name: "Sarah",
-      avatar: "S",
-      nipStatus: "verified",
-      lightningBalance: 87500,
+      username: "Sarah",
       lightningAddress: "sarah@satnam.pub",
-      role: "parent",
+      role: "adult",
+      balance: 87500,
+      nip05Verified: true,
     },
     {
       id: "3",
-      name: "Emma",
-      avatar: "E",
-      nipStatus: "pending",
-      lightningBalance: 25000,
+      username: "Emma",
       lightningAddress: "emma@satnam.pub",
-      role: "teen",
+      role: "offspring",
+      balance: 25000,
+      nip05Verified: false,
       spendingLimits: {
         daily: 10000,
         weekly: 50000,
-        transaction: 5000,
+        requiresApproval: 5000,
       },
     },
     {
       id: "4",
-      name: "Luke",
-      avatar: "L",
-      nipStatus: "none",
-      lightningBalance: 0,
+      username: "Luke",
       lightningAddress: "luke@satnam.pub",
-      role: "child",
+      role: "offspring",
+      balance: 0,
+      nip05Verified: false,
       spendingLimits: {
         daily: 5000,
         weekly: 25000,
-        transaction: 2000,
+        requiresApproval: 2000,
       },
     },
   ]);
@@ -118,6 +94,8 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       from: "alice@getalby.com",
       to: "david@satnam.pub",
       timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      privacyRouted: true,
+      status: "completed",
     },
     {
       id: "2",
@@ -126,6 +104,8 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       from: "sarah@satnam.pub",
       to: "emma@satnam.pub",
       timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
+      privacyRouted: true,
+      status: "completed",
     },
     {
       id: "3",
@@ -134,6 +114,8 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       from: "bob@strike.me",
       to: "sarah@satnam.pub",
       timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
+      privacyRouted: true,
+      status: "completed",
     },
   ]);
 
@@ -145,11 +127,11 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   const totalBalance = familyMembers.reduce(
-    (sum, member) => sum + member.lightningBalance,
+    (sum, member) => sum + (member.balance || 0),
     0,
   );
   const verifiedMembers = familyMembers.filter(
-    (m) => m.nipStatus === "verified",
+    (m) => m.nip05Verified,
   ).length;
   const educationProgress = 73;
   const lastBackup = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -315,8 +297,9 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <FamilyWalletCard
               key={member.id}
               member={member}
-              onSendPayment={() => handleSendPayment(member.id)}
-              onReceivePayment={() => handleReceivePayment(member.id)}
+              onCopyAddress={() => {}}
+              onSend={() => handleSendPayment(member.id)}
+              onReceive={() => handleReceivePayment(member.id)}
               onShowQR={() => handleShowQR(member.lightningAddress)}
             />
           ))}
@@ -344,7 +327,10 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <SmartPaymentModal
           isOpen={showPaymentModal}
           onClose={() => setShowPaymentModal(false)}
-          recipientId={selectedMemberId}
+          type="send"
+          familyMembers={familyMembers}
+          selectedMemberId={selectedMemberId}
+          satsToDollars={0.0001}
         />
       )}
 
@@ -377,7 +363,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           userRole={userRole as FederationRole}
           userId={user?.id || 'unknown'}
           userNpub={user?.npub || ''}
-          familyId={familyId}
+          familyId={familyId || undefined}
         />
       )}
     </div>

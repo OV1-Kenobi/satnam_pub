@@ -187,7 +187,7 @@ describe("Privacy Migration Integration Tests", () => {
         id: testMemberId,
         family_id: testFamilyId,
         name: "Test Member",
-        role: "child",
+        role: "offspring",
         default_privacy_level: PrivacyLevel.ENCRYPTED,
         guardian_approval_required: true,
         privacy_preferences: {

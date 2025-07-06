@@ -47,7 +47,7 @@ function App() {
   if (currentView === "dashboard") {
     return (
       <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "child", "guardian"]}>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
           <FamilyDashboard onBack={() => setCurrentView("landing")} />
         </FamilyFederationAuthWrapper>
       </FamilyFederationAuthProvider>
@@ -57,7 +57,7 @@ function App() {
   if (currentView === "onboarding") {
     return (
       <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "guardian"]}>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
           <FamilyFoundryWizard
             onComplete={() => setCurrentView("dashboard")}
             onBack={() => setCurrentView("landing")}
@@ -74,7 +74,7 @@ function App() {
   if (currentView === "coordination") {
     return (
       <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "guardian"]}>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
           <FamilyCoordination onBack={() => setCurrentView("landing")} />
         </FamilyFederationAuthWrapper>
       </FamilyFederationAuthProvider>
@@ -88,7 +88,7 @@ function App() {
   if (currentView === "recovery") {
     return (
       <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "child", "guardian", "steward"]}>
+        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
           <EmergencyRecoveryPage onBack={() => setCurrentView("landing")} />
         </FamilyFederationAuthWrapper>
       </FamilyFederationAuthProvider>

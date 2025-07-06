@@ -84,7 +84,7 @@ interface FamilyNostrMember {
   username: string;
   publicKey: string;
   npub: string;
-  role: "parent" | "teen" | "child";
+  role: "private" | "offspring" | "adult" | "steward" | "guardian";
   permissions: {
     canPublishEvents: boolean;
     canManageRelays: boolean;
@@ -224,7 +224,7 @@ export class EnhancedNostrManager {
       userId: string;
       username: string;
       publicKey: string;
-      role: "parent" | "teen" | "child";
+      role: "private" | "offspring" | "adult" | "steward" | "guardian";
       permissions?: Partial<FamilyNostrMember["permissions"]>;
       restrictions?: FamilyNostrMember["restrictions"];
     }>
@@ -233,14 +233,14 @@ export class EnhancedNostrManager {
       ...member,
       npub: nip19.npubEncode(member.publicKey),
       permissions: {
-        canPublishEvents: member.role === "parent",
-        canManageRelays: member.role === "parent",
-        canModerate: member.role === "parent",
-        requiresApproval: member.role !== "parent",
+        canPublishEvents: member.role === "adult" || member.role === "steward" || member.role === "guardian",
+        canManageRelays: member.role === "adult" || member.role === "steward" || member.role === "guardian",
+        canModerate: member.role === "adult" || member.role === "steward" || member.role === "guardian",
+        requiresApproval: member.role === "offspring" || member.role === "private",
         ...member.permissions,
       },
       restrictions:
-        member.role === "child"
+        member.role === "offspring"
           ? {
               contentFilter: "strict",
               timeRestrictions: {

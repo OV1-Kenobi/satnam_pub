@@ -243,8 +243,8 @@ export const ContactsList: React.FC<ContactsListProps> = ({
                 className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
               >
                 <option value="" className="bg-purple-900">All Roles</option>
-                <option value="parent" className="bg-purple-900">Parent</option>
-                <option value="child" className="bg-purple-900">Child</option>
+                            <option value="adult" className="bg-purple-900">Adult</option>
+            <option value="offspring" className="bg-purple-900">Offspring</option>
                 <option value="guardian" className="bg-purple-900">Guardian</option>
                 <option value="advisor" className="bg-purple-900">Advisor</option>
                 <option value="friend" className="bg-purple-900">Friend</option>

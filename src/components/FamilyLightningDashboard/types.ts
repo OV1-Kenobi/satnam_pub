@@ -1,13 +1,13 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "adult" | "child" | "teen" | "guardian";
+  role: "offspring" | "adult" | "steward" | "guardian";
   lightningAddress: string;
   balance: number;
   spendingLimits?: {
     daily?: number;
     weekly?: number;
-    transaction?: number;
+    requiresApproval?: number;
   };
   nipStatus: "verified" | "pending" | "none";
 }

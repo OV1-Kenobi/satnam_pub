@@ -6,13 +6,13 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "adult" | "child" | "guardian" | "other";
+  role: "offspring" | "adult" | "steward" | "guardian";
   avatar?: string;
   username?: string;
   spendingLimits?: {
     daily: number;
     weekly?: number;
-    monthly?: number;
+    requiresApproval?: number;
   };
 }
 
@@ -20,11 +20,13 @@ export interface SatnamFamilyMember {
   id: string;
   username: string;
   lightningAddress: string;
-  role: "adult" | "child" | "guardian";
+  role: "offspring" | "adult" | "steward" | "guardian";
+  balance?: number;
+  nip05Verified?: boolean;
   spendingLimits?: {
     daily: number;
     weekly?: number;
-    monthly?: number;
+    requiresApproval?: number;
   };
   emergencyContact?: string;
   backupSeed?: string;

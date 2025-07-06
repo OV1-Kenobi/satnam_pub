@@ -8,7 +8,7 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "parent" | "child" | "guardian" | "other";
+  role: "offspring" | "adult" | "steward" | "guardian" | "other";
   avatar?: string;
   username?: string;
   spendingLimits?: {

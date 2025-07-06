@@ -206,9 +206,9 @@ const SmartPaymentModal: React.FC<SmartPaymentModalProps> = ({
       errors.amount = "Please enter a valid amount";
     }
     
-    // Check spending limits for children
+    // Check spending limits for offspring
     const fromMember = familyMembers.find(m => m.id === fromMemberId);
-    if (fromMember && fromMember.role === "child" && fromMember.spendingLimits) {
+    if (fromMember && fromMember.role === "offspring" && fromMember.spendingLimits) {
       const amount = parseFloat(amountSats);
       if (amount > fromMember.spendingLimits.daily) {
         errors.amount = `Amount exceeds daily limit of ${fromMember.spendingLimits.daily} sats`;

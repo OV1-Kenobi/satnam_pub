@@ -17,6 +17,8 @@ export interface AuthState {
   authenticated: boolean;
   loading: boolean;
   error: string | null;
+  userRole: string | null;
+  familyId: string | null;
 }
 
 export interface AuthActions {
@@ -32,6 +34,8 @@ export function useAuth(): AuthState & AuthActions {
     authenticated: false,
     loading: true,
     error: null,
+    userRole: null,
+    familyId: null,
   });
 
   // Check authentication status on mount
@@ -53,6 +57,9 @@ export function useAuth(): AuthState & AuthActions {
         loading: false,
         // Clear any previous errors since we got a valid response
         error: null,
+        // Mock values for now - in production these would come from the auth response
+        userRole: user ? 'adult' : null,
+        familyId: user ? 'family-123' : null,
       }));
     } catch (error) {
       // Only set error for actual network/server errors, not auth state
@@ -96,6 +103,9 @@ export function useAuth(): AuthState & AuthActions {
             authenticated: response.data!.authenticated,
             user: response.data!.user,
             loading: false,
+            // Mock values for now - in production these would come from the auth response
+            userRole: response.data!.user ? 'adult' : null,
+            familyId: response.data!.user ? 'family-123' : null,
           }));
           return true;
         } else {
@@ -134,6 +144,8 @@ export function useAuth(): AuthState & AuthActions {
         authenticated: false,
         user: null,
         loading: false,
+        userRole: null,
+        familyId: null,
       }));
     } catch (error) {
       setState((prev) => ({
@@ -156,6 +168,8 @@ export function useAuth(): AuthState & AuthActions {
           authenticated: response.data!.authenticated,
           user: response.data!.user,
           loading: false,
+          userRole: response.data!.user ? 'adult' : null,
+          familyId: response.data!.user ? 'family-123' : null,
         }));
       } else {
         setState((prev) => ({
@@ -163,6 +177,8 @@ export function useAuth(): AuthState & AuthActions {
           authenticated: false,
           user: null,
           loading: false,
+          userRole: null,
+          familyId: null,
           error: response.error || "Session refresh failed",
         }));
       }
@@ -172,6 +188,8 @@ export function useAuth(): AuthState & AuthActions {
         authenticated: false,
         user: null,
         loading: false,
+        userRole: null,
+        familyId: null,
         error:
           error instanceof Error ? error.message : "Session refresh failed",
       }));

@@ -42,7 +42,7 @@ export interface PaymentResponse {
 
 export interface FamilyMemberRequest extends PrivacyAwareRequest {
   familyId: string;
-  memberRole: "parent" | "child" | "guardian";
+  memberRole: "offspring" | "adult" | "steward" | "guardian";
   permissions: string[];
 }
 
@@ -112,7 +112,7 @@ export interface IndividualWalletWithPrivacy {
 export interface FamilyMemberWithPrivacy {
   id: string;
   name: string;
-  role: "parent" | "child" | "guardian";
+  role: "offspring" | "adult" | "steward" | "guardian";
   permissions: string[];
   lightningAddress: string;
   defaultPrivacyLevel: PrivacyLevel;
@@ -167,3 +167,30 @@ export const PaymentRequestSchema = {
     timeoutMs: { type: "number", minimum: 1000, maximum: 300000 },
   },
 } as const;
+
+export interface FamilyMember {
+  id: string;
+  username: string;
+  memberRole: "offspring" | "adult" | "steward" | "guardian";
+  lightningAddress: string;
+  balance: number;
+  nip05Verified: boolean;
+  spendingLimits: {
+    daily: number;
+    weekly: number;
+  };
+}
+
+export interface SatnamFamilyMember {
+  id: string;
+  username: string;
+  role: "offspring" | "adult" | "steward" | "guardian";
+  lightningAddress: string;
+  lightningBalance: number;
+  preferredRouting: "lightning" | "cashu" | "fedimint";
+  balance: {
+    lightning: number;
+    cashu: number;
+    fedimint: number;
+  };
+}

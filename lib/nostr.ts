@@ -4,10 +4,10 @@ import {
   nip19,
   SimplePool,
   verifyEvent,
-  getEventHash,
   finalizeEvent,
+  getEventHash,
   Filter,
-} from "nostr-tools";
+} from "../src/lib/nostr-browser";
 import { config, authConfig } from "../config";
 import { NostrEvent } from "../types/user";
 
@@ -66,7 +66,7 @@ const encodePublicKey = (publicKey: string): string => {
  * @returns Bech32-encoded nsec
  */
 const encodePrivateKey = (privateKey: string): string => {
-  return nip19.nsecEncode(Buffer.from(privateKey, "hex"));
+  return nip19.nsecEncode(privateKey);
 };
 
 /**
@@ -78,10 +78,7 @@ const encodePrivateKey = (privateKey: string): string => {
 const decodePublicKey = (npub: string): string => {
   try {
     const { data } = nip19.decode(npub);
-    if (!(data instanceof Uint8Array)) {
-      throw new Error("Decoded npub is not a Uint8Array");
-    }
-    return Buffer.from(data).toString("hex");
+    return data as string;
   } catch {
     throw new Error("Invalid npub format");
   }
@@ -96,10 +93,7 @@ const decodePublicKey = (npub: string): string => {
 const decodePrivateKey = (nsec: string): string => {
   try {
     const { data } = nip19.decode(nsec);
-    if (!(data instanceof Uint8Array)) {
-      throw new Error("Decoded nsec is not a Uint8Array");
-    }
-    return Buffer.from(data).toString("hex");
+    return data as string;
   } catch {
     throw new Error("Invalid nsec format");
   }
@@ -212,7 +206,9 @@ const createSignedEvent = (
   tags: string[][] = [],
   privateKey: string,
 ): NostrEvent => {
-  const privateKeyBytes = Buffer.from(privateKey, "hex");
+  const privateKeyBytes = new Uint8Array(
+    privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+  );
   const pubkey = getPublicKey(privateKeyBytes);
 
   const eventTemplate = {
@@ -243,8 +239,10 @@ const publishEvent = async (
   event: NostrEvent,
   relayUrls = relays,
 ): Promise<void> => {
-  // pool.publish returns an array of promises
-  const publishPromises = pool.publish(relayUrls, event);
+  // Publish to each relay individually
+  const publishPromises = relayUrls.map(relayUrl => 
+    pool.publish(relayUrl, event)
+  );
 
   // Wait for all publish attempts to complete
   const results = await Promise.allSettled(publishPromises);
@@ -273,10 +271,7 @@ const subscribeToEvents = (
   onEose?: () => void,
   relayUrls = relays,
 ) => {
-  const sub = pool.subscribeMany(relayUrls, filters, {
-    onevent: onEvent,
-    oneose: onEose,
-  });
+  const sub = pool.subscribeMany(relayUrls, filters);
 
   return sub;
 };

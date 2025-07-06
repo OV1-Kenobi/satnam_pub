@@ -1,7 +1,7 @@
 import { AlertTriangle, Shield } from "lucide-react";
 import React, { createContext, useContext } from "react";
 import { usePrivacyFirstAuth } from "../../hooks/usePrivacyFirstAuth";
-import { AuthContextType, FamilyFederationUser } from "../../types/auth";
+import { AuthContextType, FamilyFederationUser, FederationRole } from "../../types/auth";
 
 // Create authentication context
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -74,14 +74,14 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
 interface FamilyFederationAuthWrapperProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  allowedRoles?: ('adult' | 'child' | 'guardian' | 'private')[];
+  allowedRoles?: FederationRole[];
   fallback?: React.ReactNode;
 }
 
 export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperProps> = ({
   children,
   requireAuth = true,
-  allowedRoles = ['adult', 'child', 'guardian'],
+  allowedRoles = ['adult', 'offspring', 'steward', 'guardian'],
   fallback,
 }) => {
   const { isAuthenticated, userAuth, isLoading } = useAuthContext();

@@ -4,9 +4,7 @@
  * @compliance Master Context - NIP-59 Gift Wrapped messaging, privacy-first, no email storage
  */
 
-import { Event, getPublicKey, nip04, nip19 } from "nostr-tools";
-import * as nip59 from "nostr-tools/nip59";
-import { SimplePool } from "nostr-tools/pool";
+import { getPublicKey, nip04, nip19, nip59, SimplePool, NostrEvent } from "./nostr-browser";
 import { SatnamPrivacyFirstCommunications } from "../../lib/gift-wrapped-messaging/privacy-first-service";
 
 // NIP-28/29/59 Group Types
@@ -97,7 +95,11 @@ export class GroupMessagingService {
   ) {
     this.config = config;
     this.userNsec = userNsec;
-    this.userNpub = getPublicKey(userNsec);
+    // Convert nsec string to Uint8Array for getPublicKey
+    const userNsecBytes = new Uint8Array(
+      userNsec.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+    );
+    this.userNpub = getPublicKey(userNsecBytes);
     this.pool = new SimplePool();
     this.privacyService = privacyService || new SatnamPrivacyFirstCommunications();
   }
@@ -118,7 +120,7 @@ export class GroupMessagingService {
       const now = Math.floor(Date.now() / 1000);
 
       // Create NIP-28 group event
-      const groupEvent: Event = {
+      const groupEvent: NostrEvent = {
         kind: 34550, // NIP-28 group event
         pubkey: this.userNpub,
         created_at: now,
@@ -654,7 +656,7 @@ export class GroupMessagingService {
   /**
    * Publish event to relays
    */
-  private async publishToRelays(event: Event): Promise<void> {
+  private async publishToRelays(event: NostrEvent): Promise<void> {
     try {
       const relays = this.config.relays;
       const publishPromises = relays.map(async (relay) => {

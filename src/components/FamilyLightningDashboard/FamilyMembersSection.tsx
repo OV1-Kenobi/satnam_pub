@@ -54,11 +54,11 @@ const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
-                  (member.role === "adult" || member.role === "guardian")
+                  (member.role === "adult" || member.role === "guardian" || member.role === "steward")
                     ? "bg-gradient-to-br from-yellow-400 to-orange-500"
-                    : member.role === "teen"
-                      ? "bg-gradient-to-br from-blue-400 to-purple-500"
-                      : "bg-gradient-to-br from-green-400 to-blue-500"
+                    : member.role === "offspring"
+                      ? "bg-gradient-to-br from-green-400 to-blue-500"
+                      : "bg-gradient-to-br from-blue-400 to-purple-500"
                 }`}>
                   {member.username.charAt(0)}
                 </div>
@@ -117,10 +117,10 @@ const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                       <span className="text-white">{formatSats(member.spendingLimits.weekly)} sats</span>
                     </div>
                   )}
-                  {member.spendingLimits.transaction && (
+                  {member.spendingLimits.requiresApproval && (
                     <div className="flex items-center justify-between">
-                      <span className="text-purple-200">Per Transaction</span>
-                      <span className="text-white">{formatSats(member.spendingLimits.transaction)} sats</span>
+                      <span className="text-purple-200">Requires Approval</span>
+                      <span className="text-white">{formatSats(member.spendingLimits.requiresApproval)} sats</span>
                     </div>
                   )}
                 </div>

@@ -4,12 +4,13 @@
 
 import { AlertTriangle, ArrowLeft, Shield, User } from 'lucide-react';
 import React, { useState } from 'react';
-import SignInModal from '../SignInModal.tsx';
-import { useAuth } from './FamilyFederationAuth.tsx';
+import SignInModal from '../SignInModal';
+import { useAuth } from './FamilyFederationAuth';
+import { FederationRole } from '../../types/auth';
 
 interface DashboardAuthWrapperProps {
   children: React.ReactNode;
-  requiredRole?: 'adult' | 'child' | 'guardian';
+  requiredRole?: FederationRole;
   dashboardType: 'family' | 'individual' | 'enhanced';
 }
 

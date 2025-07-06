@@ -66,7 +66,7 @@ interface FamilyLightningAccount {
 interface FamilyMemberAccount {
   userId: string;
   username: string;
-  role: "adult" | "teen" | "child" | "guardian";
+  role: "private" | "offspring" | "adult" | "steward" | "guardian";
   individualChannelId?: string;
   allocatedBalanceSat: number;
   limits: {
@@ -256,7 +256,7 @@ export class EnhancedPhoenixdManager {
     members: Array<{
       userId: string;
       username: string;
-      role: "adult" | "teen" | "child" | "guardian";
+      role: "private" | "offspring" | "adult" | "steward" | "guardian";
       limits?: FamilyMemberAccount["limits"];
       recurringPayment?: FamilyMemberAccount["recurringPayment"];
     }>
@@ -269,21 +269,21 @@ export class EnhancedPhoenixdManager {
       allocatedBalanceSat: 0,
       limits: member.limits || {
         dailyLimit:
-          member.role === "child"
+          member.role === "offspring"
             ? 10000
-            : member.role === "teen"
+            : member.role === "private"
             ? 50000
             : undefined,
         weeklyLimit:
-          member.role === "child"
+          member.role === "offspring"
             ? 50000
-            : member.role === "teen"
+            : member.role === "private"
             ? 200000
             : undefined,
         transactionLimit:
-          member.role === "child"
+          member.role === "offspring"
             ? 5000
-            : member.role === "teen"
+            : member.role === "private"
             ? 25000
             : undefined,
       },
