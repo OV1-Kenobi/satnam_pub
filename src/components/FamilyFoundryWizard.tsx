@@ -282,6 +282,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             charter={charter}
             onCharterChange={setCharter}
             onNext={nextStep}
+            onBack={onBack}
           />
         );
       

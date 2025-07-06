@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { Crown, Plus, X, ArrowRight } from 'lucide-react';
+import { Crown, Plus, X, ArrowRight, ArrowLeft } from 'lucide-react';
 import { CharterDefinition } from '../lib/api/family-foundry';
 
 interface FamilyFoundryStep1CharterProps {
   charter: CharterDefinition;
   onCharterChange: (charter: CharterDefinition) => void;
   onNext: () => void;
+  onBack?: () => void;
 }
 
 const FamilyFoundryStep1Charter: React.FC<FamilyFoundryStep1CharterProps> = ({
   charter,
   onCharterChange,
-  onNext
+  onNext,
+  onBack
 }) => {
   const [newValue, setNewValue] = useState('');
 
@@ -151,8 +153,17 @@ const FamilyFoundryStep1Charter: React.FC<FamilyFoundryStep1CharterProps> = ({
         </div>
       </div>
 
-      {/* Next Button */}
-      <div className="flex justify-end pt-6">
+      {/* Navigation Buttons */}
+      <div className="flex justify-between pt-6">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        )}
         <button
           onClick={handleNext}
           disabled={!charter.familyName.trim() || !charter.foundingDate}

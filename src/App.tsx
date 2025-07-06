@@ -12,6 +12,7 @@ import { useState } from "react";
 import EducationPlatform from "./components/EducationPlatform";
 import FamilyCoordination from "./components/FamilyCoordination";
 import FamilyDashboard from "./components/FamilyDashboard";
+import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import FamilyOnboarding from "./components/FamilyOnboarding";
 import FamilyFoundryWizard from "./components/FamilyFoundryWizard";
 import IdentityForge from "./components/IdentityForge";
@@ -19,13 +20,18 @@ import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
 import EmergencyRecoveryModal from './components/EmergencyRecoveryModal';
 import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
+import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
+import { useAuth } from "./hooks/useAuth";
+import Navigation from "./components/shared/Navigation";
+import PageWrapper from "./components/shared/PageWrapper";
 
 function App() {
   const [currentView, setCurrentView] = useState<
     | "landing"
     | "forge"
     | "dashboard"
+    | "individual-finances"
     | "onboarding"
     | "education"
     | "coordination"
@@ -34,70 +40,215 @@ function App() {
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
+  const [showCommunications, setShowCommunications] = useState(false);
+  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | null>(null);
+  
+  // Authentication hook
+  const { authenticated, loading } = useAuth();
+
+  // Handler for protected routes - checks auth and either shows sign-in or goes to destination
+  const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications') => {
+    if (authenticated) {
+      // User is authenticated, go directly to destination
+      if (destination === 'communications') {
+        setShowCommunications(true);
+      } else {
+        setCurrentView(destination);
+      }
+    } else {
+      // User not authenticated, show sign-in modal and remember destination
+      setPendingDestination(destination);
+      setSignInModalOpen(true);
+    }
+  };
+
+  // Handle successful authentication
+  const handleAuthSuccess = () => {
+    setSignInModalOpen(false);
+    if (pendingDestination) {
+      if (pendingDestination === 'communications') {
+        setShowCommunications(true);
+      } else {
+        setCurrentView(pendingDestination);
+      }
+      setPendingDestination(null);
+    }
+  };
 
   if (currentView === "forge") {
     return (
-      <IdentityForge
-        onComplete={() => setCurrentView("nostr-ecosystem")}
-        onBack={() => setCurrentView("landing")}
-      />
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <IdentityForge
+          onComplete={() => setCurrentView("nostr-ecosystem")}
+          onBack={() => setCurrentView("landing")}
+        />
+      </PageWrapper>
     );
   }
 
   if (currentView === "dashboard") {
     return (
-      <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-          <FamilyDashboard onBack={() => setCurrentView("landing")} />
-        </FamilyFederationAuthWrapper>
-      </FamilyFederationAuthProvider>
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <FamilyDashboard onBack={() => setCurrentView("landing")} />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "individual-finances") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <IndividualFinancesDashboard 
+              memberId="current-user"
+              memberData={{
+                username: "Current User",
+                role: "adult",
+                lightningAddress: "user@satnam.pub"
+              }}
+              onBack={() => setCurrentView("landing")} 
+            />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
     );
   }
 
   if (currentView === "onboarding") {
     return (
-      <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-          <FamilyFoundryWizard
-            onComplete={() => setCurrentView("dashboard")}
-            onBack={() => setCurrentView("landing")}
-          />
-        </FamilyFederationAuthWrapper>
-      </FamilyFederationAuthProvider>
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <FamilyFoundryWizard
+              onComplete={() => setCurrentView("dashboard")}
+              onBack={() => setCurrentView("landing")}
+            />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
     );
   }
 
   if (currentView === "education") {
-    return <EducationPlatform onBack={() => setCurrentView("landing")} />;
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <EducationPlatform onBack={() => setCurrentView("landing")} />
+      </PageWrapper>
+    );
   }
 
   if (currentView === "coordination") {
     return (
-      <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-          <FamilyCoordination onBack={() => setCurrentView("landing")} />
-        </FamilyFederationAuthWrapper>
-      </FamilyFederationAuthProvider>
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <FamilyCoordination onBack={() => setCurrentView("landing")} />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
     );
   }
 
   if (currentView === "nostr-ecosystem") {
-    return <NostrEcosystem onBack={() => setCurrentView("landing")} />;
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <NostrEcosystem onBack={() => setCurrentView("landing")} />
+      </PageWrapper>
+    );
   }
 
   if (currentView === "recovery") {
     return (
-      <FamilyFederationAuthProvider>
-        <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-          <EmergencyRecoveryPage onBack={() => setCurrentView("landing")} />
-        </FamilyFederationAuthWrapper>
-      </FamilyFederationAuthProvider>
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <EmergencyRecoveryPage onBack={() => setCurrentView("landing")} />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
     );
   }
 
   const navigationItems = [
-    { label: "Family Dashboard", action: () => setCurrentView("dashboard") },
-    { label: "Bitcoin Education", action: () => setCurrentView("education") },
+    { label: "Family Financials", action: () => setCurrentView("dashboard") },
+    { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
+    { label: "Communications", action: () => setShowCommunications(true) },
     {
       label: "Nostr Resources",
       action: () => setCurrentView("nostr-ecosystem"),
@@ -197,146 +348,14 @@ function App() {
       </div>
 
       {/* Enhanced Navigation */}
-      <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Logo with SatNam.Pub Custom Logo */}
-            <div className="flex items-center space-x-3">
-              <img
-                src="/SatNam.Pub logo.png"
-                alt="SatNam.Pub"
-                className="h-10 w-auto"
-                loading="lazy"
-              />
-              <span className="text-white text-xl font-bold">Satnam.pub</span>
-            </div>
-
-            {/* Desktop Navigation */}
-            <div className="hidden lg:flex items-center space-x-6">
-              {/* Sign In Button */}
-              <button
-                onClick={() => setSignInModalOpen(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
-              >
-                <span>Sign In</span>
-              </button>
-
-              {/* Primary CTA */}
-              <button
-                onClick={() => setCurrentView("forge")}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
-              >
-                <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
-                <span>Forge Identity</span>
-              </button>
-
-              {/* Navigation Links */}
-              <button
-                onClick={() => setCurrentView("dashboard")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium"
-              >
-                Family Dashboard
-              </button>
-
-              <button
-                onClick={() => setCurrentView("education")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
-              >
-                <BookOpen className="h-4 w-4" />
-                <span>Bitcoin Education</span>
-              </button>
-
-              <button
-                onClick={() => setCurrentView("nostr-ecosystem")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
-              >
-                <Network className="h-4 w-4" />
-                <span>Nostr Resources</span>
-              </button>
-
-              <a
-                href="https://citadel.academy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1 font-medium"
-              >
-                <img
-                  src="/Citadel Academy Logo.png"
-                  alt="Citadel Academy"
-                  className="h-4 w-4"
-                />
-                <span>Enter Citadel Academy</span>
-                <ExternalLink className="h-3 w-3" />
-              </a>
-
-              <button
-                onClick={() => setCurrentView("recovery")}
-                className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium"
-              >
-                Recovery
-              </button>
-            </div>
-
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all duration-300"
-            >
-              {mobileMenuOpen ? (
-                <X className="h-6 w-6 text-white" />
-              ) : (
-                <Menu className="h-6 w-6 text-white" />
-              )}
-            </button>
-          </div>
-
-          {/* Mobile Navigation Menu */}
-          {mobileMenuOpen && (
-            <div className="lg:hidden bg-purple-800/95 backdrop-blur-sm rounded-lg mt-2 p-4 border border-white/20">
-              <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    setSignInModalOpen(true);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <span>Sign In</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setCurrentView("forge");
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
-                >
-                  <img
-                    src="/ID forge icon.png"
-                    alt="Forge"
-                    className="h-4 w-4"
-                  />
-                  <span>Forge Identity</span>
-                </button>
-
-                {navigationItems.map((item, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      item.action();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left text-white hover:text-yellow-400 py-2 px-4 rounded-lg hover:bg-white/10 transition-all duration-300 flex items-center justify-between"
-                  >
-                    <span>{item.label}</span>
-                    {item.external && <ExternalLink className="h-4 w-4" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </nav>
+      <Navigation
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+      />
 
       {/* Enhanced Hero Section */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-32">
@@ -357,20 +376,20 @@ function App() {
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
             <button
               onClick={() => setSignInModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-800 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
-              <span>Sign In</span>
+              <span>Nostrich Sign-in</span>
             </button>
             <button
               onClick={() => setCurrentView("forge")}
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm"
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
                           <button
                 onClick={() => setCurrentView("onboarding")}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
+                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl border-2 border-black"
               >
                 <img
                   src="/Rebuilding_Camelot_logo__transparency_v3.png"
@@ -385,10 +404,17 @@ function App() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
               onClick={() => setCurrentView("dashboard")}
-              className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <Users className="h-4 w-4" />
-              <span>View Family Dashboard</span>
+              <span>Family Financials</span>
+            </button>
+            <button
+              onClick={() => setCurrentView("individual-finances")}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
+            >
+              <Zap className="h-4 w-4" />
+              <span>Individual Finances</span>
             </button>
             <button
               onClick={() => setCurrentView("education")}
@@ -728,15 +754,24 @@ function App() {
       <SignInModal
         isOpen={signInModalOpen}
         onClose={() => setSignInModalOpen(false)}
-        onSignInSuccess={() => {
-          setSignInModalOpen(false);
-          setCurrentView("dashboard");
-        }}
+        onSignInSuccess={handleAuthSuccess}
         onCreateNew={() => {
           setSignInModalOpen(false);
           setCurrentView("forge");
         }}
       />
+
+      {/* Communications Modal */}
+      {showCommunications && (
+        <GiftwrappedMessaging 
+          familyMember={{
+            id: "current-user",
+            npub: "npub1placeholder",
+            username: "Current User",
+            role: "adult"
+          }}
+        />
+      )}
     </div>
   );
 }
