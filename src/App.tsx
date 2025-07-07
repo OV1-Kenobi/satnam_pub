@@ -21,6 +21,9 @@ import SignInModal from "./components/SignInModal";
 import EmergencyRecoveryModal from './components/EmergencyRecoveryModal';
 import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
+import FeaturesOverview from "./components/FeaturesOverview";
+import DynasticSovereignty from "./components/DynasticSovereignty";
+import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
 import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
 import { useAuth } from "./hooks/useAuth";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
@@ -38,11 +41,14 @@ function App() {
     | "coordination"
     | "recovery"
     | "nostr-ecosystem"
+    | "features-overview"
+    | "dynastic-sovereignty"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [showCommunications, setShowCommunications] = useState(false);
-  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | null>(null);
+  const [showFamilyFoundryAuthModal, setShowFamilyFoundryAuthModal] = useState(false);
+  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | null>(null);
   
   // Authentication hook
   const { authenticated, loading } = useAuth();
@@ -51,11 +57,29 @@ function App() {
   useCredentialCleanup();
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
-  const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications') => {
+  const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging') => {
     if (authenticated) {
       // User is authenticated, go directly to destination
       if (destination === 'communications') {
         setShowCommunications(true);
+      } else if (destination === 'giftwrapped-messaging') {
+        setShowCommunications(true);
+      } else if (destination === 'family-foundry') {
+        setCurrentView("onboarding");
+      } else if (destination === 'educational-dashboard') {
+        setCurrentView("education");
+      } else if (destination === 'payment-automation') {
+        setCurrentView("dashboard"); // Will show payment automation in family dashboard
+      } else if (destination === 'sovereignty-controls') {
+        setCurrentView("dashboard"); // Will show sovereignty controls in family dashboard
+      } else if (destination === 'privacy-preferences') {
+        setCurrentView("dashboard"); // Will show privacy preferences in family dashboard
+      } else if (destination === 'atomic-swaps') {
+        setCurrentView("dashboard"); // Will show atomic swaps in family dashboard
+      } else if (destination === 'cross-mint-operations') {
+        setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
+      } else if (destination === 'payment-cascade') {
+        setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
       } else {
         setCurrentView(destination);
       }
@@ -70,8 +94,24 @@ function App() {
   const handleAuthSuccess = () => {
     setSignInModalOpen(false);
     if (pendingDestination) {
-      if (pendingDestination === 'communications') {
+      if (pendingDestination === 'communications' || pendingDestination === 'giftwrapped-messaging') {
         setShowCommunications(true);
+      } else if (pendingDestination === 'family-foundry') {
+        setCurrentView("onboarding");
+      } else if (pendingDestination === 'educational-dashboard') {
+        setCurrentView("education");
+      } else if (pendingDestination === 'payment-automation') {
+        setCurrentView("dashboard"); // Will show payment automation in family dashboard
+      } else if (pendingDestination === 'sovereignty-controls') {
+        setCurrentView("dashboard"); // Will show sovereignty controls in family dashboard
+      } else if (pendingDestination === 'privacy-preferences') {
+        setCurrentView("dashboard"); // Will show privacy preferences in family dashboard
+      } else if (pendingDestination === 'atomic-swaps') {
+        setCurrentView("dashboard"); // Will show atomic swaps in family dashboard
+      } else if (pendingDestination === 'cross-mint-operations') {
+        setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
+      } else if (pendingDestination === 'payment-cascade') {
+        setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
       } else {
         setCurrentView(pendingDestination);
       }
@@ -249,6 +289,33 @@ function App() {
     );
   }
 
+  if (currentView === "features-overview") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FeaturesOverview onBack={() => setCurrentView("landing")} />
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "dynastic-sovereignty") {
+    return (
+      <DynasticSovereignty 
+        onBack={() => setCurrentView("landing")} 
+        onStartFoundry={() => handleProtectedRoute("family-foundry")}
+        onAuthRequired={() => setShowFamilyFoundryAuthModal(true)}
+      />
+    );
+  }
+
   const navigationItems = [
     { label: "Family Financials", action: () => setCurrentView("dashboard") },
     { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
@@ -392,7 +459,7 @@ function App() {
               <span>Forge Identity</span>
             </button>
                           <button
-                onClick={() => setCurrentView("onboarding")}
+                onClick={() => setCurrentView("dynastic-sovereignty")}
                 className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl border-2 border-black"
               >
                 <img
@@ -585,16 +652,106 @@ function App() {
               <h3 className="text-white font-bold mb-4">Quick Links</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => setCurrentView("dashboard")}
+                  onClick={() => handleProtectedRoute("dashboard")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Family Dashboard
+                  Family Financials
                 </button>
                 <button
-                  onClick={() => setCurrentView("education")}
+                  onClick={() => handleProtectedRoute("individual-finances")}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Education Portal
+                  Individual Finances
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("educational-dashboard")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Cognitive Capital
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("privacy-preferences")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Privacy Controls
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-white font-bold mb-4">Features</h3>
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleProtectedRoute("family-foundry")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Family Foundry
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("payment-automation")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Payment Automation
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("educational-dashboard")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Educational Dashboard
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("sovereignty-controls")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Sovereignty Controls
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("privacy-preferences")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Privacy Preferences
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("atomic-swaps")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Atomic Swaps
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("cross-mint-operations")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Cross-Mint Operations
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("payment-cascade")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Payment Cascade System
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("giftwrapped-messaging")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Giftwrapped Messaging
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-white font-bold mb-4">Resources</h3>
+              <div className="space-y-2">
+                <button
+                  onClick={() => setCurrentView("features-overview")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Features Overview
+                </button>
+                <button
+                  onClick={() => setCurrentView("dynastic-sovereignty")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Dynastic Sovereignty
                 </button>
                 <button
                   onClick={() => setCurrentView("nostr-ecosystem")}
@@ -616,56 +773,6 @@ function App() {
                 >
                   <span>Citadel Academy</span>
                   <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-white font-bold mb-4">Features</h3>
-              <div className="space-y-2">
-                <button
-                  onClick={() => setCurrentView("forge")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Identity Forge
-                </button>
-                <button
-                  onClick={() => setCurrentView("coordination")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Advanced Coordination
-                </button>
-                <button
-                  onClick={() => setCurrentView("onboarding")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Family Foundry
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-white font-bold mb-4">Resources</h3>
-              <div className="space-y-2">
-                <a
-                  href="#features"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Features Overview
-                </a>
-                <a
-                  href="#sovereignty"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Dynastic Sovereignty
-                </a>
-                <a
-                  href="https://citadel.academy"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Advanced Learning
                 </a>
               </div>
             </div>
@@ -755,15 +862,31 @@ function App() {
       </footer>
 
       {/* Sign In Modal */}
-      <SignInModal
-        isOpen={signInModalOpen}
-        onClose={() => setSignInModalOpen(false)}
-        onSignInSuccess={handleAuthSuccess}
-        onCreateNew={() => {
-          setSignInModalOpen(false);
-          setCurrentView("forge");
-        }}
-      />
+      <FamilyFederationAuthProvider>
+        <SignInModal
+          isOpen={signInModalOpen}
+          onClose={() => setSignInModalOpen(false)}
+          onSignInSuccess={handleAuthSuccess}
+          onCreateNew={() => {
+            setSignInModalOpen(false);
+            setCurrentView("forge");
+          }}
+        />
+
+        {/* Family Foundry Authentication Modal */}
+        <FamilyFoundryAuthModal
+          isOpen={showFamilyFoundryAuthModal}
+          onClose={() => setShowFamilyFoundryAuthModal(false)}
+          onAuthSuccess={() => {
+            setShowFamilyFoundryAuthModal(false);
+            handleProtectedRoute("family-foundry");
+          }}
+          onExistingUserSignIn={() => {
+            setShowFamilyFoundryAuthModal(false);
+            setSignInModalOpen(true);
+          }}
+        />
+      </FamilyFederationAuthProvider>
 
       {/* Communications Modal */}
       {showCommunications && (

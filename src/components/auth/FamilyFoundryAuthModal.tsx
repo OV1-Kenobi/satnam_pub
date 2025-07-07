@@ -1,0 +1,163 @@
+import React, { useState } from 'react';
+import { ArrowLeft, Crown, Shield, Users, Key } from 'lucide-react';
+import IdentityForge from '../IdentityForge';
+
+interface FamilyFoundryAuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAuthSuccess: () => void;
+  onExistingUserSignIn: () => void;
+}
+
+const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
+  isOpen,
+  onClose,
+  onAuthSuccess,
+  onExistingUserSignIn
+}) => {
+  const [currentStep, setCurrentStep] = useState<'intro' | 'identity-forge'>('intro');
+
+  if (!isOpen) return null;
+
+  const handleIdentityForgeComplete = () => {
+    // After Identity Forge is complete, proceed to Family Foundry
+    onAuthSuccess();
+  };
+
+
+
+  const handleReturnToIntro = () => {
+    setCurrentStep('intro');
+  };
+
+  const handleStartIdentityForge = () => {
+    setCurrentStep('identity-forge');
+  };
+
+  const handleExistingUserSignIn = () => {
+    onClose(); // Close this modal
+    onExistingUserSignIn(); // Trigger the main Nostrich Sign-in modal
+  };
+
+  const handleNewUserSignUp = () => {
+    setCurrentStep('identity-forge');
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="bg-purple-800/40 backdrop-blur-sm border-b border-white/30 p-6 rounded-t-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                {currentStep !== 'intro' && (
+                  <button
+                    onClick={handleReturnToIntro}
+                    className="text-white hover:text-purple-200 transition-colors duration-200"
+                  >
+                    <ArrowLeft className="h-6 w-6" />
+                  </button>
+                )}
+                <div>
+                  <h1 className="text-3xl font-bold text-white font-medieval">Family Foundry Authentication</h1>
+                  <p className="text-purple-200 text-lg">Complete your identity setup to access Family Foundry</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="text-white hover:text-purple-200 transition-colors duration-200"
+              >
+                <span className="text-2xl">×</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6">
+            {currentStep === 'intro' && (
+              <div className="space-y-8">
+                <div className="text-center">
+                  <div className="w-20 h-20 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Crown className="h-10 w-10 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-4">Authentication Required</h2>
+                  <p className="text-purple-200 text-lg mb-8">
+                    To access the Family Foundry and create your family federation, you need to complete your identity setup.
+                  </p>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="bg-green-800/30 rounded-xl p-6 border border-green-500/30">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <Shield className="h-8 w-8 text-green-400" />
+                      <h3 className="text-xl font-bold text-white">New User? Create Identity</h3>
+                    </div>
+                    <p className="text-purple-200 mb-4">
+                      First time here? Create your decentralized identity using Nostr protocols to establish your True Name and cryptographic verification.
+                    </p>
+                    <button
+                      onClick={handleNewUserSignUp}
+                      className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                    >
+                      Start Identity Forge
+                    </button>
+                  </div>
+
+                  <div className="bg-blue-800/30 rounded-xl p-6 border border-blue-500/30">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <Users className="h-8 w-8 text-blue-400" />
+                      <h3 className="text-xl font-bold text-white">Returning User? Sign In</h3>
+                    </div>
+                    <p className="text-purple-200 mb-4">
+                      Already have a Satnam.pub account? Sign in with your existing Nostr identity to access Family Foundry features.
+                    </p>
+                    <button
+                      onClick={handleExistingUserSignIn}
+                      className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                    >
+                      Nostrich Sign-in
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-800/30 rounded-xl p-6 border border-yellow-500/30">
+                  <div className="flex items-start space-x-4">
+                    <Key className="h-8 w-8 text-yellow-400 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="text-xl font-bold text-white mb-2">Why Authentication?</h3>
+                      <p className="text-purple-200">
+                        Family Foundry requires authentication to ensure secure family federation creation, 
+                        protect sensitive family data, and enable collaborative features like role-based access control 
+                        and family treasury management.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 'identity-forge' && (
+              <div className="space-y-6">
+                <div className="text-center mb-6">
+                  <h2 className="text-2xl font-bold text-white mb-2">Identity Forge</h2>
+                  <p className="text-purple-200">Create your decentralized identity to proceed</p>
+                </div>
+                <IdentityForge
+                  onComplete={handleIdentityForgeComplete}
+                  onBack={handleReturnToIntro}
+                />
+              </div>
+            )}
+
+
+          </div>
+        </div>
+      </div>
+
+
+    </>
+  );
+};
+
+export default FamilyFoundryAuthModal; 

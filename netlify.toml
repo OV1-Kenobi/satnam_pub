@@ -22,6 +22,13 @@
   status = 200
   force = true
 
+# Dynamic NIP-05 API endpoint
+[[redirects]]
+  from = "/.well-known/nostr.json"
+  to = "/.netlify/functions/nostr"
+  status = 200
+  force = true
+
 # SPA redirects - all non-API routes go to index.html
 [[redirects]]
   from = "/*"

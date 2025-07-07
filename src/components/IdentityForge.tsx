@@ -319,25 +319,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   if (isComplete) {
     return (
-      <div 
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(4px)',
-          WebkitBackdropFilter: 'blur(4px)',
-          zIndex: 50,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem'
-        }}
-      >
-        <div className="bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700 rounded-xl shadow-2xl border border-white/20 p-8 max-w-2xl w-full mx-4 relative">
+      <div className="modal-overlay">
+        <div className="modal-content">
           <div className="text-center">
             <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
               <Sparkles className="h-12 w-12 text-white" />
@@ -386,25 +369,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   }
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        zIndex: 50,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem'
-      }}
-    >
-      <div className="bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700 rounded-xl shadow-2xl border border-white/20 p-8 max-w-lg w-full mx-4 relative min-h-[400px]">
+    <div className="modal-overlay">
+      <div className="modal-content">
         {/* Close Button */}
         <button
           onClick={onBack}

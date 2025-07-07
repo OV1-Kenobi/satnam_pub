@@ -9,6 +9,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        'medieval': ['Cinzel', 'Georgia', 'serif'],
+        'gothic': ['UnifrakturMaguntia', 'Times New Roman', 'serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
