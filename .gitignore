@@ -45,3 +45,6 @@ coverage/
 *.tmp
 *.temp
 test_file.txt
+
+# Local Netlify folder
+.netlify
