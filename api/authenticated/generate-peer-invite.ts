@@ -13,7 +13,7 @@
  */
 
 import { createHash, randomBytes } from "crypto";
-import { Request, Response } from "express";
+import { Request, Response } from "../../types/netlify-functions";
 import QRCode from "qrcode";
 import { z } from "zod";
 import { RATE_LIMITS, formatTimeWindow } from "../../lib/config/rate-limits";
@@ -21,7 +21,7 @@ import {
   SecureSessionManager,
   SessionData,
 } from "../../lib/security/session-manager";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import { defaultLogger as logger } from "../../utils/logger";
 
 // Gift-wrap functionality imports (would need to be implemented based on your Nostr setup)

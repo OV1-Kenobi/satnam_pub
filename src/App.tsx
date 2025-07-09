@@ -29,6 +29,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
   const [currentView, setCurrentView] = useState<
@@ -903,4 +904,11 @@ function App() {
   );
 }
 
-export default App;
+// Wrap the App with ErrorBoundary
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}

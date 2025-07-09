@@ -5,9 +5,9 @@
  * smart retry logic, and comprehensive notification systems.
  */
 
-import type { NextApiRequest, NextApiResponse } from "next";
+import type { Request, Response } from "../../types/netlify-functions";
 import { logPrivacyOperation } from "../../lib/privacy/encryption";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
 import { PaymentAutomationSystem } from "../../src/lib/payment-automation";
 
 interface PaymentScheduleRequest {
@@ -74,8 +74,8 @@ interface PaymentScheduleResponse {
 const paymentSystem = new PaymentAutomationSystem();
 
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<PaymentScheduleResponse>
+  req: Request,
+  res: Response
 ) {
   const startTime = Date.now();
 

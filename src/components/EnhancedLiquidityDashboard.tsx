@@ -17,9 +17,10 @@ import {
     Settings,
     Target,
     TrendingUp,
-    Zap
+    Zap,
+    AlertTriangle
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { PhoenixDFamilyChannel } from '../../types/family';
 import { LiquidityForecast, LiquidityIntelligenceSystem, LiquidityMetrics, OptimizationStrategy } from '../lib/liquidity-intelligence';
 
@@ -64,13 +65,7 @@ export default function EnhancedLiquidityDashboard({
   // Initialize Liquidity Intelligence System
   const [liquiditySystem] = useState(() => new LiquidityIntelligenceSystem());
 
-  useEffect(() => {
-    loadLiquidityIntelligence();
-    const interval = setInterval(loadLiquidityIntelligence, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
-  }, [familyId]);
-
-  const loadLiquidityIntelligence = async () => {
+  const loadLiquidityIntelligence = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -95,7 +90,13 @@ export default function EnhancedLiquidityDashboard({
     } finally {
       setLoading(false);
     }
-  };
+  }, [familyId, liquiditySystem]);
+
+  useEffect(() => {
+    loadLiquidityIntelligence();
+    const interval = setInterval(loadLiquidityIntelligence, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, [loadLiquidityIntelligence]);
 
   const loadPhoenixDStatus = async (): Promise<PhoenixDStatus> => {
     // Mock enhanced PhoenixD status - integrate with actual API
@@ -124,16 +125,13 @@ export default function EnhancedLiquidityDashboard({
       channels: [
         {
           channelId: 'channel_001',
-          peerId: 'peer_001',
-          peerAlias: 'Lightning Node Alpha',
+          familyMember: 'member_001',
           capacity: 5000000,
           localBalance: 2800000,
           remoteBalance: 2200000,
           status: 'active',
-          isPrivate: false,
-          fundingTxId: 'funding_tx_001',
-          createdAt: new Date('2024-01-15'),
-          lastUpdate: new Date()
+          automatedLiquidity: true,
+          lastActivity: new Date()
         }
       ]
     };
@@ -231,6 +229,23 @@ export default function EnhancedLiquidityDashboard({
                 <div className="text-white font-semibold">v{phoenixdStatus.version}</div>
                 <div className="text-gray-400 text-sm">{phoenixdStatus.network}</div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recommendations */}
+        {phoenixdStatus?.liquidityHealth?.recommendations && 
+         Array.isArray(phoenixdStatus.liquidityHealth.recommendations) && 
+         phoenixdStatus.liquidityHealth.recommendations.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-sm font-medium text-gray-300 mb-2">Recommendations</h4>
+            <div className="space-y-2">
+              {phoenixdStatus.liquidityHealth.recommendations.map((rec, index) => (
+                <div key={index} className="flex items-center space-x-2 text-sm text-gray-400">
+                  <AlertTriangle className="h-3 w-3 text-yellow-400" />
+                  <span>{rec}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}

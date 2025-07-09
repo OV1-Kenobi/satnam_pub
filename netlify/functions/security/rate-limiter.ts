@@ -4,7 +4,7 @@
  */
 
 import * as crypto from "crypto";
-import { NextFunction, Request, Response } from "express";
+import { NextFunction, Request, Response } from "../../../types/netlify-functions";
 import { supabase } from "../supabase";
 
 // Extend Request interface to include user property

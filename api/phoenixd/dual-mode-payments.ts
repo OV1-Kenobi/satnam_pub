@@ -5,7 +5,7 @@
  * liquidity management and context switching
  */
 
-import { NextApiRequest, NextApiResponse } from "next";
+import type { Request, Response } from "../../types/netlify-functions";
 import {
   EnhancedPhoenixdManager,
   OperationContext,
@@ -130,8 +130,8 @@ function validatePaymentRequest(req: any): PaymentRequest {
 }
 
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
+  req: Request,
+  res: Response
 ) {
   if (req.method === "POST") {
     return handlePayment(req, res);

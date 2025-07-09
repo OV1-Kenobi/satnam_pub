@@ -4,7 +4,7 @@
  * identity management, family coordination, and privacy-first operations.
  */
 
-import express from "express";
+import { NetlifyHandler } from "../../types/netlify-functions";
 import { NostrShamirSecretSharing } from "../crypto/shamir-secret-sharing";
 import { FamilyGuardianManager } from "../family/guardian-management";
 import { AuthenticatedRequest, authMiddleware } from "../middleware/auth";

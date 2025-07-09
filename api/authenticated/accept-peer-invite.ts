@@ -12,13 +12,13 @@
  * - No sensitive data exposure (npubs, emails, etc.)
  */
 
-import { Request, Response } from "express";
+import { Request, Response } from "../../types/netlify-functions";
 import { z } from "zod";
 import {
   SecureSessionManager,
   SessionData,
 } from "../../lib/security/session-manager";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import { defaultLogger as logger } from "../../utils/logger";
 
 // Invitation acceptance validation schema

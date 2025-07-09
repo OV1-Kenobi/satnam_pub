@@ -19,7 +19,7 @@ import {
   Sparkles,
   Users
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { EnhancedPhoenixdManager } from '../lib/enhanced-phoenixd-manager';
 import { LiquidityIntelligenceSystem, LiquidityMetrics } from '../lib/liquidity-intelligence';
 import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
@@ -146,13 +146,7 @@ export default function EnhancedFamilyCoordination({
   const [liquiditySystem] = useState(() => new LiquidityIntelligenceSystem());
   const [phoenixdManager] = useState(() => new EnhancedPhoenixdManager(liquiditySystem));
 
-  useEffect(() => {
-    loadFamilyCoordinationData();
-    const interval = setInterval(loadFamilyCoordinationData, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, [familyId]);
-
-  const loadFamilyCoordinationData = async () => {
+  const loadFamilyCoordinationData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -177,7 +171,13 @@ export default function EnhancedFamilyCoordination({
     } finally {
       setLoading(false);
     }
-  };
+  }, [familyId, liquiditySystem]);
+
+  useEffect(() => {
+    loadFamilyCoordinationData();
+    const interval = setInterval(loadFamilyCoordinationData, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [loadFamilyCoordinationData]);
 
   const loadFamilyMembers = async (): Promise<FamilyMember[]> => {
     // Mock enhanced family members data - integrate with actual API

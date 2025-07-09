@@ -1,4 +1,4 @@
-import { NextApiRequest, NextApiResponse } from "next";
+import { Request, Response } from "../../types/netlify-functions";
 import { z } from "zod";
 import { setCorsHeaders } from "../../utils/cors";
 
@@ -9,8 +9,8 @@ import { setCorsHeaders } from "../../utils/cors";
  * POST /api/phoenixd/emergency-liquidity - Trigger emergency liquidity protocol
  */
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
+  req: Request,
+  res: Response
 ) {
   // Set CORS headers with appropriate methods for this endpoint
   setCorsHeaders(req, res, { methods: "POST, OPTIONS" });

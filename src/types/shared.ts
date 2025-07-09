@@ -6,14 +6,10 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  role: "offspring" | "adult" | "steward" | "guardian";
-  avatar?: string;
-  username?: string;
-  spendingLimits?: {
-    daily: number;
-    weekly?: number;
-    requiresApproval?: number;
-  };
+  role: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
+  avatar: string;
+  lightningAddress?: string;
+  npub?: string;
 }
 
 export interface SatnamFamilyMember {

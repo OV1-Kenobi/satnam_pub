@@ -1,6 +1,6 @@
-import { Request, Response } from "express";
+import { Request, Response } from "../../types/netlify-functions";
 import { z } from "zod";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
 
 /**
  * Check Federation Whitelist Status

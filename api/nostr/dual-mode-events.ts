@@ -5,7 +5,7 @@
  * context switching, approval workflows, and federated coordination
  */
 
-import { NextApiRequest, NextApiResponse } from "next";
+import type { Request, Response } from "../../types/netlify-functions";
 import {
   EnhancedNostrManager,
   NostrOperationContext,
@@ -150,8 +150,8 @@ function validateEventRequest(req: any): NostrEventRequest {
 }
 
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
+  req: Request,
+  res: Response
 ) {
   if (req.method === "POST") {
     return handleEventPublish(req, res);

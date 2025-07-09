@@ -5,9 +5,9 @@
  * and privacy-first data handling.
  */
 
-import type { NextApiRequest, NextApiResponse } from "next";
+import type { Request, Response } from "../../types/netlify-functions";
 import { logPrivacyOperation } from "../../lib/privacy/encryption";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
 import { LiquidityIntelligenceSystem } from "../../src/lib/liquidity-intelligence";
 import type {
   LiquidityForecast,
@@ -168,8 +168,8 @@ interface ForecastResponse {
 }
 
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ForecastResponse>,
+  req: Request,
+  res: Response,
 ) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({

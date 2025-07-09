@@ -1,4 +1,4 @@
-import { NextApiRequest, NextApiResponse } from "next";
+import { Request, Response } from "../../../types/netlify-functions";
 import { setCorsHeaders } from "../../../utils/cors";
 
 // Note: CORS handling is now managed by the shared utility
@@ -8,8 +8,8 @@ import { setCorsHeaders } from "../../../utils/cors";
  * POST /api/individual/lightning/zap - Send a Lightning zap
  */
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
+  req: Request,
+  res: Response
 ) {
   // Set CORS headers with appropriate methods for this endpoint
   setCorsHeaders(req, res, { methods: "POST, OPTIONS" });

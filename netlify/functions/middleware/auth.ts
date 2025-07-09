@@ -1,5 +1,5 @@
 // lib/middleware/auth.ts
-import { NextFunction, Request, Response } from "express";
+import { NextFunction, Request, Response } from "../../../types/netlify-functions";
 import db from "../db";
 import { supabase } from "../supabase";
 

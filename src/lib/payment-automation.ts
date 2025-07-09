@@ -55,6 +55,28 @@ export interface PaymentSchedule {
     tags?: string[];
   };
   cascade?: PaymentCascadeNode[]; // New: defines split/cascade tree
+  // Extended properties for UI/modal compatibility
+  recipientType?: string;
+  recipientAddress?: string;
+  recipientName?: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  enabled?: boolean;
+  paymentRouting?: string;
+  routingPreferences?: any;
+  protocolPreferences?: any;
+  paymentPurpose?: string;
+  memo?: string;
+  tags?: string[];
+  autoApprovalLimit?: number;
+  parentApprovalRequired?: boolean;
+  preferredMethod?: string;
+  maxRetries?: number;
+  retryDelay?: number;
+  conditions?: any;
+  notificationSettings?: any;
+  distributionCount?: number;
+  totalDistributed?: number;
 }
 
 export interface PaymentTransaction {

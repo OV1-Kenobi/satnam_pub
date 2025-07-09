@@ -5,7 +5,7 @@
  * smart retry logic, and comprehensive notification systems.
  */
 
-import type { NextApiRequest, NextApiResponse } from "next";
+import type { Request, Response } from "../../types/netlify-functions";
 import {
   decryptSensitiveData,
   logPrivacyOperation,
@@ -133,8 +133,8 @@ interface AllowanceScheduleResponse {
 }
 
 export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<AllowanceScheduleResponse>,
+  req: Request,
+  res: Response,
 ) {
   if (
     req.method !== "GET" &&

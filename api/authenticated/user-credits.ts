@@ -12,12 +12,12 @@
  */
 
 import { createHash } from "crypto";
-import { Request, Response } from "express";
+import { Request, Response } from "../../types/netlify-functions";
 import {
   SecureSessionManager,
   SessionData,
 } from "../../lib/security/session-manager";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import { setCorsHeaders } from "../../utils/cors";
 import { defaultLogger as logger } from "../../utils/logger";
 
