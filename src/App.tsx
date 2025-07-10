@@ -863,31 +863,29 @@ function App() {
       </footer>
 
       {/* Sign In Modal */}
-      <FamilyFederationAuthProvider>
-        <SignInModal
-          isOpen={signInModalOpen}
-          onClose={() => setSignInModalOpen(false)}
-          onSignInSuccess={handleAuthSuccess}
-          onCreateNew={() => {
-            setSignInModalOpen(false);
-            setCurrentView("forge");
-          }}
-        />
+      <SignInModal
+        isOpen={signInModalOpen}
+        onClose={() => setSignInModalOpen(false)}
+        onSignInSuccess={handleAuthSuccess}
+        onCreateNew={() => {
+          setSignInModalOpen(false);
+          setCurrentView("forge");
+        }}
+      />
 
-        {/* Family Foundry Authentication Modal */}
-        <FamilyFoundryAuthModal
-          isOpen={showFamilyFoundryAuthModal}
-          onClose={() => setShowFamilyFoundryAuthModal(false)}
-          onAuthSuccess={() => {
-            setShowFamilyFoundryAuthModal(false);
-            handleProtectedRoute("family-foundry");
-          }}
-          onExistingUserSignIn={() => {
-            setShowFamilyFoundryAuthModal(false);
-            setSignInModalOpen(true);
-          }}
-        />
-      </FamilyFederationAuthProvider>
+      {/* Family Foundry Authentication Modal */}
+      <FamilyFoundryAuthModal
+        isOpen={showFamilyFoundryAuthModal}
+        onClose={() => setShowFamilyFoundryAuthModal(false)}
+        onAuthSuccess={() => {
+          setShowFamilyFoundryAuthModal(false);
+          handleProtectedRoute("family-foundry");
+        }}
+        onExistingUserSignIn={() => {
+          setShowFamilyFoundryAuthModal(false);
+          setSignInModalOpen(true);
+        }}
+      />
 
       {/* Communications Modal */}
       {showCommunications && (

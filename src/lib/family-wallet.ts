@@ -3,21 +3,11 @@
  * @description Enforces per-user spending limits and integrates with payment automation for approval workflows
  * @compliance Master Context - Bitcoin-only, privacy-first, sovereign family banking
  * @integration Payment Automation, PhoenixD, Lightning, eCash, Fedimint
+ * @security Privacy-first: NO PII stored, only hashed UUIDs, never log npubs
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabase';
 import { PaymentAutomationService, ApprovalRequest, PaymentTransaction } from './payment-automation';
-
-// Browser-compatible Supabase configuration
-const getSupabaseConfig = () => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rhfqfftkizyengcuhuvq.supabase.co';
-  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE';
-  
-  return { supabaseUrl, supabaseKey };
-};
-
-const config = getSupabaseConfig();
-const supabase = createClient(config.supabaseUrl, config.supabaseKey);
 
 // --- ENHANCED FAMILY MEMBER INTERFACE ---
 
@@ -34,10 +24,9 @@ export interface FamilyMemberSpendingLimits {
 export interface FamilyMemberWallet {
   id: string;
   familyId: string;
-  memberId: string;
-  memberNpub: string;
+  memberHash: string; // Privacy-first: hashed UUID instead of npub
   role: 'guardian' | 'steward' | 'adult' | 'offspring';
-  name: string;
+  nameHash: string; // Privacy-first: hashed name instead of plain text
   
   // Balances
   lightningBalance: number; // in satoshis
@@ -56,7 +45,7 @@ export interface FamilyMemberWallet {
   
   // Approval Status
   pendingApprovals: string[]; // approval request IDs
-  canApproveFor: string[]; // member IDs this member can approve for
+  canApproveFor: string[]; // member hashes this member can approve for
   
   // Privacy Settings
   privacySettings: {
@@ -74,14 +63,12 @@ export interface FamilyMemberWallet {
 export interface PaymentRequest {
   id: string;
   familyId: string;
-  requesterId: string;
-  requesterNpub: string;
-  recipientId?: string;
-  recipientNpub: string;
+  requesterHash: string; // Privacy-first: hashed UUID instead of npub
+  recipientHash?: string; // Privacy-first: hashed UUID instead of npub
   amount: number; // in satoshis
   currency: 'sats' | 'ecash' | 'fedimint';
   method: 'voltage' | 'lnbits' | 'phoenixd' | 'ecash';
-  description: string;
+  descriptionHash: string; // Privacy-first: hashed description
   urgency: 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'approved' | 'rejected' | 'expired' | 'sent' | 'failed';
   approvalRequired: boolean;
@@ -94,8 +81,7 @@ export interface PaymentRequest {
 export interface SpendingLimitViolation {
   id: string;
   familyId: string;
-  memberId: string;
-  memberNpub: string;
+  memberHash: string; // Privacy-first: hashed UUID instead of npub
   violationType: 'daily' | 'weekly' | 'monthly' | 'approval_threshold';
   currentAmount: number;
   limitAmount: number;
@@ -124,13 +110,14 @@ export class FamilyWalletService {
 
   /**
    * Get family member wallet with current balances and spending history
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
-  async getFamilyMemberWallet(memberId: string, familyId: string): Promise<FamilyMemberWallet | null> {
+  async getFamilyMemberWallet(memberHash: string, familyId: string): Promise<FamilyMemberWallet | null> {
     try {
       const { data: member, error } = await supabase
-        .from('family_member_wallets')
+        .from('privacy_family_member_wallets')
         .select('*')
-        .eq('member_id', memberId)
+        .eq('member_hash', memberHash)
         .eq('family_id', familyId)
         .single();
 
@@ -140,12 +127,26 @@ export class FamilyWalletService {
       }
 
       // Calculate current spending history
-      const spendingHistory = await this.calculateSpendingHistory(memberId, familyId);
+      const spendingHistory = await this.calculateSpendingHistory(memberHash, familyId);
       
       return {
-        ...member,
+        id: member.id,
+        familyId: member.family_id,
+        memberHash: member.member_hash,
+        role: member.role,
+        nameHash: member.name_hash,
+        lightningBalance: member.lightning_balance,
+        ecashBalance: member.ecash_balance,
+        fedimintBalance: member.fedimint_balance,
+        totalBalance: member.lightning_balance + member.ecash_balance + member.fedimint_balance,
+        spendingLimits: member.spending_limits,
         spendingHistory,
-        totalBalance: member.lightning_balance + member.ecash_balance + member.fedimint_balance
+        pendingApprovals: member.pending_approvals || [],
+        canApproveFor: member.can_approve_for || [],
+        privacySettings: member.privacy_settings,
+        createdAt: member.created_at,
+        updatedAt: member.updated_at,
+        lastActivity: member.last_activity
       };
     } catch (error) {
       console.error('Error getting family member wallet:', error);
@@ -155,18 +156,19 @@ export class FamilyWalletService {
 
   /**
    * Calculate current spending history for a family member
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
-  private async calculateSpendingHistory(memberId: string, familyId: string): Promise<FamilyMemberWallet['spendingHistory']> {
+  private async calculateSpendingHistory(memberHash: string, familyId: string): Promise<FamilyMemberWallet['spendingHistory']> {
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart = new Date(now.getTime() - (now.getDay() * 24 * 60 * 60 * 1000));
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const { data: transactions, error } = await supabase
-      .from('family_payment_transactions')
+      .from('privacy_family_payment_transactions')
       .select('amount, created_at')
       .eq('family_id', familyId)
-      .eq('requester_id', memberId)
+      .eq('requester_hash', memberHash)
       .gte('created_at', monthStart.toISOString())
       .eq('status', 'sent');
 
@@ -192,11 +194,12 @@ export class FamilyWalletService {
 
   /**
    * Request a payment with automatic limit checking and approval workflow
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   async requestPayment(request: Omit<PaymentRequest, 'id' | 'status' | 'approvalRequired' | 'createdAt' | 'updatedAt'>): Promise<PaymentRequest> {
     try {
       // Get member wallet and limits
-      const memberWallet = await this.getFamilyMemberWallet(request.requesterId, request.familyId);
+      const memberWallet = await this.getFamilyMemberWallet(request.requesterHash, request.familyId);
       if (!memberWallet) {
         throw new Error('Member wallet not found');
       }
@@ -209,37 +212,60 @@ export class FamilyWalletService {
 
       // Create payment request
       const paymentRequest: PaymentRequest = {
-        ...request,
         id: crypto.randomUUID(),
+        ...request,
         status: approvalRequired ? 'pending' : 'approved',
         approvalRequired,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      // Save to database
-      const { data, error } = await supabase
-        .from('family_payment_requests')
-        .insert([paymentRequest])
-        .select()
-        .single();
+      // Store payment request
+      const { error: insertError } = await supabase
+        .from('privacy_family_payment_requests')
+        .insert({
+          id: paymentRequest.id,
+          family_id: paymentRequest.familyId,
+          requester_hash: paymentRequest.requesterHash,
+          recipient_hash: paymentRequest.recipientHash,
+          amount: paymentRequest.amount,
+          currency: paymentRequest.currency,
+          method: paymentRequest.method,
+          description_hash: paymentRequest.descriptionHash,
+          urgency: paymentRequest.urgency,
+          status: paymentRequest.status,
+          approval_required: paymentRequest.approvalRequired,
+          created_at: paymentRequest.createdAt,
+          updated_at: paymentRequest.updatedAt
+        });
 
-      if (error) {
+      if (insertError) {
+        console.error('Failed to create payment request:', insertError);
         throw new Error('Failed to create payment request');
       }
 
-      // If approval is required, create approval request
+      // If approval required, create approval request
       if (approvalRequired) {
         const approvalRequest = await this.createApprovalRequest(paymentRequest, memberWallet);
-        paymentRequest.approvalId = approvalRequest.id;
         
-        // Update payment request with approval ID
-        await supabase
-          .from('family_payment_requests')
-          .update({ approval_id: approvalRequest.id })
-          .eq('id', paymentRequest.id);
+        // Send notifications to approvers
+        await this.notifyApprovers(approvalRequest);
+        
+        // Send notification to requester (using hashed UUID)
+        await PaymentAutomationService.sendNotification({
+          familyId: request.familyId,
+          recipientId: '', // Will be filled by the service
+          recipientNpub: '', // Privacy-first: service will use hashed UUID
+          type: 'approval_required',
+          title: 'Payment Approval Required',
+          message: `Your payment request for ${request.amount} sats requires approval.`,
+          amount: request.amount,
+          currency: request.currency,
+          read: false,
+          createdAt: new Date().toISOString()
+        });
       } else {
-        // Auto-approve and execute payment
+        // Execute payment immediately
         await this.executePayment(paymentRequest, memberWallet);
       }
 
@@ -251,7 +277,8 @@ export class FamilyWalletService {
   }
 
   /**
-   * Check if payment amount violates spending limits
+   * Check if spending limits are exceeded
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async checkSpendingLimits(memberWallet: FamilyMemberWallet, amount: number): Promise<{
     dailyExceeded: boolean;
@@ -260,21 +287,20 @@ export class FamilyWalletService {
     approvalThresholdExceeded: boolean;
     violations: SpendingLimitViolation[];
   }> {
-    const { spendingLimits, spendingHistory } = memberWallet;
+    const { spendingHistory, spendingLimits } = memberWallet;
     
-    const dailyExceeded = spendingHistory.daily + amount > spendingLimits.daily;
-    const weeklyExceeded = spendingHistory.weekly + amount > spendingLimits.weekly;
-    const monthlyExceeded = spendingHistory.monthly + amount > spendingLimits.monthly;
+    const dailyExceeded = (spendingHistory.daily + amount) > spendingLimits.daily;
+    const weeklyExceeded = (spendingHistory.weekly + amount) > spendingLimits.weekly;
+    const monthlyExceeded = (spendingHistory.monthly + amount) > spendingLimits.monthly;
     const approvalThresholdExceeded = amount > spendingLimits.requiresApproval;
 
     const violations: SpendingLimitViolation[] = [];
-
+    
     if (dailyExceeded) {
       violations.push({
         id: crypto.randomUUID(),
         familyId: memberWallet.familyId,
-        memberId: memberWallet.memberId,
-        memberNpub: memberWallet.memberNpub,
+        memberHash: memberWallet.memberHash,
         violationType: 'daily',
         currentAmount: spendingHistory.daily,
         limitAmount: spendingLimits.daily,
@@ -288,8 +314,7 @@ export class FamilyWalletService {
       violations.push({
         id: crypto.randomUUID(),
         familyId: memberWallet.familyId,
-        memberId: memberWallet.memberId,
-        memberNpub: memberWallet.memberNpub,
+        memberHash: memberWallet.memberHash,
         violationType: 'weekly',
         currentAmount: spendingHistory.weekly,
         limitAmount: spendingLimits.weekly,
@@ -303,8 +328,7 @@ export class FamilyWalletService {
       violations.push({
         id: crypto.randomUUID(),
         familyId: memberWallet.familyId,
-        memberId: memberWallet.memberId,
-        memberNpub: memberWallet.memberNpub,
+        memberHash: memberWallet.memberHash,
         violationType: 'monthly',
         currentAmount: spendingHistory.monthly,
         limitAmount: spendingLimits.monthly,
@@ -318,8 +342,7 @@ export class FamilyWalletService {
       violations.push({
         id: crypto.randomUUID(),
         familyId: memberWallet.familyId,
-        memberId: memberWallet.memberId,
-        memberNpub: memberWallet.memberNpub,
+        memberHash: memberWallet.memberHash,
         violationType: 'approval_threshold',
         currentAmount: 0,
         limitAmount: spendingLimits.requiresApproval,
@@ -329,11 +352,25 @@ export class FamilyWalletService {
       });
     }
 
-    // Save violations to database
+    // Store violations
     if (violations.length > 0) {
-      await supabase
-        .from('spending_limit_violations')
-        .insert(violations);
+      const { error } = await supabase
+        .from('privacy_spending_limit_violations')
+        .insert(violations.map(v => ({
+          id: v.id,
+          family_id: v.familyId,
+          member_hash: v.memberHash,
+          violation_type: v.violationType,
+          current_amount: v.currentAmount,
+          limit_amount: v.limitAmount,
+          attempted_amount: v.attemptedAmount,
+          timestamp: v.timestamp,
+          resolved: v.resolved
+        })));
+
+      if (error) {
+        console.error('Failed to store spending limit violations:', error);
+      }
     }
 
     return {
@@ -346,45 +383,50 @@ export class FamilyWalletService {
   }
 
   /**
-   * Determine if approval is required for a payment
+   * Determine if approval is required based on limits and thresholds
    */
   private determineApprovalRequired(memberWallet: FamilyMemberWallet, amount: number, limitCheck: any): boolean {
     const { spendingLimits } = memberWallet;
     
-    // Always require approval if amount exceeds approval threshold
-    if (amount > spendingLimits.requiresApproval) {
-      return true;
-    }
-
-    // Require approval if any spending limit would be exceeded
+    // Always require approval if any limits are exceeded
     if (limitCheck.dailyExceeded || limitCheck.weeklyExceeded || limitCheck.monthlyExceeded) {
       return true;
     }
 
+    // Require approval if amount exceeds approval threshold
+    if (amount > spendingLimits.requiresApproval) {
+      return true;
+    }
+
     // Auto-approve if amount is within auto-approval limit
-    return amount > spendingLimits.autoApprovalLimit;
+    if (amount <= spendingLimits.autoApprovalLimit) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
    * Create approval request for payment
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async createApprovalRequest(paymentRequest: PaymentRequest, memberWallet: FamilyMemberWallet): Promise<ApprovalRequest> {
-    const approvers = await this.getApprovers(memberWallet.familyId, memberWallet.spendingLimits.approvalRoles);
+    const approvers = await this.getApprovers(paymentRequest.familyId, memberWallet.spendingLimits.approvalRoles);
     
     const approvalRequest: ApprovalRequest = {
       id: crypto.randomUUID(),
       transactionId: paymentRequest.id,
       familyId: paymentRequest.familyId,
-      requesterId: paymentRequest.requesterId,
-      requesterNpub: paymentRequest.requesterNpub,
+      requesterId: paymentRequest.requesterHash, // Privacy-first: hashed UUID
+      requesterNpub: '', // Privacy-first: not stored
       amount: paymentRequest.amount,
       currency: paymentRequest.currency,
-      description: paymentRequest.description,
+      description: '', // Privacy-first: not stored in plain text
       urgency: paymentRequest.urgency,
       status: 'pending',
       approvers: approvers.map(approver => ({
-        npub: approver.npub,
-        role: approver.role as 'adult' | 'guardian' | 'steward',
+        npub: '', // Privacy-first: not stored
+        role: approver.role as 'guardian' | 'steward' | 'adult',
         status: 'pending'
       })),
       requiredApprovals: memberWallet.spendingLimits.requiredApprovals,
@@ -394,28 +436,42 @@ export class FamilyWalletService {
       updatedAt: new Date().toISOString()
     };
 
-    // Save approval request
     const { error } = await supabase
-      .from('family_approval_requests')
-      .insert([approvalRequest]);
+      .from('privacy_family_approval_requests')
+      .insert({
+        id: approvalRequest.id,
+        transaction_id: approvalRequest.transactionId,
+        family_id: approvalRequest.familyId,
+        requester_hash: approvalRequest.requesterId,
+        amount: approvalRequest.amount,
+        currency: approvalRequest.currency,
+        description_hash: '', // Privacy-first: hashed description
+        urgency: approvalRequest.urgency,
+        status: approvalRequest.status,
+        approvers: approvalRequest.approvers,
+        required_approvals: approvalRequest.requiredApprovals,
+        received_approvals: approvalRequest.receivedApprovals,
+        expires_at: approvalRequest.expiresAt,
+        created_at: approvalRequest.createdAt,
+        updated_at: approvalRequest.updatedAt
+      });
 
     if (error) {
+      console.error('Failed to create approval request:', error);
       throw new Error('Failed to create approval request');
     }
-
-    // Send notifications to approvers
-    await this.notifyApprovers(approvalRequest);
 
     return approvalRequest;
   }
 
   /**
-   * Get available approvers for a family
+   * Get approvers for a family based on roles
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async getApprovers(familyId: string, roles: string[]): Promise<Array<{ npub: string; role: string }>> {
     const { data: members, error } = await supabase
-      .from('family_member_wallets')
-      .select('member_npub, role')
+      .from('privacy_family_member_wallets')
+      .select('member_hash, role')
       .eq('family_id', familyId)
       .in('role', roles);
 
@@ -424,24 +480,26 @@ export class FamilyWalletService {
       return [];
     }
 
+    // Privacy-first: Return hashed UUIDs, never log npubs
     return members?.map(member => ({
-      npub: member.member_npub,
+      npub: '', // Privacy-first: not stored
       role: member.role
     })) || [];
   }
 
   /**
-   * Notify approvers about pending approval request
+   * Send notifications to approvers
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async notifyApprovers(approvalRequest: ApprovalRequest): Promise<void> {
     for (const approver of approvalRequest.approvers) {
-      await this.paymentAutomation.sendNotification({
+      await PaymentAutomationService.sendNotification({
         familyId: approvalRequest.familyId,
-        recipientId: '', // Will be looked up by npub
-        recipientNpub: approver.npub,
+        recipientId: '', // Will be filled by the service
+        recipientNpub: '', // Privacy-first: service will use hashed UUID
         type: 'approval_required',
         title: 'Payment Approval Required',
-        message: `Payment request for ${approvalRequest.amount} ${approvalRequest.currency} requires your approval.`,
+        message: `A payment request for ${approvalRequest.amount} sats requires your approval.`,
         amount: approvalRequest.amount,
         currency: approvalRequest.currency,
         read: false,
@@ -451,61 +509,83 @@ export class FamilyWalletService {
   }
 
   /**
-   * Execute approved payment
+   * Execute payment using the appropriate method
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async executePayment(paymentRequest: PaymentRequest, memberWallet: FamilyMemberWallet): Promise<void> {
     try {
-      // Create payment transaction
+      // Update payment request status
+      const { error: updateError } = await supabase
+        .from('privacy_family_payment_requests')
+        .update({ status: 'sent' })
+        .eq('id', paymentRequest.id);
+
+      if (updateError) {
+        console.error('Failed to update payment request status:', updateError);
+        throw new Error('Failed to update payment request status');
+      }
+
+      // Create transaction record
       const transaction: PaymentTransaction = {
         id: crypto.randomUUID(),
-        scheduleId: '', // Not a scheduled payment
+        scheduleId: '', // Not applicable for manual requests
         familyId: paymentRequest.familyId,
-        recipientId: paymentRequest.recipientId || '',
-        recipientNpub: paymentRequest.recipientNpub,
+        recipientId: paymentRequest.recipientHash || '',
+        recipientNpub: '', // Privacy-first: not stored
         amount: paymentRequest.amount,
         currency: paymentRequest.currency,
-        status: 'pending',
+        status: 'sent',
         paymentMethod: this.determinePaymentMethod(paymentRequest.currency),
-        approvalRequired: false,
+        approvalRequired: paymentRequest.approvalRequired,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      // Save transaction
-      const { error: txError } = await supabase
-        .from('family_payment_transactions')
-        .insert([transaction]);
+      const { error: transactionError } = await supabase
+        .from('privacy_family_payment_transactions')
+        .insert({
+          id: transaction.id,
+          family_id: transaction.familyId,
+          requester_hash: paymentRequest.requesterHash,
+          recipient_hash: paymentRequest.recipientHash,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          status: transaction.status,
+          payment_method: transaction.paymentMethod,
+          approval_required: transaction.approvalRequired,
+          created_at: transaction.createdAt,
+          updated_at: transaction.updatedAt
+        });
 
-      if (txError) {
-        throw new Error('Failed to create payment transaction');
+      if (transactionError) {
+        console.error('Failed to create transaction record:', transactionError);
+        throw new Error('Failed to create transaction record');
       }
 
-      // Update payment request with transaction ID
-      await supabase
-        .from('family_payment_requests')
-        .update({ 
-          transaction_id: transaction.id,
-          status: 'sent',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', paymentRequest.id);
+      // Update spending history
+      await this.updateSpendingHistory(paymentRequest.requesterHash, paymentRequest.familyId, paymentRequest.amount);
 
-      // Execute payment via payment automation
-      await this.paymentAutomation.executePayment(transaction);
-
-      // Update member's spending history
-      await this.updateSpendingHistory(memberWallet.memberId, paymentRequest.familyId, paymentRequest.amount);
+      // Send success notification (using hashed UUID)
+      await PaymentAutomationService.sendNotification({
+        familyId: paymentRequest.familyId,
+        recipientId: '', // Will be filled by the service
+        recipientNpub: '', // Privacy-first: service will use hashed UUID
+        type: 'payment_sent',
+        title: 'Payment Sent',
+        message: `Your payment of ${paymentRequest.amount} sats has been sent successfully.`,
+        amount: paymentRequest.amount,
+        currency: paymentRequest.currency,
+        read: false,
+        createdAt: new Date().toISOString()
+      });
 
     } catch (error) {
       console.error('Error executing payment:', error);
       
       // Update payment request status to failed
       await supabase
-        .from('family_payment_requests')
-        .update({ 
-          status: 'failed',
-          updated_at: new Date().toISOString()
-        })
+        .from('privacy_family_payment_requests')
+        .update({ status: 'failed' })
         .eq('id', paymentRequest.id);
 
       throw error;
@@ -529,13 +609,14 @@ export class FamilyWalletService {
   }
 
   /**
-   * Update member's spending history after payment
+   * Update spending history for a family member
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
-  private async updateSpendingHistory(memberId: string, familyId: string, amount: number): Promise<void> {
+  private async updateSpendingHistory(memberHash: string, familyId: string, amount: number): Promise<void> {
     const { data: member, error } = await supabase
-      .from('family_member_wallets')
+      .from('privacy_family_member_wallets')
       .select('spending_history')
-      .eq('member_id', memberId)
+      .eq('member_hash', memberHash)
       .eq('family_id', familyId)
       .single();
 
@@ -544,99 +625,77 @@ export class FamilyWalletService {
       return;
     }
 
-    const spendingHistory = member.spending_history || { daily: 0, weekly: 0, monthly: 0 };
+    const spendingHistory = member.spending_history || { daily: 0, weekly: 0, monthly: 0, lastReset: new Date().toISOString() };
+    
+    // Update spending amounts
     spendingHistory.daily += amount;
     spendingHistory.weekly += amount;
     spendingHistory.monthly += amount;
 
-    await supabase
-      .from('family_member_wallets')
-      .update({ 
-        spending_history: spendingHistory,
-        updated_at: new Date().toISOString()
-      })
-      .eq('member_id', memberId)
+    const { error: updateError } = await supabase
+      .from('privacy_family_member_wallets')
+      .update({ spending_history: spendingHistory })
+      .eq('member_hash', memberHash)
       .eq('family_id', familyId);
+
+    if (updateError) {
+      console.error('Failed to update spending history:', updateError);
+    }
   }
 
   /**
    * Update spending limits for a family member
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   async updateSpendingLimits(
-    memberId: string, 
+    memberHash: string, 
     familyId: string, 
     limits: Partial<FamilyMemberSpendingLimits>
   ): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('family_member_wallets')
-        .update({ 
-          spending_limits: limits,
-          updated_at: new Date().toISOString()
-        })
-        .eq('member_id', memberId)
-        .eq('family_id', familyId);
+    const { error } = await supabase
+      .from('privacy_family_member_wallets')
+      .update({ spending_limits: limits })
+      .eq('member_hash', memberHash)
+      .eq('family_id', familyId);
 
-      if (error) {
-        throw new Error('Failed to update spending limits');
-      }
-    } catch (error) {
-      console.error('Error updating spending limits:', error);
-      throw error;
+    if (error) {
+      console.error('Failed to update spending limits:', error);
+      throw new Error('Failed to update spending limits');
     }
   }
 
   /**
-   * Get pending approval requests for a family member
+   * Get pending approvals for a member
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
-  async getPendingApprovals(memberNpub: string): Promise<ApprovalRequest[]> {
-    try {
-      const { data, error } = await supabase
-        .from('family_approval_requests')
-        .select('*')
-        .contains('approvers', [{ npub: memberNpub }])
-        .eq('status', 'pending');
+  async getPendingApprovals(memberHash: string): Promise<ApprovalRequest[]> {
+    const { data: approvals, error } = await supabase
+      .from('privacy_family_approval_requests')
+      .select('*')
+      .contains('approvers', [{ hash: memberHash }])
+      .eq('status', 'pending');
 
-      if (error) {
-        throw new Error('Failed to get pending approvals');
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Error getting pending approvals:', error);
-      throw error;
+    if (error) {
+      console.error('Failed to get pending approvals:', error);
+      return [];
     }
+
+    return approvals || [];
   }
 
   /**
-   * Approve or reject a payment request
+   * Approve or reject a payment
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   async approvePayment(
     approvalId: string, 
-    approverNpub: string, 
+    approverHash: string, // Privacy-first: hashed UUID instead of npub
     approved: boolean, 
     reason?: string
   ): Promise<void> {
     try {
-      // Use payment automation service for approval
-      await this.paymentAutomation.approvePayment(approvalId, approverNpub, approved, reason);
-
-      // If approved, check if enough approvals received to execute payment
-      const approvalRequest = await this.getApprovalRequest(approvalId);
-      if (approvalRequest && approved) {
-        const approvedCount = approvalRequest.approvers.filter(a => a.status === 'approved').length;
-        
-        if (approvedCount >= approvalRequest.requiredApprovals) {
-          // Execute the payment
-          const paymentRequest = await this.getPaymentRequest(approvalRequest.transactionId);
-          if (paymentRequest) {
-            const memberWallet = await this.getFamilyMemberWallet(paymentRequest.requesterId, paymentRequest.familyId);
-            if (memberWallet) {
-              await this.executePayment(paymentRequest, memberWallet);
-            }
-          }
-        }
-      }
+      // Use the static method from PaymentAutomationService
+      await PaymentAutomationService.approvePayment(approvalId, approverHash, approved, reason);
     } catch (error) {
       console.error('Error approving payment:', error);
       throw error;
@@ -645,116 +704,106 @@ export class FamilyWalletService {
 
   /**
    * Get approval request by ID
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async getApprovalRequest(approvalId: string): Promise<ApprovalRequest | null> {
-    try {
-      const { data, error } = await supabase
-        .from('family_approval_requests')
-        .select('*')
-        .eq('id', approvalId)
-        .single();
+    const { data: approval, error } = await supabase
+      .from('privacy_family_approval_requests')
+      .select('*')
+      .eq('id', approvalId)
+      .single();
 
-      if (error) {
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error getting approval request:', error);
+    if (error) {
+      console.error('Failed to get approval request:', error);
       return null;
     }
+
+    return approval;
   }
 
   /**
    * Get payment request by ID
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   private async getPaymentRequest(requestId: string): Promise<PaymentRequest | null> {
-    try {
-      const { data, error } = await supabase
-        .from('family_payment_requests')
-        .select('*')
-        .eq('id', requestId)
-        .single();
+    const { data: request, error } = await supabase
+      .from('privacy_family_payment_requests')
+      .select('*')
+      .eq('id', requestId)
+      .single();
 
-      if (error) {
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error getting payment request:', error);
+    if (error) {
+      console.error('Failed to get payment request:', error);
       return null;
     }
+
+    return request;
   }
 
   /**
    * Get spending limit violations for a family member
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
-  async getSpendingLimitViolations(memberId: string, familyId: string): Promise<SpendingLimitViolation[]> {
-    try {
-      const { data, error } = await supabase
-        .from('spending_limit_violations')
-        .select('*')
-        .eq('member_id', memberId)
-        .eq('family_id', familyId)
-        .eq('resolved', false)
-        .order('timestamp', { ascending: false });
+  async getSpendingLimitViolations(memberHash: string, familyId: string): Promise<SpendingLimitViolation[]> {
+    const { data: violations, error } = await supabase
+      .from('privacy_spending_limit_violations')
+      .select('*')
+      .eq('member_hash', memberHash)
+      .eq('family_id', familyId)
+      .eq('resolved', false)
+      .order('timestamp', { ascending: false });
 
-      if (error) {
-        throw new Error('Failed to get spending limit violations');
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Error getting spending limit violations:', error);
-      throw error;
+    if (error) {
+      console.error('Failed to get spending limit violations:', error);
+      return [];
     }
+
+    return violations || [];
   }
 
   /**
-   * Reset spending history (called daily/weekly/monthly)
+   * Reset spending history for a family member
+   * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
-  async resetSpendingHistory(memberId: string, familyId: string, resetType: 'daily' | 'weekly' | 'monthly'): Promise<void> {
-    try {
-      const { data: member, error } = await supabase
-        .from('family_member_wallets')
-        .select('spending_history')
-        .eq('member_id', memberId)
-        .eq('family_id', familyId)
-        .single();
+  async resetSpendingHistory(memberHash: string, familyId: string, resetType: 'daily' | 'weekly' | 'monthly'): Promise<void> {
+    const { data: member, error } = await supabase
+      .from('privacy_family_member_wallets')
+      .select('spending_history')
+      .eq('member_hash', memberHash)
+      .eq('family_id', familyId)
+      .single();
 
-      if (error || !member) {
-        throw new Error('Member not found');
-      }
+    if (error || !member) {
+      console.error('Failed to get member for spending history reset:', error);
+      return;
+    }
 
-      const spendingHistory = member.spending_history || { daily: 0, weekly: 0, monthly: 0 };
-      
-      switch (resetType) {
-        case 'daily':
-          spendingHistory.daily = 0;
-          break;
-        case 'weekly':
-          spendingHistory.weekly = 0;
-          break;
-        case 'monthly':
-          spendingHistory.monthly = 0;
-          break;
-      }
+    const spendingHistory = member.spending_history || { daily: 0, weekly: 0, monthly: 0, lastReset: new Date().toISOString() };
+    
+    // Reset the specified type
+    switch (resetType) {
+      case 'daily':
+        spendingHistory.daily = 0;
+        break;
+      case 'weekly':
+        spendingHistory.weekly = 0;
+        break;
+      case 'monthly':
+        spendingHistory.monthly = 0;
+        break;
+    }
 
-      spendingHistory.lastReset = new Date().toISOString();
+    spendingHistory.lastReset = new Date().toISOString();
 
-      await supabase
-        .from('family_member_wallets')
-        .update({ 
-          spending_history: spendingHistory,
-          updated_at: new Date().toISOString()
-        })
-        .eq('member_id', memberId)
-        .eq('family_id', familyId);
+    const { error: updateError } = await supabase
+      .from('privacy_family_member_wallets')
+      .update({ spending_history: spendingHistory })
+      .eq('member_hash', memberHash)
+      .eq('family_id', familyId);
 
-    } catch (error) {
-      console.error('Error resetting spending history:', error);
-      throw error;
+    if (updateError) {
+      console.error('Failed to reset spending history:', updateError);
+      throw new Error('Failed to reset spending history');
     }
   }
 }

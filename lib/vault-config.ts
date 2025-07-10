@@ -201,76 +201,81 @@ const VAULT_SECRETS: Record<string, VaultSecret> = {
     fallbackEnvVar: "BTCPAY_SERVER_URL",
     rotationRequired: false,
   },
+  btcpay_store_id: {
+    name: "btcpay_store_id",
+    description: "BTCPay Server store identifier",
+    required: false,
+    fallbackEnvVar: "BTCPAY_STORE_ID",
+    rotationRequired: false,
+  },
   btcpay_api_key: {
     name: "btcpay_api_key",
-    description: "BTCPay Server API key",
+    description: "BTCPay Server API key for payment processing",
     required: false,
     fallbackEnvVar: "BTCPAY_API_KEY",
     rotationRequired: true,
     guardianApprovalRequired: true,
   },
 
-  // Domain Configuration
-  lightning_domain: {
-    name: "lightning_domain",
-    description: "Lightning address domain (e.g., satnam.pub)",
-    required: true,
-    fallbackEnvVar: "LIGHTNING_DOMAIN",
+  // Nostr Relay Infrastructure
+  nostr_relay_url: {
+    name: "nostr_relay_url",
+    description: "Primary Nostr relay URL for event publishing",
+    required: false,
+    fallbackEnvVar: "NOSTR_RELAY_URL",
     rotationRequired: false,
   },
-  nip05_domain: {
-    name: "nip05_domain",
-    description: "NIP-05 verification domain",
-    required: true,
-    fallbackEnvVar: "NIP05_DOMAIN",
-    rotationRequired: false,
-  },
-
-  // Service Encryption Keys
-  service_encryption_key: {
-    name: "service_encryption_key",
-    description: "Service-level encryption key for sensitive operations",
-    required: true,
-    fallbackEnvVar: "SERVICE_ENCRYPTION_KEY",
+  nostr_relay_admin_key: {
+    name: "nostr_relay_admin_key",
+    description: "Nostr relay admin key for management",
+    required: false,
+    fallbackEnvVar: "NOSTR_RELAY_ADMIN_KEY",
     rotationRequired: true,
     guardianApprovalRequired: true,
   },
+
+  // Privacy and Security
   privacy_salt: {
     name: "privacy_salt",
-    description: "Privacy salt for additional entropy in privacy operations",
+    description: "Salt for privacy-preserving operations",
     required: true,
     fallbackEnvVar: "PRIVACY_SALT",
     rotationRequired: true,
+    guardianApprovalRequired: true,
+  },
+  encryption_iv: {
+    name: "encryption_iv",
+    description: "Initialization vector for encryption operations",
+    required: true,
+    fallbackEnvVar: "ENCRYPTION_IV",
+    rotationRequired: true,
+    guardianApprovalRequired: true,
   },
 
-  // Argon2 Configuration
-  argon2_memory_cost: {
-    name: "argon2_memory_cost",
-    description: "Argon2 memory cost parameter for password hashing",
+  // Development and Testing
+  test_private_key: {
+    name: "test_private_key",
+    description: "Test private key for development",
     required: false,
-    fallbackEnvVar: "ARGON2_MEMORY_COST",
+    fallbackEnvVar: "TEST_PRIVATE_KEY",
     rotationRequired: false,
   },
-  argon2_time_cost: {
-    name: "argon2_time_cost",
-    description: "Argon2 time cost parameter for password hashing",
+  test_public_key: {
+    name: "test_public_key",
+    description: "Test public key for development",
     required: false,
-    fallbackEnvVar: "ARGON2_TIME_COST",
-    rotationRequired: false,
-  },
-  argon2_parallelism: {
-    name: "argon2_parallelism",
-    description: "Argon2 parallelism parameter for password hashing",
-    required: false,
-    fallbackEnvVar: "ARGON2_PARALLELISM",
+    fallbackEnvVar: "TEST_PUBLIC_KEY",
     rotationRequired: false,
   },
 };
 
-// Global Supabase client instance to prevent multiple instances
-let globalSupabaseClient: any = null;
+// Global singleton instance
 let globalVaultConfigManager: VaultConfigManager | null = null;
 
+/**
+ * Vault Configuration Manager
+ * Manages application secrets using Supabase Vault with browser-compatible implementation
+ */
 export class VaultConfigManager {
   private supabase: any;
   private secretsCache: Map<string, string> = new Map();
@@ -310,17 +315,31 @@ export class VaultConfigManager {
    * Initialize Vault for browser environment with local credential storage
    */
   private initializeBrowserVault(): void {
-    // Use singleton pattern to prevent multiple Supabase client instances
-    if (!globalSupabaseClient) {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rhfqfftkizyengcuhuvq.supabase.co';
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE';
-      
-      globalSupabaseClient = createClient(supabaseUrl, supabaseKey);
-      console.log("✅ Global Supabase client created");
+    // Try to import and use the main Supabase client to prevent multiple instances
+    try {
+      // Dynamic import to avoid circular dependencies
+      import('../src/lib/supabase').then(({ supabase }) => {
+        this.supabase = supabase;
+        console.log("✅ Using main Supabase client for vault operations");
+      }).catch(() => {
+        // Fallback to creating a new client if import fails
+        this.createFallbackClient();
+      });
+    } catch (error) {
+      // Fallback to creating a new client if import fails
+      this.createFallbackClient();
     }
+  }
+
+  /**
+   * Create fallback Supabase client if main client is not available
+   */
+  private createFallbackClient(): void {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rhfqfftkizyengcuhuvq.supabase.co';
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE';
     
-    this.supabase = globalSupabaseClient;
-    console.log("✅ Browser Vault initialized with local credential storage");
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+    console.log("✅ Fallback Supabase client created for vault operations");
   }
 
   /**

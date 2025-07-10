@@ -5,19 +5,7 @@
  * @note Invitations use existing PostAuthInvitationModal system (/api/authenticated/generate-peer-invite)
  */
 
-import { createClient } from '@supabase/supabase-js';
-
-// Browser-compatible Supabase configuration
-const getSupabaseConfig = () => {
-  // Use import.meta.env for Vite environment variables
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rhfqfftkizyengcuhuvq.supabase.co';
-  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE';
-  
-  return { supabaseUrl, supabaseKey };
-};
-
-const config = getSupabaseConfig();
-const supabase = createClient(config.supabaseUrl, config.supabaseKey);
+import { supabase } from '../supabase';
 
 export interface CharterDefinition {
   familyName: string;

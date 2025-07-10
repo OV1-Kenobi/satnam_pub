@@ -102,9 +102,4 @@
   
   # Scheduled functions for cleanup tasks
   [functions.scheduled]
-    cleanup-expired-credentials = "0 */6 * * *"  # Run every 6 hours
-
-# Edge functions (if needed for global performance)
-[[edge_functions]]
-  function = "api-proxy"
-  path = "/api/*" 
+    cleanup-expired-credentials = "0 */6 * * *"  # Run every 6 hours 
