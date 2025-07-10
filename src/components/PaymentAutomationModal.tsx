@@ -1,35 +1,112 @@
-import {
-    Bell,
-    Building,
-    Clock,
-    Coins,
-    Globe,
-    Zap,
-    Mail,
-    Router,
-    Save,
-    Settings,
-    Shield,
-    UserCheck,
-    Users,
-    X
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  CreditCard, 
+  Calendar, 
+  Settings, 
+  Users, 
+  Shield, 
+  Zap, 
+  Wallet, 
+  TrendingUp,
+  Router,
+  Coins,
+  Globe,
+  X,
+  Bell,
+  Mail,
+  Clock,
+  Save
 } from 'lucide-react';
-import React, { useState } from 'react';
+import { PaymentAutomationService, PaymentSchedule } from '../lib/payment-automation';
+import { FamilyWalletService } from '../lib/family-wallet';
+import { supabase } from '../lib/supabase';
 
-import {
-    NotificationSettings,
-    PaymentConditions,
-    PaymentContext,
-    PaymentRouting,
-    PaymentSchedule,
-    RecipientType
-} from '../lib/payment-automation';
+// Basic type definitions for the modal
+interface NotificationSettings {
+  email: boolean;
+  nostr: boolean;
+  push: boolean;
+}
+
+interface PaymentConditions {
+  maxAmount: number;
+  requiresApproval: boolean;
+  autoApprovalLimit: number;
+}
+
+interface PaymentContext {
+  family: boolean;
+  individual: boolean;
+}
+
+interface PaymentRouting {
+  lightning: boolean;
+  cashu: boolean;
+  fedimint: boolean;
+}
+
+interface RecipientType {
+  family_member: string;
+  ln_address: string;
+  npub: string;
+  cashu_token: string;
+}
+
+interface PaymentAutomationFormData {
+  userId?: string;
+  familyId?: string;
+  recipientType?: string;
+  recipientAddress?: string;
+  recipientName?: string;
+  amount?: number;
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  enabled?: boolean;
+  paymentRouting?: string;
+  routingPreferences?: {
+    maxFeePercent: number;
+    privacyMode: boolean;
+    routingStrategy: 'balanced' | 'privacy' | 'speed';
+  };
+  protocolPreferences?: {
+    primary: 'lightning' | 'ecash' | 'fedimint';
+    fallback: ('lightning' | 'ecash' | 'fedimint')[];
+    cashuMintUrl?: string;
+  };
+  paymentPurpose?: string;
+  memo?: string;
+  tags?: string[];
+  autoApprovalLimit?: number;
+  parentApprovalRequired?: boolean;
+  preferredMethod?: string;
+  maxRetries?: number;
+  retryDelay?: number;
+  conditions?: {
+    maxDailySpend: number;
+    maxTransactionSize: number;
+    requireApprovalAbove: number;
+    pauseOnSuspiciousActivity: boolean;
+    maxLightningAmount: number;
+    maxCashuAmount: number;
+    maxFedimintAmount: number;
+    minimumPrivacyScore: number;
+    requireTorRouting: boolean;
+    avoidKYCNodes: boolean;
+  };
+  notificationSettings?: {
+    notifyOnDistribution: boolean;
+    notifyOnFailure: boolean;
+    notifyOnSuspiciousActivity: boolean;
+    notificationMethods: string[];
+  };
+}
 
 interface PaymentAutomationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (schedule: Partial<PaymentSchedule>) => void;
-  context: PaymentContext; // 'individual' | 'family'
+  context: 'individual' | 'family'; // Changed to string literal type
   userId: string;
   familyId?: string;
   familyMembers?: Array<{
@@ -53,8 +130,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
   familyMembers = [],
   existingSchedule
 }) => {
-  const [formData, setFormData] = useState<Partial<PaymentSchedule>>({
-    context,
+  const [formData, setFormData] = useState<PaymentAutomationFormData>({
     userId,
     familyId,
     recipientType: existingSchedule?.recipientType || 'ln_address',
@@ -73,7 +149,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
     },
     protocolPreferences: existingSchedule?.protocolPreferences || {
       primary: 'lightning',
-      fallback: ['cashu'],
+      fallback: ['ecash'],
       cashuMintUrl: 'https://mint.satnam.pub'
     },
     paymentPurpose: existingSchedule?.paymentPurpose || 'custom',
@@ -116,7 +192,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
       ]
     : [
         { value: 'phoenixd', label: 'PhoenixD', description: 'Family Lightning channels', icon: Zap },
-        { value: 'voltage', label: 'Voltage Enterprise', description: 'Enterprise Lightning infrastructure', icon: Building },
+        { value: 'voltage', label: 'Voltage Enterprise', description: 'Enterprise Lightning infrastructure', icon: Router },
         { value: 'internal_fedimint', label: 'Family Fedimint', description: 'Internal federation transfers', icon: Users },
         { value: 'cashu_mint', label: 'Cashu eCash', description: 'Family eCash via mint', icon: Coins },
         { value: 'external_ln', label: 'External Lightning', description: 'Route to external addresses', icon: Globe }
@@ -127,12 +203,12 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
     ? [
         { value: 'family_member', label: 'Family Member', description: 'Send to family member', icon: Users },
         { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
-        { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: UserCheck },
+        { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: Users },
         { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
       ]
     : [
         { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
-        { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: UserCheck },
+        { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: Users },
         { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
       ];
 
@@ -154,11 +230,10 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
 
     const scheduleData: Partial<PaymentSchedule> = {
       ...formData,
-      nextDistribution,
       distributionCount: existingSchedule?.distributionCount || 0,
       totalDistributed: existingSchedule?.totalDistributed || 0,
-      createdAt: existingSchedule?.createdAt || new Date(),
-      updatedAt: new Date(),
+      createdAt: existingSchedule?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     onSave(scheduleData);
@@ -191,7 +266,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
     return next;
   };
 
-  const handleRecipientTypeChange = (recipientType: RecipientType) => {
+  const handleRecipientTypeChange = (recipientType: string) => {
     setFormData(prev => ({
       ...prev,
       recipientType,
@@ -205,18 +280,14 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
     if (member) {
       setFormData(prev => ({
         ...prev,
-        recipientAddress: member.lightningAddress || member.npub || memberId,
-        recipientName: member.name,
-        recipientMetadata: {
-          familyRole: member.role,
-          publicKey: member.npub,
-          profilePicture: member.avatar
-        }
+        recipientType: 'family_member',
+        recipientAddress: memberId,
+        recipientName: member.name
       }));
     }
   };
 
-  const updateConditions = (field: keyof PaymentConditions, value: any) => {
+  const updateConditions = (field: string, value: number | boolean) => {
     setFormData(prev => ({
       ...prev,
       conditions: {
@@ -246,7 +317,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
     }));
   };
 
-  const updateNotificationSettings = (field: keyof NotificationSettings, value: any) => {
+  const updateNotificationSettings = (field: string, value: any) => {
     setFormData(prev => ({
       ...prev,
       notificationSettings: {
@@ -263,11 +334,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-lg ${context === 'individual' ? 'bg-blue-100' : 'bg-orange-100'}`}>
-              {context === 'individual' ? (
-                <UserCheck className={`w-6 h-6 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
-              ) : (
-                <Users className={`w-6 h-6 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
-              )}
+              <Users className={`w-6 h-6 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
@@ -290,7 +357,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
         <div className="flex border-b border-gray-200">
           {[
             { id: 'basic', label: 'Basic Settings', icon: Settings },
-            { id: 'routing', label: 'Payment Routing', icon: Route },
+            { id: 'routing', label: 'Payment Routing', icon: Router },
             { id: 'conditions', label: 'Controls & Limits', icon: Shield },
             { id: 'notifications', label: 'Notifications', icon: Bell }
           ].map(tab => (
@@ -322,7 +389,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                   {availableRecipientTypes.map(type => (
                     <button
                       key={type.value}
-                      onClick={() => handleRecipientTypeChange(type.value as RecipientType)}
+                      onClick={() => handleRecipientTypeChange(type.value as string)}
                       className={`flex items-center space-x-3 p-4 rounded-lg border-2 transition-colors ${
                         formData.recipientType === type.value
                           ? `${context === 'individual' ? 'border-blue-500 bg-blue-50' : 'border-orange-500 bg-orange-50'}`
@@ -545,7 +612,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
             <div className="space-y-6">
               <div className={`${context === 'individual' ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'} border rounded-lg p-4`}>
                 <div className="flex items-center space-x-2">
-                  <Route className={`w-5 h-5 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
+                  <Router className={`w-5 h-5 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
                   <h3 className={`font-medium ${context === 'individual' ? 'text-blue-900' : 'text-orange-900'}`}>
                     {context === 'individual' ? 'Individual' : 'Family'} Payment Routing
                   </h3>
@@ -564,7 +631,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                   {availableRoutingMethods.map(method => (
                     <button
                       key={method.value}
-                      onClick={() => setFormData(prev => ({ ...prev, paymentRouting: method.value as PaymentRouting }))}
+                      onClick={() => setFormData(prev => ({ ...prev, paymentRouting: method.value as string }))}
                       className={`flex items-center space-x-4 p-4 rounded-lg border-2 transition-colors ${
                         formData.paymentRouting === method.value
                           ? `${context === 'individual' ? 'border-blue-500 bg-blue-50' : 'border-orange-500 bg-orange-50'}`
@@ -595,9 +662,9 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'lightning', label: 'Lightning', icon: Lightning },
+                    { value: 'lightning', label: 'Lightning', icon: Zap },
                     { value: 'cashu', label: 'Cashu eCash', icon: Coins },
-                    { value: 'fedimint', label: 'Fedimint', icon: Building, disabled: context === 'individual' }
+                    { value: 'fedimint', label: 'Fedimint', icon: Router, disabled: context === 'individual' }
                   ].map(protocol => (
                     <button
                       key={protocol.value}
@@ -802,7 +869,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                       <div className="text-sm text-gray-500">{toggle.desc}</div>
                     </div>
                     <button
-                      onClick={() => updateConditions(toggle.key as keyof PaymentConditions, !(formData.conditions as any)?.[toggle.key])}
+                      onClick={() => updateConditions(toggle.key as string, !(formData.conditions as any)?.[toggle.key])}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         (formData.conditions as any)?.[toggle.key] 
                           ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}` 
@@ -865,7 +932,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                       <div className="text-sm text-gray-500">{notification.desc}</div>
                     </div>
                     <button
-                      onClick={() => updateNotificationSettings(notification.key as keyof NotificationSettings, !(formData.notificationSettings as any)?.[notification.key])}
+                      onClick={() => updateNotificationSettings(notification.key as string, !(formData.notificationSettings as any)?.[notification.key])}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         (formData.notificationSettings as any)?.[notification.key] 
                           ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}` 
@@ -889,7 +956,7 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { value: 'email', label: 'Email', icon: Mail },
-                    { value: 'nostr_dm', label: 'Nostr DM', icon: UserCheck }
+                    { value: 'nostr_dm', label: 'Nostr DM', icon: Users }
                   ].map(method => (
                     <button
                       key={method.value}

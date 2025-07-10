@@ -11,10 +11,12 @@
  * - Security audit trails
  */
 
-import React, { useEffect, useState } from 'react'
-import { MESSAGING_CONFIG } from '../lib/gift-wrapped-messaging/privacy-first-service'
-import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging'
-import ContactsManagerModal from './ContactsManagerModal.tsx'
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging';
+import { PrivacyFirstMessagingService } from '../lib/gift-wrapped-messaging/privacy-first-service';
+import { MESSAGING_CONFIG } from '../lib/gift-wrapped-messaging/privacy-first-service';
+import ContactsManagerModal from './ContactsManagerModal';
 
 interface PrivacyFirstIdentityManagerProps {
   userNsec?: string
@@ -110,7 +112,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
     try {
       const sessionId = await messaging.initializeSession(userNsec, {
         userAgent: navigator.userAgent,
-        ttlHours: MESSAGING_CONFIG.SESSION_TTL_HOURS,
+        ttlHours: 24, // Default session TTL
       })
       
       if (sessionId) {

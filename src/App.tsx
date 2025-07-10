@@ -30,6 +30,9 @@ import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { ErrorBoundary } from './components/ErrorBoundary';
+import FamilyPaymentAutomationModal from "./components/FamilyPaymentAutomationModal";
+import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
+import { ContactsManagerModal } from './components/ContactsManagerModal';
 
 function App() {
   const [currentView, setCurrentView] = useState<
@@ -44,50 +47,107 @@ function App() {
     | "nostr-ecosystem"
     | "features-overview"
     | "dynastic-sovereignty"
+    | "communications"
+    | "family-foundry"
+    | "payment-automation"
+    | "educational-dashboard"
+    | "sovereignty-controls"
+    | "privacy-preferences"
+    | "atomic-swaps"
+    | "cross-mint-operations"
+    | "payment-cascade"
+    | "giftwrapped-messaging"
+    | "family-payment-automation"
+    | "individual-payment-automation"
+    | "contacts"
+    | "ln-node-management"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [showCommunications, setShowCommunications] = useState(false);
   const [showFamilyFoundryAuthModal, setShowFamilyFoundryAuthModal] = useState(false);
-  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | null>(null);
+  const [showContactsModal, setShowContactsModal] = useState(false);
+  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'automated-payments' | 'contacts' | 'ln-node-management' | null>(null);
   
   // Authentication hook
-  const { authenticated, loading } = useAuth();
+  const { authenticated, loading, familyId } = useAuth();
   
   // Initialize credential cleanup system
   useCredentialCleanup();
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
-  const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging') => {
-    if (authenticated) {
-      // User is authenticated, go directly to destination
-      if (destination === 'communications') {
-        setShowCommunications(true);
-      } else if (destination === 'giftwrapped-messaging') {
-        setShowCommunications(true);
-      } else if (destination === 'family-foundry') {
-        setCurrentView("onboarding");
-      } else if (destination === 'educational-dashboard') {
-        setCurrentView("education");
-      } else if (destination === 'payment-automation') {
-        setCurrentView("dashboard"); // Will show payment automation in family dashboard
-      } else if (destination === 'sovereignty-controls') {
-        setCurrentView("dashboard"); // Will show sovereignty controls in family dashboard
-      } else if (destination === 'privacy-preferences') {
-        setCurrentView("dashboard"); // Will show privacy preferences in family dashboard
-      } else if (destination === 'atomic-swaps') {
-        setCurrentView("dashboard"); // Will show atomic swaps in family dashboard
-      } else if (destination === 'cross-mint-operations') {
-        setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
-      } else if (destination === 'payment-cascade') {
-        setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
-      } else {
-        setCurrentView(destination);
-      }
-    } else {
-      // User not authenticated, show sign-in modal and remember destination
-      setPendingDestination(destination);
+  const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
+    if (!authenticated) {
       setSignInModalOpen(true);
+      setPendingDestination(destination);
+      return;
+    }
+
+    switch (destination) {
+      case 'dashboard':
+        setCurrentView('dashboard');
+        break;
+      case 'individual-finances':
+        setCurrentView('individual-finances');
+        break;
+      case 'communications':
+        setCurrentView('communications');
+        break;
+      case 'family-foundry':
+        setCurrentView('family-foundry');
+        break;
+      case 'payment-automation':
+        setCurrentView('payment-automation');
+        break;
+      case 'educational-dashboard':
+        setCurrentView('educational-dashboard');
+        break;
+      case 'sovereignty-controls':
+        setCurrentView('sovereignty-controls');
+        break;
+      case 'privacy-preferences':
+        setCurrentView('privacy-preferences');
+        break;
+      case 'atomic-swaps':
+        setCurrentView('atomic-swaps');
+        break;
+      case 'cross-mint-operations':
+        setCurrentView('cross-mint-operations');
+        break;
+      case 'payment-cascade':
+        setCurrentView('payment-cascade');
+        break;
+      case 'giftwrapped-messaging':
+        setCurrentView('giftwrapped-messaging');
+        break;
+      case 'ln-node-management':
+        setCurrentView('ln-node-management');
+        break;
+      case 'contacts':
+        setShowContactsModal(true);
+        break;
+      default:
+        setCurrentView('landing');
+    }
+  };
+
+  // New handler for automated payments flow
+  const handleAutomatedPayments = () => {
+    if (!authenticated) {
+      setSignInModalOpen(true);
+      setPendingDestination('automated-payments');
+      return;
+    }
+
+    // Check if user is part of a family federation
+    const isFamilyMember = familyId && familyId !== 'family-123'; // family-123 is the mock value
+    
+    if (isFamilyMember) {
+      // User is part of a family federation - show family payment modal
+      setCurrentView('family-payment-automation');
+    } else {
+      // User is individual - show individual payment modal
+      setCurrentView('individual-payment-automation');
     }
   };
 
@@ -113,6 +173,12 @@ function App() {
         setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
       } else if (pendingDestination === 'payment-cascade') {
         setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
+      } else if (pendingDestination === 'automated-payments') {
+        handleAutomatedPayments();
+      } else if (pendingDestination === 'contacts') {
+        setShowContactsModal(true);
+      } else if (pendingDestination === 'ln-node-management') {
+        setCurrentView('ln-node-management');
       } else {
         setCurrentView(pendingDestination);
       }
@@ -314,6 +380,387 @@ function App() {
         onStartFoundry={() => handleProtectedRoute("family-foundry")}
         onAuthRequired={() => setShowFamilyFoundryAuthModal(true)}
       />
+    );
+  }
+
+  if (currentView === "family-payment-automation") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <FamilyPaymentAutomationModal
+              isOpen={true}
+              onClose={() => setCurrentView("landing")}
+              onSave={(schedule) => {
+                console.log("Family payment schedule saved:", schedule);
+                setCurrentView("landing");
+              }}
+              familyId={familyId || "family-123"}
+              familyMembers={[
+                {
+                  id: "member-1",
+                  name: "Guardian",
+                  role: "guardian",
+                  avatar: "👑",
+                  lightningAddress: "guardian@satnam.pub"
+                },
+                {
+                  id: "member-2", 
+                  name: "Steward",
+                  role: "steward",
+                  avatar: "🛡️",
+                  lightningAddress: "steward@satnam.pub"
+                }
+              ]}
+              currentUserRole="adult"
+            />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "individual-payment-automation") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <IndividualPaymentAutomationModal
+              isOpen={true}
+              onClose={() => setCurrentView("landing")}
+              onSave={(schedule) => {
+                console.log("Individual payment schedule saved:", schedule);
+                setCurrentView("landing");
+              }}
+              userId="user-123"
+            />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "ln-node-management") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <div className="mb-8">
+                <h1 className="text-4xl font-bold text-white mb-4">PhoenixD Manager</h1>
+                <p className="text-lg text-purple-100">
+                  Manage your Lightning Network channels, liquidity, and routing capabilities.
+                </p>
+              </div>
+
+              {/* Node Status Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Node Status</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Status:</span>
+                      <span className="text-green-400 font-semibold">Online</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Version:</span>
+                      <span className="text-white">PhoenixD 0.12.1</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Uptime:</span>
+                      <span className="text-white">99.9%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Channel Summary</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Total Channels:</span>
+                      <span className="text-white">12</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Total Capacity:</span>
+                      <span className="text-white">2.5 BTC</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Available Liquidity:</span>
+                      <span className="text-white">1.8 BTC</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Routing Stats</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Routes:</span>
+                      <span className="text-white">1,247</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Fees Earned:</span>
+                      <span className="text-white">0.0023 BTC</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-purple-200">Success Rate:</span>
+                      <span className="text-white">98.7%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Channel Management Controls */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                {/* Add Channel */}
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Add Channel</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Node Pubkey
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="03a507... (64 characters)"
+                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Channel Capacity (BTC)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="0.1"
+                        step="0.01"
+                        min="0.01"
+                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Push Amount (BTC)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="0.05"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
+                    <button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                      Open Channel
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rebalance Channels */}
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Rebalance Channels</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Source Channel ID
+                      </label>
+                      <select className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                        <option value="">Select channel...</option>
+                        <option value="channel1">Channel 1 (0.5 BTC)</option>
+                        <option value="channel2">Channel 2 (0.3 BTC)</option>
+                        <option value="channel3">Channel 3 (0.2 BTC)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Target Channel ID
+                      </label>
+                      <select className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                        <option value="">Select channel...</option>
+                        <option value="channel4">Channel 4 (0.1 BTC)</option>
+                        <option value="channel5">Channel 5 (0.4 BTC)</option>
+                        <option value="channel6">Channel 6 (0.15 BTC)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Amount to Move (BTC)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="0.05"
+                        step="0.01"
+                        min="0.001"
+                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
+                    <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                      Rebalance
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Channels */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 mb-8">
+                <h3 className="text-xl font-bold text-white mb-4">Active Channels</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-purple-300">
+                        <th className="py-2 text-purple-200 font-medium">Channel ID</th>
+                        <th className="py-2 text-purple-200 font-medium">Peer</th>
+                        <th className="py-2 text-purple-200 font-medium">Capacity</th>
+                        <th className="py-2 text-purple-200 font-medium">Local Balance</th>
+                        <th className="py-2 text-purple-200 font-medium">Remote Balance</th>
+                        <th className="py-2 text-purple-200 font-medium">Status</th>
+                        <th className="py-2 text-purple-200 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-white">
+                      <tr className="border-b border-purple-200/20">
+                        <td className="py-3">1234567890</td>
+                        <td className="py-3">03a507...abc123</td>
+                        <td className="py-3">0.5 BTC</td>
+                        <td className="py-3">0.3 BTC</td>
+                        <td className="py-3">0.2 BTC</td>
+                        <td className="py-3"><span className="text-green-400">Active</span></td>
+                        <td className="py-3">
+                          <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-purple-200/20">
+                        <td className="py-3">0987654321</td>
+                        <td className="py-3">02b608...def456</td>
+                        <td className="py-3">0.3 BTC</td>
+                        <td className="py-3">0.1 BTC</td>
+                        <td className="py-3">0.2 BTC</td>
+                        <td className="py-3"><span className="text-green-400">Active</span></td>
+                        <td className="py-3">
+                          <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-purple-200/20">
+                        <td className="py-3">1122334455</td>
+                        <td className="py-3">01c709...ghi789</td>
+                        <td className="py-3">0.2 BTC</td>
+                        <td className="py-3">0.15 BTC</td>
+                        <td className="py-3">0.05 BTC</td>
+                        <td className="py-3"><span className="text-green-400">Active</span></td>
+                        <td className="py-3">
+                          <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Recent Transactions */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 mb-8">
+                <h3 className="text-xl font-bold text-white mb-4">Recent Transactions</h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center py-3 border-b border-purple-200/20">
+                    <div>
+                      <div className="text-white font-medium">Payment Received</div>
+                      <div className="text-purple-200 text-sm">Channel: 1234567890</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-green-400 font-medium">+0.001 BTC</div>
+                      <div className="text-purple-200 text-sm">2 hours ago</div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center py-3 border-b border-purple-200/20">
+                    <div>
+                      <div className="text-white font-medium">Payment Sent</div>
+                      <div className="text-purple-200 text-sm">Channel: 0987654321</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-red-400 font-medium">-0.0005 BTC</div>
+                      <div className="text-purple-200 text-sm">4 hours ago</div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center py-3">
+                    <div>
+                      <div className="text-white font-medium">Channel Opened</div>
+                      <div className="text-purple-200 text-sm">New channel with 01c709...ghi789</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-blue-400 font-medium">+0.2 BTC</div>
+                      <div className="text-purple-200 text-sm">1 day ago</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Back Button */}
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setCurrentView("landing")}
+                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
+                >
+                  <span>Back to Dashboard</span>
+                </button>
+              </div>
+            </div>
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "contacts") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <GiftwrappedMessaging 
+              familyMember={{
+                id: "current-user",
+                npub: "npub1placeholder",
+                username: "Current User",
+                role: "adult"
+              }}
+            />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
     );
   }
 
@@ -654,15 +1101,21 @@ function App() {
               <div className="space-y-2">
                 <button
                   onClick={() => handleProtectedRoute("dashboard")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Family Financials
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("individual-finances")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Individual Finances
+                </button>
+                <button
+                  onClick={() => handleAutomatedPayments()}
+                  className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Automated Payments
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("educational-dashboard")}
@@ -676,6 +1129,12 @@ function App() {
                 >
                   Privacy Controls
                 </button>
+                <button
+                  onClick={() => handleProtectedRoute("contacts")}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  Contacts
+                </button>
               </div>
             </div>
 
@@ -683,16 +1142,22 @@ function App() {
               <h3 className="text-white font-bold mb-4">Features</h3>
               <div className="space-y-2">
                 <button
-                  onClick={() => handleProtectedRoute("family-foundry")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  onClick={() => handleProtectedRoute("cross-mint-operations")}
+                  className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Family Foundry
+                  Cross-Mint Operations
                 </button>
                 <button
-                  onClick={() => handleProtectedRoute("payment-automation")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  onClick={() => handleProtectedRoute("payment-cascade")}
+                  className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Payment Automation
+                  Payment Cascade System
+                </button>
+                <button
+                  onClick={() => handleProtectedRoute("ln-node-management")}
+                  className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  LN Node Management
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("educational-dashboard")}
@@ -705,30 +1170,6 @@ function App() {
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Sovereignty Controls
-                </button>
-                <button
-                  onClick={() => handleProtectedRoute("privacy-preferences")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Privacy Preferences
-                </button>
-                <button
-                  onClick={() => handleProtectedRoute("atomic-swaps")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Atomic Swaps
-                </button>
-                <button
-                  onClick={() => handleProtectedRoute("cross-mint-operations")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Cross-Mint Operations
-                </button>
-                <button
-                  onClick={() => handleProtectedRoute("payment-cascade")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Payment Cascade System
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("giftwrapped-messaging")}
@@ -896,6 +1337,14 @@ function App() {
             username: "Current User",
             role: "adult"
           }}
+        />
+      )}
+
+      {/* Contacts Manager Modal */}
+      {showContactsModal && (
+        <ContactsManagerModal
+          isOpen={showContactsModal}
+          onClose={() => setShowContactsModal(false)}
         />
       )}
     </div>

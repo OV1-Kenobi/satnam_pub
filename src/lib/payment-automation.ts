@@ -52,8 +52,16 @@ export interface PaymentSchedule {
   dayOfMonth?: number;
   enabled?: boolean;
   paymentRouting?: string;
-  routingPreferences?: any;
-  protocolPreferences?: any;
+  routingPreferences?: {
+    maxFeePercent: number;
+    privacyMode: boolean;
+    routingStrategy: 'balanced' | 'privacy' | 'speed';
+  };
+  protocolPreferences?: {
+    primary: 'lightning' | 'ecash' | 'fedimint';
+    fallback: ('lightning' | 'ecash' | 'fedimint')[];
+    cashuMintUrl?: string;
+  };
   paymentPurpose?: string;
   memo?: string;
   tags?: string[];
@@ -62,8 +70,24 @@ export interface PaymentSchedule {
   preferredMethod?: string;
   maxRetries?: number;
   retryDelay?: number;
-  conditions?: any;
-  notificationSettings?: any;
+  conditions?: {
+    maxDailySpend: number;
+    maxTransactionSize: number;
+    requireApprovalAbove: number;
+    pauseOnSuspiciousActivity: boolean;
+    maxLightningAmount: number;
+    maxCashuAmount: number;
+    maxFedimintAmount: number;
+    minimumPrivacyScore: number;
+    requireTorRouting: boolean;
+    avoidKYCNodes: boolean;
+  };
+  notificationSettings?: {
+    notifyOnDistribution: boolean;
+    notifyOnFailure: boolean;
+    notifyOnSuspiciousActivity: boolean;
+    notificationMethods: string[];
+  };
   distributionCount?: number;
   totalDistributed?: number;
 }
@@ -1038,6 +1062,29 @@ export class PaymentAutomationService {
     return lastReplenish.getDate() !== now.getDate() ||
            lastReplenish.getMonth() !== now.getMonth() ||
            lastReplenish.getFullYear() !== now.getFullYear();
+  }
+
+  /**
+   * Get pending payment transactions for a family
+   */
+  static async getPendingPayments(familyId: string): Promise<PaymentTransaction[]> {
+    try {
+      const { data, error } = await supabase
+        .from('family_payment_transactions')
+        .select('*')
+        .eq('familyId', familyId)
+        .eq('status', 'pending')
+        .order('createdAt', { ascending: true });
+
+      if (error) {
+        throw new Error(`Failed to fetch pending payments: ${error.message}`);
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching pending payments:', error);
+      return [];
+    }
   }
 
   /**

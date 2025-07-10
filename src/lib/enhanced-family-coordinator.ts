@@ -642,7 +642,7 @@ export class EnhancedFamilyCoordinator {
 
       this.wsServer = new WebSocket.Server({
         port,
-        verifyClient: (info) => {
+        verifyClient: (info: { origin: string; req: unknown; secure: boolean }) => {
           // TODO: Implement proper authentication logic
           // Should verify JWT token or other authentication mechanism
           return true;
@@ -1381,7 +1381,7 @@ export class EnhancedFamilyCoordinator {
    * @param ecash - eCash layer status
    * @returns {number} Health score (0-100)
    */
-  private calculateHealthScore(lightning: any, ecash: any): number {
+  private calculateHealthScore(lightning: { capacity: number; localBalance: number; activeChannels: number; pendingHtlcs: number; inactiveChannels: number }, ecash: { totalBalance: number; availableBalance: number }): number {
     let score = 100;
 
     // Penalize for low liquidity
@@ -1411,76 +1411,118 @@ export class EnhancedFamilyCoordinator {
    * @returns {string[]} Array of recommendations
    */
   private generateLiquidityRecommendations(
-    lightning: any,
-    ecash: any,
+    lightning: { capacity: number; localBalance: number; activeChannels: number; pendingHtlcs: number; inactiveChannels: number },
+    ecash: { totalBalance: number; availableBalance: number },
     utilization: number
   ): string[] {
-    const recommendations = [];
+    const recommendations: string[] = [];
 
-    if (utilization > 0.8) {
-      recommendations.push(
-        "High liquidity utilization - consider opening new channels or enabling JIT liquidity"
-      );
+    // Lightning-specific recommendations
+    if (lightning.capacity < 1000000) {
+      recommendations.push("Consider opening more Lightning channels for better liquidity");
     }
 
-    if (lightning.channels < 3) {
-      recommendations.push(
-        "Consider opening more Lightning channels for redundancy"
-      );
+    if (lightning.localBalance < lightning.capacity * 0.2) {
+      recommendations.push("Local balance is low - consider rebalancing channels");
     }
 
-    if (lightning.inactiveChannels > 0) {
-      recommendations.push(
-        `${lightning.inactiveChannels} inactive channels detected - investigate connectivity issues`
-      );
+    if (lightning.pendingHtlcs > 0) {
+      recommendations.push("Pending HTLCs detected - monitor for potential issues");
     }
 
-    if (ecash.federations < 2) {
-      recommendations.push(
-        "Join additional eCash federations for privacy and redundancy"
-      );
+    if (lightning.inactiveChannels > lightning.activeChannels * 0.3) {
+      recommendations.push("High number of inactive channels - consider cleanup");
+    }
+
+    // eCash-specific recommendations
+    if (ecash.totalBalance < 500000) {
+      recommendations.push("Consider joining more eCash federations for diversification");
+    }
+
+    if (ecash.availableBalance < ecash.totalBalance * 0.1) {
+      recommendations.push("eCash available balance is low - check federation status");
+    }
+
+    // Overall recommendations
+    if (utilization > 0.9) {
+      recommendations.push("High utilization - consider increasing capacity");
+    } else if (utilization < 0.1) {
+      recommendations.push("Low utilization - consider optimizing liquidity allocation");
     }
 
     return recommendations;
   }
 
   /**
-   * Generate liquidity alerts
+   * Generate liquidity alerts based on current status
    * @private
    * @param lightning - Lightning layer status
    * @param ecash - eCash layer status
-   * @param utilization - Utilization rate
-   * @returns {object[]} Array of alerts
+   * @param utilization - Overall utilization rate
+   * @returns {Array<{level: string, message: string, timestamp: Date}>} Array of alerts
    */
   private generateLiquidityAlerts(
-    lightning: any,
-    ecash: any,
+    lightning: { capacity: number; localBalance: number; activeChannels: number; pendingHtlcs: number; inactiveChannels: number },
+    ecash: { totalBalance: number; availableBalance: number },
     utilization: number
   ) {
-    const alerts = [];
+    const alerts: Array<{level: "info" | "warning" | "critical", message: string, timestamp: Date}> = [];
 
-    if (utilization > 0.9) {
+    // Critical alerts
+    if (lightning.localBalance < 100000) {
       alerts.push({
-        level: "critical" as const,
-        message: `Critical liquidity shortage: ${(utilization * 100).toFixed(
-          1
-        )}% utilization`,
-        timestamp: new Date(),
-      });
-    } else if (utilization > 0.8) {
-      alerts.push({
-        level: "warning" as const,
-        message: `High liquidity utilization: ${(utilization * 100).toFixed(
-          1
-        )}%`,
+        level: "critical",
+        message: "Lightning local balance critically low",
         timestamp: new Date(),
       });
     }
 
+    if (ecash.availableBalance < 50000) {
+      alerts.push({
+        level: "critical",
+        message: "eCash available balance critically low",
+        timestamp: new Date(),
+      });
+    }
+
+    if (utilization > 0.95) {
+      alerts.push({
+        level: "critical",
+        message: "System utilization critically high",
+        timestamp: new Date(),
+      });
+    }
+
+    // Warning alerts
+    if (lightning.localBalance < lightning.capacity * 0.1) {
+      alerts.push({
+        level: "warning",
+        message: "Lightning local balance below 10%",
+        timestamp: new Date(),
+      });
+    }
+
+    if (lightning.pendingHtlcs > 5) {
+      alerts.push({
+        level: "warning",
+        message: "Multiple pending HTLCs detected",
+        timestamp: new Date(),
+      });
+    }
+
+    if (ecash.availableBalance < ecash.totalBalance * 0.05) {
+      alerts.push({
+        level: "warning",
+        message: "eCash available balance below 5%",
+        timestamp: new Date(),
+      });
+    }
+
+    // Info alerts
     if (lightning.inactiveChannels > 0) {
       alerts.push({
-        level: "warning" as const,
-        message: `${lightning.inactiveChannels} Lightning channels are inactive`,
+        level: "info",
+        message: `${lightning.inactiveChannels} inactive Lightning channels`,
         timestamp: new Date(),
       });
     }
@@ -1495,28 +1537,51 @@ export class EnhancedFamilyCoordinator {
    */
   private async processScheduledPayments(): Promise<void> {
     try {
-      // Import and use the PaymentAutomationSystem
-      const { PaymentAutomationSystem } = await import("./payment-automation");
-      const paymentSystem = new PaymentAutomationSystem();
+      // Import and use the PaymentAutomationService
+      const { PaymentAutomationService } = await import("./payment-automation");
+      
+      // Get pending payment schedules and process them
+      const pendingSchedules = await PaymentAutomationService.getPaymentSchedules(this.config.familyId);
+      const dueSchedules = pendingSchedules.filter(schedule => 
+        new Date(schedule.nextPaymentDate) <= new Date() && 
+        schedule.status === 'active'
+      );
 
-      const result = await paymentSystem.processPendingPayments();
+      // Also get pending payment transactions
+      const pendingTransactions = await PaymentAutomationService.getPendingPayments(this.config.familyId);
 
-      if (result.failed > 0) {
+      let successful = 0;
+      let failed = 0;
+      let totalAmount = 0;
+
+      for (const schedule of dueSchedules) {
+        try {
+          // Process the payment schedule
+          await PaymentAutomationService.createPaymentSchedule(schedule);
+          successful++;
+          totalAmount += schedule.amount;
+        } catch (error) {
+          failed++;
+          console.error(`Failed to process payment schedule ${schedule.id}:`, error);
+        }
+      }
+
+      if (failed > 0) {
         await this.broadcastAlert(
           "warning",
-          `${result.failed} payment distributions failed`
+          `${failed} payment distributions failed`
         );
       }
 
-      if (result.successful > 0) {
+      if (successful > 0) {
         await this.broadcastUpdate({
           type: "payment_sent",
           familyId: this.config.familyId,
           timestamp: new Date(),
           data: {
             type: "payment_distribution",
-            count: result.successful,
-            totalAmount: result.totalAmount,
+            count: successful,
+            totalAmount: totalAmount,
           },
           encrypted: false,
         });
@@ -1681,7 +1746,14 @@ export class EnhancedFamilyCoordinator {
     info?: unknown
   ): Promise<void> {
     try {
-      switch (data.type) {
+      // Type guard for data
+      if (typeof data !== 'object' || data === null) {
+        return;
+      }
+
+      const messageData = data as any;
+
+      switch (messageData.type) {
         case "subscribe_liquidity": {
           // Handle liquidity subscription
           const status = await this.getFamilyLiquidityStatus();
@@ -1690,11 +1762,11 @@ export class EnhancedFamilyCoordinator {
         }
 
         case "request_emergency_liquidity":
-          if (data.memberId && data.amount && data.urgency) {
+          if (messageData.memberId && messageData.amount && messageData.urgency) {
             const result = await this.handleEmergencyLiquidity(
-              data.memberId,
-              data.amount,
-              data.urgency
+              messageData.memberId,
+              messageData.amount,
+              messageData.urgency
             );
             this.sendToClient(client, {
               type: "emergency_liquidity_result",

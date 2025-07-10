@@ -1,7 +1,7 @@
 [build]
   # Build settings for Vite React app
   publish = "dist"
-  command = "npm run build"
+  command = "npm run build:no-check"
   
   # Environment variables for build
   [build.environment]

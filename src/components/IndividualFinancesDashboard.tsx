@@ -31,11 +31,11 @@ import {
   Upload,
   Wallet,
   Zap,
+  X,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-// Import Transaction type from shared types
-import { PaymentModal, Transaction } from './shared';
+// Transaction type defined locally below
 
 // Import Credits Balance
 import { CreditsBalance } from './CreditsBalance';
@@ -57,6 +57,24 @@ import { FederationRole } from '../types/auth';
 
 // Import our enhanced dual-protocol components
 import EducationalDashboard from './education/EducationalDashboard';
+import SimplePaymentModal from './SimplePaymentModal';
+import IndividualPaymentAutomationModal from './IndividualPaymentAutomationModal';
+
+// Define Transaction type locally
+interface Transaction {
+  id: string;
+  type: 'sent' | 'received' | 'payment' | 'receive' | 'zap' | 'mint' | 'melt';
+  amount: number;
+  fee?: number;
+  recipient?: string;
+  sender?: string;
+  memo?: string;
+  timestamp: Date;
+  status: 'pending' | 'completed' | 'failed' | string;
+  paymentMethod?: 'lightning' | 'ecash';
+  hash?: string;
+  tokenId?: string;
+}
 
 interface IndividualFinancesDashboardProps {
   memberId: string;
@@ -1413,28 +1431,20 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
 
 // Main Enhanced Component
 export function IndividualFinancesDashboard({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
-  const { user, authenticated } = useAuth();
   const [wallet, setWallet] = useState<EnhancedIndividualWallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'privacy'>('overview');
-  
-  // Payment Modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<string | null>(null);
-
-  // Payment Cascade Modal state
   const [showCascadeModal, setShowCascadeModal] = useState(false);
-  const [paymentCascade, setPaymentCascade] = useState<PaymentCascadeNode[]>([]);
-
-  // Emergency Recovery Modal state
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
+  const [showSimplePaymentModal, setShowSimplePaymentModal] = useState(false);
+  const [showAutomatedPaymentsModal, setShowAutomatedPaymentsModal] = useState(false);
+  
+  // Auth context
+  const { user, userRole, familyId } = useAuth();
 
-  // Use memberData for role and fallback values
-  const userRole = memberData.role as FederationRole;
-  const familyId = 'family123'; // This would come from context in a real implementation
-
-  // Create individual member for PaymentModal (representing self)
-  const individualMember = wallet ? [{
+  // Create family members array for PaymentCascadeModal
+  const familyMembersForCascade = wallet ? [{
     id: memberId,
     username: memberData.username,
     role: memberData.role,
@@ -1443,17 +1453,6 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
     nip05Verified: true,
     spendingLimits: memberData.spendingLimits,
   }] : [];
-
-  // Create family members for cascade modal (representing contacts/family)
-  const familyMembersForCascade = wallet ? [
-    {
-      id: memberId,
-      name: memberData.username,
-      npub: '', // Would be populated from user's Nostr profile
-      role: memberData.role as 'guardian' | 'steward' | 'adult' | 'offspring'
-    }
-    // Additional family members would be loaded from user's contacts/family
-  ] : [];
 
   // Enhanced wallet loading with Lightning + Cashu data
   const loadEnhancedWallet = async () => {
@@ -1497,7 +1496,6 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   };
 
   const handleCascadeSave = (cascade: PaymentCascadeNode[]) => {
-    setPaymentCascade(cascade);
     setShowCascadeModal(false);
     // Here you would integrate with the payment automation service
     console.log('Payment cascade configured:', cascade);
@@ -1510,8 +1508,6 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   const handleCloseRecoveryModal = () => {
     setShowRecoveryModal(false);
   };
-
-  const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
 
   if (loading) {
     return (
@@ -1608,10 +1604,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <button
-            onClick={() => {
-              setSelectedMember(memberId);
-              setShowPaymentModal(true);
-            }}
+            onClick={() => setShowSimplePaymentModal(true)}
             className="flex items-center justify-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
           >
             <Send className="h-5 w-5" />
@@ -1670,17 +1663,6 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
       {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
       {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <PaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          familyMembers={individualMember}
-          selectedMember={selectedMember}
-          onSelectedMemberChange={setSelectedMember}
-        />
-      )}
-
       {/* Payment Cascade Modal */}
       <PaymentCascadeModal
         isOpen={showCascadeModal}
@@ -1712,6 +1694,27 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
           onClose={() => setShowEducationalDashboard(false)}
         />
       )}
+
+      {/* Simple Payment Modal */}
+      <SimplePaymentModal
+        isOpen={showSimplePaymentModal}
+        onClose={() => setShowSimplePaymentModal(false)}
+        onOpenAutomatedPayments={() => {
+          setShowSimplePaymentModal(false);
+          setShowAutomatedPaymentsModal(true);
+        }}
+        wallet={wallet}
+      />
+
+      {/* Individual Payment Automation Modal */}
+      {showAutomatedPaymentsModal && (
+        <IndividualPaymentAutomationModal
+          isOpen={showAutomatedPaymentsModal}
+          onClose={() => setShowAutomatedPaymentsModal(false)}
+          userId={user?.id || memberId}
+          userRole={userRole || 'adult'}
+        />
+      )}
     </div>
   );
 }
@@ -1723,9 +1726,8 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'cross-mint' | 'privacy'>('overview');
   
-  // Payment Modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  // Auth context
+  const { user, userRole, familyId } = useAuth();
 
   // Create individual member for PaymentModal (representing self)
   const individualMember = wallet ? [{
@@ -1880,10 +1882,7 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <button
-            onClick={() => {
-              setSelectedMember(memberId);
-              setShowPaymentModal(true);
-            }}
+            onClick={() => setShowSimplePaymentModal(true)}
             className="flex items-center justify-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
           >
             <Send className="h-5 w-5" />

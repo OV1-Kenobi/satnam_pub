@@ -9,7 +9,7 @@ export {
   clearCryptoCache,
   // Environment detection and configuration
   configureCryptoStrategy,
-  configureOptimalCryptoStrategy,
+  configureCryptoStrategy as configureOptimalCryptoStrategy,
   // Lightweight utilities (always available)
   constantTimeEquals,
   createCryptoLoadingManager,

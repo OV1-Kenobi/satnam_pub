@@ -21,7 +21,7 @@ const mockFamilyMembers: SatnamFamilyMember[] = [
     id: "3",
     username: "satnam_teen",
     lightningAddress: "satnam_teen@satnam.pub",
-    role: "child",
+    role: "offspring",
     spendingLimits: {
       daily: 100000,
       weekly: 500000,
@@ -31,7 +31,7 @@ const mockFamilyMembers: SatnamFamilyMember[] = [
     id: "4",
     username: "satnam_kid",
     lightningAddress: "satnam_kid@satnam.pub",
-    role: "child",
+    role: "offspring",
     spendingLimits: {
       daily: 50000,
       weekly: 200000,

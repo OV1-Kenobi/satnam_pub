@@ -7,16 +7,17 @@
 import {
   Filter,
   finalizeEvent,
-  generateSecretKey,
   getPublicKey,
   nip04,
   nip19,
   nip59,
   NostrEvent,
   SimplePool,
-} from "./nostr-browser";
-
-type Event = NostrEvent;
+  type UnsignedEvent,
+  type Event
+} from "nostr-tools";
+import { utils } from "@noble/secp256k1";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { SatnamPrivacyFirstCommunications } from "../../lib/gift-wrapped-messaging/privacy-first-service";
 
 // NIP-28/29/59 Group Types
@@ -108,19 +109,16 @@ export class GroupMessagingService {
     this.config = config;
     this.userNsec = userNsec;
     // Convert nsec string to Uint8Array for getPublicKey
-    const userNsecBytes = new Uint8Array(
-      userNsec.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
-    );
-    this.userNpub = getPublicKey(userNsecBytes);
+    const userNsecBytes = hexToBytes(userNsec);
+    const publicKeyBytes = getPublicKey(userNsecBytes);
+    this.userNpub = bytesToHex(publicKeyBytes);
     this.pool = new SimplePool();
     this.privacyService = privacyService || new SatnamPrivacyFirstCommunications();
   }
 
   // Helper method to convert nsec string to Uint8Array
   private getNsecBytes(): Uint8Array {
-    return new Uint8Array(
-      this.userNsec.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
-    );
+    return hexToBytes(this.userNsec);
   }
 
   /**
@@ -159,7 +157,7 @@ export class GroupMessagingService {
         ],
       };
 
-      const signedEvent = finalizeEvent(groupEvent, this.getNsecBytes());
+      const signedEvent = finalizeEvent(groupEvent, this.userNsec);
       await this.publishToRelays(signedEvent);
 
       // Create group object

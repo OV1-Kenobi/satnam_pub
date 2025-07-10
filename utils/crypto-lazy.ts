@@ -1,5 +1,6 @@
 const CryptoJS = require("crypto-js");
-import { generateSecretKey, getPublicKey } from "../src/lib/nostr-browser";
+import { utils, getPublicKey } from "@noble/secp256k1";
+import { bytesToHex } from "@noble/hashes/utils";
 
 export class CryptoLazy {
   private static instance: CryptoLazy;
@@ -13,15 +14,14 @@ export class CryptoLazy {
 
   // Replace line 294 Node.js crypto import
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
-    const privateKeyBytes = generateSecretKey();
-    const privateKey = Array.from(privateKeyBytes)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    const privateKeyBytes = utils.randomPrivateKey();
+    const privateKey = bytesToHex(privateKeyBytes);
     const publicKey = getPublicKey(privateKeyBytes);
+    const publicKeyHex = bytesToHex(publicKey);
 
     return {
       nsec: `nsec${privateKey}`,
-      npub: `npub${publicKey}`,
+      npub: `npub${publicKeyHex}`,
     };
   }
 
@@ -65,18 +65,19 @@ export async function sha256(data: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Browser-compatible Nostr key pair generator
-export async function generateNostrKeyPair(): Promise<{ privateKey: string; publicKey: string; npub: string; nsec: string }> {
-  const privateKeyBytes = generateSecretKey();
-  const privateKey = Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  const publicKey = getPublicKey(privateKeyBytes);
-  return {
-    privateKey,
-    publicKey,
-    npub: `npub${publicKey}`,
-    nsec: `nsec${privateKey}`,
-  };
-}
+  // Browser-compatible Nostr key pair generator
+  export async function generateNostrKeyPair(): Promise<{ privateKey: string; publicKey: string; npub: string; nsec: string }> {
+    const privateKeyBytes = utils.randomPrivateKey();
+    const privateKey = bytesToHex(privateKeyBytes);
+    const publicKeyBytes = getPublicKey(privateKeyBytes);
+    const publicKeyHex = bytesToHex(publicKeyBytes);
+    return {
+      privateKey,
+      publicKey: publicKeyHex,
+      npub: `npub${publicKeyHex}`,
+      nsec: `nsec${privateKey}`,
+    };
+  }
 
 // Browser-compatible recovery phrase generator (mock, not BIP39)
 export async function generateRecoveryPhrase(): Promise<string> {

@@ -263,7 +263,7 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
                 <p className="text-purple-200">{category.description}</p>
               </div>
               
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {category.features.map((feature, featureIndex) => {
                   const Icon = feature.icon;
                   return (

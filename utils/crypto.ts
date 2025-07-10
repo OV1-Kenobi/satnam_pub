@@ -4,7 +4,9 @@
 // All crypto imports are lazy loaded for better performance
 // All crypto operations are now lazy loaded
 
-import { finalizeEvent, getPublicKey } from "../src/lib/nostr-browser";
+import { utils, getPublicKey } from "@noble/secp256k1";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { finalizeEvent } from "nostr-tools";
 
 /**
  * Generate a random hex string of specified length
@@ -330,9 +332,7 @@ export async function signNostrEvent(
   sig: string;
 }> {
   // Convert hex string to Uint8Array
-  const privateKeyBytes = new Uint8Array(
-    privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
-  );
+  const privateKeyBytes = hexToBytes(privateKey);
   return finalizeEvent(event, privateKeyBytes);
 }
 
@@ -354,10 +354,9 @@ export async function createNostrEvent(
   sig: string;
 }> {
   // Convert hex string to Uint8Array
-  const privateKeyBytes = new Uint8Array(
-    privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
-  );
-  const pubkey = getPublicKey(privateKeyBytes);
+  const privateKeyBytes = hexToBytes(privateKey);
+  const publicKeyBytes = getPublicKey(privateKeyBytes);
+  const pubkey = bytesToHex(publicKeyBytes);
   const event = {
     kind,
     pubkey,

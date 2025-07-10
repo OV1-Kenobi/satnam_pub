@@ -5,7 +5,7 @@
  * Compatible with Bolt.new and Netlify serverless deployments.
  */
 
-import { Edit3, Gift, MoreVertical } from 'lucide-react';
+import { Edit3, Gift, MoreVertical, Zap, MessageCircle } from 'lucide-react';
 import React, { useState } from 'react';
 import { Contact } from '../types/contacts';
 import ContextualAvatar from './ContextualAvatar';
@@ -20,6 +20,8 @@ interface ContactCardProps {
   loading?: boolean;
   selectionMode?: boolean;
   onOpenPrivateMessage?: (contactId: string) => void;
+  onZapContact?: (contact: Contact) => void;
+  onMessageContact?: (contact: Contact) => void;
 }
 
 export const ContactCard: React.FC<ContactCardProps> = ({
@@ -32,8 +34,11 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   loading = false,
   selectionMode = false,
   onOpenPrivateMessage,
+  onZapContact,
+  onMessageContact,
 }) => {
   const [showMenu, setShowMenu] = useState<boolean>(false);
+  const [showHoverActions, setShowHoverActions] = useState<boolean>(false);
 
   const getTrustLevelColor = (trustLevel: Contact['trustLevel']): string => {
     switch (trustLevel) {
@@ -99,7 +104,40 @@ export const ContactCard: React.FC<ContactCardProps> = ({
           : 'border-white/20 hover:border-purple-500/50'
       }`}
       onClick={handleCardClick}
+      onMouseEnter={() => setShowHoverActions(true)}
+      onMouseLeave={() => setShowHoverActions(false)}
     >
+      {/* Hover Actions Overlay */}
+      {showHoverActions && !loading && !selectionMode && (
+        <div className="absolute inset-0 bg-black/80 rounded-lg flex items-center justify-center space-x-4 z-20">
+          {onZapContact && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onZapContact(contact);
+              }}
+              className="flex items-center space-x-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
+              title="Send Lightning payment"
+            >
+              <Zap className="h-4 w-4" />
+              <span className="text-sm font-medium">Zap</span>
+            </button>
+          )}
+          {onMessageContact && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMessageContact(contact);
+              }}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+              title="Send private message"
+            >
+              <MessageCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Message</span>
+            </button>
+          )}
+        </div>
+      )}
       {/* Menu Button */}
       <div className="absolute top-3 right-3">
         <button

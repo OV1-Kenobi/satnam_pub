@@ -16,10 +16,10 @@ import { nip19 } from '../lib/nostr-browser';
 import React, { useEffect, useState } from 'react';
 import { NIP07AuthChallenge } from '../types/auth';
 import { getSessionInfo, SessionInfo } from '../utils/secureSession';
-import NWCOTPSignIn from './auth/NWCOTPSignIn.tsx';
-import ErrorBoundary from './ErrorBoundary.tsx';
-import { MaxPrivacyAuth } from './MaxPrivacyAuth.tsx';
-import { PostAuthInvitationModal } from './PostAuthInvitationModal.tsx';
+import NWCOTPSignIn from './auth/NWCOTPSignIn';
+import ErrorBoundary from './ErrorBoundary';
+import { MaxPrivacyAuth } from './MaxPrivacyAuth';
+import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -64,7 +64,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const [isCheckingExtension, setIsCheckingExtension] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   const [showPostAuthInvitation, setShowPostAuthInvitation] = useState(false);
-  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<any | null>(null);
   
   // NIP-07 auth state
   const [nip07State, setNip07State] = useState<{

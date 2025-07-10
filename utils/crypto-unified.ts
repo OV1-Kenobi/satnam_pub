@@ -1,19 +1,26 @@
-const CryptoJS = require("crypto-js");
-import { generateSecretKey, getPublicKey } from "../src/lib/nostr-browser";
+import { utils, getPublicKey } from "@noble/secp256k1";
+import { bytesToHex } from "@noble/hashes/utils";
 
 export class CryptoUnified {
-  // Use Web Crypto API for modern browsers
-  static async generateKeyPair(): Promise<{
-    privateKey: string;
-    publicKey: string;
-  }> {
-    const privateKeyBytes = generateSecretKey();
-    const privateKey = Array.from(privateKeyBytes)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    const publicKey = getPublicKey(privateKeyBytes);
+  private static instance: CryptoUnified;
 
-    return { privateKey, publicKey };
+  static getInstance(): CryptoUnified {
+    if (!CryptoUnified.instance) {
+      CryptoUnified.instance = new CryptoUnified();
+    }
+    return CryptoUnified.instance;
+  }
+
+  async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
+    const privateKeyBytes = utils.randomPrivateKey();
+    const privateKey = bytesToHex(privateKeyBytes);
+    const publicKeyBytes = getPublicKey(privateKeyBytes);
+    const publicKeyHex = bytesToHex(publicKeyBytes);
+
+    return {
+      nsec: `nsec${privateKey}`,
+      npub: `npub${publicKeyHex}`,
+    };
   }
 
   // Browser-compatible encryption using crypto-js
