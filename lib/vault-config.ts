@@ -252,6 +252,23 @@ const VAULT_SECRETS: Record<string, VaultSecret> = {
     guardianApprovalRequired: true,
   },
 
+  // Application Configuration
+  app_base_url: {
+    name: "app_base_url",
+    description:
+      "Base URL for the application (production: https://satnam.pub)",
+    required: true,
+    fallbackEnvVar: "BASE_URL",
+    rotationRequired: false,
+  },
+  api_base_url: {
+    name: "api_base_url",
+    description: "Base URL for API endpoints",
+    required: true,
+    fallbackEnvVar: "API_BASE_URL",
+    rotationRequired: false,
+  },
+
   // Development and Testing
   test_private_key: {
     name: "test_private_key",
@@ -284,8 +301,10 @@ export class VaultConfigManager {
 
   constructor() {
     // Browser-only implementation - no server-side code
-    if (typeof window === 'undefined') {
-      throw new Error("VaultConfigManager is browser-only and cannot run in server environment");
+    if (typeof window === "undefined") {
+      throw new Error(
+        "VaultConfigManager is browser-only and cannot run in server environment"
+      );
     }
 
     // Singleton pattern - prevent multiple instances
@@ -296,7 +315,7 @@ export class VaultConfigManager {
 
     console.log("🔐 Initializing browser-only VaultConfigManager");
     this.initializeBrowserVault();
-    
+
     // Store the instance globally
     globalVaultConfigManager = this;
   }
@@ -318,13 +337,15 @@ export class VaultConfigManager {
     // Try to import and use the main Supabase client to prevent multiple instances
     try {
       // Dynamic import to avoid circular dependencies
-      import('../src/lib/supabase').then(({ supabase }) => {
-        this.supabase = supabase;
-        console.log("✅ Using main Supabase client for vault operations");
-      }).catch(() => {
-        // Fallback to creating a new client if import fails
-        this.createFallbackClient();
-      });
+      import("../src/lib/supabase")
+        .then(({ supabase }) => {
+          this.supabase = supabase;
+          console.log("✅ Using main Supabase client for vault operations");
+        })
+        .catch(() => {
+          // Fallback to creating a new client if import fails
+          this.createFallbackClient();
+        });
     } catch (error) {
       // Fallback to creating a new client if import fails
       this.createFallbackClient();
@@ -335,9 +356,16 @@ export class VaultConfigManager {
    * Create fallback Supabase client if main client is not available
    */
   private createFallbackClient(): void {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rhfqfftkizyengcuhuvq.supabase.co';
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE';
-    
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error(
+        "CRITICAL: Bootstrap Supabase credentials missing for Vault access. " +
+          "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables."
+      );
+    }
+
     this.supabase = createClient(supabaseUrl, supabaseKey);
     console.log("✅ Fallback Supabase client created for vault operations");
   }
@@ -371,7 +399,7 @@ export class VaultConfigManager {
     }
 
     // Fallback to environment variable (server-side only)
-    if (secretConfig.fallbackEnvVar && typeof process !== 'undefined') {
+    if (secretConfig.fallbackEnvVar && typeof process !== "undefined") {
       const envValue = process.env[secretConfig.fallbackEnvVar];
       if (envValue) {
         console.log(`📝 Using environment variable for ${secretName}`);
@@ -430,8 +458,8 @@ export class VaultConfigManager {
    * Rotate a secret with guardian approval workflow
    */
   async rotateSecret(
-    secretName: string, 
-    newValue: string, 
+    secretName: string,
+    newValue: string,
     guardianApproval?: boolean
   ): Promise<boolean> {
     const secretConfig = VAULT_SECRETS[secretName];
@@ -441,15 +469,17 @@ export class VaultConfigManager {
 
     // Check if guardian approval is required
     if (secretConfig.guardianApprovalRequired && !guardianApproval) {
-      throw new Error(`Guardian approval required for rotating secret: ${secretName}`);
+      throw new Error(
+        `Guardian approval required for rotating secret: ${secretName}`
+      );
     }
 
     // Store the new secret value
     const success = await this.storeSecret(secretName, newValue);
-    
+
     if (success) {
       console.log(`🔄 Secret ${secretName} rotated successfully`);
-      
+
       // Log the rotation for audit purposes
       await this.logSecretRotation(secretName, guardianApproval || false);
     }
@@ -547,7 +577,7 @@ export class VaultConfigManager {
     if (expiry && Date.now() < expiry) {
       return this.secretsCache.get(secretName) || null;
     }
-    
+
     // Clear expired cache
     this.secretsCache.delete(secretName);
     this.cacheExpiry.delete(secretName);
@@ -570,16 +600,17 @@ export class VaultConfigManager {
   /**
    * Log secret rotation for audit purposes
    */
-  private async logSecretRotation(secretName: string, guardianApproved: boolean): Promise<void> {
+  private async logSecretRotation(
+    secretName: string,
+    guardianApproved: boolean
+  ): Promise<void> {
     try {
-      await this.supabase
-        .from("vault_audit_log")
-        .insert({
-          secret_name: secretName,
-          action: "rotation",
-          guardian_approved: guardianApproved,
-          timestamp: new Date().toISOString(),
-        });
+      await this.supabase.from("vault_audit_log").insert({
+        secret_name: secretName,
+        action: "rotation",
+        guardian_approved: guardianApproved,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       console.warn("Failed to log secret rotation:", error);
     }
@@ -610,10 +641,13 @@ export class VaultConfigManager {
   /**
    * Test credential retrieval and verification
    */
-  async testCredentialRetrieval(secretName: string, expectedValue?: string): Promise<boolean> {
+  async testCredentialRetrieval(
+    secretName: string,
+    expectedValue?: string
+  ): Promise<boolean> {
     try {
       const retrievedValue = await this.getSecret(secretName);
-      
+
       if (!retrievedValue) {
         console.error(`❌ Failed to retrieve secret: ${secretName}`);
         return false;
@@ -624,10 +658,15 @@ export class VaultConfigManager {
         return false;
       }
 
-      console.log(`✅ Successfully retrieved and verified secret: ${secretName}`);
+      console.log(
+        `✅ Successfully retrieved and verified secret: ${secretName}`
+      );
       return true;
     } catch (error) {
-      console.error(`❌ Error testing credential retrieval for ${secretName}:`, error);
+      console.error(
+        `❌ Error testing credential retrieval for ${secretName}:`,
+        error
+      );
       return false;
     }
   }
@@ -639,15 +678,21 @@ export class VaultConfigManager {
     try {
       const originalValue = await this.getSecret(secretName);
       if (!originalValue) {
-        console.error(`❌ Cannot test rotation - secret not found: ${secretName}`);
+        console.error(
+          `❌ Cannot test rotation - secret not found: ${secretName}`
+        );
         return false;
       }
 
       // Generate a test value
       const testValue = `test_rotated_${Date.now()}`;
-      
+
       // Rotate the secret
-      const rotationSuccess = await this.rotateSecret(secretName, testValue, true);
+      const rotationSuccess = await this.rotateSecret(
+        secretName,
+        testValue,
+        true
+      );
       if (!rotationSuccess) {
         console.error(`❌ Secret rotation failed: ${secretName}`);
         return false;
@@ -661,16 +706,25 @@ export class VaultConfigManager {
       }
 
       // Restore original value
-      const restoreSuccess = await this.rotateSecret(secretName, originalValue, true);
+      const restoreSuccess = await this.rotateSecret(
+        secretName,
+        originalValue,
+        true
+      );
       if (!restoreSuccess) {
-        console.error(`❌ Failed to restore original secret value: ${secretName}`);
+        console.error(
+          `❌ Failed to restore original secret value: ${secretName}`
+        );
         return false;
       }
 
       console.log(`✅ Secret rotation test successful: ${secretName}`);
       return true;
     } catch (error) {
-      console.error(`❌ Error testing secret rotation for ${secretName}:`, error);
+      console.error(
+        `❌ Error testing secret rotation for ${secretName}:`,
+        error
+      );
       return false;
     }
   }

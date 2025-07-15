@@ -4,9 +4,9 @@
 
 import { AlertTriangle, ArrowLeft, Shield, User } from 'lucide-react';
 import React, { useState } from 'react';
-import SignInModal from '../SignInModal';
-import { useAuth } from './FamilyFederationAuth';
+import { useInternalFamilyFederationAuth } from '../../lib';
 import { FederationRole } from '../../types/auth';
+import SignInModal from '../SignInModal';
 
 interface DashboardAuthWrapperProps {
   children: React.ReactNode;
@@ -110,7 +110,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, dashboardType }
 
 // Main Dashboard Authentication Wrapper
 export function DashboardAuthWrapper({ children, requiredRole, dashboardType }: DashboardAuthWrapperProps) {
-  const { isAuthenticated, userAuth, isLoading } = useAuth();
+  const { isAuthenticated, userAuth, isLoading } = useInternalFamilyFederationAuth();
   const [showSignIn, setShowSignIn] = useState(!isAuthenticated);
 
   // Loading state

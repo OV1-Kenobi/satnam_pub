@@ -1,8 +1,14 @@
 // Browser-compatible Nostr utilities using proper secp256k1
 // Uses @noble/secp256k1 for cryptographic operations
 
-import { getPublicKey as secp256k1GetPublicKey, getSharedSecret, sign, verify, utils } from '@noble/secp256k1';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from "@noble/hashes/sha256";
+import {
+  getSharedSecret,
+  getPublicKey as secp256k1GetPublicKey,
+  sign,
+  utils,
+  verify,
+} from "@noble/secp256k1";
 
 // Nostr event interface
 export interface Event {
@@ -32,15 +38,15 @@ export const nip19 = {
    */
   npubEncode(pubkey: string): string {
     const bytes = this.hexToBytes(pubkey);
-    return 'npub' + this.base58Encode(bytes);
+    return "npub" + this.base58Encode(bytes);
   },
 
   /**
    * Decode npub to get public key
    */
   npubDecode(npub: string): string {
-    if (!npub.startsWith('npub')) {
-      throw new Error('Invalid npub format');
+    if (!npub.startsWith("npub")) {
+      throw new Error("Invalid npub format");
     }
     const bytes = this.base58Decode(npub.slice(4));
     return this.bytesToHex(bytes);
@@ -51,15 +57,15 @@ export const nip19 = {
    */
   nsecEncode(seckey: string): string {
     const bytes = this.hexToBytes(seckey);
-    return 'nsec' + this.base58Encode(bytes);
+    return "nsec" + this.base58Encode(bytes);
   },
 
   /**
    * Decode nsec to get private key
    */
   nsecDecode(nsec: string): string {
-    if (!nsec.startsWith('nsec')) {
-      throw new Error('Invalid nsec format');
+    if (!nsec.startsWith("nsec")) {
+      throw new Error("Invalid nsec format");
     }
     const bytes = this.base58Decode(nsec.slice(4));
     return this.bytesToHex(bytes);
@@ -69,12 +75,12 @@ export const nip19 = {
    * Decode any NIP-19 string
    */
   decode(str: string): { type: string; data: string } {
-    if (str.startsWith('npub')) {
-      return { type: 'npub', data: this.npubDecode(str) };
-    } else if (str.startsWith('nsec')) {
-      return { type: 'nsec', data: this.nsecDecode(str) };
+    if (str.startsWith("npub")) {
+      return { type: "npub", data: this.npubDecode(str) };
+    } else if (str.startsWith("nsec")) {
+      return { type: "nsec", data: this.nsecDecode(str) };
     } else {
-      throw new Error('Unsupported NIP-19 format');
+      throw new Error("Unsupported NIP-19 format");
     }
   },
 
@@ -94,31 +100,32 @@ export const nip19 = {
    */
   bytesToHex(bytes: Uint8Array): string {
     return Array.from(bytes)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   },
 
   /**
    * Simple base58 encoding
    */
   base58Encode(bytes: Uint8Array): string {
-    const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const alphabet =
+      "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let num = BigInt(0);
     for (let i = 0; i < bytes.length; i++) {
       num = num * BigInt(256) + BigInt(bytes[i]);
     }
-    
-    let str = '';
+
+    let str = "";
     while (num > 0) {
       str = alphabet[Number(num % BigInt(58))] + str;
       num = num / BigInt(58);
     }
-    
+
     // Add leading zeros
     for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
-      str = '1' + str;
+      str = "1" + str;
     }
-    
+
     return str;
   },
 
@@ -126,38 +133,39 @@ export const nip19 = {
    * Simple base58 decoding
    */
   base58Decode(str: string): Uint8Array {
-    const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const alphabet =
+      "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let num = BigInt(0);
     let leadingZeros = 0;
-    
+
     for (let i = 0; i < str.length; i++) {
       const char = str[i];
       const index = alphabet.indexOf(char);
       if (index === -1) {
-        throw new Error('Invalid base58 character');
+        throw new Error("Invalid base58 character");
       }
       num = num * BigInt(58) + BigInt(index);
     }
-    
+
     // Count leading zeros
-    for (let i = 0; i < str.length && str[i] === '1'; i++) {
+    for (let i = 0; i < str.length && str[i] === "1"; i++) {
       leadingZeros++;
     }
-    
+
     // Convert to bytes
     const bytes: number[] = [];
     while (num > 0) {
       bytes.unshift(Number(num % BigInt(256)));
       num = num / BigInt(256);
     }
-    
+
     // Add leading zeros
     for (let i = 0; i < leadingZeros; i++) {
       bytes.unshift(0);
     }
-    
+
     return new Uint8Array(bytes);
-  }
+  },
 };
 
 // NIP-04 encryption utilities
@@ -165,68 +173,94 @@ export const nip04 = {
   /**
    * Encrypt message using NIP-04
    */
-  async encrypt(plaintext: string, recipientPubkey: string, senderPrivkey: string): Promise<string> {
+  async encrypt(
+    plaintext: string,
+    recipientPubkey: string,
+    senderPrivkey: string
+  ): Promise<string> {
     // Generate shared secret using secp256k1 ECDH
-    const sharedSecret = await this.getSharedSecret(senderPrivkey, recipientPubkey);
-    
+    const sharedSecret = await this.getSharedSecret(
+      senderPrivkey,
+      recipientPubkey
+    );
+
     // Generate random IV
     const iv = crypto.getRandomValues(new Uint8Array(16));
-    
+
     // Encrypt with AES-256-CBC
+    const keyBuffer =
+      sharedSecret instanceof Uint8Array
+        ? sharedSecret.slice() // Create a copy to ensure proper ArrayBuffer type
+        : new Uint8Array(await sharedSecret);
+
     const key = await crypto.subtle.importKey(
-      'raw',
-      sharedSecret instanceof Uint8Array ? sharedSecret : new Uint8Array(await sharedSecret),
-      { name: 'AES-CBC' },
+      "raw",
+      keyBuffer,
+      { name: "AES-CBC" },
       false,
-      ['encrypt']
+      ["encrypt"]
     );
-    
+
     const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-CBC', iv },
+      { name: "AES-CBC", iv },
       key,
       new TextEncoder().encode(plaintext)
     );
-    
+
     // Return base64 encoded result
     const encryptedBytes = new Uint8Array(encrypted);
     const combined = new Uint8Array(iv.length + encryptedBytes.length);
     combined.set(iv);
     combined.set(encryptedBytes, iv.length);
-    
-    return btoa(String.fromCharCode(...combined));
+
+    return btoa(String.fromCharCode.apply(null, Array.from(combined)));
   },
 
   /**
    * Decrypt message using NIP-04
    */
-  async decrypt(ciphertext: string, senderPubkey: string, recipientPrivkey: string): Promise<string> {
+  async decrypt(
+    ciphertext: string,
+    senderPubkey: string,
+    recipientPrivkey: string
+  ): Promise<string> {
     // Decode base64
     const combined = new Uint8Array(
-      atob(ciphertext).split('').map(char => char.charCodeAt(0))
+      atob(ciphertext)
+        .split("")
+        .map((char) => char.charCodeAt(0))
     );
-    
+
     // Extract IV and encrypted data
     const iv = combined.slice(0, 16);
     const encrypted = combined.slice(16);
-    
+
     // Generate shared secret using secp256k1 ECDH
-    const sharedSecret = await this.getSharedSecret(recipientPrivkey, senderPubkey);
-    
-    // Decrypt with AES-256-CBC
-    const key = await crypto.subtle.importKey(
-      'raw',
-      sharedSecret instanceof Uint8Array ? sharedSecret : new Uint8Array(await sharedSecret),
-      { name: 'AES-CBC' },
-      false,
-      ['decrypt']
+    const sharedSecret = await this.getSharedSecret(
+      recipientPrivkey,
+      senderPubkey
     );
-    
+
+    // Decrypt with AES-256-CBC
+    const keyBuffer =
+      sharedSecret instanceof Uint8Array
+        ? sharedSecret.slice() // Create a copy to ensure proper ArrayBuffer type
+        : new Uint8Array(await sharedSecret);
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyBuffer,
+      { name: "AES-CBC" },
+      false,
+      ["decrypt"]
+    );
+
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-CBC', iv },
+      { name: "AES-CBC", iv },
       key,
       encrypted
     );
-    
+
     return new TextDecoder().decode(decrypted);
   },
 
@@ -236,13 +270,13 @@ export const nip04 = {
   async getSharedSecret(privkey: string, pubkey: string): Promise<Uint8Array> {
     const privkeyBytes = nip19.hexToBytes(privkey);
     const pubkeyBytes = nip19.hexToBytes(pubkey);
-    
+
     // Use secp256k1 for proper ECDH
     const sharedPoint = getSharedSecret(privkeyBytes, pubkeyBytes);
-    
+
     // Hash the shared point to get the final secret
     return sha256(sharedPoint);
-  }
+  },
 };
 
 // NIP-05 utilities
@@ -252,25 +286,27 @@ export const nip05 = {
    */
   async verifyNip05(identifier: string, pubkey: string): Promise<boolean> {
     try {
-      const [localPart, domain] = identifier.split('@');
+      const [localPart, domain] = identifier.split("@");
       if (!localPart || !domain) {
         return false;
       }
-      
-      const response = await fetch(`https://${domain}/.well-known/nostr.json?name=${localPart}`);
+
+      const response = await fetch(
+        `https://${domain}/.well-known/nostr.json?name=${localPart}`
+      );
       if (!response.ok) {
         return false;
       }
-      
+
       const data = await response.json();
       const names = data.names || {};
-      
+
       return names[localPart] === pubkey;
     } catch (error) {
-      console.error('NIP-05 verification failed:', error);
+      console.error("NIP-05 verification failed:", error);
       return false;
     }
-  }
+  },
 };
 
 // Event utilities
@@ -281,14 +317,14 @@ export const finalizeEvent = {
   async sign(event: UnsignedEvent, privateKey: string): Promise<Event> {
     // Generate event ID
     const eventId = await this.generateEventId(event);
-    
+
     // Sign the event using secp256k1
     const signature = await this.signEvent(eventId, privateKey);
-    
+
     return {
       ...event,
       id: eventId,
-      sig: signature
+      sig: signature,
     };
   },
 
@@ -302,9 +338,9 @@ export const finalizeEvent = {
       event.created_at,
       event.kind,
       event.tags,
-      event.content
+      event.content,
     ]);
-    
+
     const hash = sha256(new TextEncoder().encode(eventString));
     return nip19.bytesToHex(hash);
   },
@@ -315,12 +351,12 @@ export const finalizeEvent = {
   async signEvent(eventId: string, privateKey: string): Promise<string> {
     const privkeyBytes = nip19.hexToBytes(privateKey);
     const messageBytes = new TextEncoder().encode(eventId);
-    
+
     // Sign using secp256k1
     const signature = await sign(sha256(messageBytes), privkeyBytes);
-    
+
     return nip19.bytesToHex(signature);
-  }
+  },
 };
 
 export const verifyEvent = {
@@ -336,24 +372,24 @@ export const verifyEvent = {
         created_at: event.created_at,
         kind: event.kind,
         tags: event.tags,
-        content: event.content
+        content: event.content,
       };
-      
+
       // Generate expected event ID
       const expectedId = await finalizeEvent.generateEventId(unsignedEvent);
-      
+
       // Verify signature using secp256k1
       const messageBytes = new TextEncoder().encode(expectedId);
       const pubkeyBytes = nip19.hexToBytes(event.pubkey);
       const signatureBytes = nip19.hexToBytes(event.sig);
-      
+
       // Verify the signature directly
       return verify(signatureBytes, sha256(messageBytes), pubkeyBytes);
     } catch (error) {
-      console.error('Event verification failed:', error);
+      console.error("Event verification failed:", error);
       return false;
     }
-  }
+  },
 };
 
 // Key generation utilities
@@ -364,7 +400,7 @@ export const generateSecretKey = {
   async generate(): Promise<string> {
     const privateKey = utils.randomPrivateKey();
     return nip19.bytesToHex(privateKey);
-  }
+  },
 };
 
 export const getPublicKey = {
@@ -375,8 +411,8 @@ export const getPublicKey = {
     const privkeyBytes = nip19.hexToBytes(privateKey);
     const publicKey = secp256k1GetPublicKey(privkeyBytes);
     return nip19.bytesToHex(publicKey);
-  }
-}; 
+  },
+};
 
 // SimplePool for managing relay connections
 export class SimplePool {
@@ -397,7 +433,7 @@ export class SimplePool {
 
     try {
       const ws = new WebSocket(relayUrl);
-      
+
       ws.onopen = () => {
         console.log(`Connected to relay: ${relayUrl}`);
       };
@@ -431,12 +467,35 @@ export class SimplePool {
   /**
    * Send an event to all connected relays
    */
-  async publish(event: any): Promise<void> {
-    const eventMessage = JSON.stringify(['EVENT', event]);
-    
-    for (const [relayUrl, ws] of this.relays) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(eventMessage);
+  async publish(event: any): Promise<void>;
+  /**
+   * Send an event to specific relays
+   */
+  async publish(relayUrls: string[], event: any): Promise<void>;
+  async publish(relayUrlsOrEvent: string[] | any, event?: any): Promise<void> {
+    // Handle both overloads
+    if (Array.isArray(relayUrlsOrEvent)) {
+      // Called with specific relay URLs
+      const relayUrls = relayUrlsOrEvent;
+      const eventToPublish = event;
+      const eventMessage = JSON.stringify(["EVENT", eventToPublish]);
+
+      for (const relayUrl of relayUrls) {
+        await this.connect(relayUrl);
+        const ws = this.relays.get(relayUrl);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(eventMessage);
+        }
+      }
+    } else {
+      // Called with just event (original behavior)
+      const eventToPublish = relayUrlsOrEvent;
+      const eventMessage = JSON.stringify(["EVENT", eventToPublish]);
+
+      for (const [relayUrl, ws] of Array.from(this.relays.entries())) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(eventMessage);
+        }
       }
     }
   }
@@ -444,14 +503,17 @@ export class SimplePool {
   /**
    * Subscribe to events from relays
    */
-  async subscribe(filters: any[], onEvent: (event: any) => void): Promise<string> {
+  async subscribe(
+    filters: any[],
+    onEvent: (event: any) => void
+  ): Promise<string> {
     const subscriptionId = Math.random().toString(36).substring(2);
-    
-    for (const [relayUrl, ws] of this.relays) {
+
+    for (const [relayUrl, ws] of Array.from(this.relays.entries())) {
       if (ws.readyState === WebSocket.OPEN) {
-        const message = JSON.stringify(['REQ', subscriptionId, ...filters]);
+        const message = JSON.stringify(["REQ", subscriptionId, ...filters]);
         ws.send(message);
-        
+
         // Store subscription for cleanup
         if (!this.subscriptions.has(relayUrl)) {
           this.subscriptions.set(relayUrl, new Set());
@@ -464,16 +526,75 @@ export class SimplePool {
   }
 
   /**
+   * Subscribe to events from specific relays
+   */
+  subscribeMany(
+    relayUrls: string[],
+    filters: any[],
+    callbacks: {
+      onevent?: (event: any) => void;
+      oneose?: () => void;
+    }
+  ): { close: () => void } {
+    const subscriptionId = Math.random().toString(36).substring(2);
+    const activeConnections = new Set<string>();
+
+    // Connect to each relay and set up subscription
+    for (const relayUrl of relayUrls) {
+      this.connect(relayUrl).then(() => {
+        const ws = this.relays.get(relayUrl);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          activeConnections.add(relayUrl);
+
+          // Set up message handler
+          const handleMessage = (event: MessageEvent) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data[0] === "EVENT" && data[1] === subscriptionId) {
+                callbacks.onevent?.(data[2]);
+              } else if (data[0] === "EOSE" && data[1] === subscriptionId) {
+                callbacks.oneose?.();
+              }
+            } catch (error) {
+              console.error("Error parsing relay message:", error);
+            }
+          };
+
+          ws.addEventListener("message", handleMessage);
+
+          // Send subscription request
+          const message = JSON.stringify(["REQ", subscriptionId, ...filters]);
+          ws.send(message);
+        }
+      });
+    }
+
+    // Return subscription object with close method
+    return {
+      close: () => {
+        for (const relayUrl of Array.from(activeConnections)) {
+          const ws = this.relays.get(relayUrl);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const closeMessage = JSON.stringify(["CLOSE", subscriptionId]);
+            ws.send(closeMessage);
+          }
+        }
+        activeConnections.clear();
+      },
+    };
+  }
+
+  /**
    * Close all connections
    */
   async close(): Promise<void> {
-    for (const [relayUrl, ws] of this.relays) {
+    for (const [relayUrl, ws] of Array.from(this.relays.entries())) {
       ws.close();
     }
     this.relays.clear();
     this.subscriptions.clear();
   }
-} 
+}
 
 // NIP-59 Gift Wrapped Events
 export const nip59 = {
@@ -490,11 +611,15 @@ export const nip59 = {
       kind: 1059, // Gift wrapped event
       pubkey: event.pubkey,
       created_at: event.created_at,
-      content: await nip04.encrypt(event.content, recipientPubkey, senderPrivkey),
+      content: await nip04.encrypt(
+        event.content,
+        recipientPubkey,
+        senderPrivkey
+      ),
       tags: [
-        ['p', recipientPubkey], // Recipient
-        ['wrapped-event', JSON.stringify(event)] // Original event
-      ]
+        ["p", recipientPubkey], // Recipient
+        ["wrapped-event", JSON.stringify(event)], // Original event
+      ],
     };
 
     return JSON.stringify(giftWrappedEvent);
@@ -518,7 +643,7 @@ export const nip59 = {
 
       // Find the wrapped event in tags
       const wrappedEventTag = giftWrappedEvent.tags.find(
-        (tag: string[]) => tag[0] === 'wrapped-event'
+        (tag: string[]) => tag[0] === "wrapped-event"
       );
 
       if (wrappedEventTag) {
@@ -527,9 +652,9 @@ export const nip59 = {
         return originalEvent;
       }
 
-      throw new Error('No wrapped event found in gift wrapped event');
+      throw new Error("No wrapped event found in gift wrapped event");
     } catch (error) {
-      console.error('Failed to decrypt gift wrapped event:', error);
+      console.error("Failed to decrypt gift wrapped event:", error);
       throw error;
     }
   },
@@ -542,13 +667,13 @@ export const nip59 = {
       // Verify the gift wrapped event signature
       const eventToVerify = {
         ...giftWrappedEvent,
-        sig: giftWrappedEvent.sig
+        sig: giftWrappedEvent.sig,
       };
 
       return await verifyEvent.verify(eventToVerify);
     } catch (error) {
-      console.error('Failed to verify gift wrapped event:', error);
+      console.error("Failed to verify gift wrapped event:", error);
       return false;
     }
-  }
-}; 
+  },
+};

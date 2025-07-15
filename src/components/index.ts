@@ -17,7 +17,10 @@ export { default as PrivateCommunicationModal } from "./communications/PrivateCo
 export { PrivacyFirstMessaging } from "./PrivacyFirstMessaging";
 
 // Authentication Components
-export { default as FamilyFederationAuth } from "./auth/FamilyFederationAuth";
+export {
+  FamilyFederationAuthProvider,
+  FamilyFederationAuthWrapper,
+} from "./auth/FamilyFederationAuth";
 export { default as FamilyFederationSignIn } from "./auth/FamilyFederationSignIn";
 export { default as NWCOTPSignIn } from "./auth/NWCOTPSignIn";
 export { default as AuthTestingPanel } from "./AuthTestingPanel";

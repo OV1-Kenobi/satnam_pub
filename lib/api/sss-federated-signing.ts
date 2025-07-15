@@ -4,11 +4,16 @@
  * without ever exposing the private key to individual family members
  */
 
-import { finalizeEvent, getPublicKey, verifyEvent } from "../../src/lib/nostr-browser";
+import {
+  finalizeEvent,
+  getPublicKey,
+  nip19,
+  verifyEvent,
+} from "../../src/lib/nostr-browser";
+import { PrivacyUtils } from "../../src/lib/privacy/encryption";
 import { CitadelRelay } from "../citadel/relay";
-import db from "../db";
 import { FamilyGuardianManager } from "../family/guardian-management";
-import { PrivacyUtils } from "../privacy/encryption";
+import { createSupabaseClient } from "../supabase";
 
 /**
  * SSS-based federated event that requires guardian consensus
@@ -46,6 +51,22 @@ export interface SSSFederatedEvent {
   broadcastTimestamp?: Date;
   expiresAt: Date;
   privacyLevel: 1 | 2 | 3;
+}
+
+/**
+ * Guardian share distribution in family SSS configuration
+ */
+export interface GuardianShareDistribution {
+  guardianId: string;
+  shareIndices: number[];
+}
+
+/**
+ * Family SSS configuration
+ */
+export interface FamilySSSConfiguration {
+  threshold: number;
+  shareDistribution: GuardianShareDistribution[];
 }
 
 /**
@@ -96,6 +117,7 @@ export class SSSFederatedSigningAPI {
     let auditId: string | undefined;
 
     try {
+      const client = await createSupabaseClient();
       const {
         familyId,
         eventType,
@@ -107,7 +129,7 @@ export class SSSFederatedSigningAPI {
 
       // Log privacy operation
       const auditEntry = PrivacyUtils.logPrivacyOperation({
-        action: "create",
+        action: "encrypt",
         dataType: "event",
         userId: authorId,
         familyId,
@@ -127,69 +149,60 @@ export class SSSFederatedSigningAPI {
 
       const familyConfig = familyConfigResult.data!;
       const defaultRequiredApprovals = Math.ceil(
-        familyConfig.shareDistribution.length / 2,
+        familyConfig.shareDistribution.length / 2
       ); // Majority approval
       const finalRequiredApprovals =
         requiredGuardianApprovals || defaultRequiredApprovals;
 
       // Generate secure identifiers
       const eventUuid = PrivacyUtils.generateSecureUUID();
-      const eventId = `sss_event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const eventId = `sss_event_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours for guardian approval
 
       // Encrypt sensitive data for storage - each field gets a unique salt
-      const encryptedFamilyId =
-        await PrivacyUtils.encryptSensitiveData(familyId);
+      const encryptedFamilyId = await PrivacyUtils.encryptSensitiveData(
+        familyId
+      );
       const encryptedContent = await PrivacyUtils.encryptSensitiveData(content);
-      const encryptedAuthorId =
-        await PrivacyUtils.encryptSensitiveData(authorId);
+      const encryptedAuthorId = await PrivacyUtils.encryptSensitiveData(
+        authorId
+      );
 
       // Store the federated event
-      await db.query(
-        `
-        INSERT INTO sss_federated_events (
-          event_uuid, encrypted_family_id, family_salt, family_iv, family_tag,
-          event_type, encrypted_content, content_salt, content_iv, content_tag,
-          encrypted_author_id, author_salt, author_iv, author_tag,
-          required_guardian_approvals, current_guardian_approvals,
-          guardian_approvals, status, expires_at, created_at, privacy_level
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-      `,
-        [
-          eventUuid,
-          encryptedFamilyId.encrypted,
-          encryptedFamilyId.salt,
-          encryptedFamilyId.iv,
-          encryptedFamilyId.tag,
-          eventType,
-          encryptedContent.encrypted,
-          encryptedContent.salt,
-          encryptedContent.iv,
-          encryptedContent.tag,
-          encryptedAuthorId.encrypted,
-          encryptedAuthorId.salt,
-          encryptedAuthorId.iv,
-          encryptedAuthorId.tag,
-          finalRequiredApprovals,
-          0,
-          JSON.stringify([]),
-          "pending_guardians",
-          expiresAt,
-          new Date(),
-          privacyLevel,
-        ],
-      );
+      await client.from("sss_federated_events").insert({
+        event_uuid: eventUuid,
+        encrypted_family_id: encryptedFamilyId.encrypted,
+        family_salt: encryptedFamilyId.salt,
+        family_iv: encryptedFamilyId.iv,
+        family_tag: encryptedFamilyId.tag,
+        event_type: eventType,
+        encrypted_content: encryptedContent.encrypted,
+        content_salt: encryptedContent.salt,
+        content_iv: encryptedContent.iv,
+        content_tag: encryptedContent.tag,
+        encrypted_author_id: encryptedAuthorId.encrypted,
+        author_salt: encryptedAuthorId.salt,
+        author_iv: encryptedAuthorId.iv,
+        author_tag: encryptedAuthorId.tag,
+        required_guardian_approvals: finalRequiredApprovals,
+        current_guardian_approvals: 0,
+        guardian_approvals: JSON.stringify([]),
+        status: "pending_guardians",
+        expires_at: expiresAt,
+        created_at: new Date(),
+        privacy_level: privacyLevel,
+      });
 
       // Send notifications to guardians (in a real implementation)
       await this.notifyGuardians(familyId, eventId, eventType, content);
 
       // Update audit log
-      await db.query(
-        `
-        UPDATE privacy_audit_log SET success = true WHERE id = $1
-      `,
-        [auditId],
-      );
+      await client
+        .from("privacy_audit_log")
+        .update({ success: true })
+        .eq("id", auditId);
 
       const federatedEvent: SSSFederatedEvent = {
         id: eventId,
@@ -219,12 +232,15 @@ export class SSSFederatedSigningAPI {
       // Log error in audit
       if (auditId) {
         try {
-          await db.query(
-            `
-            UPDATE privacy_audit_log SET success = false, error_message = $1 WHERE id = $2
-          `,
-            [error instanceof Error ? error.message : String(error), auditId],
-          );
+          const auditClient = await createSupabaseClient();
+          await auditClient
+            .from("privacy_audit_log")
+            .update({
+              success: false,
+              error_message:
+                error instanceof Error ? error.message : String(error),
+            })
+            .eq("id", auditId);
         } catch (auditError) {
           console.error("Failed to update audit log:", auditError);
         }
@@ -264,14 +280,14 @@ export class SSSFederatedSigningAPI {
       auditId = auditEntry.id;
 
       // Get the event
-      const eventResult = await db.query(
-        `
-        SELECT * FROM sss_federated_events WHERE event_uuid = $1 OR id = $1
-      `,
-        [eventId],
-      );
+      const client = await createSupabaseClient();
+      const eventResult = await client
+        .from("sss_federated_events")
+        .select("*")
+        .or(`event_uuid.eq.${eventId},id.eq.${eventId}`)
+        .limit(1);
 
-      if (eventResult.rows.length === 0) {
+      if (!eventResult.data || eventResult.data.length === 0) {
         return {
           success: false,
           error: "Event not found",
@@ -279,7 +295,7 @@ export class SSSFederatedSigningAPI {
         };
       }
 
-      const eventData = eventResult.rows[0];
+      const eventData = eventResult.data[0];
 
       if (eventData.status !== "pending_guardians") {
         return {
@@ -308,7 +324,7 @@ export class SSSFederatedSigningAPI {
       // Verify guardian is authorized for this family
       const isAuthorized = await this.verifyGuardianAuthorization(
         guardianId,
-        familyId,
+        familyId
       );
       if (!isAuthorized) {
         return {
@@ -320,12 +336,12 @@ export class SSSFederatedSigningAPI {
 
       // Parse existing approvals
       const guardianApprovals = JSON.parse(
-        eventData.guardian_approvals || "[]",
+        eventData.guardian_approvals || "[]"
       );
 
       // Check if guardian has already voted
       const existingApproval = guardianApprovals.find(
-        (a: any) => a.guardianId === guardianId,
+        (a: any) => a.guardianId === guardianId
       );
       if (existingApproval) {
         return {
@@ -343,14 +359,8 @@ export class SSSFederatedSigningAPI {
         reason,
         deviceInfo: deviceInfo
           ? {
-              userAgent: crypto
-                .createHash("sha256")
-                .update(deviceInfo.userAgent)
-                .digest("hex"),
-              ipAddress: crypto
-                .createHash("sha256")
-                .update(deviceInfo.ipAddress)
-                .digest("hex"),
+              userAgent: await this.hashDeviceInfo(deviceInfo.userAgent),
+              ipAddress: await this.hashDeviceInfo(deviceInfo.ipAddress),
             }
           : undefined,
         timestamp: new Date(),
@@ -360,7 +370,7 @@ export class SSSFederatedSigningAPI {
 
       // Count current approvals
       const currentApprovals = guardianApprovals.filter(
-        (a: any) => a.approved,
+        (a: any) => a.approved
       ).length;
       const newStatus =
         currentApprovals >= eventData.required_guardian_approvals
@@ -368,19 +378,15 @@ export class SSSFederatedSigningAPI {
           : "pending_guardians";
 
       // Update event with new approval
-      await db.query(
-        `
-        UPDATE sss_federated_events 
-        SET guardian_approvals = $1, current_guardian_approvals = $2, status = $3, updated_at = NOW()
-        WHERE event_uuid = $4
-      `,
-        [
-          JSON.stringify(guardianApprovals),
-          currentApprovals,
-          newStatus,
-          eventData.event_uuid,
-        ],
-      );
+      await client
+        .from("sss_federated_events")
+        .update({
+          guardian_approvals: JSON.stringify(guardianApprovals),
+          current_guardian_approvals: currentApprovals,
+          status: newStatus,
+          updated_at: new Date(),
+        })
+        .eq("event_uuid", eventData.event_uuid);
 
       // If threshold met, prepare for signing
       let reconstructionRequestId: string | undefined;
@@ -398,24 +404,21 @@ export class SSSFederatedSigningAPI {
           reconstructionRequestId = reconstructionResult.data!.requestId;
 
           // Update event with reconstruction request ID
-          await db.query(
-            `
-            UPDATE sss_federated_events 
-            SET reconstruction_request_id = $1, status = 'signing_ready'
-            WHERE event_uuid = $2
-          `,
-            [reconstructionRequestId, eventData.event_uuid],
-          );
+          await client
+            .from("sss_federated_events")
+            .update({
+              reconstruction_request_id: reconstructionRequestId,
+              status: "signing_ready",
+            })
+            .eq("event_uuid", eventData.event_uuid);
         }
       }
 
       // Update audit log
-      await db.query(
-        `
-        UPDATE privacy_audit_log SET success = true WHERE id = $1
-      `,
-        [auditId],
-      );
+      await client
+        .from("privacy_audit_log")
+        .update({ success: true })
+        .eq("id", auditId);
 
       return {
         success: true,
@@ -436,12 +439,15 @@ export class SSSFederatedSigningAPI {
       // Log error in audit
       if (auditId) {
         try {
-          await db.query(
-            `
-            UPDATE privacy_audit_log SET success = false, error_message = $1 WHERE id = $2
-          `,
-            [error instanceof Error ? error.message : String(error), auditId],
-          );
+          const auditClient = await createSupabaseClient();
+          await auditClient
+            .from("privacy_audit_log")
+            .update({
+              success: false,
+              error_message:
+                error instanceof Error ? error.message : String(error),
+            })
+            .eq("id", auditId);
         } catch (auditError) {
           console.error("Failed to update audit log:", auditError);
         }
@@ -468,18 +474,18 @@ export class SSSFederatedSigningAPI {
       const { eventId, guardianId, deviceInfo } = params;
 
       // Get the event
-      const eventResult = await db.query(
-        `
-        SELECT * FROM sss_federated_events WHERE event_uuid = $1 OR id = $1
-      `,
-        [eventId],
-      );
+      const client = await createSupabaseClient();
+      const eventResult = await client
+        .from("sss_federated_events")
+        .select("*")
+        .or(`event_uuid.eq.${eventId},id.eq.${eventId}`)
+        .limit(1);
 
-      if (eventResult.rows.length === 0) {
+      if (!eventResult.data || eventResult.data.length === 0) {
         return { success: false, error: "Event not found" };
       }
 
-      const eventData = eventResult.rows[0];
+      const eventData = eventResult.data[0];
 
       if (eventData.status !== "signing_ready") {
         return { success: false, error: "Event is not ready for signing" };
@@ -504,7 +510,7 @@ export class SSSFederatedSigningAPI {
       }
 
       const guardianDistribution = familyConfig.data!.shareDistribution.find(
-        (d) => d.guardianId === guardianId,
+        (d) => d.guardianId === guardianId
       );
 
       if (!guardianDistribution) {
@@ -530,7 +536,7 @@ export class SSSFederatedSigningAPI {
       if (shareResult.data!.thresholdMet) {
         const signingResult = await this.signEventWithReconstructedKey(
           eventData.event_uuid,
-          eventData.reconstruction_request_id,
+          eventData.reconstruction_request_id
         );
 
         return {
@@ -565,7 +571,7 @@ export class SSSFederatedSigningAPI {
    */
   private static async signEventWithReconstructedKey(
     eventUuid: string,
-    reconstructionRequestId: string,
+    reconstructionRequestId: string
   ): Promise<any> {
     try {
       // Reconstruct the key for signing
@@ -581,14 +587,14 @@ export class SSSFederatedSigningAPI {
       const nsec = keyResult.data!.nsec;
 
       // Get event data
-      const eventResult = await db.query(
-        `
-        SELECT * FROM sss_federated_events WHERE event_uuid = $1
-      `,
-        [eventUuid],
-      );
+      const client = await createSupabaseClient();
+      const eventResult = await client
+        .from("sss_federated_events")
+        .select("*")
+        .eq("event_uuid", eventUuid)
+        .limit(1);
 
-      const eventData = eventResult.rows[0];
+      const eventData = eventResult.data![0];
 
       // Decrypt event content
       const content = await PrivacyUtils.decryptSensitiveData({
@@ -606,6 +612,7 @@ export class SSSFederatedSigningAPI {
       });
 
       // Create Nostr event
+      const privateKeyHex = nip19.decode(nsec).data as string;
       const nostrEvent = {
         kind: 1,
         content,
@@ -615,44 +622,46 @@ export class SSSFederatedSigningAPI {
           ["event-type", eventData.event_type],
         ],
         created_at: Math.floor(Date.now() / 1000),
-        pubkey: getPublicKey(nip19.decode(nsec).data as Uint8Array),
+        pubkey: await getPublicKey.fromPrivateKey(privateKeyHex),
+        id: "", // Will be generated by finalizeEvent
       };
 
+      // Generate event ID
+      nostrEvent.id = await finalizeEvent.generateEventId(nostrEvent);
+
       // Sign event
-      const privateKeyBytes = nip19.decode(nsec).data as Uint8Array;
-      const signedEvent = finalizeEvent(nostrEvent, privateKeyBytes);
+      const signedEvent = await finalizeEvent.sign(nostrEvent, privateKeyHex);
 
       // Clear key from memory immediately
       PrivacyUtils.secureClearMemory(nsec);
-      privateKeyBytes.fill(0);
+      PrivacyUtils.secureClearMemory(privateKeyHex);
 
       // Verify signature
-      if (!verifyEvent(signedEvent)) {
+      if (!(await verifyEvent.verify(signedEvent))) {
         return { success: false, error: "Invalid event signature" };
       }
 
       // Update event status
-      await db.query(
-        `
-        UPDATE sss_federated_events 
-        SET status = 'signed', signed_event_id = $1, updated_at = NOW()
-        WHERE event_uuid = $2
-      `,
-        [signedEvent.id, eventUuid],
-      );
+      await client
+        .from("sss_federated_events")
+        .update({
+          status: "signed",
+          signed_event_id: signedEvent.id,
+          updated_at: new Date(),
+        })
+        .eq("event_uuid", eventUuid);
 
       // Broadcast to Nostr
-      const broadcastResult = await this.relay.publishEvent(signedEvent);
+      const broadcastResult = await CitadelRelay.publishEvent(signedEvent);
 
       if (broadcastResult.success) {
-        await db.query(
-          `
-          UPDATE sss_federated_events 
-          SET status = 'broadcast', broadcast_timestamp = NOW()
-          WHERE event_uuid = $1
-        `,
-          [eventUuid],
-        );
+        await client
+          .from("sss_federated_events")
+          .update({
+            status: "broadcast",
+            broadcast_timestamp: new Date(),
+          })
+          .eq("event_uuid", eventUuid);
       }
 
       return {
@@ -663,7 +672,9 @@ export class SSSFederatedSigningAPI {
     } catch (error) {
       return {
         success: false,
-        error: `Failed to sign event: ${error instanceof Error ? error.message : "Unknown error"}`,
+        error: `Failed to sign event: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -681,7 +692,7 @@ export class SSSFederatedSigningAPI {
       // Verify guardian authorization
       const isAuthorized = await this.verifyGuardianAuthorization(
         guardianId,
-        familyId,
+        familyId
       );
       if (!isAuthorized) {
         return {
@@ -690,22 +701,22 @@ export class SSSFederatedSigningAPI {
         };
       }
 
-      const encryptedFamilyId =
-        await PrivacyUtils.encryptSensitiveData(familyId);
-
-      const result = await db.query(
-        `
-        SELECT * FROM sss_federated_events 
-        WHERE encrypted_family_id = $1 AND status IN ('pending_guardians', 'signing_ready')
-        AND expires_at > NOW()
-        ORDER BY created_at DESC
-      `,
-        [encryptedFamilyId.encrypted],
+      const encryptedFamilyId = await PrivacyUtils.encryptSensitiveData(
+        familyId
       );
+
+      const client = await createSupabaseClient();
+      const result = await client
+        .from("sss_federated_events")
+        .select("*")
+        .eq("encrypted_family_id", encryptedFamilyId.encrypted)
+        .in("status", ["pending_guardians", "signing_ready"])
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
 
       const pendingEvents = [];
 
-      for (const row of result.rows) {
+      for (const row of result.data || []) {
         try {
           // Decrypt content for display
           const content = await PrivacyUtils.decryptSensitiveData({
@@ -725,7 +736,7 @@ export class SSSFederatedSigningAPI {
           // Check if this guardian has already approved
           const guardianApprovals = JSON.parse(row.guardian_approvals || "[]");
           const hasApproved = guardianApprovals.some(
-            (a: any) => a.guardianId === guardianId,
+            (a: any) => a.guardianId === guardianId
           );
 
           if (!hasApproved || row.status === "signing_ready") {
@@ -769,7 +780,7 @@ export class SSSFederatedSigningAPI {
    */
   private static async getFamilyConfig(familyId: string): Promise<{
     success: boolean;
-    data?: any;
+    data?: FamilySSSConfiguration;
   }> {
     // Implementation would get family SSS configuration
     // This is a simplified version
@@ -788,23 +799,26 @@ export class SSSFederatedSigningAPI {
 
   private static async verifyGuardianAuthorization(
     guardianId: string,
-    familyId: string,
+    familyId: string
   ): Promise<boolean> {
     try {
-      const encryptedGuardianId =
-        await PrivacyUtils.encryptSensitiveData(guardianId);
-      const encryptedFamilyId =
-        await PrivacyUtils.encryptSensitiveData(familyId);
-
-      const result = await db.query(
-        `
-        SELECT id FROM secure_family_guardians 
-        WHERE encrypted_guardian_id = $1 AND encrypted_family_id = $2 AND active = true
-      `,
-        [encryptedGuardianId.encrypted, encryptedFamilyId.encrypted],
+      const encryptedGuardianId = await PrivacyUtils.encryptSensitiveData(
+        guardianId
+      );
+      const encryptedFamilyId = await PrivacyUtils.encryptSensitiveData(
+        familyId
       );
 
-      return result.rows.length > 0;
+      const client = await createSupabaseClient();
+      const result = await client
+        .from("secure_family_guardians")
+        .select("id")
+        .eq("encrypted_guardian_id", encryptedGuardianId.encrypted)
+        .eq("encrypted_family_id", encryptedFamilyId.encrypted)
+        .eq("active", true)
+        .limit(1);
+
+      return !!(result.data && result.data.length > 0);
     } catch (error) {
       console.warn("Failed to verify guardian authorization:", error);
       return false;
@@ -815,13 +829,25 @@ export class SSSFederatedSigningAPI {
     familyId: string,
     eventId: string,
     eventType: string,
-    content: string,
+    content: string
   ): Promise<void> {
     // Implementation would send notifications to guardians
     // This could be via email, Nostr DMs, push notifications, etc.
     console.log(
-      `📢 Notifying guardians for family ${familyId} about new ${eventType} event: ${eventId}`,
+      `📢 Notifying guardians for family ${familyId} about new ${eventType} event: ${eventId}`
     );
+  }
+
+  /**
+   * Hash device information using Web Crypto API
+   */
+  private static async hashDeviceInfo(data: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
 }
 

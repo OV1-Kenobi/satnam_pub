@@ -4,35 +4,35 @@
  */
 
 import {
-    ArrowDownLeft,
-    ArrowUpRight,
-    CheckCircle,
-    Copy,
-    CreditCard,
-    Eye,
-    EyeOff,
-    RefreshCw,
-    Send,
-    Settings,
-    Shield,
-    Wallet,
-    Zap,
-    TestTube
+  ArrowDownLeft,
+  ArrowUpRight,
+  CheckCircle,
+  Copy,
+  CreditCard,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Send,
+  Settings,
+  Shield,
+  TestTube,
+  Wallet,
+  Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { formatSats } from '../../lib/utils';
 import { PrivacyEnhancedApiService } from '../../services/privacyEnhancedApi';
 import { PrivacyLevel } from '../../types/privacy';
-import { SatnamFamilyMember, Transaction } from '../../types/shared';
+import { FamilyMember, Transaction } from '../../types/shared';
+import Argon2SecurityTest from '../Argon2SecurityTest';
 import { PrivacyControls } from '../PrivacyControls';
 import PrivacyDashboardIndicators from './PrivacyDashboardIndicators';
 import PrivacyEnhancedPaymentModal from './PrivacyEnhancedPaymentModal';
 import PrivacyPreferencesModal from './PrivacyPreferencesModal';
-import Argon2SecurityTest from '../Argon2SecurityTest';
 
 interface PrivacyEnhancedIndividualDashboardProps {
   memberId: string;
-  memberData: SatnamFamilyMember;
+  memberData: FamilyMember;
   onBack?: () => void;
 }
 
@@ -73,7 +73,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
   const loadWalletData = async () => {
     try {
       setLoading(true);
-      
+
       // Mock privacy-aware wallet data - in real implementation, this would call the API
       const mockWallet: PrivacyAwareWallet = {
         lightning_balance: 250000,
@@ -89,7 +89,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
 
       setWallet(mockWallet);
       setCurrentPrivacyLevel(mockWallet.default_privacy_level);
-      
+
     } catch (error) {
       console.error('Failed to load wallet data:', error);
     } finally {
@@ -103,33 +103,36 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
       const mockTransactions: Transaction[] = [
         {
           id: 'tx1',
-          type: 'send',
+          type: 'sent',
           amount: 50000,
+          from: memberId,
+          to: 'merchant1',
           status: 'completed',
           timestamp: new Date(Date.now() - 1000 * 60 * 30),
-          description: 'Coffee payment',
-          privacy_level: PrivacyLevel.GIFTWRAPPED,
-          routing_method: 'cashu'
+          memo: 'Coffee payment',
+          privacyRouted: true
         },
         {
           id: 'tx2',
-          type: 'receive',
+          type: 'received',
           amount: 100000,
+          from: 'family_treasury',
+          to: memberId,
           status: 'completed',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-          description: 'Weekly payment',
-          privacy_level: PrivacyLevel.ENCRYPTED,
-          routing_method: 'fedimint'
+          memo: 'Weekly payment',
+          privacyRouted: true
         },
         {
           id: 'tx3',
-          type: 'send',
+          type: 'sent',
           amount: 25000,
+          from: memberId,
+          to: 'merchant2',
           status: 'pending',
           timestamp: new Date(Date.now() - 1000 * 60 * 5),
-          description: 'Lunch payment',
-          privacy_level: PrivacyLevel.GIFTWRAPPED,
-          routing_method: 'lnproxy'
+          memo: 'Lunch payment',
+          privacyRouted: true
         }
       ];
 
@@ -247,11 +250,10 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
             <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white">Total Balance</h3>
-                <div className={`flex items-center space-x-2 text-sm px-3 py-1 rounded-full ${
-                  wallet.privacy_score >= 80 ? 'bg-green-500/20 text-green-400' : 
-                  wallet.privacy_score >= 60 ? 'bg-yellow-500/20 text-yellow-400' : 
-                  'bg-red-500/20 text-red-400'
-                }`}>
+                <div className={`flex items-center space-x-2 text-sm px-3 py-1 rounded-full ${wallet.privacy_score >= 80 ? 'bg-green-500/20 text-green-400' :
+                    wallet.privacy_score >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-red-500/20 text-red-400'
+                  }`}>
                   <Shield className="h-4 w-4" />
                   <span>{wallet.privacy_score}%</span>
                 </div>
@@ -262,7 +264,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
               <div className="text-purple-200 text-sm mb-4">
                 ≈ ${showPrivateBalances ? (wallet.total_balance * 0.00003).toFixed(2) : '•••••'} USD
               </div>
-              
+
               {/* Balance Breakdown */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
@@ -319,7 +321,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                   <span className="text-white text-sm font-medium">Exchange</span>
                 </button>
               </div>
-              
+
               {/* Security Test Section */}
               <div className="mt-6 pt-6 border-t border-white/20">
                 <h4 className="text-md font-semibold text-white mb-3">Security & Privacy</h4>
@@ -344,10 +346,9 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                 userRole={memberData.role}
                 showMetrics={true}
                 privacyMetrics={{
-                  transactionsRouted: wallet.transactions_this_month,
                   privacyScore: wallet.privacy_score,
-                  lnproxyUsage: wallet.privacy_routing_success,
-                  cashuPrivacy: 92
+                  lnproxyUsage: `${wallet.privacy_routing_success}%`,
+                  cashuPrivacy: "92%"
                 }}
               />
             </div>
@@ -382,7 +383,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                     </div>
                     <div className="text-purple-300 text-xs mt-1">35% used today</div>
                   </div>
-                  
+
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-purple-200 text-sm">Weekly Limit</span>
@@ -409,48 +410,44 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                   {wallet.transactions_this_month} this month
                 </div>
               </div>
-              
+
               <div className="space-y-3">
                 {transactions.slice(0, 10).map((tx) => (
                   <div key={tx.id} className="bg-white/5 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          tx.type === 'send' ? 'bg-red-500/20' : 'bg-green-500/20'
-                        }`}>
-                          {tx.type === 'send' ? 
-                            <ArrowUpRight className="h-4 w-4 text-red-400" /> : 
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === 'sent' ? 'bg-red-500/20' : 'bg-green-500/20'
+                          }`}>
+                          {tx.type === 'sent' ?
+                            <ArrowUpRight className="h-4 w-4 text-red-400" /> :
                             <ArrowDownLeft className="h-4 w-4 text-green-400" />
                           }
                         </div>
                         <div>
-                          <div className="text-white font-medium">{tx.description}</div>
+                          <div className="text-white font-medium">{tx.memo || 'No memo'}</div>
                           <div className="flex items-center space-x-2 text-xs">
-                            <span className={getPrivacyLevelColor(tx.privacy_level)}>
-                              {getPrivacyIcon(tx.privacy_level)} {tx.privacy_level}
+                            <span className="text-purple-300">
+                              {tx.privacyRouted ? 'Privacy Routed' : 'Direct'}
                             </span>
-                            <span className="text-purple-300">• {tx.routing_method}</span>
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`font-semibold ${
-                          tx.type === 'send' ? 'text-red-400' : 'text-green-400'
-                        }`}>
-                          {tx.type === 'send' ? '-' : '+'}{formatSats(tx.amount)} sats
+                        <div className={`font-semibold ${tx.type === 'sent' ? 'text-red-400' : 'text-green-400'
+                          }`}>
+                          {tx.type === 'sent' ? '-' : '+'}{formatSats(tx.amount)} sats
                         </div>
                         <div className="text-purple-300 text-xs">
                           {tx.timestamp.toLocaleTimeString()}
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
-                      <div className={`flex items-center space-x-2 text-xs px-2 py-1 rounded-full ${
-                        tx.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                        tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}>
+                      <div className={`flex items-center space-x-2 text-xs px-2 py-1 rounded-full ${tx.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                          tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-red-500/20 text-red-400'
+                        }`}>
                         <CheckCircle className="h-3 w-3" />
                         <span className="capitalize">{tx.status}</span>
                       </div>
@@ -472,7 +469,7 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
         onClose={() => setPaymentModalOpen(false)}
         familyMembers={[memberData]}
         selectedMember={memberId}
-        onSelectedMemberChange={() => {}}
+        onSelectedMemberChange={() => { }}
         onPaymentComplete={(result) => {
           console.log('Payment completed:', result);
           handleRefresh();
@@ -482,9 +479,8 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
       <PrivacyPreferencesModal
         isOpen={preferencesModalOpen}
         onClose={() => setPreferencesModalOpen(false)}
-        userId={memberId}
         userRole={memberData.role}
-        onPreferencesUpdated={(preferences) => {
+        onPreferencesUpdate={(preferences) => {
           console.log('Preferences updated:', preferences);
           setCurrentPrivacyLevel(preferences.default_privacy_level);
           handleRefresh();

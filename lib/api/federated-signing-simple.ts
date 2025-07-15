@@ -111,7 +111,7 @@ export class FederatedSigningAPI {
       }
 
       // Validate no duplicate signers
-      const uniqueSigners = [...new Set(requiredSigners)];
+      const uniqueSigners = Array.from(new Set(requiredSigners));
       if (uniqueSigners.length !== requiredSigners.length) {
         return {
           success: false,
@@ -122,44 +122,37 @@ export class FederatedSigningAPI {
       const defaultSigners = requiredSigners;
 
       // Create event record
-      const eventId = `federated_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const eventId = `federated_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-      const memberSignatures = defaultSigners.reduce(
-        (acc, signerId) => {
-          acc[signerId] = {
-            memberId: signerId,
-            memberPubkey: signerId === authorId ? authorPubkey : "", // Will be filled when signing
-            signed: false,
-          };
-          return acc;
-        },
-        {} as Record<string, MemberSignature>,
-      );
+      const memberSignatures = defaultSigners.reduce((acc, signerId) => {
+        acc[signerId] = {
+          memberId: signerId,
+          memberPubkey: signerId === authorId ? authorPubkey : "", // Will be filled when signing
+          signed: false,
+        };
+        return acc;
+      }, {} as Record<string, MemberSignature>);
 
-      // Store in database
+      // Store in database using proper Supabase client
+      const client = await db.getClient();
       try {
-        await db.query(
-          `INSERT INTO federated_events (
-            id, family_id, event_type, content, author_id, author_pubkey,
-            signatures_required, signatures_received, member_signatures,
-            status, expires_at, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-          [
-            eventId,
-            familyId,
-            eventType,
-            content,
-            authorId,
-            authorPubkey,
-            signaturesRequired,
-            0,
-            JSON.stringify(memberSignatures),
-            "pending",
-            expiresAt.toISOString(),
-            new Date().toISOString(),
-          ],
-        );
+        await client.from("federated_events").insert({
+          id: eventId,
+          family_id: familyId,
+          event_type: eventType,
+          content: content,
+          author_id: authorId,
+          author_pubkey: authorPubkey,
+          signatures_required: signaturesRequired,
+          signatures_received: 0,
+          member_signatures: JSON.stringify(memberSignatures),
+          status: "pending",
+          expires_at: expiresAt.toISOString(),
+          created_at: new Date().toISOString(),
+        });
       } catch (dbError) {
         return {
           success: false,
@@ -169,29 +162,25 @@ export class FederatedSigningAPI {
       }
 
       // Create signing session
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const sessionId = `session_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
 
       try {
-        await db.query(
-          `INSERT INTO federated_signing_sessions (
-            session_id, event_id, family_id, event_type, initiator, initiator_pubkey,
-            required_signers, completed_signers, status, expires_at, created_at, last_activity
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-          [
-            sessionId,
-            eventId,
-            familyId,
-            eventType,
-            authorId,
-            authorPubkey,
-            JSON.stringify(defaultSigners),
-            JSON.stringify([]),
-            "active",
-            expiresAt.toISOString(),
-            new Date().toISOString(),
-            new Date().toISOString(),
-          ],
-        );
+        await client.from("federated_signing_sessions").insert({
+          session_id: sessionId,
+          event_id: eventId,
+          family_id: familyId,
+          event_type: eventType,
+          initiator: authorId,
+          initiator_pubkey: authorPubkey,
+          required_signers: JSON.stringify(defaultSigners),
+          completed_signers: JSON.stringify([]),
+          status: "active",
+          expires_at: expiresAt.toISOString(),
+          created_at: new Date().toISOString(),
+          last_activity: new Date().toISOString(),
+        });
       } catch (sessionError) {
         console.warn("Failed to create signing session:", sessionError);
         // Continue even if session creation fails
@@ -243,16 +232,18 @@ export class FederatedSigningAPI {
         params;
 
       // Get the event
-      const eventResult = await db.query(
-        `SELECT * FROM federated_events WHERE id = $1`,
-        [eventId],
-      );
+      const client = await db.getClient();
+      const eventResult = await client
+        .from("federated_events")
+        .select("*")
+        .eq("id", eventId)
+        .limit(1);
 
-      if (eventResult.rows.length === 0) {
+      if (!eventResult.data || eventResult.data.length === 0) {
         return { success: false, error: "Event not found" };
       }
 
-      const eventData = eventResult.rows[0];
+      const eventData = eventResult.data[0];
       const memberSignatures =
         typeof eventData.member_signatures === "string"
           ? JSON.parse(eventData.member_signatures)
@@ -286,7 +277,7 @@ export class FederatedSigningAPI {
       }
 
       // Create the Nostr event for signing
-      const nostrEvent = {
+      const nostrEventBase = {
         kind: 1,
         content: eventData.content,
         tags: [
@@ -299,25 +290,39 @@ export class FederatedSigningAPI {
         pubkey: memberPubkey,
       };
 
+      // Generate interoperable event ID using your existing UUID/salt system
+      const eventUUID = crypto.randomUUID();
+      const saltedEventData = `${eventUUID}-${memberPubkey}-${eventData.family_id}-${eventData.event_type}`;
+      const eventNostrId = await finalizeEvent.generateEventId({
+        ...nostrEventBase,
+        id: saltedEventData, // Use salted UUID that will be properly hashed
+      });
+
+      const nostrEvent = {
+        ...nostrEventBase,
+        id: eventNostrId,
+      };
+
       // Sign the event
       let privateKeyBytes: Uint8Array;
       try {
         if (memberPrivateKey.startsWith("nsec")) {
           const decoded = nip19.decode(memberPrivateKey);
-          privateKeyBytes = decoded.data as Uint8Array;
+          privateKeyBytes = nip19.hexToBytes(decoded.data);
         } else {
-          privateKeyBytes = new Uint8Array(
-            Buffer.from(memberPrivateKey, "hex"),
-          );
+          privateKeyBytes = nip19.hexToBytes(memberPrivateKey);
         }
       } catch (error) {
         return { success: false, error: "Invalid private key format" };
       }
 
-      const signedEvent = finalizeEvent(nostrEvent, privateKeyBytes);
+      const signedEvent = await finalizeEvent.sign(
+        nostrEvent,
+        nip19.bytesToHex(privateKeyBytes)
+      );
 
       // Verify the signature
-      if (!verifyEvent(signedEvent)) {
+      if (!(await verifyEvent.verify(signedEvent))) {
         return { success: false, error: "Invalid event signature" };
       }
 
@@ -334,9 +339,9 @@ export class FederatedSigningAPI {
         },
       };
 
-      const newSignaturesReceived = Object.values(updatedSignatures).filter(
-        (sig) => sig.signed,
-      ).length;
+      const newSignaturesReceived = (
+        Object.values(updatedSignatures) as MemberSignature[]
+      ).filter((sig: MemberSignature) => sig.signed).length;
       const newStatus =
         newSignaturesReceived >= eventData.signatures_required
           ? "signed"
@@ -344,20 +349,16 @@ export class FederatedSigningAPI {
 
       // Update database
       try {
-        await db.query(
-          `UPDATE federated_events 
-           SET member_signatures = $1, signatures_received = $2, status = $3, 
-               nostr_event_id = $4, updated_at = $5
-           WHERE id = $6`,
-          [
-            JSON.stringify(updatedSignatures),
-            newSignaturesReceived,
-            newStatus,
-            signedEvent.id,
-            new Date().toISOString(),
-            eventId,
-          ],
-        );
+        await client
+          .from("federated_events")
+          .update({
+            member_signatures: JSON.stringify(updatedSignatures),
+            signatures_received: newSignaturesReceived,
+            status: newStatus,
+            nostr_event_id: signedEvent.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", eventId);
       } catch (updateError) {
         return {
           success: false,
@@ -368,29 +369,27 @@ export class FederatedSigningAPI {
 
       // Update signing session
       try {
-        const sessionResult = await db.query(
-          `SELECT completed_signers FROM federated_signing_sessions WHERE event_id = $1`,
-          [eventId],
-        );
+        const sessionResult = await client
+          .from("federated_signing_sessions")
+          .select("completed_signers")
+          .eq("event_id", eventId)
+          .limit(1);
 
-        if (sessionResult.rows.length > 0) {
+        if (sessionResult.data && sessionResult.data.length > 0) {
           const currentCompletedSigners = JSON.parse(
-            sessionResult.rows[0].completed_signers || "[]",
+            sessionResult.data[0].completed_signers || "[]"
           );
           if (!currentCompletedSigners.includes(memberId)) {
             currentCompletedSigners.push(memberId);
 
-            await db.query(
-              `UPDATE federated_signing_sessions 
-               SET completed_signers = $1, status = $2, last_activity = $3
-               WHERE event_id = $4`,
-              [
-                JSON.stringify(currentCompletedSigners),
-                newStatus === "signed" ? "completed" : "active",
-                new Date().toISOString(),
-                eventId,
-              ],
-            );
+            await client
+              .from("federated_signing_sessions")
+              .update({
+                completed_signers: JSON.stringify(currentCompletedSigners),
+                status: newStatus === "signed" ? "completed" : "active",
+                last_activity: new Date().toISOString(),
+              })
+              .eq("event_id", eventId);
           }
         }
       } catch (sessionError) {
@@ -402,12 +401,15 @@ export class FederatedSigningAPI {
       let broadcastResult = null;
       if (newStatus === "signed") {
         try {
-          broadcastResult = await this.relay.publishEvent(signedEvent);
+          broadcastResult = await CitadelRelay.publishEvent(signedEvent);
           if (broadcastResult.success) {
-            await db.query(
-              `UPDATE federated_events SET status = 'broadcast', broadcast_timestamp = $1 WHERE id = $2`,
-              [new Date().toISOString(), eventId],
-            );
+            await client
+              .from("federated_events")
+              .update({
+                status: "broadcast",
+                broadcast_timestamp: new Date().toISOString(),
+              })
+              .eq("id", eventId);
           }
         } catch (broadcastError) {
           console.warn("Failed to broadcast event:", broadcastError);
@@ -444,15 +446,17 @@ export class FederatedSigningAPI {
     try {
       const { familyId, memberId } = params;
 
-      const result = await db.query(
-        `SELECT * FROM federated_events 
-         WHERE family_id = $1 AND status = 'pending' AND expires_at > $2
-         ORDER BY created_at DESC`,
-        [familyId, new Date().toISOString()],
-      );
+      const client = await db.getClient();
+      const result = await client
+        .from("federated_events")
+        .select("*")
+        .eq("family_id", familyId)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
 
       // Filter events where this member needs to sign
-      const memberEvents = result.rows.filter((event) => {
+      const memberEvents = (result.data || []).filter((event) => {
         const signatures =
           typeof event.member_signatures === "string"
             ? JSON.parse(event.member_signatures)
@@ -498,17 +502,19 @@ export class FederatedSigningAPI {
    * Get active signing sessions for a family
    */
   static async getActiveSessions(
-    familyId: string,
+    familyId: string
   ): Promise<FederatedSigningResponse> {
     try {
-      const result = await db.query(
-        `SELECT * FROM federated_signing_sessions 
-         WHERE family_id = $1 AND status = 'active' AND expires_at > $2
-         ORDER BY created_at DESC`,
-        [familyId, new Date().toISOString()],
-      );
+      const client = await db.getClient();
+      const result = await client
+        .from("federated_signing_sessions")
+        .select("*")
+        .eq("family_id", familyId)
+        .eq("status", "active")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
 
-      const sessions = result.rows.map((session) => ({
+      const sessions = (result.data || []).map((session) => ({
         sessionId: session.session_id,
         eventId: session.event_id,
         eventType: session.event_type,

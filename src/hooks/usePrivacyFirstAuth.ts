@@ -60,7 +60,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     user: null,
     session: null,
     authenticated: false,
-    loading: true,
+    loading: false, // Start as false to prevent unnecessary loading
     error: null,
     requiresOnboarding: false,
   });
@@ -70,11 +70,11 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   // Check existing session on mount - FIXED: Only run once
   useEffect(() => {
     let mounted = true;
-    
+
     const checkSession = async () => {
       try {
         if (!mounted) return;
-        
+
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
         const session = await auth.getSession();
@@ -98,7 +98,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
           }
         }
       } catch (error) {
-        console.debug("Privacy session check failed:", error);
+        // ✅ NO LOGGING - Following Master Context privacy-first principles
         if (mounted) {
           setState((prev) => ({
             ...prev,
@@ -113,7 +113,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     // Add timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
       if (mounted) {
-        console.debug("Privacy session check timeout - setting loading to false");
+        // ✅ NO LOGGING - Following Master Context privacy-first principles
         setState((prev) => ({
           ...prev,
           authenticated: false,
@@ -319,7 +319,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   const updatePrivacyLevel = useCallback(
     async (level: "standard" | "enhanced" | "maximum"): Promise<boolean> => {
       // Privacy-first auth always uses maximum privacy - no changes needed
-      console.log("Privacy-first auth: Always maximum privacy level");
+      // ✅ NO LOGGING - Following Master Context privacy-first principles
       return true;
     },
     []
@@ -333,7 +333,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
       await refreshSession();
       return true;
     } catch (error) {
-      console.error("Key rotation failed:", error);
+      // ✅ NO LOGGING - Following Master Context privacy-first principles
       return false;
     }
   }, [state.session, refreshSession]);

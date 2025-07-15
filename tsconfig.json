@@ -2,8 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext", "ES2022"],
-    "types": ["node", "vitest/globals"],
-    "allowJs": true,
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types", "./types"],
+    "allowJs": false,
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "strict": true,
@@ -12,8 +13,8 @@
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
     "module": "esnext",
-    "moduleResolution": "node",
-    
+    "moduleResolution": "bundler",
+
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
@@ -27,8 +28,19 @@
     },
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["**/*.ts", "**/*.tsx", "types/**/*.d.ts"],
-  "exclude": ["node_modules", "**/*.config.js", "**/*.secret.*"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "types/**/*.d.ts",
+    "lib/**/*.ts",
+    "utils/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.config.js",
+    "**/*.secret.*",
+    "api/**/*.js",
+    "**/*.js"
+  ]
 }
-
-

@@ -385,7 +385,7 @@ export class PrivacyFirstAuth {
 
       return null;
     } catch (error) {
-      console.debug("Supabase session check failed:", error);
+      // ✅ NO LOGGING - Following Master Context privacy-first principles
       return null;
     }
   }

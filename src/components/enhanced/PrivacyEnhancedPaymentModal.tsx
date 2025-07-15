@@ -8,12 +8,12 @@ import React, { useEffect, useState } from "react";
 import { formatSats } from "../../lib/utils";
 import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
 import { PrivacyLevel } from "../../types/privacy";
-import { SatnamFamilyMember } from "../../types/shared";
+import { FamilyMember } from "../../types/shared";
 
 interface PrivacyEnhancedPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
   selectedMember: string | null;
   onSelectedMemberChange: (memberId: string) => void;
   onPaymentComplete?: (result: any) => void;
@@ -43,7 +43,7 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
     memo: '',
     privacyLevel: PrivacyLevel.GIFTWRAPPED
   });
-  
+
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [recommendedRoute, setRecommendedRoute] = useState<PaymentRoute | null>(null);
@@ -99,17 +99,17 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
     };
 
     const availableRoutes = routes[privacyLevel];
-    
+
     // For small amounts (<50k sats), prefer Cashu for GIFTWRAPPED
     if (privacyLevel === PrivacyLevel.GIFTWRAPPED && amountSats < 50000) {
       return availableRoutes.find(r => r.method === 'cashu') || availableRoutes[0];
     }
-    
+
     // For larger amounts, prefer LNProxy
     if (amountSats >= 50000) {
       return availableRoutes.find(r => r.method === 'lnproxy') || availableRoutes[0];
     }
-    
+
     return availableRoutes[0];
   };
 
@@ -119,17 +119,17 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
     if (satsAmount > 0) {
       const route = calculateRecommendedRoute(satsAmount, paymentForm.privacyLevel);
       setRecommendedRoute(route);
-      
+
       // Check if guardian approval is required
       setGuardianApprovalRequired(satsAmount > 100000 && paymentForm.privacyLevel === PrivacyLevel.GIFTWRAPPED);
-      
+
       // Validate privacy level
       const validation = apiService.validatePrivacyLevel(paymentForm.privacyLevel, 'payment');
       setPrivacyValidation(validation);
     }
   }, [paymentForm.satsAmount, paymentForm.privacyLevel]);
 
-  const isPaymentFormValid = paymentForm.from && paymentForm.to && 
+  const isPaymentFormValid = paymentForm.from && paymentForm.to &&
     (paymentForm.satsAmount || paymentForm.usdAmount) &&
     (paymentForm.satsAmount ? Number(paymentForm.satsAmount) > 0 : true) &&
     (paymentForm.usdAmount ? Number(paymentForm.usdAmount) > 0 : true) &&
@@ -138,11 +138,11 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
 
   const handleSendPayment = async () => {
     if (!isPaymentFormValid || paymentLoading) return;
-    
+
     setPaymentLoading(true);
     try {
       const amountSats = parseInt(paymentForm.satsAmount) || 0;
-      
+
       // If guardian approval required, create approval request first
       if (guardianApprovalRequired) {
         console.log('Creating guardian approval request...');
@@ -161,11 +161,11 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
       });
 
       console.log('Privacy-enhanced payment result:', paymentResult);
-      
+
       if (onPaymentComplete) {
         onPaymentComplete(paymentResult);
       }
-      
+
       onClose();
     } catch (error) {
       console.error('Privacy-enhanced payment failed:', error);
@@ -304,7 +304,7 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
           {/* Memo */}
           <div>
             <label className="block text-white font-semibold mb-2">Memo (Optional)</label>
-            <input 
+            <input
               type="text"
               placeholder="What's this payment for?"
               value={paymentForm.memo}
@@ -328,14 +328,14 @@ const PrivacyEnhancedPaymentModal: React.FC<PrivacyEnhancedPaymentModalProps> = 
                   {showPrivacyDetails ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              
+
               <div className="space-y-2">
                 <p className="text-purple-200 text-sm">{recommendedRoute.description}</p>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-purple-300">Privacy Score:</span>
                   <div className="flex items-center space-x-2">
                     <div className="w-16 bg-white/20 rounded-full h-2">
-                      <div 
+                      <div
                         className="bg-green-400 h-2 rounded-full transition-all duration-300"
                         style={{ width: `${recommendedRoute.privacyScore}%` }}
                       />

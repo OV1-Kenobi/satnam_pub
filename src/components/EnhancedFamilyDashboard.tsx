@@ -1,37 +1,35 @@
 import {
-    Activity,
-    AlertTriangle,
-    ArrowLeft,
-    BarChart3,
-    CheckCircle,
-    Eye,
-    EyeOff,
-    Globe,
-    RefreshCw,
-    Settings,
-    Shield,
-    TrendingUp,
-    Zap
+  Activity,
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  Globe,
+  RefreshCw,
+  Settings,
+  Shield,
+  TrendingUp,
+  Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
 
 // Import our new dual-protocol components
 import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
-import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
-import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
-import SmartPaymentModal from './SmartPaymentModal.tsx';
-import UnifiedFamilyPayments from './UnifiedFamilyPayments.tsx';
+import FamilyFedimintGovernance from './FamilyFedimintGovernance';
+import FamilyLightningTreasury from './FamilyLightningTreasury';
+import SmartPaymentModal from './SmartPaymentModal';
+import UnifiedFamilyPayments from './UnifiedFamilyPayments';
 
 // Import new privacy-enhanced components
-import PrivacyDashboardIndicators from './enhanced/PrivacyDashboardIndicators.tsx';
-import PrivacyEnhancedPaymentModal from './enhanced/PrivacyEnhancedPaymentModal.tsx';
-import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal.tsx';
+import PrivacyDashboardIndicators from './enhanced/PrivacyDashboardIndicators';
+import PrivacyEnhancedPaymentModal from './enhanced/PrivacyEnhancedPaymentModal';
+import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
 
-// Import enhanced types
-import {
-    DualProtocolFamilyMember,
-    EnhancedFamilyTreasury
-} from '../../types/family';
+// Import consolidated types
+import { EnhancedFamilyTreasury } from '../../types/family';
+import { FamilyMember } from '../types/shared';
 
 interface EnhancedFamilyDashboardProps {
   onBack: () => void;
@@ -50,7 +48,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [satsToDollars] = useState(0.00003); // Mock exchange rate
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Privacy modal states
   const [privacyPaymentModalOpen, setPrivacyPaymentModalOpen] = useState(false);
   const [privacyPreferencesModalOpen, setPrivacyPreferencesModalOpen] = useState(false);
@@ -83,24 +81,23 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
     lastUpdated: new Date(),
   });
 
-  // Enhanced family members with dual-protocol support
-  const [familyMembers] = useState<DualProtocolFamilyMember[]>([
+  // Family members with consolidated interface
+  const [familyMembers] = useState<FamilyMember[]>([
     {
       id: "1",
+      npub: "npub1satoshi...",
       username: "satoshi",
       lightningAddress: "satoshi@satnam.pub",
       role: "adult",
-      spendingLimits: { daily: 100000, weekly: 500000 },
       nip05Verified: true,
       balance: 5000000,
+      spendingLimits: {
+        daily: 100000,
+        weekly: 500000,
+        requiresApproval: 1000000
+      },
       lightningBalance: 3200000,
-      phoenixdChannels: [],
-      zapReceived24h: 150000,
-      zapSent24h: 25000,
       fedimintBalance: 1800000,
-      guardianStatus: 'active',
-      votingPower: 2,
-      pendingApprovals: [],
       totalBalance: 5000000,
       preferredProtocol: 'auto',
       privacySettings: {
@@ -114,20 +111,19 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
     },
     {
       id: "2",
+      npub: "npub1hal...",
       username: "hal",
       lightningAddress: "hal@satnam.pub",
       role: "adult",
-      spendingLimits: { daily: 100000, weekly: 500000 },
       nip05Verified: true,
       balance: 3500000,
+      spendingLimits: {
+        daily: 100000,
+        weekly: 500000,
+        requiresApproval: 1000000
+      },
       lightningBalance: 2100000,
-      phoenixdChannels: [],
-      zapReceived24h: 75000,
-      zapSent24h: 50000,
       fedimintBalance: 1400000,
-      guardianStatus: 'active',
-      votingPower: 2,
-      pendingApprovals: [],
       totalBalance: 3500000,
       preferredProtocol: 'auto',
       privacySettings: {
@@ -141,18 +137,19 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
     },
     {
       id: "3",
+      npub: "npub1alice...",
       username: "alice",
       lightningAddress: "alice@satnam.pub",
-      role: "child",
-      spendingLimits: { daily: 15000, weekly: 75000 },
+      role: "offspring",
       nip05Verified: true,
       balance: 150000,
+      spendingLimits: {
+        daily: 15000,
+        weekly: 75000,
+        requiresApproval: 50000
+      },
       lightningBalance: 90000,
-      phoenixdChannels: [],
-      zapReceived24h: 5000,
-      zapSent24h: 2000,
       fedimintBalance: 60000,
-      pendingApprovals: [],
       totalBalance: 150000,
       preferredProtocol: 'fedimint',
       privacySettings: {
@@ -166,18 +163,19 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
     },
     {
       id: "4",
+      npub: "npub1bob...",
       username: "bob",
       lightningAddress: "bob@satnam.pub",
-      role: "child",
-      spendingLimits: { daily: 10000, weekly: 50000 },
+      role: "offspring",
       nip05Verified: false,
       balance: 75000,
+      spendingLimits: {
+        daily: 10000,
+        weekly: 50000,
+        requiresApproval: 25000
+      },
       lightningBalance: 25000,
-      phoenixdChannels: [],
-      zapReceived24h: 1000,
-      zapSent24h: 500,
       fedimintBalance: 50000,
-      pendingApprovals: [],
       totalBalance: 75000,
       preferredProtocol: 'fedimint',
       privacySettings: {
@@ -203,7 +201,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   const handlePaymentComplete = (paymentResult: any) => {
     console.log('Payment completed:', paymentResult);
     // Refresh treasury data
-    setEnhancedTreasury(prev => ({
+    setEnhancedTreasury((prev: EnhancedFamilyTreasury) => ({
       ...prev,
       lastUpdated: new Date(),
     }));
@@ -245,7 +243,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
           <ArrowLeft className="h-5 w-5" />
           <span>Back to Home</span>
         </button>
-        
+
         <div className="flex items-center space-x-4">
           <h1 className="text-2xl font-bold text-white">{familyName} Family Banking</h1>
           <button
@@ -265,11 +263,10 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
             <button
               key={item.id}
               onClick={() => setCurrentView(item.id as DashboardView)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                currentView === item.id
-                  ? 'bg-orange-600 text-white'
-                  : 'bg-orange-800/50 text-orange-300 hover:bg-orange-700 hover:text-white'
-              }`}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${currentView === item.id
+                ? 'bg-orange-600 text-white'
+                : 'bg-orange-800/50 text-orange-300 hover:bg-orange-700 hover:text-white'
+                }`}
             >
               <Icon className="h-4 w-4" />
               <span>{item.label}</span>
@@ -358,9 +355,8 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-orange-300">PhoenixD Connection</span>
-              <div className={`flex items-center space-x-2 ${
-                enhancedTreasury.phoenixdStatus.connected ? 'text-green-400' : 'text-red-400'
-              }`}>
+              <div className={`flex items-center space-x-2 ${enhancedTreasury.phoenixdStatus.connected ? 'text-green-400' : 'text-red-400'
+                }`}>
                 <CheckCircle className="h-4 w-4" />
                 <span>{enhancedTreasury.phoenixdStatus.connected ? 'Connected' : 'Disconnected'}</span>
               </div>
@@ -371,9 +367,8 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
             </div>
             <div className="flex items-center justify-between">
               <span className="text-orange-300">Auto Liquidity</span>
-              <div className={`flex items-center space-x-2 ${
-                enhancedTreasury.phoenixdStatus.automatedLiquidity ? 'text-green-400' : 'text-yellow-400'
-              }`}>
+              <div className={`flex items-center space-x-2 ${enhancedTreasury.phoenixdStatus.automatedLiquidity ? 'text-green-400' : 'text-yellow-400'
+                }`}>
                 {enhancedTreasury.phoenixdStatus.automatedLiquidity ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                 <span>{enhancedTreasury.phoenixdStatus.automatedLiquidity ? 'Enabled' : 'Disabled'}</span>
               </div>
@@ -431,15 +426,14 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
                   </div>
                   <span className="text-white font-medium">{member.username}</span>
                 </div>
-                <div className={`w-2 h-2 rounded-full ${
-                  member.nip05Verified ? 'bg-green-400' : 'bg-yellow-400'
-                }`} />
+                <div className={`w-2 h-2 rounded-full ${member.nip05Verified ? 'bg-green-400' : 'bg-yellow-400'
+                  }`} />
               </div>
               <div className="text-sm text-orange-300 mb-1">
                 Role: {member.role}
               </div>
               <div className="text-sm text-orange-300 mb-2">
-                Balance: {showPrivateBalances ? formatSats(member.totalBalance) : '•••••'} sats
+                Balance: {showPrivateBalances ? formatSats(member.totalBalance || 0) : '•••••'} sats
               </div>
               <div className="flex space-x-2">
                 <button
@@ -588,13 +582,11 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
                 <span className="text-orange-300">Show Private Balances</span>
                 <button
                   onClick={() => setShowPrivateBalances(!showPrivateBalances)}
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    showPrivateBalances ? 'bg-green-600' : 'bg-gray-600'
-                  }`}
+                  className={`w-12 h-6 rounded-full transition-colors ${showPrivateBalances ? 'bg-green-600' : 'bg-gray-600'
+                    }`}
                 >
-                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                    showPrivateBalances ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
+                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${showPrivateBalances ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
                 </button>
               </div>
               <div className="text-orange-300 text-sm">
@@ -649,11 +641,9 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       <PrivacyPreferencesModal
         isOpen={privacyPreferencesModalOpen}
         onClose={() => setPrivacyPreferencesModalOpen(false)}
-        userId="current_user_id" // In real implementation, get from auth context
-        userRole="adult" // In real implementation, get from user data
-        onPreferencesUpdated={(preferences) => {
+        userRole="adult"
+        onPreferencesUpdate={(preferences) => {
           console.log('Privacy preferences updated:', preferences);
-          // Refresh privacy dashboard
           setShowPrivacyDashboard(false);
           setTimeout(() => setShowPrivacyDashboard(true), 100);
         }}

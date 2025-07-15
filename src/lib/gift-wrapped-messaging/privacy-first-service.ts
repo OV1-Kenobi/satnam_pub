@@ -7,7 +7,8 @@
 
 export interface PrivacyConsentResponse {
   consentGiven: boolean;
-  scope: "direct" | "groups" | "specific-groups";
+  warningAcknowledged: boolean;
+  selectedScope: "direct" | "groups" | "specific-groups" | "none";
   specificGroupIds?: string[];
   nip05?: string;
   timestamp: Date;
@@ -54,6 +55,47 @@ export interface MessagingConfig {
     showForNewContacts: boolean;
     showForGroupMessages: boolean;
   };
+}
+
+export interface IdentityDisclosureStatus {
+  hasNip05: boolean;
+  isDisclosureEnabled: boolean;
+  directMessagesEnabled: boolean;
+  groupMessagesEnabled: boolean;
+  specificGroupsCount: number;
+  lastUpdated?: Date;
+}
+
+export interface PrivacyWarningContent {
+  title: string;
+  message: string;
+  risks: string[];
+  recommendations: string[];
+  severity: "low" | "medium" | "high";
+}
+
+export interface DisclosureWorkflowResult {
+  requiresUserConfirmation: boolean;
+  warningContent?: PrivacyWarningContent;
+  error?: string;
+}
+
+export interface SessionInitializationOptions {
+  relays?: string[];
+  encryptionLevel?: "standard" | "enhanced" | "maximum";
+  enablePrivacyWarnings?: boolean;
+  sessionTimeout?: number;
+}
+
+export interface ContactData {
+  npub: string;
+  nip05?: string;
+  displayName: string;
+  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  trustLevel: "family" | "trusted" | "known" | "unverified";
+  preferredEncryption: "gift-wrap" | "nip04" | "auto";
+  notes?: string;
+  tags: string[];
 }
 
 export const MESSAGING_CONFIG: MessagingConfig = {
@@ -163,21 +205,235 @@ export class PrivacyFirstMessagingService
     }
   }
 
+  async initializeSession(
+    nsecBuffer: ArrayBuffer,
+    options?: SessionInitializationOptions
+  ): Promise<string> {
+    try {
+      // Convert ArrayBuffer to secure format for transmission
+      const nsecArray = new Uint8Array(nsecBuffer);
+
+      const response = await fetch(
+        `${this.apiBaseUrl}/communications/create-session`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            nsecArray: Array.from(nsecArray), // Convert to serializable format
+            options: options || {},
+          }),
+        }
+      );
+
+      // Immediately clear the nsec from memory
+      nsecArray.fill(0);
+
+      const result = await response.json();
+
+      if (response.ok && result.sessionId) {
+        this.sessionId = result.sessionId;
+        this.isConnected = true;
+        return result.sessionId;
+      }
+
+      throw new Error(result.error || "Failed to create session");
+    } catch (error) {
+      console.error("Failed to initialize session:", error);
+      throw error;
+    }
+  }
+
+  async getIdentityDisclosureStatus(): Promise<IdentityDisclosureStatus> {
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/communications/identity-disclosure-status`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.sessionId}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        return {
+          hasNip05: result.hasNip05 || false,
+          isDisclosureEnabled: result.isDisclosureEnabled || false,
+          directMessagesEnabled: result.directMessagesEnabled || false,
+          groupMessagesEnabled: result.groupMessagesEnabled || false,
+          specificGroupsCount: result.specificGroupsCount || 0,
+          lastUpdated: result.lastUpdated
+            ? new Date(result.lastUpdated)
+            : undefined,
+        };
+      }
+
+      throw new Error(
+        result.error || "Failed to get identity disclosure status"
+      );
+    } catch (error) {
+      console.error("Failed to get identity disclosure status:", error);
+      return {
+        hasNip05: false,
+        isDisclosureEnabled: false,
+        directMessagesEnabled: false,
+        groupMessagesEnabled: false,
+        specificGroupsCount: 0,
+      };
+    }
+  }
+
+  async enableNip05DisclosureWorkflow(
+    nip05: string,
+    scope: "direct" | "groups" | "specific-groups",
+    specificGroupIds?: string[]
+  ): Promise<DisclosureWorkflowResult> {
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/communications/enable-nip05-disclosure-workflow`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            nip05,
+            scope,
+            specificGroupIds,
+            sessionId: this.sessionId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        return {
+          requiresUserConfirmation: result.requiresUserConfirmation || false,
+          warningContent: result.warningContent,
+          error: result.error,
+        };
+      }
+
+      return {
+        requiresUserConfirmation: false,
+        error: result.error || "Failed to start disclosure workflow",
+      };
+    } catch (error) {
+      console.error("Failed to start disclosure workflow:", error);
+      return {
+        requiresUserConfirmation: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  async updateIdentityDisclosurePreferences(
+    consent: PrivacyConsentResponse,
+    nip05?: string
+  ): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/communications/update-identity-disclosure-preferences`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            consent,
+            nip05,
+            sessionId: this.sessionId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+      return response.ok && result.success;
+    } catch (error) {
+      console.error("Failed to update identity disclosure preferences:", error);
+      return false;
+    }
+  }
+
+  async disableIdentityDisclosure(): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/communications/disable-identity-disclosure`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId: this.sessionId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+      return response.ok && result.success;
+    } catch (error) {
+      console.error("Failed to disable identity disclosure:", error);
+      return false;
+    }
+  }
+
+  async addContact(contactData: ContactData): Promise<string | null> {
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/communications/add-contact`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contactData,
+            sessionId: this.sessionId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok && result.contactId) {
+        return result.contactId;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Failed to add contact:", error);
+      return null;
+    }
+  }
+
   static async createSession(
-    nsec: string,
-    options?: any
+    nsecBuffer: ArrayBuffer,
+    options?: SessionInitializationOptions
   ): Promise<PrivacyFirstMessagingService | null> {
     try {
+      // Convert ArrayBuffer to secure format for transmission
+      const nsecArray = new Uint8Array(nsecBuffer);
+
       const response = await fetch("/api/communications/create-session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          nsec,
-          options,
+          nsecArray: Array.from(nsecArray),
+          options: options || {},
         }),
       });
+
+      // Immediately clear the nsec from memory
+      nsecArray.fill(0);
 
       const result = await response.json();
 
@@ -195,5 +451,46 @@ export class PrivacyFirstMessagingService
   }
 }
 
-// Export for backwards compatibility with existing code
-export { PrivacyFirstMessagingService as SatnamPrivacyFirstCommunications };
+// Main production class used by components
+export class SatnamPrivacyFirstCommunications extends PrivacyFirstMessagingService {
+  constructor(sessionId?: string) {
+    super(sessionId || "");
+  }
+
+  static async createSession(
+    nsecBuffer: ArrayBuffer,
+    options?: SessionInitializationOptions
+  ): Promise<SatnamPrivacyFirstCommunications | null> {
+    try {
+      // Convert ArrayBuffer to secure format for transmission
+      const nsecArray = new Uint8Array(nsecBuffer);
+
+      const response = await fetch("/api/communications/create-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          nsecArray: Array.from(nsecArray),
+          options: options || {},
+        }),
+      });
+
+      // Immediately clear the nsec from memory
+      nsecArray.fill(0);
+
+      const result = await response.json();
+
+      if (response.ok && result.sessionId) {
+        const service = new SatnamPrivacyFirstCommunications(result.sessionId);
+        service.isConnected = true;
+        return service;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      return null;
+    }
+  }
+}

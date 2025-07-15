@@ -1,28 +1,28 @@
 import {
-    Building,
-    Calendar,
-    Clock,
-    Coins,
-    CreditCard,
-    Edit3,
-    Globe,
-    Zap,
-    Pause,
-    Play,
-    Router,
-    Settings,
-    Shield,
-    Trash2,
-    UserCheck,
-    Users
+  Building,
+  Calendar,
+  Clock,
+  Coins,
+  CreditCard,
+  Edit3,
+  Globe,
+  Pause,
+  Play,
+  Router,
+  Settings,
+  Shield,
+  Trash2,
+  UserCheck,
+  Users,
+  Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
 
 import {
-    PaymentContext,
-    PaymentRouting,
-    PaymentSchedule,
-    RecipientType
+  PaymentContext,
+  PaymentRouting,
+  PaymentSchedule,
+  RecipientType
 } from '../lib/payment-automation';
 
 interface PaymentAutomationCardProps {
@@ -69,7 +69,7 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
 
   const getFrequencyDisplay = (frequency: string, dayOfWeek?: number, dayOfMonth?: number) => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    
+
     switch (frequency) {
       case 'daily':
         return 'Daily';
@@ -121,7 +121,7 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
               {context === 'individual' ? (
                 <UserCheck className={`w-6 h-6 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
               ) : (
-                <Users className={`w-6 h-6 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
+                <Users className={`w-6 h-6 ${context === 'family' ? 'text-orange-600' : 'text-blue-600'}`} />
               )}
             </div>
             <div>
@@ -129,18 +129,17 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
                 {context === 'individual' ? 'Individual' : 'Family'} Payment Automation
               </h3>
               <p className="text-sm text-gray-600">
-                {activeSchedules.length} active schedule{activeSchedules.length !== 1 ? 's' : ''} • 
+                {activeSchedules.length} active schedule{activeSchedules.length !== 1 ? 's' : ''} •
                 ~{Math.floor(totalMonthlyAmount / 1000)}k sats/month
               </p>
             </div>
           </div>
           <button
             onClick={onCreateSchedule}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-white transition-colors ${
-              context === 'individual' 
-                ? 'bg-blue-600 hover:bg-blue-700' 
-                : 'bg-orange-600 hover:bg-orange-700'
-            }`}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-white transition-colors ${context === 'individual'
+              ? 'bg-blue-600 hover:bg-blue-700'
+              : 'bg-orange-600 hover:bg-orange-700'
+              }`}
           >
             <Calendar className="w-4 h-4" />
             <span>New Schedule</span>
@@ -176,9 +175,8 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
       <div className="divide-y divide-gray-100">
         {schedules.length === 0 ? (
           <div className="p-8 text-center">
-            <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${
-              context === 'individual' ? 'bg-blue-100' : 'bg-orange-100'
-            }`}>
+            <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${context === 'individual' ? 'bg-blue-100' : 'bg-orange-100'
+              }`}>
               <Calendar className={`w-8 h-8 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`} />
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Payment Schedules</h3>
@@ -187,19 +185,18 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
             </p>
             <button
               onClick={onCreateSchedule}
-              className={`px-4 py-2 rounded-lg text-white transition-colors ${
-                context === 'individual' 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-orange-600 hover:bg-orange-700'
-              }`}
+              className={`px-4 py-2 rounded-lg text-white transition-colors ${context === 'individual'
+                ? 'bg-blue-600 hover:bg-blue-700'
+                : 'bg-orange-600 hover:bg-orange-700'
+                }`}
             >
               Create Schedule
             </button>
           </div>
         ) : (
           schedules.map((schedule) => {
-            const RoutingIcon = getRoutingIcon(schedule.paymentRouting);
-            const RecipientIcon = getRecipientIcon(schedule.recipientType);
+            const RoutingIcon = getRoutingIcon((schedule.paymentRouting ?? 'external_ln') as PaymentRouting);
+            const RecipientIcon = getRecipientIcon((schedule.recipientType ?? 'ln_address') as RecipientType);
             const isExpanded = expandedSchedule === schedule.id;
 
             return (
@@ -207,27 +204,24 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4 flex-1">
                     {/* Status Indicator */}
-                    <div className={`w-3 h-3 rounded-full ${
-                      schedule.enabled ? 'bg-green-500' : 'bg-gray-300'
-                    }`} />
+                    <div className={`w-3 h-3 rounded-full ${schedule.enabled ? 'bg-green-500' : 'bg-gray-300'
+                      }`} />
 
                     {/* Recipient Info */}
                     <div className="flex items-center space-x-3">
-                      <div className={`p-2 rounded-lg ${
-                        context === 'individual' ? 'bg-blue-50' : 'bg-orange-50'
-                      }`}>
-                        <RecipientIcon className={`w-4 h-4 ${
-                          context === 'individual' ? 'text-blue-600' : 'text-orange-600'
-                        }`} />
+                      <div className={`p-2 rounded-lg ${context === 'individual' ? 'bg-blue-50' : 'bg-orange-50'
+                        }`}>
+                        <RecipientIcon className={`w-4 h-4 ${context === 'individual' ? 'text-blue-600' : 'text-orange-600'
+                          }`} />
                       </div>
                       <div>
                         <div className="font-medium text-gray-900">
                           {schedule.recipientName}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {schedule.recipientAddress.length > 30 
-                            ? `${schedule.recipientAddress.substring(0, 30)}...` 
-                            : schedule.recipientAddress}
+                          {schedule.recipientAddress && schedule.recipientAddress.length > 30
+                            ? `${schedule.recipientAddress.substring(0, 30)}...`
+                            : schedule.recipientAddress || 'No address'}
                         </div>
                       </div>
                     </div>
@@ -246,7 +240,7 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
                     <div className="flex items-center space-x-2">
                       <RoutingIcon className="w-4 h-4 text-gray-500" />
                       <span className="text-sm text-gray-600 capitalize">
-                        {schedule.paymentRouting.replace('_', ' ')}
+                        {(schedule.paymentRouting ?? 'external_ln').replace('_', ' ')}
                       </span>
                     </div>
 
@@ -263,11 +257,10 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => onToggleSchedule(schedule.id, !schedule.enabled)}
-                      className={`p-2 rounded-lg transition-colors ${
-                        schedule.enabled
-                          ? 'text-orange-600 hover:bg-orange-50'
-                          : 'text-green-600 hover:bg-green-50'
-                      }`}
+                      className={`p-2 rounded-lg transition-colors ${schedule.enabled
+                        ? 'text-orange-600 hover:bg-orange-50'
+                        : 'text-green-600 hover:bg-green-50'
+                        }`}
                       title={schedule.enabled ? 'Pause Schedule' : 'Resume Schedule'}
                     >
                       {schedule.enabled ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -311,7 +304,7 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
                         <div>
                           <div className="text-sm font-medium text-gray-700">Payment Purpose</div>
                           <div className="text-sm text-gray-600 capitalize">
-                            {schedule.paymentPurpose.replace('_', ' ')}
+                            {(schedule.paymentPurpose ?? 'general').replace('_', ' ')}
                           </div>
                         </div>
                         {schedule.memo && (
@@ -331,7 +324,7 @@ const PaymentAutomationCard: React.FC<PaymentAutomationCardProps> = ({
                         <div>
                           <div className="text-sm font-medium text-gray-700">Total Distributed</div>
                           <div className="text-sm text-gray-600">
-                            {(schedule.totalDistributed / 1000).toFixed(0)}k sats ({schedule.distributionCount} payments)
+                            {((schedule.totalDistributed || 0) / 1000).toFixed(0)}k sats ({schedule.distributionCount || 0} payments)
                           </div>
                         </div>
                         <div>

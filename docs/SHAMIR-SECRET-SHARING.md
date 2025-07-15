@@ -1,8 +1,10 @@
-# Shamir Secret Sharing for Family Nostr Key Management
+# Hybrid SSS/FROST for Family Nostr Key Management
 
 ## Overview
 
-Our Shamir Secret Sharing (SSS) implementation solves Nostr's key rotation problem by ensuring that **no individual family member ever has access to the complete private key**. Instead, the family's Nostr private key is mathematically split into shares using cryptographically secure methods, and requires consensus from multiple guardians to reconstruct for signing operations.
+Our **Hybrid Shamir Secret Sharing (SSS) / FROST (Flexible Round-Optimized Schnorr Threshold)** implementation with **Zero-Knowledge Nsec** handling solves Nostr's key rotation problem by ensuring that **no individual family member ever has access to the complete private key**. Instead, the family's Nostr private key is mathematically split into shares using cryptographically secure methods, and requires consensus from multiple guardians to reconstruct for signing operations.
+
+> **🆕 NEW:** We now support both traditional SSS and advanced FROST threshold cryptography with zero-knowledge security. See [FROST Zero-Knowledge Nsec Documentation](./cryptography/FROST-ZERO-KNOWLEDGE-NSEC.md) for the advanced implementation.
 
 ## 🔐 Core Principles
 
@@ -12,6 +14,28 @@ Our Shamir Secret Sharing (SSS) implementation solves Nostr's key rotation probl
 - **Threshold-based reconstruction**: Requires consensus from multiple guardians (e.g., 3 of 5)
 - **Temporary reconstruction**: Keys are reconstructed only for specific signing operations, then immediately cleared from memory
 - **Guardian consensus**: All family events require approval from multiple guardians before signing
+
+### 🆕 Hybrid SSS/FROST Architecture
+
+Our system now supports two complementary approaches:
+
+#### **Traditional SSS (Server-Assisted)**
+
+- Server-side key reconstruction
+- Database-stored encrypted shares
+- Standard threshold schemes
+- Good for basic family setups
+
+#### **FROST Zero-Knowledge (Client-Side)**
+
+- Browser-only cryptographic operations
+- Zero-knowledge nsec handling
+- Advanced threshold signatures
+- Enterprise-grade security
+- Ephemeral key generation
+- Cryptographic memory wiping
+
+> **Recommendation**: Use FROST Zero-Knowledge for new federations. Traditional SSS remains supported for existing configurations.
 
 ### Flexible Family Configurations
 

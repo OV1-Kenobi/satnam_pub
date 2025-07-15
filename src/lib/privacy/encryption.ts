@@ -26,7 +26,9 @@ export function generateSecureUUID(): string {
  * Generate a secure salt using Web Crypto API
  */
 export function generateSalt(): Uint8Array {
-  return crypto.getRandomValues(new Uint8Array(ENCRYPTION_CONFIG.saltLength));
+  const salt = new Uint8Array(ENCRYPTION_CONFIG.saltLength);
+  crypto.getRandomValues(salt);
+  return salt;
 }
 
 /**
@@ -44,7 +46,10 @@ export function generateUniqueSalts(count: number): Uint8Array[] {
  * Derive encryption key from master key and salt using PBKDF2
  * Browser-compatible key derivation
  */
-async function deriveKey(masterKey: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKey(
+  masterKey: string,
+  salt: Uint8Array
+): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -54,10 +59,14 @@ async function deriveKey(masterKey: string, salt: Uint8Array): Promise<CryptoKey
     ["deriveKey"]
   );
 
+  // Ensure salt has proper ArrayBuffer type
+  const saltBuffer = new Uint8Array(salt.length);
+  saltBuffer.set(salt);
+
   return await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: salt,
+      salt: saltBuffer,
       iterations: ENCRYPTION_CONFIG.iterations,
       hash: "SHA-256",
     },
@@ -81,8 +90,9 @@ export async function encryptSensitiveData(plaintext: string): Promise<{
   try {
     // CRITICAL: Always generate a unique salt for each encryption operation
     const salt = generateSalt();
-    const iv = crypto.getRandomValues(new Uint8Array(ENCRYPTION_CONFIG.ivLength));
-    
+    const iv = new Uint8Array(ENCRYPTION_CONFIG.ivLength);
+    crypto.getRandomValues(iv);
+
     // For browser compatibility, we'll use a simple key derivation
     // In production, this should be handled server-side
     const masterKey = "browser-dev-key-change-in-production";
@@ -102,9 +112,11 @@ export async function encryptSensitiveData(plaintext: string): Promise<{
     );
 
     return {
-      encrypted: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
-      salt: btoa(String.fromCharCode(...salt)),
-      iv: btoa(String.fromCharCode(...iv)),
+      encrypted: btoa(
+        String.fromCharCode.apply(null, Array.from(new Uint8Array(encrypted)))
+      ),
+      salt: btoa(String.fromCharCode.apply(null, Array.from(salt))),
+      iv: btoa(String.fromCharCode.apply(null, Array.from(iv))),
       tag: "", // GCM includes auth tag in encrypted data
     };
   } catch (error) {
@@ -126,10 +138,22 @@ export async function decryptSensitiveData(encryptedData: {
   tag: string;
 }): Promise<string> {
   try {
-    const salt = new Uint8Array(atob(encryptedData.salt).split('').map(c => c.charCodeAt(0)));
-    const iv = new Uint8Array(atob(encryptedData.iv).split('').map(c => c.charCodeAt(0)));
-    const encrypted = new Uint8Array(atob(encryptedData.encrypted).split('').map(c => c.charCodeAt(0)));
-    
+    const salt = new Uint8Array(
+      atob(encryptedData.salt)
+        .split("")
+        .map((c) => c.charCodeAt(0))
+    );
+    const iv = new Uint8Array(
+      atob(encryptedData.iv)
+        .split("")
+        .map((c) => c.charCodeAt(0))
+    );
+    const encrypted = new Uint8Array(
+      atob(encryptedData.encrypted)
+        .split("")
+        .map((c) => c.charCodeAt(0))
+    );
+
     const masterKey = "browser-dev-key-change-in-production";
     const key = await deriveKey(masterKey, salt);
 
@@ -169,7 +193,7 @@ export async function hashUsername(username: string): Promise<{
 
     const encoder = new TextEncoder();
     const data = encoder.encode(username.toLowerCase().trim());
-    
+
     // Use PBKDF2 for username hashing
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
@@ -179,10 +203,14 @@ export async function hashUsername(username: string): Promise<{
       ["deriveBits"]
     );
 
+    // Ensure salt has proper ArrayBuffer type
+    const saltBuffer = new Uint8Array(salt.length);
+    saltBuffer.set(salt);
+
     const hash = await crypto.subtle.deriveBits(
       {
         name: "PBKDF2",
-        salt: salt,
+        salt: saltBuffer,
         iterations: ENCRYPTION_CONFIG.iterations,
         hash: "SHA-512",
       },
@@ -191,8 +219,10 @@ export async function hashUsername(username: string): Promise<{
     );
 
     return {
-      hash: btoa(String.fromCharCode(...new Uint8Array(hash))),
-      salt: btoa(String.fromCharCode(...salt)),
+      hash: btoa(
+        String.fromCharCode.apply(null, Array.from(new Uint8Array(hash)))
+      ),
+      salt: btoa(String.fromCharCode.apply(null, Array.from(salt))),
       uuid,
     };
   } catch (error) {
@@ -213,8 +243,44 @@ export async function verifyUsername(
   storedSalt: string
 ): Promise<boolean> {
   try {
-    const { hash } = await hashUsername(username);
-    return hash === storedHash;
+    const salt = new Uint8Array(
+      atob(storedSalt)
+        .split("")
+        .map((c) => c.charCodeAt(0))
+    );
+
+    const encoder = new TextEncoder();
+    const data = encoder.encode(username.toLowerCase().trim());
+
+    // Use PBKDF2 for username hashing with stored salt
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      data,
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+
+    // Ensure salt has proper ArrayBuffer type
+    const saltBuffer = new Uint8Array(salt.length);
+    saltBuffer.set(salt);
+
+    const hash = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: saltBuffer,
+        iterations: ENCRYPTION_CONFIG.iterations,
+        hash: "SHA-512",
+      },
+      keyMaterial,
+      512
+    );
+
+    const computedHash = btoa(
+      String.fromCharCode.apply(null, Array.from(new Uint8Array(hash)))
+    );
+
+    return computedHash === storedHash;
   } catch (error) {
     console.error("Username verification failed:", error);
     return false;
@@ -302,13 +368,16 @@ export function generateSecureFamilyId(familyName?: string): {
   hash: string;
 } {
   const familyUuid = generateSecureUUID();
-  const familyId = familyName 
-    ? `${familyName.toLowerCase().replace(/[^a-z0-9]/g, '')}-${familyUuid.slice(0, 8)}`
+  const familyId = familyName
+    ? `${familyName.toLowerCase().replace(/[^a-z0-9]/g, "")}-${familyUuid.slice(
+        0,
+        8
+      )}`
     : `family-${familyUuid.slice(0, 8)}`;
-  
+
   // Simple hash for browser compatibility
   const hash = btoa(familyId).slice(0, 16);
-  
+
   return {
     familyId,
     familyUuid,
@@ -355,7 +424,7 @@ export function logPrivacyOperation(
 
   // In browser, we can only log to console
   console.log("Privacy Audit:", auditEntry);
-  
+
   return auditEntry;
 }
 
@@ -490,4 +559,4 @@ export const PrivacyUtils = {
   logPrivacyOperation,
   validateDataIntegrity,
   secureClearMemory,
-}; 
+};

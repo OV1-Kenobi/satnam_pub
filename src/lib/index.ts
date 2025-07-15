@@ -8,6 +8,12 @@ export * from "./auth/auth-adapter";
 // Remove export * from './auth/privacy-first-auth' to avoid AuthResult duplicate
 // export * from "./auth/privacy-first-auth";
 
+// Contexts
+export * from "./contexts";
+
+// Hooks
+export * from "./hooks";
+
 export * from "./gift-wrapped-messaging/privacy-first-service";
 // Remove export * from './giftwrapped-communication-service' to avoid GiftwrappedMessageConfig duplicate
 // export * from "./giftwrapped-communication-service";
@@ -29,7 +35,7 @@ export * from "./phoenixd-client";
 
 // Fedimint
 export * from "./fedimint-client";
-export * from "./fedimint/family-nostr-federation.js";
+export * from "./fedimint/family-nostr-federation";
 
 // Utilities
 export * from "./utils";

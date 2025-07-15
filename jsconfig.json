@@ -13,15 +13,6 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": [
-    "src/**/*",
-    "api/**/*",
-    "config/**/*",
-    "services/**/*",
-    "types/**/*",
-    "utils/**/*",
-    "middleware/**/*",
-    "lib/**/*"
-  ],
+  "include": ["api/**/*.js"],
   "exclude": ["node_modules", "dist"]
 }

@@ -9,7 +9,8 @@
  */
 
 import { createAuthHash, createHashedUserId, createPlatformId, generateToken } from '../../lib/auth.js';
-import db from '../../lib/db.js';
+import { db } from '../../lib/db.js';
+import { ApiErrorHandler } from '../../lib/error-handler.js';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -33,46 +34,66 @@ export default async function handler(req, res) {
 
     // PRIVACY: pubkey is used only for auth hash generation, never stored
     if (!username || !pubkey) {
-      return res.status(400).json({ 
-        error: 'Username and pubkey required for privacy-first authentication' 
-      });
+      return ApiErrorHandler.handleError(
+        new Error('Username and pubkey required for privacy-first authentication'),
+        res,
+        'validate login request',
+        400
+      );
     }
 
     // Create privacy-safe identifiers
-    const authHash = createAuthHash(pubkey);
-    const hashedUserId = createHashedUserId(username + pubkey);
+    const authHash = await createAuthHash(pubkey);
+    const hashedUserId = await createHashedUserId(username + pubkey);
     const platformId = createPlatformId(pubkey);
 
     // Check if user exists by auth hash (NOT by pubkey)
-    let user = await db.query(
-      'SELECT * FROM profiles WHERE auth_hash = $1',
-      [authHash.split(':')[1]] // Use only the hash part for lookup
-    );
+    const client = await db.getClient();
+    const { data: userData, error: userError } = await client
+      .from('profiles')
+      .select('*')
+      .eq('auth_hash', authHash.split(':')[1]); // Use only the hash part for lookup
 
-    if (user.rows.length === 0) {
+    let user;
+    if (!userData || userData.length === 0) {
       // Create new privacy-first user
-      const newUser = await db.query(
-        `INSERT INTO profiles (id, username, auth_hash, hashed_user_id, platform_id)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, username, created_at`,
-        [platformId, username, authHash, hashedUserId, platformId]
-      );
+      const { data: newUserData, error: createError } = await client
+        .from('profiles')
+        .insert([{
+          id: platformId,
+          username: username,
+          auth_hash: authHash,
+          hashed_user_id: hashedUserId,
+          platform_id: platformId
+        }])
+        .select('id, username, created_at')
+        .single();
 
-      user = newUser;
+      if (createError) {
+        return ApiErrorHandler.handleApiError(
+          createError,
+          res,
+          'create new user',
+          undefined,
+          hashedUserId
+        );
+      }
+
+      user = newUserData;
 
       // Award welcome course credits
       await db.models.courseCredits.awardCredits(hashedUserId, 1);
 
       console.log(`✅ New privacy-first user registered: ${username}`);
     } else {
-      user = user;
+      user = userData[0];
       console.log(`✅ Existing user authenticated: ${username}`);
     }
 
     // Generate privacy-first JWT token (NO sensitive data)
-    const token = generateToken({
-      userId: user.rows[0].id,
-      username: user.rows[0].username,
+    const token = await generateToken({
+      userId: user.id,
+      username: user.username,
       hashedUserId: hashedUserId,
       role: 'user'
     });
@@ -82,18 +103,19 @@ export default async function handler(req, res) {
       success: true,
       token: token,
       user: {
-        id: user.rows[0].id,
-        username: user.rows[0].username,
+        id: user.id,
+        username: user.username,
         // NO npub, pubkey, or sensitive data exposed
       }
     });
 
   } catch (error) {
-    console.error('Privacy-First Login API error:', error);
-    res.status(500).json({ 
-      error: 'Authentication failed',
-      // NO error details exposed in production for security
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Contact support'
-    });
+    ApiErrorHandler.handleApiError(
+      error,
+      res,
+      'authenticate user',
+      undefined,
+      undefined
+    );
   }
 }

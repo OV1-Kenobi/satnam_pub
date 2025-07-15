@@ -9,7 +9,8 @@
  */
 
 import QRCode from 'qrcode';
-import db from '../../lib/db.js';
+import { config } from '../../lib/config-manager.js';
+import db from '../../lib/db';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -36,9 +37,9 @@ export default async function handler(req, res) {
     }
 
     // Validate that the invitation token exists and is valid
-    const invitation = await db.models.educationalInvitations.getByToken(token);
+    const { data: invitation, error: invitationError } = await db.models.educationalInvitations.getByToken(token);
     
-    if (!invitation) {
+    if (invitationError || !invitation) {
       return res.status(404).json({ error: 'Invalid invitation token' });
     }
 
@@ -50,8 +51,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invitation has expired' });
     }
 
-    // Generate the invitation URL
-    const invitationUrl = `https://satnam.pub?invite=${token}`;
+    // Generate the invitation URL (Master Context compliant)
+    const baseUrl = await config.getAppBaseUrl();
+    const invitationUrl = `${baseUrl}?invite=${token}`;
     
     // Generate QR code as PNG data URL
     const qrCodeDataUrl = await QRCode.toDataURL(invitationUrl, {

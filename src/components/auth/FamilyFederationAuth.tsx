@@ -1,29 +1,18 @@
 import { AlertTriangle, Shield } from "lucide-react";
-import React, { createContext, useContext } from "react";
+import React from "react";
 import { usePrivacyFirstAuth } from "../../hooks/usePrivacyFirstAuth";
+import { FamilyFederationAuthContext, useInternalFamilyFederationAuth } from "../../lib";
 import { AuthContextType, FamilyFederationUser, FederationRole } from "../../types/auth";
-
-// Create authentication context
-export const AuthContext = createContext<AuthContextType | null>(null);
-
-// Internal hook for components in this file
-const useAuthContext = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within FamilyFederationAuthProvider");
-  }
-  return context;
-};
 
 interface FamilyFederationAuthProviderProps {
   children: React.ReactNode;
 }
 
-export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> = ({ 
-  children 
+const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> = ({
+  children
 }) => {
   const privacyAuth = usePrivacyFirstAuth();
-  
+
   // Convert privacy-first auth to legacy format for backward compatibility
   const isAuthenticated = privacyAuth.authenticated;
   const isLoading = privacyAuth.loading;
@@ -31,12 +20,11 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
   const userAuth = privacyAuth.getLegacyUser(); // Converts to FamilyFederationUser format
 
   // Session management is now handled by privacy-first auth
-  console.log('FamilyFederationAuth: Using privacy-first authentication system');
-  console.log('Authentication state:', { isAuthenticated, isLoading, hasUser: !!userAuth });
+  // ✅ NO LOGGING - Following Master Context privacy-first principles
 
   const login = (authData: FamilyFederationUser) => {
     // Legacy compatibility - now handled by privacy-first auth
-    console.log('Legacy login called, redirecting to privacy-first auth:', authData);
+    // ✅ NO LOGGING - Following Master Context privacy-first principles
   };
 
   const logout = async () => {
@@ -60,14 +48,12 @@ export const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProvider
 
   // Don't show loading screen for the entire app - let components handle their own loading states
   // This prevents blocking modals and other UI components
-  if (isLoading) {
-    console.log('FamilyFederationAuth: Still loading, but not blocking UI');
-  }
+  // ✅ NO LOGGING - Following Master Context privacy-first principles
 
   return (
-    <AuthContext.Provider value={contextValue}>
+    <FamilyFederationAuthContext.Provider value={contextValue}>
       {children}
-    </AuthContext.Provider>
+    </FamilyFederationAuthContext.Provider>
   );
 };
 
@@ -78,16 +64,21 @@ interface FamilyFederationAuthWrapperProps {
   fallback?: React.ReactNode;
 }
 
-export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperProps> = ({
+const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperProps> = ({
   children,
   requireAuth = true,
   allowedRoles = ['adult', 'offspring', 'steward', 'guardian'],
   fallback,
 }) => {
-  const { isAuthenticated, userAuth, isLoading } = useAuthContext();
+  const { isAuthenticated, userAuth, isLoading } = useInternalFamilyFederationAuth();
 
-  // Only show loading screen for protected routes that require authentication
-  if (isLoading && requireAuth) {
+  // If authentication is not required, render children immediately without checks
+  if (!requireAuth) {
+    return <>{children}</>;
+  }
+
+  // Show loading screen only when authentication is required and currently loading
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center">
         <div className="bg-purple-900 rounded-2xl p-8 border border-yellow-400/20">
@@ -103,16 +94,13 @@ export const FamilyFederationAuthWrapper: React.FC<FamilyFederationAuthWrapperPr
     );
   }
 
-  // For non-protected routes or when not loading, render children immediately
-  if (!requireAuth || !isLoading) {
-    return <>{children}</>;
-  }
-
-  if (requireAuth && !isAuthenticated) {
+  // Check authentication
+  if (!isAuthenticated) {
     return fallback || <AuthenticationRequired />;
   }
 
-  if (isAuthenticated && userAuth && !allowedRoles.includes(userAuth.federationRole)) {
+  // Check role permissions
+  if (userAuth && !allowedRoles.includes(userAuth.federationRole)) {
     return <AccessDenied userRole={userAuth.federationRole} allowedRoles={allowedRoles} />;
   }
 
@@ -158,7 +146,7 @@ interface AccessDeniedProps {
 }
 
 const AccessDenied: React.FC<AccessDeniedProps> = ({ userRole, allowedRoles }) => {
-  const { logout } = useAuthContext();
+  const { logout } = useInternalFamilyFederationAuth();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
@@ -192,13 +180,11 @@ const AccessDenied: React.FC<AccessDeniedProps> = ({ userRole, allowedRoles }) =
   );
 };
 
-// Export useAuth hook for external components (required for Fast Refresh)
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within FamilyFederationAuthProvider");
-  }
-  return context;
+// ✅ Master Context Compliance: Only export React components from .tsx files
+export {
+  FamilyFederationAuthProvider,
+  FamilyFederationAuthWrapper
 };
 
+// Default export for Fast Refresh compatibility
 export default FamilyFederationAuthWrapper;

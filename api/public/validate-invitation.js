@@ -5,7 +5,7 @@
  * Returns invitation details and validity status for course credits
  */
 
-import db from '../../lib/db.js';
+import db from '../../lib/db';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -35,9 +35,9 @@ export default async function handler(req, res) {
     }
 
     // Get invitation from database
-    const invitation = await db.models.educationalInvitations.getByToken(inviteToken);
+    const { data: invitation, error: invitationError } = await db.models.educationalInvitations.getByToken(inviteToken);
 
-    if (!invitation) {
+    if (invitationError || !invitation) {
       return res.status(200).json({
         isValid: false,
         error: 'Invalid or unknown invitation token.'

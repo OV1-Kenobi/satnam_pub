@@ -1,37 +1,26 @@
-// Enhanced Individual Finances Dashboard with Lightning + Cashu
-// File: src/components/IndividualFinancesDashboard.tsx
+/**
+ * Enhanced Individual Finances Dashboard with Privacy Controls
+ * Consolidated dashboard combining lightning, cashu, and privacy features
+ */
 import {
   Activity,
-  AlertTriangle,
   ArrowDownLeft,
-  ArrowLeft,
-  ArrowRight,
   ArrowUpRight,
-  BarChart3,
   Brain,
   CheckCircle,
   Copy,
   CreditCard,
-  DollarSign,
-  Download,
   Eye,
   EyeOff,
-  ExternalLink,
   Gift,
   Globe,
-  History,
-  Info,
-  Lock,
   QrCode,
   RefreshCw,
   Send,
   Shield,
   Split,
-  TrendingUp,
-  Upload,
   Wallet,
-  Zap,
-  X,
+  Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -47,30 +36,41 @@ import { IndividualApiService, handleApiError } from '../services/individualApi'
 import { CrossMintSettings, MultiNutPayment, NutSwapTransaction, SatnamCrossMintCashuManager } from '../lib/cross-mint-cashu-manager';
 
 // Import Payment Cascade Modal
-import PaymentCascadeModal from './PaymentCascadeModal';
 import { PaymentCascadeNode } from '../lib/payment-automation';
+import PaymentCascadeModal from './PaymentCascadeModal';
 
 // Import Emergency Recovery Modal
-import EmergencyRecoveryModal from './EmergencyRecoveryModal';
 import { useAuth } from '../hooks/useAuth';
 import { FederationRole } from '../types/auth';
+import EmergencyRecoveryModal from './EmergencyRecoveryModal';
 
 // Import our enhanced dual-protocol components
 import EducationalDashboard from './education/EducationalDashboard';
-import SimplePaymentModal from './SimplePaymentModal';
 import IndividualPaymentAutomationModal from './IndividualPaymentAutomationModal';
+import SimplePaymentModal from './SimplePaymentModal';
+
+// Import Privacy Components
+import { PrivacyLevel } from '../types/privacy';
+import Argon2SecurityTest from './Argon2SecurityTest';
+import PrivacyEnhancedPaymentModal from './enhanced/PrivacyEnhancedPaymentModal';
+import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
+
+// Import API service
+
+// Utils
 
 // Define Transaction type locally
 interface Transaction {
   id: string;
   type: 'sent' | 'received' | 'payment' | 'receive' | 'zap' | 'mint' | 'melt';
   amount: number;
+  from: string;
+  to: string;
   fee?: number;
-  recipient?: string;
-  sender?: string;
   memo?: string;
   timestamp: Date;
   status: 'pending' | 'completed' | 'failed' | string;
+  privacyRouted: boolean;
   paymentMethod?: 'lightning' | 'ecash';
   hash?: string;
   tokenId?: string;
@@ -79,16 +79,23 @@ interface Transaction {
 interface IndividualFinancesDashboardProps {
   memberId: string;
   memberData: {
-    username: string;
-    role: 'adult' | 'offspring' | 'guardian';
-    lightningAddress: string;
+    id: string;
+    username: string; // Added username property from User interface
+    auth_hash: string; // Privacy-first authentication hash
+    encrypted_profile?: string; // User-encrypted optional data
+    lightningAddress?: string;
+    role: 'offspring' | 'adult' | 'steward' | 'guardian';
+    familyId?: string;
+    is_discoverable: boolean;
+    balance?: number;
     spendingLimits?: {
       daily: number;
       weekly: number;
       requiresApproval: number;
     };
-    familyId?: string;
-    npub?: string;
+    avatar?: string;
+    created_at: number;
+    last_login?: number;
   };
   onBack?: () => void;
 }
@@ -113,14 +120,25 @@ interface IndividualWallet {
 }
 
 interface EnhancedIndividualWallet extends IndividualWallet {
+  lightning_balance: number;
+  cashu_balance: number;
+  fedimint_balance: number;
+  total_balance: number;
+  pending_transactions: number;
+  privacy_score: number;
+  default_privacy_level: PrivacyLevel;
+  transactions_this_month: number;
+  privacy_routing_success: number;
+  lastUpdated: Date;
+
   // Lightning-specific properties
   zapHistory: NostrZap[];
   lightningTransactions: LightningTransaction[];
-  
+
   // Cashu-specific properties
   bearerInstruments: BearerNote[];
   cashuTransactions: CashuTransaction[];
-  
+
   // Enhanced routing preferences
   routingRules: {
     zaps: 'lightning'; // Always use Lightning for Nostr zaps
@@ -130,18 +148,30 @@ interface EnhancedIndividualWallet extends IndividualWallet {
   };
 }
 
-// Extended interface for Cross-Mint support
+// Consolidated Cross-Mint Individual Wallet interface
 interface CrossMintIndividualWallet extends EnhancedIndividualWallet {
   // Multi-mint balance tracking
+  cross_mint_balance: number;
   externalMintBalances: Map<string, number>; // mint URL -> balance
   supportedMints: string[];
-  
+
+  // Cross-mint tokens
+  cross_mint_tokens: Array<{
+    mint_url: string;
+    token_count: number;
+    total_value: number;
+    is_trusted: boolean;
+  }>;
+
   // Multi-nut payment capabilities
   multiNutPayments: MultiNutPayment[];
+  multi_nut_transactions: MultiNutPayment[];
   nutSwapHistory: NutSwapTransaction[];
-  
+  pending_swaps: NutSwapTransaction[];
+
   // Cross-mint preferences
   crossMintSettings: CrossMintSettings;
+  cross_mint_settings: CrossMintSettings;
 }
 
 interface NostrZap {
@@ -191,7 +221,7 @@ interface CashuTransaction {
 // Cashu Wallet Card Component
 const CashuWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) => {
   const [showBalance, setShowBalance] = useState(false);
-  
+
   return (
     <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
       <div className="flex items-center justify-between mb-4">
@@ -206,7 +236,7 @@ const CashuWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ walle
           {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
       </div>
-      
+
       <div className="space-y-3">
         <div>
           <p className="text-2xl font-bold text-blue-900">
@@ -214,12 +244,12 @@ const CashuWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ walle
           </p>
           <p className="text-sm text-blue-600">Private bearer instruments</p>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-blue-700">Bearer Notes:</span>
           <span className="font-medium text-blue-900">{wallet.bearerInstruments?.length || 0}</span>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-blue-700">Privacy Level:</span>
           <span className="font-medium text-blue-900">Maximum</span>
@@ -232,7 +262,7 @@ const CashuWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ walle
 // Lightning Wallet Card Component
 const LightningWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) => {
   const [showBalance, setShowBalance] = useState(false);
-  
+
   return (
     <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
       <div className="flex items-center justify-between mb-4">
@@ -247,7 +277,7 @@ const LightningWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
           {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
       </div>
-      
+
       <div className="space-y-3">
         <div>
           <p className="text-2xl font-bold text-orange-900">
@@ -255,12 +285,12 @@ const LightningWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
           </p>
           <p className="text-sm text-orange-600">Available for instant payments</p>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-orange-700">Recent Zaps:</span>
           <span className="font-medium text-orange-900">{wallet.zapHistory?.length || 0}</span>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-orange-700">Lightning Address:</span>
           <span className="font-mono text-xs text-orange-800 truncate ml-2">
@@ -275,12 +305,12 @@ const LightningWalletCard: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
 // External Mints Card Component
 const ExternalMintsCard: React.FC<{ wallet: CrossMintIndividualWallet }> = ({ wallet }) => {
   const [showBalance, setShowBalance] = useState(false);
-  
+
   const totalExternalBalance = Array.from(wallet.externalMintBalances?.values() || [])
     .reduce((sum, balance) => sum + balance, 0);
-  
+
   const activeMints = wallet.externalMintBalances?.size || 0;
-  
+
   return (
     <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
       <div className="flex items-center justify-between mb-4">
@@ -295,7 +325,7 @@ const ExternalMintsCard: React.FC<{ wallet: CrossMintIndividualWallet }> = ({ wa
           {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
       </div>
-      
+
       <div className="space-y-3">
         <div>
           <p className="text-2xl font-bold text-purple-900">
@@ -303,12 +333,12 @@ const ExternalMintsCard: React.FC<{ wallet: CrossMintIndividualWallet }> = ({ wa
           </p>
           <p className="text-sm text-purple-600">Cross-mint balances</p>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-purple-700">Active Mints:</span>
           <span className="font-medium text-purple-900">{activeMints}</span>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-purple-700">Multi-Nut Ready:</span>
           <CheckCircle className="h-4 w-4 text-green-600" />
@@ -355,7 +385,7 @@ const EnhancedOverviewTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
           </p>
           <p className="text-sm text-gray-600">Recent transactions</p>
         </div>
-        
+
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <div className="flex items-center space-x-2 mb-2">
             <Gift className="h-5 w-5 text-blue-600" />
@@ -366,7 +396,7 @@ const EnhancedOverviewTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
           </p>
           <p className="text-sm text-gray-600">Created & active</p>
         </div>
-        
+
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <div className="flex items-center space-x-2 mb-2">
             <Activity className="h-5 w-5 text-purple-600" />
@@ -386,11 +416,10 @@ const EnhancedOverviewTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ w
           {recentActivity.map((activity, index) => (
             <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center space-x-3">
-                <div className={`p-2 rounded-full ${
-                  activity.protocol === 'lightning' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
-                }`}>
-                  {activity.protocol === 'lightning' ? 
-                    <Zap className="h-4 w-4" /> : 
+                <div className={`p-2 rounded-full ${activity.protocol === 'lightning' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
+                  }`}>
+                  {activity.protocol === 'lightning' ?
+                    <Zap className="h-4 w-4" /> :
                     <Shield className="h-4 w-4" />
                   }
                 </div>
@@ -423,7 +452,7 @@ const CrossMintOverviewTab: React.FC<{ wallet: CrossMintIndividualWallet }> = ({
   const totalExternalBalance = Array.from(wallet.externalMintBalances?.values() || [])
     .reduce((sum, balance) => sum + balance, 0);
   const grandTotalBalance = totalBalance + totalExternalBalance;
-  
+
   const recentActivity = [
     ...(wallet.lightningTransactions || []).map(tx => ({ ...tx, protocol: 'lightning' })),
     ...(wallet.cashuTransactions || []).map(tx => ({ ...tx, protocol: 'cashu' })),
@@ -468,7 +497,7 @@ const CrossMintOverviewTab: React.FC<{ wallet: CrossMintIndividualWallet }> = ({
           </p>
           <p className="text-sm text-gray-600">Transactions</p>
         </div>
-        
+
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <div className="flex items-center space-x-2 mb-2">
             <Shield className="h-5 w-5 text-blue-600" />
@@ -479,7 +508,7 @@ const CrossMintOverviewTab: React.FC<{ wallet: CrossMintIndividualWallet }> = ({
           </p>
           <p className="text-sm text-gray-600">Bearer notes</p>
         </div>
-        
+
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <div className="flex items-center space-x-2 mb-2">
             <Globe className="h-5 w-5 text-purple-600" />
@@ -490,7 +519,7 @@ const CrossMintOverviewTab: React.FC<{ wallet: CrossMintIndividualWallet }> = ({
           </p>
           <p className="text-sm text-gray-600">Active mints</p>
         </div>
-        
+
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <div className="flex items-center space-x-2 mb-2">
             <Activity className="h-5 w-5 text-green-600" />
@@ -510,14 +539,13 @@ const CrossMintOverviewTab: React.FC<{ wallet: CrossMintIndividualWallet }> = ({
           {recentActivity.map((activity, index) => (
             <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center space-x-3">
-                <div className={`p-2 rounded-full ${
-                  activity.protocol === 'lightning' ? 'bg-orange-100 text-orange-600' : 
+                <div className={`p-2 rounded-full ${activity.protocol === 'lightning' ? 'bg-orange-100 text-orange-600' :
                   activity.protocol === 'cashu' ? 'bg-blue-100 text-blue-600' :
-                  'bg-purple-100 text-purple-600'
-                }`}>
-                  {activity.protocol === 'lightning' ? <Zap className="h-4 w-4" /> : 
-                   activity.protocol === 'cashu' ? <Shield className="h-4 w-4" /> :
-                   <Globe className="h-4 w-4" />}
+                    'bg-purple-100 text-purple-600'
+                  }`}>
+                  {activity.protocol === 'lightning' ? <Zap className="h-4 w-4" /> :
+                    activity.protocol === 'cashu' ? <Shield className="h-4 w-4" /> :
+                      <Globe className="h-4 w-4" />}
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">
@@ -642,10 +670,9 @@ const LightningTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }
                 {zap.memo && <div className="text-sm text-gray-500">"{zap.memo}"</div>}
               </div>
               <div className="text-right">
-                <div className={`text-sm font-medium ${
-                  zap.status === 'completed' ? 'text-green-600' : 
+                <div className={`text-sm font-medium ${zap.status === 'completed' ? 'text-green-600' :
                   zap.status === 'failed' ? 'text-red-600' : 'text-yellow-600'
-                }`}>
+                  }`}>
                   {zap.status}
                 </div>
                 <div className="text-xs text-gray-500">
@@ -666,7 +693,7 @@ const LightningTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }
             <h4 className="font-semibold text-gray-900 mb-1">Lightning Payment</h4>
             <p className="text-sm text-gray-600">Fast payments</p>
           </button>
-          
+
           <button className="p-4 border-2 border-orange-200 rounded-xl hover:border-orange-300 transition-colors">
             <QrCode className="h-8 w-8 text-orange-600 mx-auto mb-2" />
             <h4 className="font-semibold text-gray-900 mb-1">Create Invoice</h4>
@@ -689,9 +716,9 @@ const LightningTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }
             <div key={tx.id} className="flex items-center justify-between p-4 border border-gray-100 rounded-lg">
               <div className="flex items-center space-x-4">
                 <div className="p-2 rounded-full bg-orange-100 text-orange-600">
-                  {tx.type === 'payment' ? <Send className="h-4 w-4" /> : 
-                   tx.type === 'invoice' ? <QrCode className="h-4 w-4" /> :
-                   <Zap className="h-4 w-4" />}
+                  {tx.type === 'payment' ? <Send className="h-4 w-4" /> :
+                    tx.type === 'invoice' ? <QrCode className="h-4 w-4" /> :
+                      <Zap className="h-4 w-4" />}
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">{tx.type}</p>
@@ -708,11 +735,10 @@ const LightningTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }
                 <p className="text-xs text-gray-500">
                   Fee: {tx.fee} sats
                 </p>
-                <p className={`text-xs px-2 py-1 rounded-full ${
-                  tx.status === 'completed' ? 'bg-green-100 text-green-700' :
+                <p className={`text-xs px-2 py-1 rounded-full ${tx.status === 'completed' ? 'bg-green-100 text-green-700' :
                   tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
+                    'bg-red-100 text-red-700'
+                  }`}>
                   {tx.status}
                 </p>
               </div>
@@ -822,9 +848,8 @@ const CashuTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) =>
                 </div>
               </div>
               <div className="text-right">
-                <div className={`text-sm font-medium ${
-                  note.redeemed ? 'text-gray-500' : 'text-green-600'
-                }`}>
+                <div className={`text-sm font-medium ${note.redeemed ? 'text-gray-500' : 'text-green-600'
+                  }`}>
                   {note.redeemed ? 'Redeemed' : 'Active'}
                 </div>
                 {!note.redeemed && (
@@ -865,9 +890,9 @@ const CashuTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) =>
               <div className="flex items-center space-x-4">
                 <div className="p-2 rounded-full bg-blue-100 text-blue-600">
                   {tx.type === 'mint' ? <ArrowDownLeft className="h-4 w-4" /> :
-                   tx.type === 'melt' ? <ArrowUpRight className="h-4 w-4" /> :
-                   tx.type === 'send' ? <Send className="h-4 w-4" /> :
-                   <Gift className="h-4 w-4" />}
+                    tx.type === 'melt' ? <ArrowUpRight className="h-4 w-4" /> :
+                      tx.type === 'send' ? <Send className="h-4 w-4" /> :
+                        <Gift className="h-4 w-4" />}
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">{tx.type}</p>
@@ -884,11 +909,10 @@ const CashuTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) =>
                 <p className="text-xs text-gray-500">
                   Fee: {tx.fee} sats
                 </p>
-                <p className={`text-xs px-2 py-1 rounded-full ${
-                  tx.status === 'completed' ? 'bg-green-100 text-green-700' :
+                <p className={`text-xs px-2 py-1 rounded-full ${tx.status === 'completed' ? 'bg-green-100 text-green-700' :
                   tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
+                    'bg-red-100 text-red-700'
+                  }`}>
                   {tx.status}
                 </p>
               </div>
@@ -913,7 +937,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
 
   const handleMultiNutPayment = async () => {
     if (!multiNutAmount || !multiNutRecipient) return;
-    
+
     try {
       const response = await IndividualApiService.createMultiNutPayment({
         memberId: wallet.memberId,
@@ -922,13 +946,13 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
         memo: multiNutMemo,
         mintPreference: 'balanced' // Could be made configurable
       });
-      
+
       if (response.success) {
         // Reset form
         setMultiNutAmount('');
         setMultiNutRecipient('');
         setMultiNutMemo('');
-        
+
         // Refresh wallet data to show new payment
         // This would trigger a re-render with updated data
         console.log('Multi-nut payment successful:', response);
@@ -941,7 +965,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
 
   const handleNutSwap = async () => {
     if (!swapFromMint || !swapToMint || !swapAmount) return;
-    
+
     try {
       const response = await IndividualApiService.performNutSwap({
         memberId: wallet.memberId,
@@ -949,13 +973,13 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
         toMint: swapToMint,
         amount: parseInt(swapAmount)
       });
-      
+
       if (response.success) {
         // Reset form
         setSwapFromMint('');
         setSwapToMint('');
         setSwapAmount('');
-        
+
         // Refresh wallet data to show new swap
         console.log('Nut swap successful:', response);
       }
@@ -967,19 +991,19 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
 
   const handleReceiveExternalNuts = async () => {
     if (!externalToken) return;
-    
+
     try {
       const response = await IndividualApiService.receiveExternalNuts({
         memberId: wallet.memberId,
         externalToken,
         storagePreference
       });
-      
+
       if (response.success) {
         // Reset form
         setExternalToken('');
         setStoragePreference('auto');
-        
+
         // Refresh wallet data to show received nuts
         console.log('External nuts received successfully:', response);
       }
@@ -1000,9 +1024,9 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium text-purple-900">
                   {mint.includes('satnam.pub') ? 'Satnam Family Mint' :
-                   mint.includes('minibits.cash') ? 'Minibits Mint' :
-                   mint.includes('coinos.io') ? 'Coinos Mint' :
-                   'External Mint'}
+                    mint.includes('minibits.cash') ? 'Minibits Mint' :
+                      mint.includes('coinos.io') ? 'Coinos Mint' :
+                        'External Mint'}
                 </h4>
                 <div className="flex items-center space-x-1">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -1028,7 +1052,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
         <p className="text-sm text-green-700 mb-4">
           Send payments using multiple mints automatically for optimal privacy and liquidity
         </p>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Recipient</label>
@@ -1040,7 +1064,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
               className="w-full px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Amount (sats)</label>
             <input
@@ -1052,7 +1076,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
             />
           </div>
         </div>
-        
+
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Memo (optional)</label>
           <input
@@ -1063,7 +1087,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
             className="w-full px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
           />
         </div>
-        
+
         <button
           onClick={handleMultiNutPayment}
           disabled={!multiNutAmount || !multiNutRecipient}
@@ -1082,7 +1106,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
         <p className="text-sm text-purple-700 mb-4">
           Swap tokens between different mints for better distribution and privacy
         </p>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">From Mint</label>
@@ -1095,13 +1119,13 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
               {Array.from(wallet.externalMintBalances?.keys() || []).map(mint => (
                 <option key={mint} value={mint}>
                   {mint.includes('satnam.pub') ? 'Satnam Family' :
-                   mint.includes('minibits.cash') ? 'Minibits' :
-                   mint.includes('coinos.io') ? 'Coinos' : 'External'}
+                    mint.includes('minibits.cash') ? 'Minibits' :
+                      mint.includes('coinos.io') ? 'Coinos' : 'External'}
                 </option>
               ))}
             </select>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">To Mint</label>
             <select
@@ -1113,13 +1137,13 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
               {Array.from(wallet.externalMintBalances?.keys() || []).map(mint => (
                 <option key={mint} value={mint} disabled={mint === swapFromMint}>
                   {mint.includes('satnam.pub') ? 'Satnam Family' :
-                   mint.includes('minibits.cash') ? 'Minibits' :
-                   mint.includes('coinos.io') ? 'Coinos' : 'External'}
+                    mint.includes('minibits.cash') ? 'Minibits' :
+                      mint.includes('coinos.io') ? 'Coinos' : 'External'}
                 </option>
               ))}
             </select>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Amount (sats)</label>
             <input
@@ -1131,7 +1155,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
             />
           </div>
         </div>
-        
+
         <button
           onClick={handleNutSwap}
           disabled={!swapFromMint || !swapToMint || !swapAmount}
@@ -1150,7 +1174,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
         <p className="text-sm text-indigo-700 mb-4">
           Import Cashu tokens from external mints and choose how to store them
         </p>
-        
+
         <div className="space-y-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">External Token</label>
@@ -1162,7 +1186,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
               className="w-full px-3 py-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Storage Preference</label>
             <select
@@ -1179,7 +1203,7 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
             </p>
           </div>
         </div>
-        
+
         <button
           onClick={handleReceiveExternalNuts}
           disabled={!externalToken}
@@ -1214,11 +1238,10 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
                 <p className="font-semibold text-green-600">
                   {payment.totalAmount.toLocaleString()} sats
                 </p>
-                <p className={`text-xs px-2 py-1 rounded-full ${
-                  payment.status === 'completed' ? 'bg-green-100 text-green-700' :
+                <p className={`text-xs px-2 py-1 rounded-full ${payment.status === 'completed' ? 'bg-green-100 text-green-700' :
                   payment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
+                    'bg-red-100 text-red-700'
+                  }`}>
                   {payment.status}
                 </p>
               </div>
@@ -1251,11 +1274,10 @@ const CrossMintOperationsTab: React.FC<{ wallet: CrossMintIndividualWallet }> = 
                 <p className="font-semibold text-purple-600">
                   {swap.amount.toLocaleString()} sats
                 </p>
-                <p className={`text-xs px-2 py-1 rounded-full ${
-                  swap.status === 'completed' ? 'bg-green-100 text-green-700' :
+                <p className={`text-xs px-2 py-1 rounded-full ${swap.status === 'completed' ? 'bg-green-100 text-green-700' :
                   swap.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
+                    'bg-red-100 text-red-700'
+                  }`}>
                   {swap.status}
                 </p>
               </div>
@@ -1361,14 +1383,12 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
             </div>
             <button
               onClick={() => handlePrivacyChange('lnproxyEnabled', !privacySettings.lnproxyEnabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                privacySettings.lnproxyEnabled ? 'bg-orange-600' : 'bg-gray-200'
-              }`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${privacySettings.lnproxyEnabled ? 'bg-orange-600' : 'bg-gray-200'
+                }`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  privacySettings.lnproxyEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${privacySettings.lnproxyEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
               />
             </button>
           </div>
@@ -1381,14 +1401,12 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
             </div>
             <button
               onClick={() => handlePrivacyChange('guardianProtected', !privacySettings.guardianProtected)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                privacySettings.guardianProtected ? 'bg-purple-600' : 'bg-gray-200'
-              }`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${privacySettings.guardianProtected ? 'bg-purple-600' : 'bg-gray-200'
+                }`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  privacySettings.guardianProtected ? 'translate-x-6' : 'translate-x-1'
-                }`}
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${privacySettings.guardianProtected ? 'translate-x-6' : 'translate-x-1'
+                  }`}
               />
             </button>
           </div>
@@ -1417,7 +1435,7 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
               {privacySettings.lnproxyEnabled ? 'Privacy routing active' : 'Direct routing'}
             </p>
           </div>
-          
+
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <Shield className="h-8 w-8 text-blue-600 mx-auto mb-2" />
             <p className="font-medium text-blue-900">Cashu</p>
@@ -1439,13 +1457,24 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
   const [showSimplePaymentModal, setShowSimplePaymentModal] = useState(false);
   const [showAutomatedPaymentsModal, setShowAutomatedPaymentsModal] = useState(false);
-  
+  const [refreshing, setRefreshing] = useState(false);
+  const [balanceVisible, setBalanceVisible] = useState(true);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  // Privacy-related state
+  const [currentPrivacyLevel, setCurrentPrivacyLevel] = useState<PrivacyLevel>(PrivacyLevel.ENCRYPTED);
+  const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
+  const [securityTestOpen, setSecurityTestOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+
   // Auth context
   const { user, userRole, familyId } = useAuth();
 
-  // Create family members array for PaymentCascadeModal
+  // Create family members array for PaymentCascadeModal using privacy-first principles
   const familyMembersForCascade = wallet ? [{
-    id: memberId,
+    id: user?.hashedUUID?.slice(0, 16) || memberId, // Use encrypted UUID per Master Context
+    npub: '', // Never expose npub per Master Context privacy protocols
+    name: memberData.username, // Required by FamilyMember interface
     username: memberData.username,
     role: memberData.role,
     lightningAddress: memberData.lightningAddress,
@@ -1462,9 +1491,20 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         IndividualApiService.getLightningWalletData(memberId),
         IndividualApiService.getCashuWalletData(memberId)
       ]);
-      
+
       const enhancedWallet: EnhancedIndividualWallet = {
-        ...walletData,
+        lightning_balance: walletData.lightningBalance || 0,
+        cashu_balance: walletData.ecashBalance || 0,
+        fedimint_balance: 0, // Default value since fedimintBalance doesn't exist in IndividualWalletData
+        total_balance: (walletData.lightningBalance || 0) + (walletData.ecashBalance || 0),
+        pending_transactions: 0, // Default value since pendingTransactions doesn't exist in IndividualWalletData
+        privacy_score: 85,
+        default_privacy_level: PrivacyLevel.ENCRYPTED,
+        transactions_this_month: 23,
+        privacy_routing_success: 92,
+        lastUpdated: new Date(),
+
+        // Required properties from EnhancedIndividualWallet
         zapHistory: lightningData.zapHistory || [],
         lightningTransactions: lightningData.transactions || [],
         bearerInstruments: cashuData.bearerInstruments || [],
@@ -1474,9 +1514,29 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
           external: 'auto',
           gifts: 'cashu',
           savings: 'cashu'
+        },
+
+        // Required properties from IndividualWallet base
+        memberId: walletData.memberId || memberId,
+        username: walletData.username || '',
+        lightningAddress: walletData.lightningAddress || '',
+        lightningBalance: walletData.lightningBalance || 0,
+        ecashBalance: walletData.ecashBalance || 0,
+        spendingLimits: walletData.spendingLimits,
+        recentTransactions: (walletData.recentTransactions || []).map(tx => ({
+          ...tx,
+          from: tx.type === 'received' ? 'external' : memberId,
+          to: tx.type === 'sent' ? 'external' : memberId,
+          privacyRouted: true, // Default to privacy-routed per Master Context
+          paymentMethod: 'lightning' as const
+        })),
+        privacySettings: walletData.privacySettings || {
+          defaultRouting: 'lightning',
+          lnproxyEnabled: false,
+          guardianProtected: false
         }
       };
-      
+
       setWallet(enhancedWallet);
     } catch (error) {
       console.error('Failed to load enhanced wallet:', handleApiError(error));
@@ -1488,12 +1548,10 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
 
   useEffect(() => {
     loadEnhancedWallet();
+    loadTransactionHistory();
   }, [memberId]);
 
-  const handleRefresh = () => {
-    setLoading(true);
-    loadEnhancedWallet();
-  };
+
 
   const handleCascadeSave = (cascade: PaymentCascadeNode[]) => {
     setShowCascadeModal(false);
@@ -1507,6 +1565,51 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
 
   const handleCloseRecoveryModal = () => {
     setShowRecoveryModal(false);
+  };
+
+  // Privacy-related functions
+  const handlePrivacyLevelChange = (newLevel: PrivacyLevel) => {
+    setCurrentPrivacyLevel(newLevel);
+    console.log('Privacy level changed to:', newLevel);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadEnhancedWallet();
+    setRefreshing(false);
+  };
+
+  const loadTransactionHistory = async () => {
+    try {
+      // Mock privacy-aware transaction history
+      const mockTransactions: Transaction[] = [
+        {
+          id: 'tx1',
+          type: 'sent',
+          amount: 50000,
+          from: memberId,
+          to: 'merchant1',
+          status: 'completed',
+          timestamp: new Date(Date.now() - 1000 * 60 * 30),
+          memo: 'Coffee payment',
+          privacyRouted: true
+        },
+        {
+          id: 'tx2',
+          type: 'received',
+          amount: 100000,
+          from: 'family_treasury',
+          to: memberId,
+          status: 'completed',
+          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
+          memo: 'Weekly payment',
+          privacyRouted: true
+        }
+      ];
+      setTransactions(mockTransactions);
+    } catch (error) {
+      console.error('Failed to load transaction history:', error);
+    }
   };
 
   if (loading) {
@@ -1550,7 +1653,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
             <p className="text-gray-600 mb-4">
               Personal Lightning + Cashu wallet for {wallet?.username || memberData.username}
             </p>
-            
+
             {/* Protocol Status Indicators */}
             <div className="flex space-x-4">
               <div className="flex items-center space-x-2">
@@ -1572,7 +1675,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
               <Shield className="h-4 w-4" />
               <span className="text-sm font-medium">Emergency Recovery</span>
             </button>
-            
+
             {onBack && (
               <button
                 onClick={onBack}
@@ -1645,11 +1748,10 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === tab.key
-                  ? `border-${tab.color}-500 text-${tab.color}-600`
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.key
+                ? `border-${tab.color}-500 text-${tab.color}-600`
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
             >
               {tab.label}
             </button>
@@ -1674,22 +1776,22 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         title="Individual Payment Cascade Setup"
       />
 
-      {/* Emergency Recovery Modal */}
+      {/* Emergency Recovery Modal - Privacy-First Implementation */}
       {showRecoveryModal && (
         <EmergencyRecoveryModal
           isOpen={showRecoveryModal}
           onClose={handleCloseRecoveryModal}
-          userRole={userRole}
-          userId={user?.id || memberId}
-          userNpub={user?.npub || ''}
-          familyId={familyId}
+          userRole={(userRole as FederationRole) || 'private'} // Default to 'private' per Master Context
+          userId={user?.hashedUUID?.slice(0, 16) || 'anon'} // Use encrypted UUID, never expose raw IDs
+          userNpub={''} // Never expose npub per Master Context zero-knowledge protocols
+          familyId={familyId || undefined} // Handle null properly
         />
       )}
 
       {/* Educational Dashboard Modal */}
       {showEducationalDashboard && (
         <EducationalDashboard
-          userPubkey={memberData.npub || 'demo_user_pubkey'}
+          userPubkey={memberData.auth_hash || 'demo_user_hash'}
           familyId={memberData.familyId}
           onClose={() => setShowEducationalDashboard(false)}
         />
@@ -1706,14 +1808,60 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         wallet={wallet}
       />
 
-      {/* Individual Payment Automation Modal */}
+      {/* Individual Payment Automation Modal - Privacy-First Implementation */}
       {showAutomatedPaymentsModal && (
         <IndividualPaymentAutomationModal
           isOpen={showAutomatedPaymentsModal}
           onClose={() => setShowAutomatedPaymentsModal(false)}
-          userId={user?.id || memberId}
-          userRole={userRole || 'adult'}
+          onSave={(schedule) => {
+            // Handle payment automation schedule per Master Context protocols
+            console.log('Privacy-first payment schedule saved with encrypted identifiers');
+            setShowAutomatedPaymentsModal(false);
+          }}
+          userId={user?.hashedUUID?.slice(0, 16) || 'anon'} // Use encrypted UUID per Master Context
         />
+      )}
+
+      {/* Privacy-Enhanced Payment Modal */}
+      <PrivacyEnhancedPaymentModal
+        isOpen={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        familyMembers={[memberData]}
+        selectedMember={memberId}
+        onSelectedMemberChange={() => { }}
+        onPaymentComplete={() => {
+          setPaymentModalOpen(false);
+          handleRefresh();
+        }}
+      />
+
+      {/* Privacy Preferences Modal */}
+      <PrivacyPreferencesModal
+        isOpen={preferencesModalOpen}
+        onClose={() => setPreferencesModalOpen(false)}
+        userRole={memberData.role}
+        onPreferencesUpdate={(preferences) => {
+          console.log('Preferences updated:', preferences);
+          handleRefresh();
+        }}
+      />
+
+      {/* Argon2 Security Test Modal */}
+      {securityTestOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Security Test</h2>
+              <button
+                onClick={() => setSecurityTestOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <Argon2SecurityTest />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1725,19 +1873,25 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
   const [crossMintManager] = useState(new SatnamCrossMintCashuManager());
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'cross-mint' | 'privacy'>('overview');
-  
+  const [showSimplePaymentModal, setShowSimplePaymentModal] = useState(false);
+
   // Auth context
   const { user, userRole, familyId } = useAuth();
 
   // Create individual member for PaymentModal (representing self)
   const individualMember = wallet ? [{
     id: memberId,
-    username: memberData.username,
-    role: memberData.role,
+    auth_hash: memberData.auth_hash || '', // Privacy-first authentication hash
+    encrypted_profile: memberData.encrypted_profile,
     lightningAddress: memberData.lightningAddress,
+    role: memberData.role,
+    familyId: memberData.familyId,
+    is_discoverable: memberData.is_discoverable || false,
     balance: wallet.lightningBalance + wallet.ecashBalance,
-    nip05Verified: true,
     spendingLimits: memberData.spendingLimits,
+    avatar: memberData.avatar,
+    created_at: memberData.created_at || Date.now(),
+    last_login: memberData.last_login,
   }] : [];
 
   // Enhanced wallet loading with Cross-Mint data
@@ -1749,41 +1903,90 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
         IndividualApiService.getCashuWalletData(memberId),
         IndividualApiService.getCrossMintWalletData(memberId)
       ]);
-      
+
       // Load cross-mint manager settings
       await crossMintManager.refreshAllMintData();
       const crossMintSettings = crossMintManager.getCrossMintSettings();
-      
+
       // Convert external mint balances from Record to Map
       const externalMintBalances = new Map(Object.entries(crossMintData.externalMintBalances));
-      
+
       const crossMintWallet: CrossMintIndividualWallet = {
-        ...walletData,
-        zapHistory: lightningData.zapHistory || [],
-        lightningTransactions: lightningData.transactions || [],
-        bearerInstruments: cashuData.bearerInstruments || [],
-        cashuTransactions: cashuData.transactions || [],
-        routingRules: {
-          zaps: 'lightning',
-          external: 'auto',
-          gifts: 'cashu',
-          savings: 'cashu'
+        // Base IndividualWallet properties
+        memberId: walletData.memberId || memberId,
+        username: walletData.username || '',
+        lightningAddress: walletData.lightningAddress || '',
+        lightningBalance: walletData.lightningBalance || 0,
+        ecashBalance: walletData.ecashBalance || 0,
+        spendingLimits: walletData.spendingLimits,
+        recentTransactions: (walletData.recentTransactions || []).map(tx => ({
+          ...tx,
+          from: tx.type === 'received' ? 'external' : memberId,
+          to: tx.type === 'sent' ? 'external' : memberId,
+          privacyRouted: true,
+          paymentMethod: 'lightning' as const
+        })),
+        privacySettings: walletData.privacySettings || {
+          defaultRouting: 'lightning',
+          lnproxyEnabled: false,
+          guardianProtected: false
         },
-        // Cross-mint specific properties from API
+
+        // EnhancedIndividualWallet properties
+        lightning_balance: walletData.lightningBalance || 0,
+        cashu_balance: walletData.ecashBalance || 0,
+        fedimint_balance: 0,
+        total_balance: (walletData.lightningBalance || 0) + (walletData.ecashBalance || 0),
+        pending_transactions: 0,
+        privacy_score: 88,
+        default_privacy_level: PrivacyLevel.GIFTWRAPPED,
+        transactions_this_month: 18,
+        privacy_routing_success: 94,
+        lastUpdated: new Date(),
+
+        // Lightning-specific properties
+        zapHistory: [],
+        lightningTransactions: [],
+
+        // Cashu-specific properties
+        bearerInstruments: [],
+        cashuTransactions: [],
+
+        // Enhanced routing preferences
+        routingRules: {
+          zaps: 'lightning' as const,
+          external: 'lightning' as const,
+          gifts: 'cashu' as const,
+          savings: 'cashu' as const
+        },
+
+        // CrossMintIndividualWallet properties
+        cross_mint_balance: 0,
         externalMintBalances,
-        supportedMints: crossMintData.supportedMints,
-        multiNutPayments: crossMintData.multiNutPayments.map(payment => ({
+        supportedMints: crossMintData.supportedMints || [],
+        cross_mint_tokens: [],
+        multiNutPayments: (crossMintData.multiNutPayments || []).map(payment => ({
           ...payment,
           created: new Date(payment.created)
         })),
-        nutSwapHistory: crossMintData.nutSwapHistory.map(swap => ({
+        multi_nut_transactions: (crossMintData.multiNutPayments || []).map(payment => ({
+          ...payment,
+          created: new Date(payment.created)
+        })),
+        nutSwapHistory: (crossMintData.nutSwapHistory || []).map(swap => ({
           ...swap,
           swapId: swap.id,
           created: new Date(swap.created)
         })),
-        crossMintSettings
+        pending_swaps: (crossMintData.nutSwapHistory || []).map(swap => ({
+          ...swap,
+          swapId: swap.id,
+          created: new Date(swap.created)
+        })),
+        crossMintSettings: crossMintSettings,
+        cross_mint_settings: crossMintSettings
       };
-      
+
       setWallet(crossMintWallet);
     } catch (error) {
       console.error('Failed to load cross-mint wallet:', handleApiError(error));
@@ -1843,7 +2046,7 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
             <p className="text-gray-600 mb-4">
               Multi-mint Lightning + Cashu wallet for {wallet.username}
             </p>
-            
+
             {/* Protocol Status Indicators */}
             <div className="flex space-x-4">
               <div className="flex items-center space-x-2">
@@ -1922,11 +2125,10 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === tab.key
-                  ? `border-${tab.color}-500 text-${tab.color}-600`
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.key
+                ? `border-${tab.color}-500 text-${tab.color}-600`
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
             >
               {tab.label}
             </button>
@@ -1940,15 +2142,6 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
       {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
       {activeTab === 'cross-mint' && <CrossMintOperationsTab wallet={wallet} />}
       {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
-
-      {/* Payment Modal */}
-      <PaymentModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        familyMembers={individualMember}
-        selectedMember={selectedMember}
-        onSelectedMemberChange={setSelectedMember}
-      />
     </div>
   );
 }

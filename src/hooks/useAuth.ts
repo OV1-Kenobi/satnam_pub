@@ -8,8 +8,9 @@ import { authAPI, getAuthStatus } from "../lib/api";
 
 export interface User {
   id: string;
-  npub: string;
+  npub: string; // DEPRECATED: Only for legacy support, never exposed per Master Context
   username?: string;
+  hashedUUID?: string; // Privacy-first encrypted UUID per Master Context protocols
 }
 
 export interface AuthState {
@@ -58,8 +59,8 @@ export function useAuth(): AuthState & AuthActions {
         // Clear any previous errors since we got a valid response
         error: null,
         // Mock values for now - in production these would come from the auth response
-        userRole: user ? 'adult' : null,
-        familyId: user ? 'family-123' : null,
+        userRole: user ? "adult" : null,
+        familyId: user ? "family-123" : null,
       }));
     } catch (error) {
       // Only set error for actual network/server errors, not auth state
@@ -104,8 +105,8 @@ export function useAuth(): AuthState & AuthActions {
             user: response.data!.user,
             loading: false,
             // Mock values for now - in production these would come from the auth response
-            userRole: response.data!.user ? 'adult' : null,
-            familyId: response.data!.user ? 'family-123' : null,
+            userRole: response.data!.user ? "adult" : null,
+            familyId: response.data!.user ? "family-123" : null,
           }));
           return true;
         } else {
@@ -168,8 +169,8 @@ export function useAuth(): AuthState & AuthActions {
           authenticated: response.data!.authenticated,
           user: response.data!.user,
           loading: false,
-          userRole: response.data!.user ? 'adult' : null,
-          familyId: response.data!.user ? 'family-123' : null,
+          userRole: response.data!.user ? "adult" : null,
+          familyId: response.data!.user ? "family-123" : null,
         }));
       } else {
         setState((prev) => ({

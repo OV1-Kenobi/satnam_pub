@@ -167,7 +167,11 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 
 ### 🚨 **Emergency Recovery System**
 
-- **Multi-Method Recovery** using passwords, multi-sig, and Shamir Secret Sharing
+- **Multi-Method Recovery** using passwords, multi-sig, and Hybrid SSS/FROST
+- **FROST Zero-Knowledge Nsec** - Advanced threshold cryptography with zero-knowledge security
+- **Hybrid SSS/FROST Architecture** - Browser-compatible threshold signatures with ephemeral key generation
+- **Family Federation Management** - Configurable guardian/steward roles with flexible threshold schemes
+- **Emergency Recovery Workflows** - Automated procedures for crisis situations with reduced thresholds
 - **Guardian Consensus** for critical recovery operations
 - **Emergency Liquidity Access** with guardian approval
 - **Account Restoration** protocols for compromised accounts
@@ -203,12 +207,14 @@ Guardian (Level 4)
 ### 👥 **Role Definitions**
 
 #### **Private** (Level 0)
+
 - **Description**: Autonomous users not part of any Family Federation
 - **Permissions**: Full autonomy over funds and custody
 - **Restrictions**: No RBAC restrictions, no hierarchy level
 - **Use Case**: Individual users who prefer complete independence
 
 #### **Offspring** (Level 1)
+
 - **Description**: Family members under adult supervision
 - **Permissions**: Limited spending, educational access, basic family features
 - **Controlled By**: Adults, Stewards, Guardians
@@ -216,6 +222,7 @@ Guardian (Level 4)
 - **Use Case**: Children and teenagers learning financial responsibility
 
 #### **Adult** (Level 2)
+
 - **Description**: Family members with full financial capabilities
 - **Permissions**: Full family features, can manage offspring accounts
 - **Controlled By**: Stewards, Guardians
@@ -223,6 +230,7 @@ Guardian (Level 4)
 - **Use Case**: Parents and adult family members
 
 #### **Steward** (Level 3)
+
 - **Description**: Family administrators with creation and control authority
 - **Permissions**: Can create/manage families, assign roles, control adults
 - **Controlled By**: Guardians only
@@ -230,6 +238,7 @@ Guardian (Level 4)
 - **Use Case**: Family organizers and administrators
 
 #### **Guardian** (Level 4)
+
 - **Description**: Ultimate protectors with removal authority
 - **Permissions**: Can remove stewards, ultimate family authority
 - **Controlled By**: No one (top of hierarchy)
@@ -261,11 +270,13 @@ Satnam.pub provides comprehensive privacy and sovereignty control modals that gi
 The Privacy Controls component provides granular privacy level management:
 
 #### **Privacy Levels**
+
 - **Minimal Privacy**: Basic privacy with direct Lightning routing
 - **Enhanced Privacy**: Balanced privacy with Fedimint and enhanced Lightning
 - **Maximum Privacy**: Maximum privacy with Cashu tokens and LNProxy routing
 
 #### **Features**
+
 - **Role-Based Access**: Privacy levels available based on user role
 - **Privacy Metrics**: Real-time privacy score and metrics display
 - **LNProxy Integration**: Automatic privacy routing configuration
@@ -273,6 +284,7 @@ The Privacy Controls component provides granular privacy level management:
 - **Privacy Tips**: Contextual advice based on selected privacy level
 
 #### **Privacy Metrics**
+
 - **Privacy Score**: Overall privacy rating (0-100%)
 - **LNProxy Usage**: Lightning Network proxy routing status
 - **Cashu Privacy**: eCash privacy implementation status
@@ -283,18 +295,21 @@ The Privacy Controls component provides granular privacy level management:
 The Sovereign Family Banking component provides comprehensive family financial management:
 
 #### **Core Features**
+
 - **Lightning Network Integration**: Instant Bitcoin payments with PhoenixD
 - **Family Wallets**: Manage payments and spending limits
 - **Bitcoin Treasury**: Secure family savings and long-term holdings
 - **Privacy Protection**: LNProxy privacy routing for all transactions
 
 #### **Family Management**
+
 - **Multi-Generational Support**: Tools for all family member types
 - **Role-Based Access**: Different interfaces based on user role
 - **Guardian Oversight**: Family protector features and controls
 - **Educational Integration**: Learning tools for financial literacy
 
 #### **Security Features**
+
 - **Demo Mode**: Safe testing environment with clear indicators
 - **Real-time Monitoring**: Live transaction and balance tracking
 - **Emergency Protocols**: Guardian override capabilities
@@ -303,18 +318,21 @@ The Sovereign Family Banking component provides comprehensive family financial m
 ### 🔧 **Enhanced Privacy Components**
 
 #### **Privacy Enhanced Payment Modal**
+
 - **Multi-Layer Privacy**: Lightning, Cashu, and Fedimint payment options
 - **Privacy Level Selection**: Choose privacy level per transaction
 - **Metadata Minimization**: Reduce transaction fingerprinting
 - **Route Optimization**: Automatic selection of most private payment path
 
 #### **Privacy Enhanced Individual Dashboard**
+
 - **Personal Privacy Metrics**: Individual privacy score and recommendations
 - **Transaction Privacy**: Per-transaction privacy level tracking
 - **Privacy Settings**: Granular control over data sharing
 - **Privacy Education**: Tips and guidance for improving privacy
 
 #### **Privacy Preferences Modal**
+
 - **Global Privacy Settings**: System-wide privacy configuration
 - **Family Privacy Policies**: Family-wide privacy rule management
 - **Notification Preferences**: Privacy-focused notification settings
@@ -323,18 +341,21 @@ The Sovereign Family Banking component provides comprehensive family financial m
 ### 🎯 **Sovereignty Features**
 
 #### **Self-Custody Journey**
+
 - **Guided Progression**: Step-by-step path to full sovereignty
 - **Educational Milestones**: Learning checkpoints with rewards
 - **Badge System**: Achievement tracking for sovereignty progress
 - **Hardware Integration**: Support for hardware security devices
 
 #### **Family Sovereignty**
+
 - **Multi-Signature Setup**: Family treasury with guardian oversight
 - **Decentralized Decision Making**: Family governance without central authority
 - **Emergency Protocols**: Guardian override for critical situations
 - **Sovereign Identity**: Family identity independent of external services
 
 #### **Data Sovereignty**
+
 - **Local Storage**: All sensitive data stored locally
 - **Encrypted Backups**: Secure, user-controlled backup systems
 - **Programmable Deletion**: Complete control over data retention
@@ -343,12 +364,14 @@ The Sovereign Family Banking component provides comprehensive family financial m
 ### 📊 **Privacy Analytics**
 
 #### **Local Analytics**
+
 - **Device-Only Processing**: All analytics run on user device
 - **No External Sharing**: Analytics data never leaves user control
 - **Privacy-Preserving Metrics**: Mathematical guarantees of privacy
 - **Opt-In Only**: Analytics disabled by default
 
 #### **Privacy Score Calculation**
+
 - **Multi-Factor Assessment**: Comprehensive privacy evaluation
 - **Real-Time Updates**: Live privacy score adjustments
 - **Recommendation Engine**: Personalized privacy improvement suggestions
@@ -503,7 +526,10 @@ Satnam.pub implements a zero-knowledge security model where:
 - No external logging or analytics
 - Programmable data deletion controls
 - Verifiable client-side operations
-In the pipeline:
+- **FROST Zero-Knowledge Nsec** - Advanced threshold cryptography ensuring no complete private key ever exists
+- **Hybrid SSS/FROST Architecture** - Browser-compatible threshold signatures with ephemeral key generation
+- **Cryptographic Memory Wiping** - Sensitive data is securely cleared from memory after use
+  In the pipeline:
 - **zk-SNARKs** for transaction verification without revealing amounts or participants
 - **Bulletproofs** for range proofs to verify transaction validity without exposing values
 - **zk-STARKs** for scalable, transparent verification of complex operations
@@ -530,6 +556,10 @@ In the pipeline:
 - **Ephemeral Sessions**: Temporary credentials that leave no trace
 - **Secure Enclaves**: Isolated execution environments for sensitive operations
 - **Forward Secrecy**: Protection of past communications if keys are compromised
+- **FROST Threshold Cryptography**: Advanced threshold signatures with zero-knowledge security
+- **Family Federation Management**: Configurable guardian/steward roles for distributed key management
+- **Ephemeral Key Generation**: Keys are created, used, and destroyed without persistent storage
+- **Browser-Native Cryptography**: All cryptographic operations run client-side using Web Crypto API
 
 ### 🔍 **Zero-Knowledge Proof Implementation**
 
@@ -694,6 +724,8 @@ copies or substantial portions of the Software.
   - [Privacy & Sovereignty Controls](docs/PRIVACY_SOVEREIGNTY_CONTROLS.md)
   - [Security Guidelines](docs/PRIVACY_FIRST_SECURITY.md)
   - [Family Federation Auth](docs/FAMILY_FEDERATION_AUTH.md)
+  - [FROST Zero-Knowledge Nsec](docs/cryptography/FROST-ZERO-KNOWLEDGE-NSEC.md) - **NEW**
+  - [Hybrid SSS/FROST Implementation](docs/SHAMIR-SECRET-SHARING.md)
   - [Lightning Integration](docs/LIGHTNING_ADDRESSES.md)
   - [PhoenixD Integration](docs/PHOENIXD_INTEGRATION.md)
   - [Privacy Protection](docs/PRIVACY-PROTECTION.md)

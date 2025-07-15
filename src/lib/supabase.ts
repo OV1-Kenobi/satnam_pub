@@ -3,32 +3,54 @@ import { createClient } from "@supabase/supabase-js";
 
 // Browser-compatible Supabase configuration
 // Following Master Context: "Store secrets in Supabase Vault, NOT .env files"
+// Bootstrap credentials from environment - ONLY for accessing Vault
 
 const getSupabaseConfig = () => {
-  // Production configuration - using real Supabase credentials
-  // In a full Vault implementation, these would be retrieved from Supabase Vault
-  // For now, we're using the anon key which is safe for frontend use
-  return {
-    url: 'https://rhfqfftkizyengcuhuvq.supabase.co',
-    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZnFmZnRraXp5ZW5nY3VodXZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjA1ODQsImV4cCI6MjA2NTMzNjU4NH0.T9UoL9ozgIzpqDBrY9qefq4V9bCbbenYkO5bTRrdhQE'
-  };
+  // Bootstrap credentials for Vault access
+  // These are the minimal credentials needed to access the Vault
+  // All other sensitive credentials are stored in the Vault
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Security validation - ensure we have bootstrap credentials
+  if (!url || !key) {
+    throw new Error(
+      "CRITICAL: Bootstrap Supabase credentials missing. " +
+        "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables " +
+        "to access the Vault system."
+    );
+  }
+
+  return { url, key };
 };
 
 const config = getSupabaseConfig();
 const supabaseUrl = config.url;
 const supabaseKey = config.key;
 
-// Development validation - only throw in production
-if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-  if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('your-project-ref') || supabaseKey.includes('your-anon-key')) {
+// Security validation - ensure bootstrap credentials are valid
+if (typeof window !== "undefined") {
+  if (!supabaseUrl || !supabaseKey) {
     throw new Error(
-      "CRITICAL: Supabase configuration missing. Configure through Supabase Vault in production."
+      "CRITICAL: Bootstrap Supabase credentials missing. " +
+        "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables."
+    );
+  }
+
+  // Validate that we don't have placeholder values
+  if (
+    supabaseUrl.includes("your-project-ref") ||
+    supabaseKey.includes("your-anon-key")
+  ) {
+    throw new Error(
+      "CRITICAL: Placeholder Supabase credentials detected. " +
+        "Configure real bootstrap credentials in environment variables."
     );
   }
 }
 
-// Validate URL format and security (only in production)
-if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+// Validate URL format and security
+if (typeof window !== "undefined") {
   try {
     const url = new URL(supabaseUrl);
     if (url.protocol !== "https:") {
@@ -80,9 +102,9 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // Development helper function to set Supabase config
 export function setSupabaseConfig(url: string, key: string) {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     const config = { url, key };
-    localStorage.setItem('satnam_supabase_config', JSON.stringify(config));
+    localStorage.setItem("satnam_supabase_config", JSON.stringify(config));
     // Reload the page to apply new config
     window.location.reload();
   }
@@ -419,7 +441,9 @@ export class CitadelDatabase {
 
       const issues: string[] = [];
       const username = profile.username;
-      const expectedIdentifier = `${username}@${import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"}`;
+      const expectedIdentifier = `${username}@${
+        import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
+      }`;
 
       // Check Lightning address
       const lightningAddress = profile.lightning_addresses?.[0]?.address;
@@ -443,7 +467,9 @@ export class CitadelDatabase {
       return {
         isConsistent: false,
         issues: [
-          `Validation error: ${error instanceof Error ? error.message : String(error)}`,
+          `Validation error: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         ],
       };
     }
@@ -473,7 +499,9 @@ export class CitadelDatabase {
         throw new Error("User profile not found");
       }
 
-      const correctIdentifier = `${profile.username}@${import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"}`;
+      const correctIdentifier = `${profile.username}@${
+        import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
+      }`;
 
       // Fix Lightning address if inconsistent
       const lightningAddress = profile.lightning_addresses?.[0];

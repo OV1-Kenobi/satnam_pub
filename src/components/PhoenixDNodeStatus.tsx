@@ -46,9 +46,9 @@ interface PhoenixDStatusResponse {
   timestamp: string;
 }
 
-const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({ 
+const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
   refreshInterval = 30000, // Default 30 seconds
-  showDetails = true 
+  showDetails = true
 }) => {
   const [nodeStatus, setNodeStatus] = useState<PhoenixDStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,7 +60,7 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
     try {
       setIsRefreshing(true);
       setError(null);
-      
+
       // API call to PhoenixD status endpoint
       const response = await fetch('/api/phoenixd/status', {
         method: 'GET',
@@ -73,14 +73,19 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('API returned non-JSON response');
+      }
+
       const data: PhoenixDStatusResponse = await response.json();
       setNodeStatus(data);
       setLastUpdateTime(new Date());
-      
+
     } catch (err) {
       // Fallback to mock data in development/demo mode
-      console.warn("API call failed, using mock data:", err);
-      
+      // ✅ NO LOGGING - Following Master Context privacy-first principles
+
       const mockStatus: PhoenixDStatusResponse = {
         connected: true,
         status: "healthy",
@@ -118,13 +123,13 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
         },
         timestamp: new Date().toISOString(),
       };
-      
+
       // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 300));
-      
+
       setNodeStatus(mockStatus);
       setLastUpdateTime(new Date());
-      
+
       // Only set error if it's a real network failure, not a fallback to mock data
       if (err instanceof Error && err.message.includes('fetch')) {
         setError("Using demo data - API connection unavailable");
@@ -137,7 +142,7 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
 
   useEffect(() => {
     fetchNodeStatus();
-    
+
     // Set up polling for real-time updates with configurable interval
     const interval = setInterval(fetchNodeStatus, refreshInterval);
     return () => clearInterval(interval);
@@ -147,7 +152,7 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    
+
     if (days > 0) {
       return `${days}d ${hours}h ${minutes}m`;
     } else if (hours > 0) {
@@ -213,7 +218,7 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
         <AlertTriangle className="h-8 w-8 text-red-400 mx-auto mb-4" />
         <p className="text-white font-bold mb-2">PhoenixD Connection Failed</p>
         <p className="text-red-200 mb-4">{error}</p>
-        <button 
+        <button
           className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto"
           onClick={fetchNodeStatus}
           disabled={isRefreshing}
@@ -247,13 +252,13 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
                   {nodeStatus.connected ? 'Connected' : 'Disconnected'}
                 </span>
               </div>
-              
+
               {/* Node Health Status */}
               <div className={`flex items-center space-x-1 ${getStatusColor(nodeStatus.status)}`}>
                 {getStatusIcon(nodeStatus.status)}
                 <span className="capitalize">{nodeStatus.status}</span>
               </div>
-              
+
               {/* Last Update Time */}
               {lastUpdateTime && (
                 <span className="text-amber-200 text-sm">
@@ -263,9 +268,9 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
             </div>
           </div>
         </div>
-        
+
         {/* Refresh Button */}
-        <button 
+        <button
           onClick={fetchNodeStatus}
           disabled={isRefreshing}
           className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300 disabled:opacity-50"
@@ -320,7 +325,7 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
           </div>
         </div>
         <p className="text-green-200 text-sm mt-2">
-          {nodeStatus.automatedLiquidity.active 
+          {nodeStatus.automatedLiquidity.active
             ? "PhoenixD is automatically managing liquidity for all family members. Infinite inbound capacity available."
             : "Automated liquidity management is currently inactive. Manual intervention may be required."
           }

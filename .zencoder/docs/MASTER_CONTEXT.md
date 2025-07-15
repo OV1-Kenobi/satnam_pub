@@ -46,22 +46,139 @@ api/                      # Serverless functions (.js)
 
 ---
 
-## Security & Privacy Protocols
+Security & Privacy Protocols
+Privacy-First Architecture
+NEVER log user data, transaction details, or family information
 
-### Privacy-First Architecture
+NO external logging services or third-party analytics
 
-- **NEVER** log user data, transaction details, or family information
-- **NO** external logging services or third-party analytics
-- Use Supabase Vault for all sensitive credentials
-- Implement data minimization - collect only essential information
-- All communications must use NIP-59 Gift Wrapped messaging
-- Provide programmable deletability controls for all user data with a unified deletion modal
-- Client-side verification for all security operations
-- User-controlled, locally-stored encrypted audit logs (optional)
-- Differential privacy techniques for any aggregated data
-- Ephemeral computing - process data in memory without persistence
-- Secure multi-party computation for collaborative operations
-- Plausible deniability features for sensitive operations
+Use Supabase Vault for all sensitive credentials
+
+Implement data minimization - collect only essential information
+
+All communications must use NIP-59 Gift Wrapped messaging
+
+Provide programmable deletability controls for all user data with a unified deletion modal
+
+Client-side verification for all security operations
+
+User-controlled, locally-stored encrypted audit logs (optional)
+
+Differential privacy techniques for any aggregated data
+
+Ephemeral computing - process data in memory without persistence
+
+Secure multi-party computation for collaborative operations
+
+Plausible deniability features for sensitive operations
+
+Encryption & Security Standards
+Use Web Crypto API for all cryptographic operations
+
+AES-256-GCM for data encryption
+
+Store secrets in Supabase Vault, NOT .env files
+
+Implement end-to-end encryption for all family communications
+
+Privacy metrics for all communications and transactions
+
+HTTPS enforcement with strict TLS requirements
+
+Content Security Policy (CSP) headers for XSS prevention
+
+Rate limiting for authentication endpoints
+
+Input validation using Zod schemas
+
+Secure JWT token management with automatic expiration
+
+All destructive operations must have rollback instructions
+
+Authentication Layers
+NIP-07 Browser extension signing
+
+Direct nsec import For secure key management
+
+OTP invitation For secure onboarding
+
+Hardware security Integration (future)
+
+Zero-Knowledge Nsec Handling
+Family Federation Trust Architecture
+
+Founder (Grantor): Creates Family Federation, assigns initial roles through Family Foundry modal
+
+Guardians (Trust Protectors): Oversight role, can remove Stewards, unanimous consensus required
+
+Stewards (Trustees): Active management, payment distributions, majority threshold operations
+
+Adults (Beneficiaries): Full control within federation scope, can create Offspring accounts
+
+Offspring (Minor Beneficiaries): Controlled accounts managed by Adults
+
+Ephemeral Nsec Generation
+
+Family Federation nsec generated client-side only, never stored anywhere
+
+Immediate destruction after FROST share creation
+
+Zero-knowledge architecture - no system component ever sees complete nsec
+
+Browser-only generation using Web Crypto API with secure random number generation
+
+Hybrid SSS + FROST Implementation
+
+Primary Layer: Shamir's Secret Sharing splits nsec into threshold shares
+
+Secondary Layer: Each Shamir share wrapped in individual FROST shares
+
+Password Protection: Each participant's share encrypted with personal password (PBKDF2 + AES-256-GCM)
+
+Role-Based Thresholds: Different signing requirements for Guardians vs Stewards operations
+
+Secure Share Distribution
+
+Founder encrypts own share with master password
+
+Guardian/Steward shares encrypted with temporary invitation codes
+
+Secure invitation system with email-based distribution
+
+Individual password replacement during onboarding process
+
+Emergency Recovery Protocol
+
+Threshold-based nsec reconstruction (minimum participants required)
+
+Lagrange interpolation for secret reconstruction
+
+Immediate nsec destruction after emergency use
+
+Comprehensive audit trail without exposing key material
+
+Recovery instructions encrypted and distributed with shares
+
+Security Features
+
+Misbehaving Participant Detection: FROST protocol identifies malicious actors
+
+Single-Round Signing: Optimized FROST signatures reduce network overhead
+
+Concurrent Operations: Multiple signing operations without security degradation
+
+Key Rotation: Fast rotation through new FROST share generation
+
+Secure Memory Wiping: Best-effort sensitive data cleanup in browser environment
+
+Secure Family Operations
+Secure Multi-Party Computation (MPC) For family treasury management
+
+Threshold Signatures For distributed approval without revealing keys
+
+Blind Custody For parental controls without visibility into child transactions
+
+Privacy-Preserving Verification For age/identity verification without data exposure
 
 ### Encryption & Security Standards
 
@@ -90,68 +207,6 @@ api/                      # Serverless functions (.js)
 2. **Threshold Signatures** For distributed approval without revealing keys
 3. **Blind Custody** For parental controls without visibility into child transactions
 4. **Privacy-Preserving Verification** For age/identity verification without data exposure
-
-### Zero-Knowledge Proof Deployment
-
-1. **Client-Side ZKP Generation**
-
-   - All proofs generated in browser using WebAssembly
-   - No server-side proof generation to prevent data leakage
-   - Optimized for mobile devices with limited computational resources
-
-2. **Verification Infrastructure**
-
-   - Decentralized verification through Nostr relays
-   - Trustless verification without central authority
-   - Federated verification for family operations
-
-3. **ZKP Libraries & Implementation**
-
-   - **circom** and **snarkjs** for zk-SNARK implementations
-   - **bulletproofs-js** for range proofs
-   - **stark-wasm** for transparent proofs
-   - Custom WebAssembly optimizations for browser performance
-
-4. **Deployment Phases**
-   - **Phase 1 (Current - Q3 2025)**: Basic transaction verification proofs
-   - **Phase 2 (Q4 2025)**: Identity and authentication proofs
-   - **Phase 3 (Q2 2026)**: Full treasury management with ZKP
-   - **Phase 4 (Q4 2026)**: Cross-protocol ZKP for Lightning/Cashu/Fedimint
-
-### Zero-Knowledge Proof Auditing
-
-1. **Formal Verification**
-
-   - Mathematical verification of ZKP circuits
-   - Formal proof of security properties
-   - Verification of cryptographic assumptions
-
-2. **Independent Security Audits**
-
-   - Proposed audit partners (seeking user feedback):
-     - Least Authority audit of ZKP implementation
-     - Trail of Bits review of cryptographic protocols
-     - Other potential partners under consideration
-   - Comprehensive audit process starting Q3 2025
-   - Initial audit completed Q2 2025
-   - Open-source community review process
-
-3. **Continuous Verification**
-
-   - Automated testing of all ZKP circuits
-   - Fuzzing of proof generation and verification
-   - Stress testing under various network conditions
-
-4. **Transparent Audit Reports**
-
-   - All audit reports published publicly
-   - Detailed explanation of findings and remediations
-   - Regular re-auditing on major version updates
-
-5. **User Verification Tools**
-   - Self-verification tools for users to validate ZKP implementation
-   - Transparency logs for ZKP verification
-   - Educational resources on understanding ZKP security
 
 ---
 
@@ -220,7 +275,6 @@ api/                      # Serverless functions (.js)
 - Use strict type checking
 - Export types from `src/types/` directory
 - Handle undefined/null states explicitly
-- Use `.boltignore` optimization for AI context window
 
 ### Error Prevention
 
@@ -230,7 +284,7 @@ interface FamilyMember {
   id: string;
   npub: string;
   username: string;
-  role: 'parent' | 'child' | 'guardian';
+  role: 'offspring' | 'adult' | 'steward' | 'guardian';
   spendingLimits?: {
     daily: number;
     weekly: number;

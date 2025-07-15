@@ -18,19 +18,19 @@ import {
 import React, { useState } from 'react';
 
 // Import our enhanced dual-protocol components
-import AtomicSwapModal from './AtomicSwapModal.tsx';
-import ContextualAvatar from './ContextualAvatar.tsx';
+import AtomicSwapModal from './AtomicSwapModal';
+import ContextualAvatar from './ContextualAvatar';
 import EducationalDashboard from './education/EducationalDashboard';
 import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
-import FamilyFedimintGovernance from './FamilyFedimintGovernance.tsx';
-import FamilyLightningTreasury from './FamilyLightningTreasury.tsx';
-import PaymentAutomationCard from './PaymentAutomationCard.tsx';
-import PaymentAutomationModal from './PaymentAutomationModal.tsx';
+import FamilyFedimintGovernance from './FamilyFedimintGovernance';
+import FamilyLightningTreasury from './FamilyLightningTreasury';
+import PaymentAutomationCard from './PaymentAutomationCard';
+import PaymentAutomationModal from './PaymentAutomationModal';
 import { PaymentModal } from './shared';
-import UnifiedFamilyPayments from './UnifiedFamilyPayments.tsx';
+import UnifiedFamilyPayments from './UnifiedFamilyPayments';
 
 // Import Credits Balance
-import { CreditsBalance } from './CreditsBalance.tsx';
+import { CreditsBalance } from './CreditsBalance';
 
 // Import Payment Automation System
 import { PaymentSchedule } from '../lib/payment-automation';
@@ -56,9 +56,9 @@ interface UnifiedPaymentProps {
 }
 
 // Guardian Consensus Panel Component
-const GuardianConsensusPanel: React.FC<GuardianConsensusProps> = ({ 
-  pendingApprovals, 
-  onApproval 
+const GuardianConsensusPanel: React.FC<GuardianConsensusProps> = ({
+  pendingApprovals,
+  onApproval
 }) => {
   return (
     <div className="bg-white rounded-xl p-6 border border-purple-200 shadow-sm">
@@ -69,7 +69,7 @@ const GuardianConsensusPanel: React.FC<GuardianConsensusProps> = ({
           <span className="text-sm">{pendingApprovals.length} pending</span>
         </div>
       </div>
-      
+
       {pendingApprovals.length === 0 ? (
         <div className="text-center py-8 text-purple-500">
           <Shield className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -108,9 +108,9 @@ const GuardianConsensusPanel: React.FC<GuardianConsensusProps> = ({
 };
 
 // Enhanced Unified Family Payments Component
-const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({ 
-  lightningBalance, 
-  fedimintBalance, 
+const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
+  lightningBalance,
+  fedimintBalance,
   onPayment,
   showPaymentModal,
   setShowPaymentModal
@@ -130,7 +130,7 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
       timestamp: new Date(),
     };
     onPayment(payment);
-    
+
     // Reset form
     setRecipient('');
     setAmount('');
@@ -140,7 +140,7 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
   return (
     <div className="bg-white rounded-xl p-6 border border-green-200 shadow-sm">
       <h3 className="text-lg font-semibold text-green-900 mb-4">Smart Protocol Bridge</h3>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="space-y-4">
           <div>
@@ -153,7 +153,7 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Amount (sats)</label>
             <input
@@ -165,7 +165,7 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
             />
           </div>
         </div>
-        
+
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Protocol</label>
@@ -179,7 +179,7 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
               <option value="fedimint">Fedimint eCash</option>
             </select>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <input
@@ -192,7 +192,7 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
           </div>
         </div>
       </div>
-      
+
       <div className="flex space-x-3 mb-4">
         <button
           onClick={() => setShowPaymentModal(true)}
@@ -202,13 +202,13 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
           <span>Send Lightning Payment</span>
         </button>
       </div>
-      
+
       <div className="grid grid-cols-2 gap-3">
         <button className="w-full bg-orange-500 text-white px-3 py-2 rounded text-sm hover:bg-orange-600 transition-colors flex items-center justify-center space-x-2">
           <Zap className="h-4 w-4" />
           <span>Lightning → Individual</span>
         </button>
-        <button 
+        <button
           onClick={() => setShowAtomicSwapModal(true)}
           className="w-full bg-purple-500 text-white px-3 py-2 rounded text-sm hover:bg-purple-600 transition-colors flex items-center justify-center space-x-2"
         >
@@ -232,9 +232,9 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
 };
 
 // Main Family Financials Dashboard Component
-export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps> = ({ 
-  familyData, 
-  onBack 
+export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps> = ({
+  familyData,
+  onBack
 }) => {
   // State management
   const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd'>('overview');
@@ -242,19 +242,19 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   const [familyId] = useState("nakamoto_family_001");
   const [showPrivateBalances, setShowPrivateBalances] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Payment Modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
-  
+
   // Education Progress state (from Bolt integration)
   const [educationProgress, setEducationProgress] = useState(73);
-  
+
   // Payment Automation state
   const [showPaymentAutomationModal, setShowPaymentAutomationModal] = useState(false);
   const [editingPaymentSchedule, setEditingPaymentSchedule] = useState<PaymentSchedule | undefined>(undefined);
   const [paymentSchedules, setPaymentSchedules] = useState<PaymentSchedule[]>([]);
-  
+
   // QR Modal state (from Bolt integration)
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrAddress, setQrAddress] = useState('');
@@ -291,13 +291,13 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
   const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
 
-  // Mock family members
+  // Mock family members - Family Federation Trust Architecture roles
   const familyMembers = [
     {
       id: "1",
       username: "satoshi",
       lightningAddress: "satoshi@satnam.pub",
-      role: "parent" as const,
+      role: "adult" as const, // Adults (Beneficiaries): Full control within federation scope
       balance: 1250000,
       nip05Verified: true,
       avatar: "S", // Avatar support - first letter fallback, allows for future profile photos
@@ -307,10 +307,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       }
     },
     {
-      id: "2", 
+      id: "2",
       username: "hal",
       lightningAddress: "hal@satnam.pub",
-      role: "parent" as const,
+      role: "adult" as const, // Adults (Beneficiaries): Full control within federation scope
       balance: 850000,
       nip05Verified: true,
       avatar: "H",
@@ -321,9 +321,9 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     },
     {
       id: "3",
-      username: "alice", 
+      username: "alice",
       lightningAddress: "alice@satnam.pub",
-      role: "child" as const,
+      role: "offspring" as const, // Offspring (Minor Beneficiaries): Controlled accounts managed by Adults
       balance: 125000,
       nip05Verified: false,
       avatar: "A",
@@ -335,8 +335,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     {
       id: "4",
       username: "bob",
-      lightningAddress: "bob@satnam.pub", 
-      role: "child" as const,
+      lightningAddress: "bob@satnam.pub",
+      role: "offspring" as const, // Offspring (Minor Beneficiaries): Controlled accounts managed by Adults
       balance: 75000,
       nip05Verified: true,
       avatar: "B",
@@ -348,8 +348,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     {
       id: "5",
       username: "guardian_eve",
-      lightningAddress: "eve@satnam.pub", 
-      role: "guardian" as const,
+      lightningAddress: "eve@satnam.pub",
+      role: "guardian" as const, // Guardians (Trust Protectors): Oversight role, can remove Stewards
       balance: 500000,
       nip05Verified: true,
       avatar: "E",
@@ -369,7 +369,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
   const handleGuardianApproval = (approvalId: string, approved: boolean) => {
     console.log('Guardian approval:', { approvalId, approved });
-    setPendingApprovals(prev => 
+    setPendingApprovals(prev =>
       prev.filter(approval => approval.id !== approvalId)
     );
   };
@@ -431,10 +431,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
         console.log('Creating new payment schedule:', scheduleData);
         // In production: await paymentAutomationSystem.createPaymentSchedule('family', userId, familyId, scheduleData);
       }
-      
+
       // Refresh schedules list
       // In production: setPaymentSchedules(await paymentAutomationSystem.getPaymentSchedulesByContext('family', userId, familyId));
-      
+
     } catch (error) {
       console.error('Failed to save payment schedule:', error);
     }
@@ -444,10 +444,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     try {
       console.log(`${enabled ? 'Enabling' : 'Disabling'} payment schedule:`, scheduleId);
       // In production: await paymentAutomationSystem.togglePaymentSchedule(scheduleId, enabled);
-      
+
       // Update local state
-      setPaymentSchedules(prev => 
-        prev.map(schedule => 
+      setPaymentSchedules(prev =>
+        prev.map(schedule =>
           schedule.id === scheduleId ? { ...schedule, enabled } : schedule
         )
       );
@@ -460,7 +460,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     try {
       console.log('Deleting payment schedule:', scheduleId);
       // In production: await paymentAutomationSystem.deletePaymentSchedule(scheduleId);
-      
+
       // Update local state
       setPaymentSchedules(prev => prev.filter(schedule => schedule.id !== scheduleId));
     } catch (error) {
@@ -535,7 +535,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
             Combined Lightning + eCash Balance
           </div>
           <div className="space-y-2">
-            <button 
+            <button
               onClick={() => setCurrentView('payments')}
               className="w-full bg-green-500 text-white px-3 py-2 rounded text-sm hover:bg-green-600 transition-colors flex items-center justify-center space-x-2"
             >
@@ -559,7 +559,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           <span className="text-yellow-900 font-semibold">{educationProgress}%</span>
         </div>
         <div className="bg-yellow-200 rounded-full h-3 mb-4">
-          <div 
+          <div
             className="bg-gradient-to-r from-yellow-400 to-orange-500 h-3 rounded-full transition-all duration-300"
             style={{ width: `${educationProgress}%` }}
           />
@@ -573,7 +573,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       </div>
 
       {/* Enhanced Unified Family Payment Interface */}
-      <EnhancedUnifiedPayments 
+      <EnhancedUnifiedPayments
         lightningBalance={lightningBalance}
         fedimintBalance={fedimintBalance}
         onPayment={handleUnifiedPayment}
@@ -582,7 +582,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       />
 
       {/* Guardian Consensus Panel */}
-      <GuardianConsensusPanel 
+      <GuardianConsensusPanel
         pendingApprovals={pendingApprovals}
         onApproval={handleGuardianApproval}
       />
@@ -594,9 +594,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-gray-600">PhoenixD Connection</span>
-              <div className={`flex items-center space-x-2 ${
-                phoenixdStatus.connected ? 'text-green-600' : 'text-red-600'
-              }`}>
+              <div className={`flex items-center space-x-2 ${phoenixdStatus.connected ? 'text-green-600' : 'text-red-600'
+                }`}>
                 <CheckCircle className="h-4 w-4" />
                 <span>{phoenixdStatus.connected ? 'Connected' : 'Disconnected'}</span>
               </div>
@@ -607,9 +606,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Auto Liquidity</span>
-              <div className={`flex items-center space-x-2 ${
-                phoenixdStatus.automatedLiquidity ? 'text-green-600' : 'text-yellow-600'
-              }`}>
+              <div className={`flex items-center space-x-2 ${phoenixdStatus.automatedLiquidity ? 'text-green-600' : 'text-yellow-600'
+                }`}>
                 {phoenixdStatus.automatedLiquidity ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                 <span>{phoenixdStatus.automatedLiquidity ? 'Enabled' : 'Disabled'}</span>
               </div>
@@ -730,11 +728,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
                 <button
                   key={tab.id}
                   onClick={() => setCurrentView(tab.id as any)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                    currentView === tab.id
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${currentView === tab.id
                       ? 'bg-orange-500 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span>{tab.label}</span>
@@ -803,15 +800,15 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
             >
               ✕
             </button>
-            
+
             <div className="text-center">
               <div className="bg-gray-100 p-4 rounded-lg inline-block mb-4">
                 <QrCode className="h-48 w-48 text-gray-700" />
               </div>
-              
+
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Lightning Address</h3>
               <p className="text-gray-600 mb-2">Scan to pay or copy address:</p>
-              
+
               {/* Lightning Address with Copy Button */}
               <div className="bg-orange-50 rounded-lg p-3 mb-4">
                 <p className="text-orange-700 font-mono text-sm mb-2 break-all">{qrAddress}</p>
@@ -844,7 +841,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
                   <Zap className="h-4 w-4" />
                   <span>Send Zap Payment</span>
                 </button>
-                
+
                 <div className="flex items-center justify-center space-x-2 text-green-600 text-sm">
                   <CheckCircle className="h-4 w-4" />
                   <span>Ready for Lightning & Nostr payments</span>

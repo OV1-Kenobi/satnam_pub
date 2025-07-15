@@ -5,7 +5,9 @@
 import { useCallback, useRef, useState } from "react";
 import {
   PrivacyConsentResponse,
+  PrivacyWarningContent,
   SatnamPrivacyFirstCommunications,
+  SessionInitializationOptions,
 } from "../lib/gift-wrapped-messaging/privacy-first-service";
 
 export interface PrivacyMessagingState {
@@ -27,7 +29,7 @@ export interface PrivacyMessagingState {
 
   // Privacy warning state
   showingPrivacyWarning: boolean;
-  privacyWarningContent: any;
+  privacyWarningContent: PrivacyWarningContent | null;
   pendingDisclosureConfig: {
     nip05?: string;
     scope?: "direct" | "groups" | "specific-groups";
@@ -36,7 +38,10 @@ export interface PrivacyMessagingState {
 }
 
 export interface PrivacyMessagingActions {
-  initializeSession: (nsec: string, options?: any) => Promise<string | null>;
+  initializeSession: (
+    nsecBuffer: ArrayBuffer,
+    options?: SessionInitializationOptions
+  ) => Promise<string | null>;
   destroySession: () => Promise<void>;
 
   // NIP-05 Identity Disclosure
@@ -99,12 +104,18 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
   );
 
   const initializeSession = useCallback(
-    async (nsec: string, options?: any): Promise<string | null> => {
+    async (
+      nsecBuffer: ArrayBuffer,
+      options?: SessionInitializationOptions
+    ): Promise<string | null> => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
         const communications = new SatnamPrivacyFirstCommunications();
-        const sessionId = await communications.initializeSession(nsec, options);
+        const sessionId = await communications.initializeSession(
+          nsecBuffer,
+          options
+        );
 
         communicationsRef.current = communications;
 
@@ -194,7 +205,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
           setState((prev) => ({
             ...prev,
             showingPrivacyWarning: true,
-            privacyWarningContent: workflowResult.warningContent,
+            privacyWarningContent: workflowResult.warningContent || null,
             pendingDisclosureConfig: { nip05, scope, specificGroupIds },
             loading: false,
           }));

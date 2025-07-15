@@ -1,9 +1,10 @@
 // lib/api/auth-endpoints.ts
-import type { Request, Response } from "express";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { HybridAuth } from "../../netlify/functions/hybrid-auth";
 import type { Event as NostrEvent } from "../../src/lib/nostr-browser";
-import { HybridAuth } from "../hybrid-auth";
+import type { NetlifyContext } from "../../types/netlify-functions";
 import { SecureSessionManager } from "../security/session-manager";
-import { CitadelDatabase } from "../supabase";
+import { createSupabaseClient } from "../supabase";
 
 // Helper function to safely extract error message
 function getErrorMessage(error: unknown): string {
@@ -23,6 +24,21 @@ export interface APIResponse<T = any> {
   message?: string;
 }
 
+// Helper function to get user identity from database
+// IMPORTANT: userId must be a hashed UUID, not a readable userID
+async function getUserIdentity(userId: string, client?: SupabaseClient) {
+  if (!client) {
+    client = await createSupabaseClient();
+  }
+  const result = await client
+    .from("user_identities")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1);
+
+  return result.data?.[0] || null;
+}
+
 export class AuthAPI {
   // ===========================================
   // NOSTR DIRECT AUTHENTICATION
@@ -37,12 +53,13 @@ export class AuthAPI {
   ): Promise<APIResponse> {
     try {
       const session = await HybridAuth.authenticateWithNostr(signedEvent);
+      const client = await createSupabaseClient();
 
       return {
         success: true,
         data: {
           session,
-          user: await CitadelDatabase.getUserIdentity(session.user_id),
+          user: await getUserIdentity(session.user_id, client),
         },
         message: "Authentication successful",
       };
@@ -69,12 +86,13 @@ export class AuthAPI {
       }
 
       const session = await HybridAuth.authenticateWithNWC(nwcUri);
+      const client = await createSupabaseClient();
 
       return {
         success: true,
         data: {
           session,
-          user: await CitadelDatabase.getUserIdentity(session.user_id),
+          user: await getUserIdentity(session.user_id, client),
           wallet_connected: true,
         },
         message: "NWC authentication successful",
@@ -123,13 +141,14 @@ export class AuthAPI {
   static async verifyOTP(
     pubkey: string,
     otp_code: string,
-    res: Response
+    context?: NetlifyContext
   ): Promise<APIResponse> {
     try {
       const session = await HybridAuth.verifyNostrDMOTP(pubkey, otp_code);
-      const user = await CitadelDatabase.getUserIdentity(session.user_id);
+      const client = await createSupabaseClient();
+      const user = await getUserIdentity(session.user_id, client);
 
-      // Create user data for HttpOnly cookie session
+      // Create user data for session
       const userData = {
         npub: session.npub,
         nip05: user?.nip05,
@@ -143,14 +162,22 @@ export class AuthAPI {
         guardianApproved: user?.guardianApproved || false,
       };
 
-      // Create secure session with HttpOnly cookies
-      SecureSessionManager.createSession(res, userData);
+      // Create secure session
+      const sessionManager = new SecureSessionManager();
+      const sessionData = await sessionManager.createSession({
+        userId: session.user_id,
+        npub: userData.npub,
+        familyId: user?.familyId,
+        role: userData.federationRole,
+        permissions: [], // TODO: Define permissions based on role
+      });
 
       return {
         success: true,
         data: {
           session,
           user,
+          sessionToken: sessionData.sessionToken,
         },
         message: "OTP verification successful",
       };
@@ -170,11 +197,12 @@ export class AuthAPI {
    * GET /api/auth/session
    * Get current session information
    */
-  static async getSession(req: Request): Promise<APIResponse> {
+  static async getSession(): Promise<APIResponse> {
     try {
-      const sessionInfo = SecureSessionManager.getSessionInfo(req);
+      const sessionManager = new SecureSessionManager();
+      const sessionData = await sessionManager.getSession();
 
-      if (!sessionInfo.isAuthenticated) {
+      if (!sessionData) {
         return {
           success: false,
           error: "No active session",
@@ -183,7 +211,16 @@ export class AuthAPI {
 
       return {
         success: true,
-        data: sessionInfo,
+        data: {
+          isAuthenticated: true,
+          user: {
+            userId: sessionData.userId,
+            npub: sessionData.npub,
+            familyId: sessionData.familyId,
+            role: sessionData.role,
+            permissions: sessionData.permissions,
+          },
+        },
       };
     } catch (error) {
       return {
@@ -197,10 +234,11 @@ export class AuthAPI {
    * POST /api/auth/logout
    * Logout and invalidate session
    */
-  static async logout(res: Response): Promise<APIResponse> {
+  static async logout(): Promise<APIResponse> {
     try {
-      // Clear HttpOnly cookies
-      SecureSessionManager.clearSession(res);
+      // Clear session
+      const sessionManager = new SecureSessionManager();
+      await sessionManager.destroySession();
 
       return {
         success: true,
@@ -220,30 +258,27 @@ export class AuthAPI {
    * POST /api/auth/refresh
    * Refresh authentication session
    */
-  static async refreshSession(
-    req: Request,
-    res: Response
-  ): Promise<APIResponse> {
+  static async refreshSession(): Promise<APIResponse> {
     try {
-      const refreshedSession = SecureSessionManager.refreshSession(req, res);
+      const sessionManager = new SecureSessionManager();
+      const sessionData = await sessionManager.getSession();
 
-      if (!refreshedSession) {
+      if (!sessionData) {
         return {
           success: false,
           error: "Unable to refresh session",
         };
       }
 
+      // Session is automatically refreshed by getSession()
       const sessionInfo = {
         isAuthenticated: true,
         user: {
-          npub: refreshedSession.npub,
-          nip05: refreshedSession.nip05,
-          federationRole: refreshedSession.federationRole,
-          authMethod: refreshedSession.authMethod,
-          isWhitelisted: refreshedSession.isWhitelisted,
-          votingPower: refreshedSession.votingPower,
-          guardianApproved: refreshedSession.guardianApproved,
+          userId: sessionData.userId,
+          npub: sessionData.npub,
+          familyId: sessionData.familyId,
+          role: sessionData.role,
+          permissions: sessionData.permissions,
         },
       };
 

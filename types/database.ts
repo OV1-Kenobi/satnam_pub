@@ -81,3 +81,90 @@ export interface UpdateProfileInput {
   lightning_address?: string;
   family_id?: string;
 }
+
+// Educational System Types
+export interface EducationalInvitation {
+  id: string;
+  invite_token: string;
+  invited_by: string;
+  course_credits: number;
+  used: boolean;
+  used_at?: Date;
+  expires_at?: Date;
+  invitation_data?: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CourseCredit {
+  id: string;
+  user_id: string;
+  credits_amount: number;
+  activity_type: string;
+  description: string;
+  invite_token?: string;
+  created_at: Date;
+}
+
+export interface CreateEducationalInvitationInput {
+  invite_token: string;
+  invited_by: string;
+  course_credits: number;
+  expires_at?: string;
+  invitation_data?: any;
+}
+
+export interface CreateCourseCreditInput {
+  user_id: string;
+  credits_amount: number;
+  activity_type: string;
+  description: string;
+  invite_token?: string;
+}
+
+// Supabase Database Schema Type
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: Profile;
+        Insert: CreateProfileInput;
+        Update: UpdateProfileInput;
+      };
+      families: {
+        Row: Family;
+        Insert: CreateFamilyInput;
+        Update: Partial<CreateFamilyInput>;
+      };
+      nostr_backups: {
+        Row: NostrBackup;
+        Insert: CreateNostrBackupInput;
+        Update: Partial<CreateNostrBackupInput>;
+      };
+      lightning_addresses: {
+        Row: LightningAddress;
+        Insert: CreateLightningAddressInput;
+        Update: Partial<CreateLightningAddressInput>;
+      };
+      educational_invitations: {
+        Row: EducationalInvitation;
+        Insert: CreateEducationalInvitationInput;
+        Update: Partial<CreateEducationalInvitationInput>;
+      };
+      course_credits: {
+        Row: CourseCredit;
+        Insert: CreateCourseCreditInput;
+        Update: Partial<CreateCourseCreditInput>;
+      };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+  };
+}

@@ -1,19 +1,13 @@
 /**
  * Family Federation Authentication Hook
  * @description Hook to use the Family Federation Auth context
+ * ✅ Master Context Compliance: Using lib hook instead of component import
  */
 
-import { useContext } from "react";
-import { AuthContext } from "../components/auth/FamilyFederationAuth";
+import { useFamilyFederationAuth as useLibFamilyFederationAuth } from "../lib";
 
 export const useFamilyFederationAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error(
-      "useFamilyFederationAuth must be used within FamilyFederationAuthProvider"
-    );
-  }
-  return context;
+  return useLibFamilyFederationAuth();
 };
 
 export default useFamilyFederationAuth;

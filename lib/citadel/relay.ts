@@ -1,12 +1,11 @@
 // lib/citadel/relay.ts
+import type { Event as NostrEvent } from "../../src/lib/nostr-browser";
 import {
   SimplePool,
-  generateSecretKey as generatePrivateKey,
-  getPublicKey,
   finalizeEvent as finishEvent,
+  generateSecretKey,
   nip19,
 } from "../../src/lib/nostr-browser";
-import type { NostrEvent } from "../../src/lib/nostr-browser";
 import { supabase } from "../../src/lib/supabase";
 
 export interface RelayPublishResponse {
@@ -18,10 +17,11 @@ export interface RelayPublishResponse {
 
 export class CitadelRelay {
   private static pool = new SimplePool();
-  private static serverKey: Uint8Array = (() => {
+  private static serverKey: Promise<Uint8Array> = (async () => {
     // Generate a new server key for each session - no persistent storage
     // This follows privacy-first principles and avoids env variable dependencies
-    return generatePrivateKey();
+    const privateKeyHex = await generateSecretKey.generate();
+    return nip19.hexToBytes(privateKeyHex);
   })();
 
   /**
@@ -32,9 +32,9 @@ export class CitadelRelay {
       // If familyId is provided, try to get family-specific relay
       if (familyId) {
         const { data: familyData, error: familyError } = await supabase
-          .from('families')
-          .select('relay_url')
-          .eq('id', familyId)
+          .from("families")
+          .select("relay_url")
+          .eq("id", familyId)
           .single();
 
         if (!familyError && familyData?.relay_url) {
@@ -43,11 +43,11 @@ export class CitadelRelay {
 
         // Try to get from nostr_relays table
         const { data: relayData, error: relayError } = await supabase
-          .from('nostr_relays')
-          .select('url')
-          .eq('family_id', familyId)
-          .eq('status', 'connected')
-          .order('message_count', { ascending: false })
+          .from("nostr_relays")
+          .select("url")
+          .eq("family_id", familyId)
+          .eq("status", "connected")
+          .order("message_count", { ascending: false })
           .limit(1)
           .single();
 
@@ -70,13 +70,14 @@ export class CitadelRelay {
   static async publishIdentityEvent(
     nostrIdentity: any,
     relayUrl?: string,
-    familyId?: string,
+    familyId?: string
   ): Promise<RelayPublishResponse> {
     try {
-      const relay = relayUrl || await this.getRelayUrl(familyId);
+      const relay = relayUrl || (await this.getRelayUrl(familyId));
 
       // Create identity event
-      const identityEvent = finishEvent(
+      const serverKeyBytes = await this.serverKey;
+      const identityEvent = await finishEvent.sign(
         {
           kind: 30000, // Parameterized replaceable event for identity
           created_at: Math.floor(Date.now() / 1000),
@@ -98,8 +99,10 @@ export class CitadelRelay {
             // Don't store private key in relay - only reference
             backup_type: "identity_reference",
           }),
+          pubkey: nip19.bytesToHex(serverKeyBytes),
+          id: "",
         },
-        this.serverKey,
+        nip19.bytesToHex(serverKeyBytes)
       );
 
       // Publish to relay
@@ -133,10 +136,10 @@ export class CitadelRelay {
   static async retrieveIdentityEvent(
     eventId: string,
     relayUrl?: string,
-    familyId?: string,
+    familyId?: string
   ): Promise<NostrEvent | null> {
     try {
-      const relay = relayUrl || await this.getRelayUrl(familyId);
+      const relay = relayUrl || (await this.getRelayUrl(familyId));
 
       return new Promise((resolve) => {
         const sub = this.pool.subscribeMany([relay], [{ ids: [eventId] }], {
@@ -167,12 +170,13 @@ export class CitadelRelay {
     userId: string,
     encryptedData: string,
     backupType: string = "profile_backup",
-    familyId?: string,
+    familyId?: string
   ): Promise<RelayPublishResponse> {
     try {
       const relay = await this.getRelayUrl(familyId);
 
-      const backupEvent = finishEvent(
+      const serverKeyBytes = await this.serverKey;
+      const backupEvent = await finishEvent.sign(
         {
           kind: 30001, // Parameterized replaceable event for backups
           created_at: Math.floor(Date.now() / 1000),
@@ -184,8 +188,10 @@ export class CitadelRelay {
             ["server", "identity-forge"],
           ],
           content: encryptedData,
+          pubkey: nip19.bytesToHex(serverKeyBytes),
+          id: "",
         },
-        this.serverKey,
+        nip19.bytesToHex(serverKeyBytes)
       );
 
       const publishResults = await this.pool.publish([relay], backupEvent);
@@ -216,10 +222,10 @@ export class CitadelRelay {
   static async getUserBackups(
     userId: string,
     relayUrl?: string,
-    familyId?: string,
+    familyId?: string
   ): Promise<NostrEvent[]> {
     try {
-      const relay = relayUrl || await this.getRelayUrl(familyId);
+      const relay = relayUrl || (await this.getRelayUrl(familyId));
       const backups: NostrEvent[] = [];
 
       return new Promise((resolve) => {
@@ -238,7 +244,7 @@ export class CitadelRelay {
             oneose() {
               resolve(backups);
             },
-          },
+          }
         );
 
         // Timeout after 10 seconds
@@ -265,7 +271,8 @@ export class CitadelRelay {
     try {
       const relay = await this.getRelayUrl(familyData.family_id);
 
-      const familyEvent = finishEvent(
+      const serverKeyBytes = await this.serverKey;
+      const familyEvent = await finishEvent.sign(
         {
           kind: 30002, // Parameterized replaceable event for family data
           created_at: Math.floor(Date.now() / 1000),
@@ -284,8 +291,10 @@ export class CitadelRelay {
             created_at: new Date().toISOString(),
             backup_type: "family_reference",
           }),
+          pubkey: nip19.bytesToHex(serverKeyBytes),
+          id: "",
         },
-        this.serverKey,
+        nip19.bytesToHex(serverKeyBytes)
       );
 
       const publishResults = await this.pool.publish([relay], familyEvent);
@@ -315,24 +324,20 @@ export class CitadelRelay {
    */
   private static async waitForConfirmation(
     relayUrl: string,
-    eventId: string,
+    eventId: string
   ): Promise<boolean> {
     return new Promise((resolve) => {
-      const sub = this.pool.subscribeMany(
-        [relayUrl],
-        [{ ids: [eventId] }],
-        {
-          onevent(event) {
-            if (event.id === eventId) {
-              sub.close();
-              resolve(true);
-            }
-          },
-          oneose() {
-            resolve(false);
-          },
+      const sub = this.pool.subscribeMany([relayUrl], [{ ids: [eventId] }], {
+        onevent(event) {
+          if (event.id === eventId) {
+            sub.close();
+            resolve(true);
+          }
         },
-      );
+        oneose() {
+          resolve(false);
+        },
+      });
 
       // Timeout after 5 seconds
       setTimeout(() => {
@@ -345,14 +350,17 @@ export class CitadelRelay {
   /**
    * Test relay connection
    */
-  static async testRelayConnection(relayUrl?: string, familyId?: string): Promise<{
+  static async testRelayConnection(
+    relayUrl?: string,
+    familyId?: string
+  ): Promise<{
     success: boolean;
     relayUrl: string;
     latency?: number;
     error?: string;
   }> {
     try {
-      const relay = relayUrl || await this.getRelayUrl(familyId);
+      const relay = relayUrl || (await this.getRelayUrl(familyId));
       const startTime = Date.now();
 
       return new Promise((resolve) => {
@@ -378,7 +386,7 @@ export class CitadelRelay {
                 latency,
               });
             },
-          },
+          }
         );
 
         // Timeout after 10 seconds
@@ -395,6 +403,39 @@ export class CitadelRelay {
       return {
         success: false,
         relayUrl: relayUrl || "unknown",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Generic method to publish any event to relay
+   */
+  static async publishEvent(
+    event: NostrEvent,
+    relayUrl?: string,
+    familyId?: string
+  ): Promise<RelayPublishResponse> {
+    try {
+      const relay = relayUrl || (await this.getRelayUrl(familyId));
+
+      const publishResults = await this.pool.publish([relay], event);
+      const confirmed = await this.waitForConfirmation(relay, event.id);
+
+      if (confirmed) {
+        return {
+          success: true,
+          eventId: event.id,
+          relayUrl: relay,
+        };
+      } else {
+        throw new Error("Event not confirmed by relay");
+      }
+    } catch (error) {
+      return {
+        success: false,
+        eventId: event.id || "",
+        relayUrl: "",
         error: error instanceof Error ? error.message : String(error),
       };
     }
