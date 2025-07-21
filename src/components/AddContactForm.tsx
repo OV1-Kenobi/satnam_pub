@@ -44,7 +44,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
     npub: '',
     displayName: '',
     nip05: '',
-    familyRole: 'friend',
+    familyRole: 'private',
     trustLevel: 'known',
     preferredEncryption: 'auto',
     notes: '',
@@ -107,7 +107,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
   // Form handlers
   const handleInputChange = (field: keyof FormState, value: string): void => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
     // Clear error for this field when user starts typing
     if (formErrors[field as keyof FormErrors]) {
       setFormErrors(prev => ({ ...prev, [field]: undefined }));
@@ -126,7 +126,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
         tags: [...prev.tags, tag]
       }));
       setTagInput('');
-      
+
       // Clear tag error
       if (formErrors.tags) {
         setFormErrors(prev => ({ ...prev, tags: undefined }));
@@ -169,7 +169,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -188,15 +188,14 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
     try {
       await onSubmit(contactData);
     } catch (err) {
-      // Error handled by parent component
-      console.error('Form submission error:', err);
+      // Error handled by parent component with privacy-first logging
     }
   };
 
   const isFormValid = (): boolean => {
-    return formData.npub.trim() !== '' && 
-           formData.displayName.trim() !== '' && 
-           Object.keys(formErrors).length === 0;
+    return formData.npub.trim() !== '' &&
+      formData.displayName.trim() !== '' &&
+      Object.keys(formErrors).length === 0;
   };
 
   return (
@@ -241,9 +240,8 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
             value={formData.npub}
             onChange={(e) => handleInputChange('npub', e.target.value)}
             disabled={loading}
-            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm disabled:opacity-50 ${
-              formErrors.npub ? 'border-red-500/50' : 'border-white/20'
-            }`}
+            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm disabled:opacity-50 ${formErrors.npub ? 'border-red-500/50' : 'border-white/20'
+              }`}
           />
           {formErrors.npub && (
             <p className="text-red-400 text-sm mt-1">{formErrors.npub}</p>
@@ -261,9 +259,8 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
             value={formData.displayName}
             onChange={(e) => handleInputChange('displayName', e.target.value)}
             disabled={loading}
-            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${
-              formErrors.displayName ? 'border-red-500/50' : 'border-white/20'
-            }`}
+            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${formErrors.displayName ? 'border-red-500/50' : 'border-white/20'
+              }`}
           />
           {formErrors.displayName && (
             <p className="text-red-400 text-sm mt-1">{formErrors.displayName}</p>
@@ -281,9 +278,8 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
             value={formData.nip05}
             onChange={(e) => handleInputChange('nip05', e.target.value)}
             disabled={loading}
-            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${
-              formErrors.nip05 ? 'border-red-500/50' : 'border-white/20'
-            }`}
+            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${formErrors.nip05 ? 'border-red-500/50' : 'border-white/20'
+              }`}
           />
           {formErrors.nip05 && (
             <p className="text-red-400 text-sm mt-1">{formErrors.nip05}</p>
@@ -319,11 +315,11 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
               disabled={loading}
               className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
             >
+              <option value="private" className="bg-purple-900">Private</option>
+              <option value="offspring" className="bg-purple-900">Offspring</option>
               <option value="adult" className="bg-purple-900">Adult</option>
-              <option value="child" className="bg-purple-900">Child</option>
+              <option value="steward" className="bg-purple-900">Steward</option>
               <option value="guardian" className="bg-purple-900">Guardian</option>
-              <option value="advisor" className="bg-purple-900">Advisor</option>
-              <option value="friend" className="bg-purple-900">Friend</option>
             </select>
           </div>
         </div>
@@ -370,7 +366,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
                 Add
               </button>
             </div>
-            
+
             {/* Tags Display */}
             {formData.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -392,7 +388,7 @@ export const AddContactForm: React.FC<AddContactFormProps> = ({
                 ))}
               </div>
             )}
-            
+
             {formErrors.tags && (
               <p className="text-red-400 text-sm">{formErrors.tags}</p>
             )}

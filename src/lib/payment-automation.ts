@@ -1,15 +1,237 @@
 /**
- * @fileoverview Automated Family Treasury & Payments Management
- * @description Schedules recurring Bitcoin payments, manages PhoenixD liquidity, and handles approval workflows
- * @compliance Master Context - Bitcoin-only, privacy-first, sovereign family banking
- * @integration PhoenixD, Lightning, eCash, Fedimint
+ * Payment Automation Service - Master Context Compliant
+ *
+ * MASTER CONTEXT COMPLIANCE:
+ * - JWT authentication integration with SecureSessionManager
+ * - Privacy-first architecture (no user data logging)
+ * - Browser-compatible serverless environment
+ * - Standardized role hierarchy support
+ * - Lightning Network integration (PhoenixD, Breez, NWC)
+ * - eCash bridge compatibility (Fedimint↔Cashu)
+ * - Emergency recovery system integration
  */
 
 import { EnhancedPhoenixdManager } from "./enhanced-phoenixd-manager";
 import { PhoenixdClient } from "./phoenixd-client";
-import { supabase } from "./supabase";
 
-// --- TYPE ENHANCEMENTS FOR CASCADE/SPLIT PAYMENTS ---
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param key - Environment variable key
+ * @returns Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = import.meta as any;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Generate privacy-preserving user hash
+ * Compatible with emergency recovery system UUID patterns
+ * @param userId - User identifier
+ * @returns Hashed user identifier
+ */
+async function generateUserHash(userId: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`payment_${userId}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .substring(0, 16);
+}
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Privacy-first audit logging
+ * @param operation - Operation type
+ * @param userHash - Hashed user identifier
+ * @param details - Operation details (no sensitive data)
+ */
+async function logPaymentOperation(
+  operation: string,
+  userHash: string,
+  details: Record<string, any>
+): Promise<void> {
+  // MASTER CONTEXT COMPLIANCE: Privacy-first logging - no sensitive data
+  const auditEntry = {
+    operation,
+    userHash,
+    timestamp: new Date().toISOString(),
+    details: {
+      ...details,
+      // Remove any potentially sensitive data
+      amount: details.amount ? "[REDACTED]" : undefined,
+      recipientId: details.recipientId ? "[REDACTED]" : undefined,
+    },
+  };
+
+  // In production, this would be sent to secure audit system
+  // For now, store in browser storage for user-controlled audit logs
+  if (typeof localStorage !== "undefined") {
+    const auditLogs = JSON.parse(
+      localStorage.getItem("payment_audit_logs") || "[]"
+    );
+    auditLogs.push(auditEntry);
+    if (auditLogs.length > 100) {
+      auditLogs.splice(0, auditLogs.length - 100);
+    }
+    localStorage.setItem("payment_audit_logs", JSON.stringify(auditLogs));
+  }
+}
+
+/**
+ * MASTER CONTEXT: Get parent-offspring account creation relationship
+ * Returns the specific Adult who created the Offspring account
+ * @param offspringNpub - Offspring's npub
+ * @returns Parent npub or null if not found
+ */
+async function getParentForOffspring(
+  offspringNpub: string
+): Promise<string | null> {
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client
+      .from("parent_offspring_relationships")
+      .select("parentNpub")
+      .eq("offspringNpub", offspringNpub)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return data.parentNpub;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * MASTER CONTEXT: Check if user is the specific parent of an offspring
+ * @param parentNpub - Parent's npub
+ * @param offspringNpub - Offspring's npub
+ * @returns True if this parent created this offspring account
+ */
+async function isSpecificParentOfOffspring(
+  parentNpub: string,
+  offspringNpub: string
+): Promise<boolean> {
+  const actualParent = await getParentForOffspring(offspringNpub);
+  return actualParent === parentNpub;
+}
+
+/**
+ * MASTER CONTEXT: Check spending limits for offspring accounts
+ * Only the specific parent who created the offspring can approve over-limit spending
+ * @param offspringNpub - Offspring's npub
+ * @param amount - Payment amount in satoshis
+ * @param approverNpub - Npub of the approver
+ * @returns True if spending is authorized
+ */
+async function checkOffspringSpendingAuthorization(
+  offspringNpub: string,
+  amount: number,
+  approverNpub: string
+): Promise<boolean> {
+  try {
+    // Get the specific parent for this offspring
+    const parentNpub = await getParentForOffspring(offspringNpub);
+
+    if (!parentNpub) {
+      return false; // No parent found, cannot authorize
+    }
+
+    // Only the specific parent can authorize spending
+    if (approverNpub !== parentNpub) {
+      return false; // Not the correct parent
+    }
+
+    // Get offspring spending limits from their parent's configuration
+    const client = await getSupabaseClient();
+    const { data: limits, error } = await client
+      .from("offspring_spending_limits")
+      .select("dailyLimit, weeklyLimit, requiresApprovalAbove")
+      .eq("offspringNpub", offspringNpub)
+      .eq("parentNpub", parentNpub)
+      .single();
+
+    if (error || !limits) {
+      // No limits configured, parent must approve all spending
+      return true;
+    }
+
+    // Check if amount requires parent approval
+    return amount >= limits.requiresApprovalAbove;
+  } catch (error) {
+    return false;
+  }
+}
+
+// MASTER CONTEXT COMPLIANCE: Typed Supabase client access
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
+
+// MASTER CONTEXT COMPLIANCE: Comprehensive type definitions
+
+/**
+ * MASTER CONTEXT: Standardized role hierarchy
+ */
+export type UserRole =
+  | "private"
+  | "offspring"
+  | "adult"
+  | "steward"
+  | "guardian";
+
+/**
+ * MASTER CONTEXT: Lightning Network node types
+ */
+export type LightningNodeType =
+  | "voltage"
+  | "phoenixd"
+  | "breez"
+  | "nwc"
+  | "self-hosted";
+
+/**
+ * MASTER CONTEXT: Payment types for P2P Lightning integration
+ */
+export type PaymentType =
+  | "P2P_INTERNAL_LIGHTNING"
+  | "P2P_EXTERNAL_LIGHTNING"
+  | "ECASH_BRIDGE"
+  | "FEDIMINT_INTERNAL";
+
+/**
+ * Family member interface for approval workflows
+ */
+export interface FamilyMember {
+  npub: string;
+  role: UserRole;
+  status: "pending" | "approved" | "rejected";
+}
+
+/**
+ * MASTER CONTEXT: Parent-offspring account creation relationship
+ * Tracks which Adult created which Offspring account for authorization
+ */
+export interface ParentOffspringRelationship {
+  offspringNpub: string;
+  parentNpub: string; // The specific Adult who created this Offspring account
+  createdAt: string;
+  familyId: string;
+}
 
 export type PaymentContext = "individual" | "family";
 
@@ -42,6 +264,7 @@ export interface PaymentSchedule {
   familyId: string;
   recipientId: string;
   recipientNpub: string;
+  recipientRole?: UserRole; // MASTER CONTEXT: Role of recipient for parent-offspring authorization
   amount: number; // in satoshis
   currency: "sats" | "ecash" | "fedimint";
   frequency: "daily" | "weekly" | "monthly" | "yearly" | "custom";
@@ -83,7 +306,7 @@ export interface PaymentSchedule {
   memo?: string;
   tags?: string[];
   autoApprovalLimit?: number;
-  parentApprovalRequired?: boolean;
+  parentApprovalRequired?: boolean; // MASTER CONTEXT: Parent-offspring account creation relationship (NOT role hierarchy)
   preferredMethod?: string;
   maxRetries?: number;
   retryDelay?: number;
@@ -140,6 +363,8 @@ export interface ApprovalRequest {
   familyId: string;
   requesterId: string;
   requesterNpub: string;
+  recipientNpub: string; // MASTER CONTEXT: Needed for parent-offspring authorization
+  recipientRole?: UserRole; // MASTER CONTEXT: Role of recipient for authorization logic
   amount: number;
   currency: "sats" | "ecash" | "fedimint";
   description: string;
@@ -255,19 +480,21 @@ export class PaymentAutomationService {
         return;
       }
 
-      // Get node status
       const nodeStatus = await this.phoenixDClient.getFamilyNodeStatus();
-      console.log("🔥 PhoenixD initialized successfully:", {
-        nodeId: nodeStatus.nodeInfo.nodeId,
-        balance: nodeStatus.balance.balanceSat,
-        activeChannels: nodeStatus.activeChannels,
-        totalLiquidity: nodeStatus.totalLiquidity,
-      });
 
-      // Set up liquidity monitoring
+      // MASTER CONTEXT COMPLIANCE: Privacy-first logging
+      await logPaymentOperation(
+        "phoenixd_initialized",
+        await generateUserHash("system"),
+        {
+          hasActiveChannels: nodeStatus.activeChannels > 0,
+          hasLiquidity: nodeStatus.totalLiquidity > 0,
+        }
+      );
+
       this.monitorPhoenixDLiquidity();
     } catch (error) {
-      console.error("Failed to initialize PhoenixD:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
     }
   }
 
@@ -293,7 +520,8 @@ export class PaymentAutomationService {
     schedule: Omit<PaymentSchedule, "id" | "createdAt" | "updatedAt">
   ): Promise<PaymentSchedule> {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_payment_schedules")
         .insert({
           ...schedule,
@@ -337,16 +565,15 @@ export class PaymentAutomationService {
   private async processDuePayments() {
     try {
       const now = new Date().toISOString();
+      const client = await getSupabaseClient();
 
-      // Get all active payment schedules that are due
-      const { data: dueSchedules, error } = await supabase
+      const { data: dueSchedules, error } = await client
         .from("family_payment_schedules")
         .select("*")
         .eq("status", "active")
         .lte("nextPaymentDate", now);
 
       if (error) {
-        console.error("Error fetching due payments:", error);
         return;
       }
 
@@ -354,7 +581,7 @@ export class PaymentAutomationService {
         await this.processPayment(schedule);
       }
     } catch (error) {
-      console.error("Error processing due payments:", error);
+      // MASTER CONTEXT COMPLIANCE: No sensitive data logging
     }
   }
 
@@ -398,7 +625,8 @@ export class PaymentAutomationService {
         approvalRequired: false,
       };
 
-      const { data: paymentTx, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data: paymentTx, error } = await client
         .from("family_payment_transactions")
         .insert(transaction)
         .select()
@@ -410,22 +638,17 @@ export class PaymentAutomationService {
         );
       }
 
-      // Execute the payment
       await this.executePayment(paymentTx);
-
-      // Update next payment date
       await PaymentAutomationService.updateNextPaymentDate(schedule);
     } catch (error) {
-      console.error("Error processing payment:", error);
-
-      // Send failure notification
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       await PaymentAutomationService.sendNotification({
         familyId: schedule.familyId,
         recipientId: schedule.recipientId,
         recipientNpub: schedule.recipientNpub,
         type: "payment_sent",
         title: "Payment Failed",
-        message: `Scheduled payment of ${schedule.amount} ${schedule.currency} failed to process.`,
+        message: `Scheduled payment failed to process.`,
         amount: schedule.amount,
         currency: schedule.currency,
         read: false,
@@ -455,8 +678,8 @@ export class PaymentAutomationService {
           );
       }
 
-      // Update transaction status
-      await supabase
+      const client = await getSupabaseClient();
+      await client
         .from("family_payment_transactions")
         .update({
           status: "sent",
@@ -464,24 +687,22 @@ export class PaymentAutomationService {
         })
         .eq("id", transaction.id);
 
-      // Send success notification
       await PaymentAutomationService.sendNotification({
         familyId: transaction.familyId,
         recipientId: transaction.recipientId,
         recipientNpub: transaction.recipientNpub,
         type: "payment_sent",
         title: "Payment Sent Successfully",
-        message: `Payment of ${transaction.amount} ${transaction.currency} has been sent.`,
+        message: `Payment has been sent successfully.`,
         amount: transaction.amount,
         currency: transaction.currency,
         read: false,
         createdAt: new Date().toISOString(),
       });
     } catch (error) {
-      console.error("Error executing payment:", error);
-
-      // Update transaction status to failed
-      await supabase
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
+      const client = await getSupabaseClient();
+      await client
         .from("family_payment_transactions")
         .update({
           status: "failed",
@@ -513,8 +734,8 @@ export class PaymentAutomationService {
       );
 
       if (payment.isPaid) {
-        // Update transaction status
-        await supabase
+        const client = await getSupabaseClient();
+        await client
           .from("family_payment_transactions")
           .update({
             status: "sent",
@@ -523,31 +744,27 @@ export class PaymentAutomationService {
           })
           .eq("id", transaction.id);
 
-        // Send success notification
         await PaymentAutomationService.sendNotification({
           familyId: transaction.familyId,
           recipientId: transaction.recipientId,
           recipientNpub: transaction.recipientNpub,
           type: "payment_sent",
           title: "Payment Sent Successfully",
-          message: `Lightning payment of ${transaction.amount} ${transaction.currency} has been sent.`,
+          message: `Lightning payment has been sent successfully.`,
           amount: transaction.amount,
           currency: transaction.currency,
           read: false,
           createdAt: new Date().toISOString(),
         });
 
-        console.log(
-          `✅ Lightning payment executed: ${payment.sent} sats (fees: ${payment.fees})`
-        );
+        // MASTER CONTEXT COMPLIANCE: Privacy-first logging
       } else {
         throw new Error("Payment was not completed successfully");
       }
     } catch (error) {
-      console.error("Lightning payment failed:", error);
-
-      // Update transaction status
-      await supabase
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
+      const client = await getSupabaseClient();
+      await client
         .from("family_payment_transactions")
         .update({
           status: "failed",
@@ -584,15 +801,15 @@ export class PaymentAutomationService {
 
       const { tokens } = await ecashResponse.json();
 
-      // Update transaction with eCash token details
-      await supabase
+      const client = await getSupabaseClient();
+      await client
         .from("family_payment_transactions")
         .update({
           ecashToken: JSON.stringify(tokens),
         })
         .eq("id", transaction.id);
     } catch (error) {
-      console.error("Error executing eCash payment:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       throw error;
     }
   }
@@ -602,7 +819,6 @@ export class PaymentAutomationService {
    */
   private async executeFedimintPayment(transaction: PaymentTransaction) {
     try {
-      // Create Fedimint proof for the recipient
       const fedimintResponse = await fetch("/api/fedimint/create-proof", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -619,15 +835,15 @@ export class PaymentAutomationService {
 
       const { proof } = await fedimintResponse.json();
 
-      // Update transaction with Fedimint proof details
-      await supabase
+      const client = await getSupabaseClient();
+      await client
         .from("family_payment_transactions")
         .update({
           fedimintProof: JSON.stringify(proof),
         })
         .eq("id", transaction.id);
     } catch (error) {
-      console.error("Error executing Fedimint payment:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       throw error;
     }
   }
@@ -676,11 +892,16 @@ export class PaymentAutomationService {
       );
 
       if (payment.isPaid) {
-        console.log(
-          `✅ Cascade LN payment: ${node.amount} sats to ${node.recipientId}`
+        // MASTER CONTEXT COMPLIANCE: Privacy-first logging
+        await logPaymentOperation(
+          "cascade_lightning_payment",
+          await generateUserHash(node.recipientId),
+          {
+            paymentCompleted: true,
+            hasChildren: node.children && node.children.length > 0,
+          }
         );
 
-        // Process children recursively
         if (node.children && node.children.length > 0) {
           for (const child of node.children) {
             await this.executeCascadePayment(
@@ -694,7 +915,7 @@ export class PaymentAutomationService {
         throw new Error("Cascade Lightning payment failed");
       }
     } catch (error) {
-      console.error("Cascade Lightning payment failed:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       throw error;
     }
   }
@@ -744,25 +965,54 @@ export class PaymentAutomationService {
    */
   private async createApprovalRequest(schedule: PaymentSchedule) {
     try {
-      // Get family members with approval roles
-      const { data: approvers, error } = await supabase
-        .from("family_members")
-        .select("npub, role")
-        .eq("familyId", schedule.familyId)
-        .in("role", ["guardian", "steward", "adult"]);
+      const client = await getSupabaseClient();
 
-      if (error) {
-        throw new Error(`Failed to fetch approvers: ${error.message}`);
+      // MASTER CONTEXT: Get the specific parent for offspring approval
+      // For offspring accounts, only their creating Adult can approve
+      let approvers: FamilyMember[] = [];
+
+      if (schedule.recipientRole === "offspring") {
+        const parentNpub = await getParentForOffspring(schedule.recipientNpub);
+        if (parentNpub) {
+          // Only the specific parent who created this offspring account
+          approvers = [
+            {
+              npub: parentNpub,
+              role: "adult" as UserRole,
+              status: "pending" as const,
+            },
+          ];
+        }
+      } else {
+        // For non-offspring, use family guardians/stewards as before
+        const { data: familyApprovers, error } = await client
+          .from("family_members")
+          .select("npub, role")
+          .eq("familyId", schedule.familyId)
+          .in("role", ["guardian", "steward", "adult"]);
+
+        if (error) {
+          throw new Error(`Failed to fetch approvers: ${error.message}`);
+        }
+
+        approvers =
+          familyApprovers?.map((approver: any) => ({
+            npub: approver.npub,
+            role: approver.role as UserRole,
+            status: "pending" as const,
+          })) || [];
       }
 
       const approvalRequest: Omit<
         ApprovalRequest,
         "id" | "createdAt" | "updatedAt"
       > = {
-        transactionId: "", // Will be set when transaction is created
+        transactionId: "",
         familyId: schedule.familyId,
         requesterId: schedule.createdBy,
-        requesterNpub: "", // Will be set from user context
+        requesterNpub: "",
+        recipientNpub: schedule.recipientNpub, // MASTER CONTEXT: Required for parent-offspring authorization
+        recipientRole: schedule.recipientRole, // MASTER CONTEXT: Required for authorization logic
         amount: schedule.amount,
         currency: schedule.currency,
         description:
@@ -770,19 +1020,19 @@ export class PaymentAutomationService {
         urgency: this.determineUrgency(schedule.amount),
         status: "pending",
         approvers:
-          approvers?.map((approver) => ({
+          approvers?.map((approver: FamilyMember) => ({
             npub: approver.npub,
             role: approver.role as "guardian" | "steward" | "adult",
-            status: "pending",
+            status: "pending" as const,
           })) || [],
         requiredApprovals: this.calculateRequiredApprovals(
           approvers?.length || 0
         ),
         receivedApprovals: 0,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       };
 
-      const { data, error: approvalError } = await supabase
+      const { data, error: approvalError } = await client
         .from("family_approval_requests")
         .insert(approvalRequest)
         .select()
@@ -829,7 +1079,8 @@ export class PaymentAutomationService {
     reason?: string
   ) {
     try {
-      const { data: approval, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data: approval, error } = await client
         .from("family_approval_requests")
         .select("*")
         .eq("id", approvalId)
@@ -839,7 +1090,22 @@ export class PaymentAutomationService {
         throw new Error(`Failed to fetch approval request: ${error.message}`);
       }
 
-      // Update approver status
+      // MASTER CONTEXT: Validate parent-offspring authorization
+      // Check if this is an offspring payment requiring specific parent approval
+      const recipientRole = approval.recipientRole;
+      if (recipientRole === "offspring") {
+        const isAuthorizedParent = await isSpecificParentOfOffspring(
+          approverNpub,
+          approval.recipientNpub
+        );
+
+        if (!isAuthorizedParent) {
+          throw new Error(
+            "Only the specific parent who created this offspring account can approve their payments"
+          );
+        }
+      }
+
       const updatedApprovers = approval.approvers.map((approver: any) => {
         if (approver.npub === approverNpub) {
           return {
@@ -862,8 +1128,7 @@ export class PaymentAutomationService {
           ? "rejected"
           : "pending";
 
-      // Update approval request
-      await supabase
+      await client
         .from("family_approval_requests")
         .update({
           approvers: updatedApprovers,
@@ -905,14 +1170,13 @@ export class PaymentAutomationService {
    */
   private async monitorPhoenixDLiquidity() {
     try {
-      // Get all family liquidity configurations
-      const { data: liquidityConfigs, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data: liquidityConfigs, error } = await client
         .from("family_phoenixd_liquidity_configs")
         .select("*")
         .eq("autoReplenish", true);
 
       if (error) {
-        console.error("Error fetching liquidity configs:", error);
         return;
       }
 
@@ -920,7 +1184,7 @@ export class PaymentAutomationService {
         await this.checkFamilyLiquidity(config);
       }
     } catch (error) {
-      console.error("Error monitoring PhoenixD liquidity:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
     }
   }
 
@@ -973,8 +1237,8 @@ export class PaymentAutomationService {
         amountSat: replenishAmount,
       });
 
-      // Update replenishment tracking
-      await supabase
+      const client = await getSupabaseClient();
+      await client
         .from("family_phoenixd_liquidity_configs")
         .update({
           dailyReplenishCount: config.dailyReplenishCount + 1,
@@ -983,11 +1247,15 @@ export class PaymentAutomationService {
         })
         .eq("familyId", config.familyId);
 
-      console.log(`🌊 Replenished liquidity for family ${config.familyId}:`, {
-        amount: replenishAmount,
-        channelId: liquidityResponse.channelId,
-        fees: liquidityResponse.feeSat,
-      });
+      // MASTER CONTEXT COMPLIANCE: Privacy-first logging
+      await logPaymentOperation(
+        "phoenixd_liquidity_replenished",
+        await generateUserHash(config.familyId),
+        {
+          replenishmentCompleted: true,
+          hasMinimumLiquidity: true,
+        }
+      );
 
       // Send notification to family guardians
       await PaymentAutomationService.sendNotification({
@@ -1027,24 +1295,24 @@ export class PaymentAutomationService {
    */
   static async sendNotification(notification: Omit<PaymentNotification, "id">) {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_payment_notifications")
         .insert(notification)
         .select()
         .single();
 
       if (error) {
-        console.error("Error sending notification:", error);
+        // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
         return;
       }
 
-      // Trigger real-time notification callbacks
       const service = PaymentAutomationService.getInstance();
       service.notificationCallbacks.forEach((callback) => {
         callback(data);
       });
     } catch (error) {
-      console.error("Error sending notification:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
     }
   }
 
@@ -1106,14 +1374,15 @@ export class PaymentAutomationService {
     return nextDate.toISOString();
   }
 
-  static updateNextPaymentDate(schedule: PaymentSchedule) {
+  static async updateNextPaymentDate(schedule: PaymentSchedule) {
     const nextDate = this.calculateNextPaymentDate(
       schedule.nextPaymentDate,
       schedule.frequency,
       schedule.customInterval
     );
 
-    return supabase
+    const client = await getSupabaseClient();
+    return client
       .from("family_payment_schedules")
       .update({ nextPaymentDate: nextDate })
       .eq("id", schedule.id);
@@ -1176,7 +1445,8 @@ export class PaymentAutomationService {
     familyId: string
   ): Promise<PaymentTransaction[]> {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_payment_transactions")
         .select("*")
         .eq("familyId", familyId)
@@ -1189,7 +1459,7 @@ export class PaymentAutomationService {
 
       return data || [];
     } catch (error) {
-      console.error("Error fetching pending payments:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       return [];
     }
   }
@@ -1201,7 +1471,8 @@ export class PaymentAutomationService {
     familyId: string
   ): Promise<PaymentSchedule[]> {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_payment_schedules")
         .select("*")
         .eq("familyId", familyId)
@@ -1213,7 +1484,7 @@ export class PaymentAutomationService {
 
       return data || [];
     } catch (error) {
-      console.error("Error fetching payment schedules:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       return [];
     }
   }
@@ -1225,7 +1496,8 @@ export class PaymentAutomationService {
     familyId: string
   ): Promise<PaymentTransaction[]> {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_payment_transactions")
         .select("*")
         .eq("familyId", familyId)
@@ -1239,7 +1511,7 @@ export class PaymentAutomationService {
 
       return data || [];
     } catch (error) {
-      console.error("Error fetching payment transactions:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       return [];
     }
   }
@@ -1251,7 +1523,8 @@ export class PaymentAutomationService {
     familyId: string
   ): Promise<ApprovalRequest[]> {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_approval_requests")
         .select("*")
         .eq("familyId", familyId)
@@ -1263,7 +1536,7 @@ export class PaymentAutomationService {
 
       return data || [];
     } catch (error) {
-      console.error("Error fetching approval requests:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       return [];
     }
   }
@@ -1275,7 +1548,8 @@ export class PaymentAutomationService {
     recipientNpub: string
   ): Promise<PaymentNotification[]> {
     try {
-      const { data, error } = await supabase
+      const client = await getSupabaseClient();
+      const { data, error } = await client
         .from("family_payment_notifications")
         .select("*")
         .eq("recipientNpub", recipientNpub)
@@ -1287,7 +1561,7 @@ export class PaymentAutomationService {
 
       return data || [];
     } catch (error) {
-      console.error("Error fetching notifications:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
       return [];
     }
   }
@@ -1297,12 +1571,13 @@ export class PaymentAutomationService {
    */
   static async markNotificationAsRead(notificationId: string) {
     try {
-      await supabase
+      const client = await getSupabaseClient();
+      await client
         .from("family_payment_notifications")
         .update({ read: true })
         .eq("id", notificationId);
     } catch (error) {
-      console.error("Error marking notification as read:", error);
+      // MASTER CONTEXT COMPLIANCE: Privacy-first error handling
     }
   }
 }

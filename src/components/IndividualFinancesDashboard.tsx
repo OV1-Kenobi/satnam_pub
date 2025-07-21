@@ -29,8 +29,14 @@ import React, { useEffect, useState } from 'react';
 // Import Credits Balance
 import { CreditsBalance } from './CreditsBalance';
 
+// Import NWC Wallet Hook and Setup Modal
+import { useNWCWallet } from '../hooks/useNWCWallet';
+
 // Import API service
 import { IndividualApiService, handleApiError } from '../services/individualApi';
+
+// Import NWC Setup Modal
+import NWCWalletSetupModal from './NWCWalletSetupModal';
 
 // Import Cross-Mint Manager
 import { CrossMintSettings, MultiNutPayment, NutSwapTransaction, SatnamCrossMintCashuManager } from '../lib/cross-mint-cashu-manager';
@@ -570,26 +576,54 @@ const CrossMintOverviewTab: React.FC<{ wallet: CrossMintIndividualWallet }> = ({
   );
 };
 
-// Enhanced Lightning Tab Component
-const LightningTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }) => {
+// Enhanced Lightning Tab Component with NWC Integration
+const LightningTab: React.FC<{
+  wallet: EnhancedIndividualWallet;
+  onShowNWCSetup: () => void;
+}> = ({ wallet, onShowNWCSetup }) => {
   const [zapAmount, setZapAmount] = useState('');
   const [zapRecipient, setZapRecipient] = useState('');
   const [zapMemo, setZapMemo] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'custodial' | 'nwc'>('custodial');
+
+  // Import NWC hook
+  const {
+    connections: nwcConnections,
+    primaryConnection,
+    balance: nwcBalance,
+    isConnected: nwcConnected,
+    payInvoice: nwcPayInvoice,
+    makeInvoice: nwcMakeInvoice,
+    getBalance: nwcGetBalance
+  } = useNWCWallet();
 
   const handleSendZap = async () => {
     if (!zapAmount || !zapRecipient) return;
     try {
-      const result = await IndividualApiService.sendLightningZap({
-        memberId: wallet.memberId,
-        amount: parseInt(zapAmount),
-        recipient: zapRecipient,
-        memo: zapMemo
-      });
-      if (result.success) {
-        setZapAmount('');
-        setZapRecipient('');
-        setZapMemo('');
-        // Refresh wallet data
+      if (paymentMethod === 'nwc' && nwcConnected) {
+        // Use NWC wallet for payment
+        const invoice = zapRecipient; // Assume recipient is an invoice for now
+        const result = await nwcPayInvoice(invoice);
+        if (result) {
+          setZapAmount('');
+          setZapRecipient('');
+          setZapMemo('');
+          // Refresh wallet data
+        }
+      } else {
+        // Use custodial Lightning wallet
+        const result = await IndividualApiService.sendLightningZap({
+          memberId: wallet.memberId,
+          amount: parseInt(zapAmount),
+          recipient: zapRecipient,
+          memo: zapMemo
+        });
+        if (result.success) {
+          setZapAmount('');
+          setZapRecipient('');
+          setZapMemo('');
+          // Refresh wallet data
+        }
       }
     } catch (error) {
       console.error('Zap failed:', handleApiError(error));
@@ -598,6 +632,58 @@ const LightningTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wallet }
 
   return (
     <div className="lightning-tab space-y-6">
+      {/* NWC Wallet Status Banner */}
+      {nwcConnected ? (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-green-900 mb-2">
+                🚀 Self-Custodial Wallet Connected
+              </h3>
+              <div className="text-2xl font-bold text-green-700 mb-1">
+                {nwcBalance?.balance.toLocaleString() || '---'} sats
+              </div>
+              <div className="text-sm text-green-600">
+                {primaryConnection?.wallet_name} • {primaryConnection?.wallet_provider} • Full Sovereignty
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-green-600 mb-1">Payment Method</div>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as 'custodial' | 'nwc')}
+                className="px-3 py-1 bg-white border border-green-300 rounded-lg text-green-800 text-sm"
+              >
+                <option value="nwc">NWC Wallet (Sovereign)</option>
+                <option value="custodial">Custodial (Legacy)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-purple-900 mb-2">
+                🎯 Achieve Financial Sovereignty
+              </h3>
+              <p className="text-purple-700 mb-3">
+                Connect your self-custodial Lightning wallet for true financial independence
+              </p>
+              <div className="text-sm text-purple-600">
+                Recommended: Zeus LN (mobile) or Alby (desktop)
+              </div>
+            </div>
+            <button
+              onClick={onShowNWCSetup}
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-medium transition-all"
+            >
+              Setup NWC Wallet
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Lightning Address Display */}
       <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
         <h3 className="text-lg font-semibold text-orange-900 mb-4">
@@ -1457,6 +1543,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
   const [showSimplePaymentModal, setShowSimplePaymentModal] = useState(false);
   const [showAutomatedPaymentsModal, setShowAutomatedPaymentsModal] = useState(false);
+  const [showNWCSetup, setShowNWCSetup] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -1469,6 +1556,14 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
 
   // Auth context
   const { user, userRole, familyId } = useAuth();
+
+  // NWC Wallet Hook
+  const {
+    connections: nwcConnections,
+    primaryConnection,
+    balance: nwcBalance,
+    isConnected: nwcConnected
+  } = useNWCWallet();
 
   // Create family members array for PaymentCascadeModal using privacy-first principles
   const familyMembersForCascade = wallet ? [{
@@ -1761,7 +1856,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
 
       {/* Enhanced Tab Content */}
       {activeTab === 'overview' && <EnhancedOverviewTab wallet={wallet} />}
-      {activeTab === 'lightning' && <LightningTab wallet={wallet} />}
+      {activeTab === 'lightning' && <LightningTab wallet={wallet} onShowNWCSetup={() => setShowNWCSetup(true)} />}
       {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
       {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
 
@@ -1874,6 +1969,7 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'cross-mint' | 'privacy'>('overview');
   const [showSimplePaymentModal, setShowSimplePaymentModal] = useState(false);
+  const [showNWCSetup, setShowNWCSetup] = useState(false);
 
   // Auth context
   const { user, userRole, familyId } = useAuth();
@@ -2138,10 +2234,22 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
 
       {/* Enhanced Tab Content with Cross-Mint */}
       {activeTab === 'overview' && <CrossMintOverviewTab wallet={wallet} />}
-      {activeTab === 'lightning' && <LightningTab wallet={wallet} />}
+      {activeTab === 'lightning' && <LightningTab wallet={wallet} onShowNWCSetup={() => setShowNWCSetup(true)} />}
       {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
       {activeTab === 'cross-mint' && <CrossMintOperationsTab wallet={wallet} />}
       {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
+
+      {/* NWC Wallet Setup Modal */}
+      <NWCWalletSetupModal
+        isOpen={showNWCSetup}
+        onClose={() => setShowNWCSetup(false)}
+        onSuccess={(connectionId: string) => {
+          console.log('NWC wallet connected:', connectionId);
+          setShowNWCSetup(false);
+          // Refresh wallet data
+        }}
+        showEducationalContent={true}
+      />
     </div>
   );
 }

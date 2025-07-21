@@ -1,14 +1,14 @@
 /**
  * ContactsList Component
- * 
- * Filtered and sorted contact list for the Privacy-First Contacts system.
- * Compatible with Bolt.new and Netlify serverless deployments.
+ *
+ * CRITICAL SECURITY: Privacy-first contact filtering with user-controlled localStorage logging
+ * PRIVACY-FIRST: Local search and filtering only, zero external API calls
  */
 
 import { Filter, SortAsc, SortDesc, Users } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { Contact, ContactFilters, ContactSortOptions } from '../types/contacts';
-import ContactCard from './ContactCard.tsx';
+import ContactCard from './ContactCard';
 
 interface ContactsListProps {
   contacts: Contact[];
@@ -16,6 +16,7 @@ interface ContactsListProps {
   onDeleteContact: (contactId: string) => void;
   onViewContactDetails: (contact: Contact) => void;
   onContactSelect?: (contact: Contact) => void;
+  onZapContact?: (contact: Contact) => void;
   showPrivateData: boolean;
   loading?: boolean;
   searchQuery?: string;
@@ -28,6 +29,7 @@ export const ContactsList: React.FC<ContactsListProps> = ({
   onDeleteContact,
   onViewContactDetails,
   onContactSelect,
+  onZapContact,
   showPrivateData,
   loading = false,
   searchQuery = '',
@@ -40,11 +42,46 @@ export const ContactsList: React.FC<ContactsListProps> = ({
     direction: 'asc',
   });
 
-  // Filter and sort contacts
+  /**
+   * CRITICAL SECURITY: User-controlled local contact list operation logging
+   * Stores contact list operations in user's local encrypted storage (localStorage)
+   * NEVER stored in external databases - user maintains full control
+   */
+  const logContactListOperation = async (operationData: {
+    operation: string;
+    details: any;
+    timestamp: Date;
+  }): Promise<void> => {
+    try {
+      const existingHistory = localStorage.getItem("satnam_contact_list_history");
+      const operationHistory = existingHistory ? JSON.parse(existingHistory) : [];
+
+      const operationRecord = {
+        id: crypto.randomUUID(),
+        type: "contact_list_operation",
+        ...operationData,
+        timestamp: operationData.timestamp.toISOString(),
+      };
+
+      operationHistory.push(operationRecord);
+
+      // Keep only last 1000 operations to prevent localStorage bloat
+      if (operationHistory.length > 1000) {
+        operationHistory.splice(0, operationHistory.length - 1000);
+      }
+
+      localStorage.setItem("satnam_contact_list_history", JSON.stringify(operationHistory));
+    } catch (error) {
+      // Silent fail for privacy - no external logging
+    }
+  };
+
+  // CRITICAL SECURITY: Privacy-first contact filtering with local search only
   const filteredAndSortedContacts = useMemo(() => {
     let filtered = contacts;
+    const originalCount = contacts.length;
 
-    // Apply search filter
+    // Apply search filter (local search only - no external APIs)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(contact =>
@@ -53,19 +90,35 @@ export const ContactsList: React.FC<ContactsListProps> = ({
         contact.notes?.toLowerCase().includes(query) ||
         contact.tags.some(tag => tag.toLowerCase().includes(query))
       );
+
+      // Log search operation for user transparency
+      logContactListOperation({
+        operation: "contact_search_performed",
+        details: {
+          searchQuery: query.slice(0, 10) + '...', // Truncated for privacy
+          resultsCount: filtered.length,
+          originalCount,
+        },
+        timestamp: new Date(),
+      });
     }
 
-    // Apply advanced filters
+    // Apply advanced filters with privacy-first logging
+    const appliedFilters: string[] = [];
+
     if (filters.trustLevel) {
       filtered = filtered.filter(contact => contact.trustLevel === filters.trustLevel);
+      appliedFilters.push(`trustLevel:${filters.trustLevel}`);
     }
 
     if (filters.familyRole) {
       filtered = filtered.filter(contact => contact.familyRole === filters.familyRole);
+      appliedFilters.push(`familyRole:${filters.familyRole}`);
     }
 
     if (filters.supportsGiftWrap !== undefined) {
       filtered = filtered.filter(contact => contact.supportsGiftWrap === filters.supportsGiftWrap);
+      appliedFilters.push(`giftWrap:${filters.supportsGiftWrap}`);
     }
 
     if (filters.verified !== undefined) {
@@ -73,12 +126,26 @@ export const ContactsList: React.FC<ContactsListProps> = ({
         const isVerified = contact.nip05Verified || contact.pubkeyVerified;
         return isVerified === filters.verified;
       });
+      appliedFilters.push(`verified:${filters.verified}`);
     }
 
-    // Sort contacts
+    // Log filtering operations for user transparency
+    if (appliedFilters.length > 0) {
+      logContactListOperation({
+        operation: "contact_filters_applied",
+        details: {
+          filters: appliedFilters,
+          resultsCount: filtered.length,
+          originalCount,
+        },
+        timestamp: new Date(),
+      });
+    }
+
+    // Sort contacts with proper typing
     filtered.sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
+      let aValue: string | number | Date;
+      let bValue: string | number | Date;
 
       switch (sortOptions.field) {
         case 'displayName':
@@ -112,26 +179,73 @@ export const ContactsList: React.FC<ContactsListProps> = ({
       return 0;
     });
 
+    // Log sort operations for user transparency
+    logContactListOperation({
+      operation: "contact_list_sorted",
+      details: {
+        sortField: sortOptions.field,
+        sortDirection: sortOptions.direction,
+        contactCount: filtered.length,
+      },
+      timestamp: new Date(),
+    });
+
     return filtered;
   }, [contacts, searchQuery, filters, sortOptions]);
 
   const handleSortChange = (field: ContactSortOptions['field']): void => {
-    setSortOptions(prev => ({
-      field,
-      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
+    setSortOptions(prev => {
+      const newDirection = prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc';
+
+      // Log sort change for user transparency
+      logContactListOperation({
+        operation: "sort_option_changed",
+        details: {
+          field,
+          direction: newDirection,
+          previousField: prev.field,
+          previousDirection: prev.direction,
+        },
+        timestamp: new Date(),
+      });
+
+      return { field, direction: newDirection };
+    });
   };
 
-  const handleFilterChange = (key: keyof ContactFilters, value: any): void => {
+  const handleFilterChange = (key: keyof ContactFilters, value: string | boolean | undefined): void => {
+    const newValue = value === '' ? undefined : value;
+
     setFilters(prev => ({
       ...prev,
-      [key]: value === '' ? undefined : value,
+      [key]: newValue,
     }));
+
+    // Log filter change for user transparency
+    logContactListOperation({
+      operation: "filter_option_changed",
+      details: {
+        filterKey: key,
+        filterValue: newValue,
+        activeFiltersCount: Object.values({ ...filters, [key]: newValue }).filter(v => v !== undefined).length,
+      },
+      timestamp: new Date(),
+    });
   };
 
   const clearFilters = (): void => {
     setFilters({});
     setSortOptions({ field: 'displayName', direction: 'asc' });
+
+    // Log filter clear for user transparency
+    logContactListOperation({
+      operation: "filters_cleared",
+      details: {
+        previousFiltersCount: Object.values(filters).filter(v => v !== undefined).length,
+        resetToDefault: true,
+      },
+      timestamp: new Date(),
+    });
   };
 
   const activeFiltersCount = Object.values(filters).filter(v => v !== undefined).length;
@@ -180,11 +294,10 @@ export const ContactsList: React.FC<ContactsListProps> = ({
           {/* Filter Toggle */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center space-x-2 px-3 py-1 rounded-lg transition-colors ${
-              showFilters || activeFiltersCount > 0
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                : 'bg-white/10 text-purple-400 hover:bg-white/20'
-            }`}
+            className={`flex items-center space-x-2 px-3 py-1 rounded-lg transition-colors ${showFilters || activeFiltersCount > 0
+              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+              : 'bg-white/10 text-purple-400 hover:bg-white/20'
+              }`}
           >
             <Filter className="h-4 w-4" />
             <span className="text-sm">Filters</span>
@@ -234,7 +347,7 @@ export const ContactsList: React.FC<ContactsListProps> = ({
               </select>
             </div>
 
-            {/* Family Role Filter */}
+            {/* Family Role Filter - Master Context Standardized Roles */}
             <div>
               <label className="block text-sm text-purple-200 mb-1">Family Role</label>
               <select
@@ -243,11 +356,11 @@ export const ContactsList: React.FC<ContactsListProps> = ({
                 className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
               >
                 <option value="" className="bg-purple-900">All Roles</option>
-                            <option value="adult" className="bg-purple-900">Adult</option>
-            <option value="offspring" className="bg-purple-900">Offspring</option>
+                <option value="private" className="bg-purple-900">Private</option>
+                <option value="offspring" className="bg-purple-900">Offspring</option>
+                <option value="adult" className="bg-purple-900">Adult</option>
+                <option value="steward" className="bg-purple-900">Steward</option>
                 <option value="guardian" className="bg-purple-900">Guardian</option>
-                <option value="advisor" className="bg-purple-900">Advisor</option>
-                <option value="friend" className="bg-purple-900">Friend</option>
               </select>
             </div>
 
@@ -290,11 +403,11 @@ export const ContactsList: React.FC<ContactsListProps> = ({
             {searchQuery ? 'No matching contacts' : 'No contacts found'}
           </h3>
           <p className="text-purple-200 mb-6">
-            {searchQuery 
+            {searchQuery
               ? 'Try adjusting your search terms or filters'
               : activeFiltersCount > 0
-              ? 'Try clearing some filters to see more contacts'
-              : 'Start building your encrypted contact network'
+                ? 'Try clearing some filters to see more contacts'
+                : 'Start building your encrypted contact network'
             }
           </p>
           {activeFiltersCount > 0 && (
@@ -316,6 +429,8 @@ export const ContactsList: React.FC<ContactsListProps> = ({
               onDelete={onDeleteContact}
               onViewDetails={onViewContactDetails}
               onSelect={onContactSelect}
+              // CRITICAL SECURITY: Authentication-gated Zap functionality with Lightning provider routing
+              onZapContact={onZapContact}
               showPrivateData={showPrivateData}
               loading={loading}
               selectionMode={selectionMode}

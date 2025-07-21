@@ -1,13 +1,43 @@
 /**
- * EditContactForm Component
- * 
- * Form for editing existing contacts in the Privacy-First Contacts system.
- * Compatible with Bolt.new and Netlify serverless deployments.
+ * CRITICAL SECURITY: Privacy-First Contact Editing with Master Context Role Hierarchy
+ *
+ * Implements comprehensive contact editing with user-controlled localStorage logging,
+ * JWT authentication integration, and Master Context role standardization.
+ * All operations logged locally for user transparency with zero external data leakage.
  */
 
 import { AlertTriangle, Edit3, Save, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Contact, UpdateContactInput } from '../types/contacts';
+
+import { supabase } from '../lib/supabase';
+/**
+ * CRITICAL SECURITY: Privacy-first operation logging for user transparency
+ * All contact editing operations logged to user's localStorage with zero external leakage
+ */
+interface EditContactOperation {
+  operation: string;
+  details: Record<string, any>;
+  timestamp: Date;
+}
+
+const logEditContactOperation = async (operation: EditContactOperation): Promise<void> => {
+  try {
+    const logEntry = {
+      id: crypto.randomUUID(),
+      component: 'EditContactForm',
+      operation: operation.operation,
+      details: operation.details,
+      timestamp: operation.timestamp.toISOString(),
+    };
+
+    const existingLogs = JSON.parse(localStorage.getItem('editContactOperations') || '[]');
+    const updatedLogs = [logEntry, ...existingLogs].slice(0, 1000); // Keep last 1000 entries
+    localStorage.setItem('editContactOperations', JSON.stringify(updatedLogs));
+  } catch (error) {
+    // Silent failure to prevent disrupting user experience
+  }
+};
 
 interface EditContactFormProps {
   contact: Contact;
@@ -43,7 +73,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
   const [formData, setFormData] = useState<FormState>({
     displayName: contact.displayName,
     nip05: contact.nip05 || '',
-    familyRole: contact.familyRole || 'friend',
+    familyRole: contact.familyRole || 'private',
     trustLevel: contact.trustLevel,
     preferredEncryption: contact.preferredEncryption,
     notes: contact.notes || '',
@@ -54,17 +84,69 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
   const [tagInput, setTagInput] = useState<string>('');
   const [hasChanges, setHasChanges] = useState<boolean>(false);
 
+  // CRITICAL SECURITY: JWT authentication state management
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // CRITICAL SECURITY: Session validation for authentication-gated operations
+  useEffect(() => {
+    const validateSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          setIsAuthenticated(true);
+          setAuthError(null);
+        } else {
+          setIsAuthenticated(false);
+          setAuthError("Authentication required for contact editing");
+        }
+      } catch (error) {
+        setIsAuthenticated(false);
+        setAuthError("Session validation failed");
+
+        // CRITICAL SECURITY: Log authentication failure for user transparency
+        await logEditContactOperation({
+          operation: "authentication_failed",
+          details: {
+            contactId: contact.id,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
+          timestamp: new Date(),
+        });
+      }
+    };
+
+    validateSession();
+  }, [contact.id]);
+
+  // CRITICAL SECURITY: Log contact edit initialization for user transparency
+  useEffect(() => {
+    logEditContactOperation({
+      operation: "contact_edit_started",
+      details: {
+        contactId: contact.id,
+        displayName: contact.displayName,
+        hasNip05: !!contact.nip05,
+        familyRole: contact.familyRole,
+        trustLevel: contact.trustLevel,
+        tagCount: contact.tags.length,
+        isAuthenticated,
+      },
+      timestamp: new Date(),
+    });
+  }, [contact, isAuthenticated]);
+
   // Track changes
   useEffect(() => {
-    const hasFormChanges = 
+    const hasFormChanges =
       formData.displayName !== contact.displayName ||
       formData.nip05 !== (contact.nip05 || '') ||
-      formData.familyRole !== (contact.familyRole || 'friend') ||
+      formData.familyRole !== (contact.familyRole || 'private') ||
       formData.trustLevel !== contact.trustLevel ||
       formData.preferredEncryption !== contact.preferredEncryption ||
       formData.notes !== (contact.notes || '') ||
       JSON.stringify(formData.tags.sort()) !== JSON.stringify([...contact.tags].sort());
-    
+
     setHasChanges(hasFormChanges);
   }, [formData, contact]);
 
@@ -101,10 +183,24 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
     return undefined;
   };
 
-  // Form handlers
+  // Form handlers with privacy-first logging
   const handleInputChange = (field: keyof FormState, value: string): void => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
+    // CRITICAL SECURITY: Log NIP-05 updates for user transparency
+    if (field === 'nip05' && value !== (contact.nip05 || '')) {
+      logEditContactOperation({
+        operation: "nip05_updated",
+        details: {
+          contactId: contact.id,
+          hasNip05Before: !!contact.nip05,
+          hasNip05After: !!value.trim(),
+          nip05Length: value.trim().length,
+        },
+        timestamp: new Date(),
+      });
+    }
+
     // Clear error for this field when user starts typing
     if (formErrors[field as keyof FormErrors]) {
       setFormErrors(prev => ({ ...prev, [field]: undefined }));
@@ -123,7 +219,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
         tags: [...prev.tags, tag]
       }));
       setTagInput('');
-      
+
       // Clear tag error
       if (formErrors.tags) {
         setFormErrors(prev => ({ ...prev, tags: undefined }));
@@ -138,7 +234,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
     }));
   };
 
-  const handleTagInputKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleAddTag();
@@ -163,12 +259,46 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
-    
+
+    // CRITICAL SECURITY: Authentication-gated contact editing
+    if (!isAuthenticated) {
+      await logEditContactOperation({
+        operation: "contact_update_blocked",
+        details: {
+          contactId: contact.id,
+          reason: "authentication_required",
+          authError,
+        },
+        timestamp: new Date(),
+      });
+      return;
+    }
+
     if (!validateForm()) {
+      // CRITICAL SECURITY: Log form validation failure for user transparency
+      await logEditContactOperation({
+        operation: "form_validation_failed",
+        details: {
+          contactId: contact.id,
+          errors: Object.keys(formErrors),
+          hasDisplayName: !!formData.displayName.trim(),
+          hasNip05: !!formData.nip05.trim(),
+        },
+        timestamp: new Date(),
+      });
       return;
     }
 
     if (!hasChanges) {
+      // CRITICAL SECURITY: Log edit cancellation due to no changes
+      await logEditContactOperation({
+        operation: "contact_edit_cancelled",
+        details: {
+          contactId: contact.id,
+          reason: "no_changes_detected",
+        },
+        timestamp: new Date(),
+      });
       onCancel();
       return;
     }
@@ -185,16 +315,58 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
     };
 
     try {
+      // CRITICAL SECURITY: Log contact update attempt for user transparency
+      await logEditContactOperation({
+        operation: "contact_updated",
+        details: {
+          contactId: contact.id,
+          updatedFields: Object.keys(updateData).filter(key => key !== 'id'),
+          displayName: updateData.displayName,
+          familyRole: updateData.familyRole,
+          trustLevel: updateData.trustLevel,
+          hasNip05Update: updateData.nip05 !== undefined,
+          tagCount: updateData.tags?.length || 0,
+        },
+        timestamp: new Date(),
+      });
+
       await onSubmit(updateData);
     } catch (err) {
-      // Error handled by parent component
-      console.error('Form submission error:', err);
+      // CRITICAL SECURITY: Log contact update failure for user transparency
+      await logEditContactOperation({
+        operation: "contact_update_failed",
+        details: {
+          contactId: contact.id,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        },
+        timestamp: new Date(),
+      });
     }
   };
 
+  const handleCancel = async (): Promise<void> => {
+    // CRITICAL SECURITY: Log contact edit cancellation for user transparency
+    await logEditContactOperation({
+      operation: "contact_edit_cancelled",
+      details: {
+        contactId: contact.id,
+        reason: "user_cancelled",
+        hadChanges: hasChanges,
+        formData: {
+          displayNameChanged: formData.displayName !== contact.displayName,
+          nip05Changed: formData.nip05 !== (contact.nip05 || ''),
+          familyRoleChanged: formData.familyRole !== (contact.familyRole || 'private'),
+          trustLevelChanged: formData.trustLevel !== contact.trustLevel,
+        },
+      },
+      timestamp: new Date(),
+    });
+    onCancel();
+  };
+
   const isFormValid = (): boolean => {
-    return formData.displayName.trim() !== '' && 
-           Object.keys(formErrors).length === 0;
+    return formData.displayName.trim() !== '' &&
+      Object.keys(formErrors).length === 0;
   };
 
   return (
@@ -202,7 +374,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
       {/* Header */}
       <div className="flex items-center space-x-4 mb-6">
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           disabled={loading}
           className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all duration-300 disabled:opacity-50"
         >
@@ -262,9 +434,8 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
             value={formData.displayName}
             onChange={(e) => handleInputChange('displayName', e.target.value)}
             disabled={loading}
-            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${
-              formErrors.displayName ? 'border-red-500/50' : 'border-white/20'
-            }`}
+            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${formErrors.displayName ? 'border-red-500/50' : 'border-white/20'
+              }`}
           />
           {formErrors.displayName && (
             <p className="text-red-400 text-sm mt-1">{formErrors.displayName}</p>
@@ -282,9 +453,8 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
             value={formData.nip05}
             onChange={(e) => handleInputChange('nip05', e.target.value)}
             disabled={loading}
-            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${
-              formErrors.nip05 ? 'border-red-500/50' : 'border-white/20'
-            }`}
+            className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 ${formErrors.nip05 ? 'border-red-500/50' : 'border-white/20'
+              }`}
           />
           {formErrors.nip05 && (
             <p className="text-red-400 text-sm mt-1">{formErrors.nip05}</p>
@@ -320,11 +490,11 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
               disabled={loading}
               className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
             >
-                          <option value="adult" className="bg-purple-900">Adult</option>
-            <option value="offspring" className="bg-purple-900">Offspring</option>
+              <option value="private" className="bg-purple-900">Private</option>
+              <option value="offspring" className="bg-purple-900">Offspring</option>
+              <option value="adult" className="bg-purple-900">Adult</option>
+              <option value="steward" className="bg-purple-900">Steward</option>
               <option value="guardian" className="bg-purple-900">Guardian</option>
-              <option value="advisor" className="bg-purple-900">Advisor</option>
-              <option value="friend" className="bg-purple-900">Friend</option>
             </select>
           </div>
         </div>
@@ -358,7 +528,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
                 placeholder="Add a tag..."
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                onKeyPress={handleTagInputKeyPress}
+                onKeyDown={handleTagInputKeyDown}
                 disabled={loading || formData.tags.length >= 10}
                 className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm disabled:opacity-50"
               />
@@ -371,7 +541,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
                 Add
               </button>
             </div>
-            
+
             {/* Tags Display */}
             {formData.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -393,7 +563,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
                 ))}
               </div>
             )}
-            
+
             {formErrors.tags && (
               <p className="text-red-400 text-sm">{formErrors.tags}</p>
             )}
@@ -414,6 +584,17 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none disabled:opacity-50"
           />
         </div>
+
+        {/* CRITICAL SECURITY: Authentication Error Display */}
+        {authError && (
+          <div className="p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+              <span className="text-red-400 font-medium">Authentication Required</span>
+            </div>
+            <p className="text-red-300 text-sm mt-1">{authError}</p>
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -438,7 +619,7 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
           </button>
           <button
             type="submit"
-            disabled={!isFormValid() || !hasChanges || loading}
+            disabled={!isFormValid() || !hasChanges || loading || !isAuthenticated}
             className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-500 disabled:to-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
           >
             {loading ? (

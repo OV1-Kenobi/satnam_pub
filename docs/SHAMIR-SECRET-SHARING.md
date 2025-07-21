@@ -39,14 +39,14 @@ Our system now supports two complementary approaches:
 
 ### Flexible Family Configurations
 
-| Family Size | Recommended Config | Description       | Use Case                        |
-| ----------- | ------------------ | ----------------- | ------------------------------- |
-| 2 adults    | **2-of-2**         | Both required     | Couples with backup/inheritance |
-| 3 members   | **2-of-3**         | Any 2 of 3        | Small family with redundancy    |
-| 4 members   | **3-of-4**         | Majority required | Balanced security/availability  |
-| 5 members   | **3-of-5**         | Majority required | Medium family                   |
-| 6-7 members | **4-of-7**         | Super-majority    | Large family council            |
-| 7+ members  | **5-of-7**         | High security     | Very large families             |
+| Family Size | Recommended Config | Description                    | Use Case                        |
+| ----------- | ------------------ | ------------------------------ | ------------------------------- |
+| 2 adults    | **1-of-2**         | CRITICAL FIX: Prevents lockout | Couples with backup/inheritance |
+| 3 members   | **2-of-3**         | Any 2 of 3                     | Small family with redundancy    |
+| 4 members   | **3-of-4**         | Majority required              | Balanced security/availability  |
+| 5 members   | **3-of-5**         | Majority required              | Medium family                   |
+| 6-7 members | **4-of-7**         | Super-majority                 | Large family council            |
+| 7+ members  | **5-of-7**         | High security                  | Very large families             |
 
 ## 🏗️ System Architecture
 
@@ -103,7 +103,7 @@ Guardian Authentication Required
 ### Step 1: Initialize Family with SSS
 
 ```typescript
-// 2-of-2 Configuration (Couples)
+// 1-of-2 Configuration (Couples) - CRITICAL FIX
 POST /api/family/initialize-sss
 {
   "familyId": "smith_couple_2024",
@@ -124,7 +124,7 @@ POST /api/family/initialize-sss
       "contactInfo": { "email": "bob@example.com" }
     }
   ],
-  "threshold": 2,
+  "threshold": 1,
   "totalShares": 2,
   "privacyLevel": 3
 }

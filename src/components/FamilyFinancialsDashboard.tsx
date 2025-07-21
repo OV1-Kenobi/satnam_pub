@@ -16,6 +16,10 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { useNWCWallet } from '../hooks/useNWCWallet';
+import NWCWalletSetupModal from './NWCWalletSetupModal';
+import SovereigntyEducationFlow from './SovereigntyEducationFlow';
 
 // Import our enhanced dual-protocol components
 import AtomicSwapModal from './AtomicSwapModal';
@@ -32,8 +36,12 @@ import UnifiedFamilyPayments from './UnifiedFamilyPayments';
 // Import Credits Balance
 import { CreditsBalance } from './CreditsBalance';
 
+// Import NWC Wallet Integration
+
 // Import Payment Automation System
 import { PaymentSchedule } from '../lib/payment-automation';
+
+// Import NWC Wallet Integration
 
 // Import enhanced types
 
@@ -236,6 +244,15 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   familyData,
   onBack
 }) => {
+  // NWC Wallet Integration Hooks
+  const { userRole } = useAuth();
+  const {
+    connections: nwcConnections,
+    primaryConnection,
+    balance: nwcBalance,
+    isConnected: nwcConnected
+  } = useNWCWallet();
+
   // State management
   const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd'>('overview');
   const [familyName] = useState("Nakamoto");
@@ -258,6 +275,10 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   // QR Modal state (from Bolt integration)
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrAddress, setQrAddress] = useState('');
+
+  // NWC Integration Modal States
+  const [showNWCSetup, setShowNWCSetup] = useState(false);
+  const [showSovereigntyEducation, setShowSovereigntyEducation] = useState(false);
 
   // Enhanced treasury state
   const [lightningBalance, setLightningBalance] = useState(5435000);
@@ -719,6 +740,93 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           </div>
         </div>
 
+        {/* NWC Family Sovereignty Status Banner */}
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-6 border border-purple-200 shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <Shield className="h-6 w-6 text-purple-600" />
+              <div>
+                <h3 className="text-lg font-semibold text-purple-900">Family Sovereignty Status</h3>
+                <p className="text-sm text-purple-700">Track your family's journey to financial independence</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowSovereigntyEducation(true)}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Learn More
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Family NWC Connection Status */}
+            <div className="bg-white rounded-lg p-4 border border-purple-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">NWC Connections</span>
+                <Zap className="h-4 w-4 text-purple-600" />
+              </div>
+              <div className="text-2xl font-bold text-purple-900">
+                {nwcConnections.length}/{familyMembers.length}
+              </div>
+              <div className="text-xs text-gray-600">Family members connected</div>
+            </div>
+
+            {/* Sovereignty Progress */}
+            <div className="bg-white rounded-lg p-4 border border-purple-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Sovereignty Level</span>
+                <Activity className="h-4 w-4 text-purple-600" />
+              </div>
+              <div className="text-2xl font-bold text-purple-900">
+                {Math.round((nwcConnections.length / familyMembers.length) * 100)}%
+              </div>
+              <div className="text-xs text-gray-600">Self-custodial progress</div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-lg p-4 border border-purple-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Quick Setup</span>
+                <Globe className="h-4 w-4 text-purple-600" />
+              </div>
+              <button
+                onClick={() => setShowNWCSetup(true)}
+                className="w-full px-3 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg text-sm font-medium transition-all"
+              >
+                Setup NWC Wallet
+              </button>
+            </div>
+          </div>
+
+          {/* Family Member Sovereignty Status */}
+          {nwcConnections.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-purple-200">
+              <h4 className="text-sm font-medium text-purple-900 mb-3">Connected Members</h4>
+              <div className="flex flex-wrap gap-2">
+                {familyMembers.map((member) => {
+                  // For demo purposes, assume some members have NWC based on role
+                  const hasNWC = member.role === 'adult' || member.role === 'guardian';
+                  return (
+                    <div
+                      key={member.id}
+                      className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium ${hasNWC
+                        ? 'bg-green-100 text-green-800 border border-green-200'
+                        : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}
+                    >
+                      <div className="w-2 h-2 rounded-full bg-current"></div>
+                      <span>{member.username}</span>
+                      {hasNWC && <CheckCircle className="h-3 w-3" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Navigation Tabs */}
         <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm mb-6">
           <div className="flex flex-wrap gap-2">
@@ -729,8 +837,8 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
                   key={tab.id}
                   onClick={() => setCurrentView(tab.id as any)}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${currentView === tab.id
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -882,6 +990,28 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           onClose={() => setShowEducationalDashboard(false)}
         />
       )}
+
+      {/* NWC Wallet Setup Modal */}
+      <NWCWalletSetupModal
+        isOpen={showNWCSetup}
+        onClose={() => setShowNWCSetup(false)}
+        onSuccess={(connectionId: string) => {
+          console.log('Family NWC wallet connected:', connectionId);
+          setShowNWCSetup(false);
+          // Refresh family wallet data
+        }}
+        showEducationalContent={true}
+      />
+
+      {/* Sovereignty Education Flow Modal */}
+      <SovereigntyEducationFlow
+        isOpen={showSovereigntyEducation}
+        onClose={() => setShowSovereigntyEducation(false)}
+        onStartNWCSetup={() => {
+          setShowSovereigntyEducation(false);
+          setShowNWCSetup(true);
+        }}
+      />
     </div>
   );
 };

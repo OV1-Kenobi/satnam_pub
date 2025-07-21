@@ -1,5 +1,7 @@
+import { Crown, Users, X } from 'lucide-react';
 import React, { useState } from 'react';
-import { X, Users } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { useNWCWallet } from '../hooks/useNWCWallet';
 import ContactsSelector from './shared/ContactsSelector';
 
 interface Contact {
@@ -19,16 +21,28 @@ interface SimplePaymentModalProps {
   wallet: any; // Using any for now to avoid complex type definitions
 }
 
-const SimplePaymentModal: React.FC<SimplePaymentModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  onOpenAutomatedPayments, 
-  wallet 
+const SimplePaymentModal: React.FC<SimplePaymentModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenAutomatedPayments,
+  wallet
 }) => {
+  // Hooks
+  const { userRole } = useAuth();
+  const {
+    isConnected: nwcConnected,
+    primaryConnection,
+    balance: nwcBalance,
+    payInvoice: nwcPayInvoice,
+    makeInvoice: nwcMakeInvoice
+  } = useNWCWallet();
+
+  // State
   const [amount, setAmount] = useState('');
   const [recipient, setRecipient] = useState('');
   const [memo, setMemo] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'lightning' | 'ecash'>('lightning');
+  const [paymentMethod, setPaymentMethod] = useState<'lightning' | 'ecash' | 'nwc'>('lightning');
+  const [walletSource, setWalletSource] = useState<'custodial' | 'nwc'>('custodial');
   const [loading, setLoading] = useState(false);
   const [showContactsSelector, setShowContactsSelector] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -39,14 +53,33 @@ const SimplePaymentModal: React.FC<SimplePaymentModalProps> = ({
 
     setLoading(true);
     try {
-      // Simple payment logic here
-      console.log('Sending payment:', { amount, recipient, memo, paymentMethod });
-      // You would integrate with your payment service here
-      alert('Payment sent successfully!');
-      onClose();
+      if (walletSource === 'nwc' && nwcConnected) {
+        // Use NWC wallet for payment
+        console.log('Sending NWC payment:', { amount, recipient, memo, walletSource });
+
+        // If recipient is a Lightning address, we need to create an invoice first
+        // For now, assume recipient is already an invoice
+        const result = await nwcPayInvoice(recipient);
+
+        if (result) {
+          alert(`Payment sent successfully via ${primaryConnection?.wallet_name}!`);
+          onClose();
+        } else {
+          throw new Error('NWC payment failed');
+        }
+      } else {
+        // Use custodial wallet (legacy)
+        console.log('Sending custodial payment:', { amount, recipient, memo, paymentMethod });
+        // You would integrate with your custodial payment service here
+        alert('Payment sent successfully via custodial wallet!');
+        onClose();
+      }
     } catch (error) {
       console.error('Payment failed:', error);
-      alert('Payment failed. Please try again.');
+      const errorMessage = walletSource === 'nwc'
+        ? `NWC payment failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        : 'Custodial payment failed. Please try again.';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -74,6 +107,51 @@ const SimplePaymentModal: React.FC<SimplePaymentModalProps> = ({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* NWC Wallet Selection */}
+            {nwcConnected && (
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <Crown className="h-5 w-5 text-green-600" />
+                    <span className="text-sm font-medium text-green-900">
+                      Sovereign Wallet Available
+                    </span>
+                  </div>
+                  <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                    {primaryConnection?.wallet_name}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      name="walletSource"
+                      value="nwc"
+                      checked={walletSource === 'nwc'}
+                      onChange={(e) => setWalletSource(e.target.value as 'custodial' | 'nwc')}
+                      className="text-green-600 focus:ring-green-500"
+                    />
+                    <span className="text-sm text-green-800">
+                      Use NWC Wallet ({nwcBalance?.balance.toLocaleString() || '---'} sats)
+                    </span>
+                  </label>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      name="walletSource"
+                      value="custodial"
+                      checked={walletSource === 'custodial'}
+                      onChange={(e) => setWalletSource(e.target.value as 'custodial' | 'nwc')}
+                      className="text-orange-600 focus:ring-orange-500"
+                    />
+                    <span className="text-sm text-gray-700">
+                      Use Custodial Wallet (Legacy)
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Amount (sats)

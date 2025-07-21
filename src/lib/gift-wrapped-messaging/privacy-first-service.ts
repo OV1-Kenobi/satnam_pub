@@ -91,7 +91,8 @@ export interface ContactData {
   npub: string;
   nip05?: string;
   displayName: string;
-  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  // Master Context Role Hierarchy
+  familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   trustLevel: "family" | "trusted" | "known" | "unverified";
   preferredEncryption: "gift-wrap" | "nip04" | "auto";
   notes?: string;

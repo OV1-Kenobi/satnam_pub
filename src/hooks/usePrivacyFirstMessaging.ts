@@ -59,12 +59,12 @@ export interface PrivacyMessagingActions {
   cancelDisclosure: () => void;
   disableDisclosure: () => Promise<boolean>;
 
-  // Contact Management
+  // Contact Management - Master Context Role Hierarchy
   addContact: (contactData: {
     npub: string;
     nip05?: string;
     displayName: string;
-    familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+    familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
     trustLevel: "family" | "trusted" | "known" | "unverified";
     preferredEncryption: "gift-wrap" | "nip04" | "auto";
     notes?: string;
@@ -354,7 +354,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
       npub: string;
       nip05?: string;
       displayName: string;
-      familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+      familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
       trustLevel: "family" | "trusted" | "known" | "unverified";
       preferredEncryption: "gift-wrap" | "nip04" | "auto";
       notes?: string;

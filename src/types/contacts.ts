@@ -1,18 +1,21 @@
 /**
- * Privacy-First Contacts System Types
+ * MASTER CONTEXT COMPLIANCE: Privacy-First Contacts System Types
  *
- * Type definitions for the encrypted contacts management system
- * that maintains privacy-first principles and data minimization.
+ * CRITICAL SECURITY: Zero-knowledge encrypted contact storage with hash-based field isolation
+ * PRIVACY-FIRST: All sensitive data encrypted/hashed, user maintains full control over contact data
+ * ROLE HIERARCHY: Standardized Master Context roles with offspring-only spending restrictions
  */
 
-// Core contact interface matching the database schema
+// MASTER CONTEXT COMPLIANCE: Core contact interface matching the database schema
+// CRITICAL SECURITY: Hash-based field isolation prevents data correlation attacks
 export interface EncryptedContact {
   id: string;
   owner_hash: string;
   encrypted_npub: string;
   nip05_hash?: string;
   display_name_hash: string;
-  family_role?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  // MASTER CONTEXT COMPLIANCE: Standardized role hierarchy
+  family_role?: "private" | "offspring" | "adult" | "steward" | "guardian";
   trust_level: "family" | "trusted" | "known" | "unverified";
   supports_gift_wrap: boolean;
   preferred_encryption: "gift-wrap" | "nip04" | "auto";
@@ -21,18 +24,21 @@ export interface EncryptedContact {
   added_at: string;
   last_contact_at?: string;
   contact_count: number;
+  // CRITICAL SECURITY: Encrypted metadata - 'any' required for encrypted data flexibility
   metadata: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
 
-// Client-side contact interface (decrypted for UI use)
+// MASTER CONTEXT COMPLIANCE: Client-side contact interface (decrypted for UI use)
+// PRIVACY-FIRST: Decrypted data for UI rendering with Nostr profile integration
 export interface Contact {
   id: string;
   npub: string;
   displayName: string;
   nip05?: string;
-  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  // MASTER CONTEXT COMPLIANCE: Standardized role hierarchy
+  familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   trustLevel: "family" | "trusted" | "known" | "unverified";
   supportsGiftWrap: boolean;
   preferredEncryption: "gift-wrap" | "nip04" | "auto";
@@ -49,9 +55,31 @@ export interface Contact {
   giftWrapSuccessRate?: number;
   messageReliabilityScore?: number;
   groupMembershipCount?: number;
+
+  // MASTER CONTEXT COMPLIANCE: Nostr profile image integration
+  profileImageUrl?: string;
+  lastProfileUpdate?: Date;
+  profileImageCached?: boolean;
+
+  // MASTER CONTEXT COMPLIANCE: Lightning provider routing integration
+  preferredLightningProvider?: "phoenixd" | "voltage" | "nwc";
+  lightningAddress?: string;
+  zapHistory?: ContactZapRecord[];
 }
 
-// Contact interaction log entry
+// MASTER CONTEXT COMPLIANCE: Lightning Zap record for contact interaction history
+export interface ContactZapRecord {
+  id: string;
+  amount: number;
+  memo?: string;
+  provider: "phoenixd" | "voltage" | "nwc";
+  paymentHash?: string;
+  timestamp: Date;
+  userRole: "private" | "offspring" | "adult" | "steward" | "guardian";
+  limitApplied: boolean;
+}
+
+// MASTER CONTEXT COMPLIANCE: Contact interaction log entry
 export interface ContactInteractionLog {
   id: number;
   contact_id: string;
@@ -61,14 +89,23 @@ export interface ContactInteractionLog {
     | "message_received"
     | "gift_wrap_detected"
     | "nip05_verified"
-    | "contact_updated";
+    | "contact_updated"
+    | "profile_image_fetched"
+    | "profile_image_loaded"
+    | "profile_image_fetch_failed"
+    | "lightning_zap_sent"
+    | "lightning_provider_selected"
+    | "contact_hover_interaction"
+    | "authentication_gated_action";
   interaction_timestamp: string;
   session_hash?: string;
+  // CRITICAL SECURITY: Encrypted metadata for privacy-first logging
   encrypted_metadata: Record<string, any>;
   created_at: string;
 }
 
-// Trust metrics for contacts
+// MASTER CONTEXT COMPLIANCE: Trust metrics for contacts
+// CRITICAL SECURITY: Encrypted trust calculations for privacy-first contact scoring
 export interface ContactTrustMetrics {
   id: number;
   contact_id: string;
@@ -82,7 +119,8 @@ export interface ContactTrustMetrics {
   updated_at: string;
 }
 
-// Contact groups
+// MASTER CONTEXT COMPLIANCE: Contact groups
+// PRIVACY-FIRST: Hash-based group management with encrypted descriptions
 export interface ContactGroup {
   id: string;
   owner_hash: string;
@@ -157,7 +195,8 @@ export interface ContactSummary {
   id: string;
   owner_hash: string;
   display_name_hash: string;
-  family_role?: string;
+  // MASTER CONTEXT COMPLIANCE: Standardized role hierarchy
+  family_role?: "private" | "offspring" | "adult" | "steward" | "guardian";
   trust_level: string;
   supports_gift_wrap: boolean;
   preferred_encryption: string;
@@ -172,12 +211,13 @@ export interface ContactSummary {
   group_membership_count: number;
 }
 
-// Input types for creating/updating contacts
+// MASTER CONTEXT COMPLIANCE: Input types for creating/updating contacts
 export interface CreateContactInput {
   npub: string;
   nip05?: string;
   displayName: string;
-  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  // MASTER CONTEXT COMPLIANCE: Standardized role hierarchy
+  familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   trustLevel: "family" | "trusted" | "known" | "unverified";
   preferredEncryption: "gift-wrap" | "nip04" | "auto";
   notes?: string;
@@ -187,7 +227,9 @@ export interface CreateContactInput {
 export interface UpdateContactInput {
   id: string;
   displayName?: string;
-  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  nip05?: string;
+  // MASTER CONTEXT COMPLIANCE: Standardized role hierarchy
+  familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   trustLevel?: "family" | "trusted" | "known" | "unverified";
   preferredEncryption?: "gift-wrap" | "nip04" | "auto";
   notes?: string;
@@ -210,10 +252,11 @@ export interface UpdateGroupInput {
   description?: string;
 }
 
-// Filter and sort options for contacts
+// MASTER CONTEXT COMPLIANCE: Filter and sort options for contacts
 export interface ContactFilters {
   trustLevel?: "family" | "trusted" | "known" | "unverified";
-  familyRole?: "adult" | "child" | "guardian" | "advisor" | "friend";
+  // MASTER CONTEXT COMPLIANCE: Standardized role hierarchy
+  familyRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   supportsGiftWrap?: boolean;
   verified?: boolean;
   groupId?: string;
@@ -258,6 +301,7 @@ export interface ContactPrivacyAudit {
   action: "created" | "updated" | "deleted" | "anonymized" | "disclosed";
   timestamp: Date;
   privacyLevel: "high" | "medium" | "low";
+  // CRITICAL SECURITY: Privacy audit metadata - 'any' required for flexible audit data
   metadata?: Record<string, any>;
 }
 
