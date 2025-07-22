@@ -2,11 +2,15 @@
   # Build settings for Vite React app
   publish = "dist"
   command = "npm run build:no-check"
-  
+
   # Environment variables for build
   [build.environment]
-    NODE_VERSION = "18"
+    NODE_VERSION = "20"
     NPM_FLAGS = "--legacy-peer-deps"
+
+# Development server configuration
+[dev]
+  targetPort = 8888  # Tell Netlify Dev to look for Vite on port 8888
 
 # Redirects for SPA and API endpoints
 [[redirects]]
