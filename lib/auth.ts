@@ -17,8 +17,16 @@ import {
 } from "jsonwebtoken";
 import type { StringValue } from "ms";
 import { Request } from "../types/netlify-functions";
-import { supabase } from "./supabase";
 import browserCrypto from "./utils/browser-crypto-simple";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // JWT configuration - secrets stored in Supabase Vault (compliance with MASTER_CONTEXT.md)
 let JWT_SECRET: string | null = null;

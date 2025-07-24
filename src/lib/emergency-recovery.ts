@@ -16,11 +16,14 @@
 
 import { FederationRole } from "../types/auth.js";
 import { PrivacyUtils } from "./privacy/encryption.js";
-import { supabase } from "./supabase.js";
-
-// Use static import instead of dynamic import
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
 const getSupabaseClient = async () => {
-  return supabase;
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
 };
 
 // Emergency Recovery Types

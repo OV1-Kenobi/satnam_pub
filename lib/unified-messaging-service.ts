@@ -22,13 +22,21 @@ import {
   SimplePool,
   type Event,
 } from "nostr-tools";
-import { supabase } from "../src/lib/supabase";
 import {
   decryptData,
   encryptData,
   generateRandomHex,
   sha256,
 } from "../utils/crypto-factory.js";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../src/lib/supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 /**
  * MASTER CONTEXT COMPLIANCE: Consolidated messaging configuration
@@ -324,17 +332,19 @@ export class UnifiedMessagingService {
     session: MessagingSession
   ): Promise<void> {
     try {
-      const { error } = await supabase.from("messaging_sessions").upsert({
-        session_id: session.sessionId,
-        user_hash: session.userHash,
-        encrypted_nsec: session.encryptedNsec,
-        session_key: session.sessionKey,
-        expires_at: session.expiresAt.toISOString(),
-        ip_address: session.ipAddress,
-        user_agent: session.userAgent,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+      const { error } = await (await getSupabaseClient())
+        .from("messaging_sessions")
+        .upsert({
+          session_id: session.sessionId,
+          user_hash: session.userHash,
+          encrypted_nsec: session.encryptedNsec,
+          session_key: session.sessionKey,
+          expires_at: session.expiresAt.toISOString(),
+          ip_address: session.ipAddress,
+          user_agent: session.userAgent,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
 
       if (error) {
         throw new Error(`Database error: ${error.message}`);
@@ -681,17 +691,19 @@ export class UnifiedMessagingService {
    */
   private async storeGroupInDatabase(group: PrivacyGroup): Promise<void> {
     try {
-      const { error } = await supabase.from("privacy_groups").upsert({
-        session_id: group.sessionId,
-        name_hash: group.nameHash,
-        description_hash: group.descriptionHash,
-        group_type: group.groupType,
-        member_count: group.memberCount,
-        admin_hashes: group.adminHashes,
-        encryption_type: group.encryptionType,
-        created_at: group.createdAt.toISOString(),
-        created_by_hash: group.createdByHash,
-      });
+      const { error } = await (await getSupabaseClient())
+        .from("privacy_groups")
+        .upsert({
+          session_id: group.sessionId,
+          name_hash: group.nameHash,
+          description_hash: group.descriptionHash,
+          group_type: group.groupType,
+          member_count: group.memberCount,
+          admin_hashes: group.adminHashes,
+          encryption_type: group.encryptionType,
+          created_at: group.createdAt.toISOString(),
+          created_by_hash: group.createdByHash,
+        });
 
       if (error) {
         throw new Error(`Database error: ${error.message}`);
@@ -707,20 +719,22 @@ export class UnifiedMessagingService {
    */
   private async storeContactInDatabase(contact: PrivacyContact): Promise<void> {
     try {
-      const { error } = await supabase.from("privacy_contacts").upsert({
-        session_id: contact.sessionId,
-        encrypted_npub: contact.encryptedNpub,
-        nip05_hash: contact.nip05Hash,
-        display_name_hash: contact.displayNameHash,
-        family_role: contact.familyRole,
-        trust_level: contact.trustLevel,
-        supports_gift_wrap: contact.supportsGiftWrap,
-        preferred_encryption: contact.preferredEncryption,
-        last_seen_hash: contact.lastSeenHash,
-        tags_hash: contact.tagsHash,
-        added_at: contact.addedAt.toISOString(),
-        added_by_hash: contact.addedByHash,
-      });
+      const { error } = await (await getSupabaseClient())
+        .from("privacy_contacts")
+        .upsert({
+          session_id: contact.sessionId,
+          encrypted_npub: contact.encryptedNpub,
+          nip05_hash: contact.nip05Hash,
+          display_name_hash: contact.displayNameHash,
+          family_role: contact.familyRole,
+          trust_level: contact.trustLevel,
+          supports_gift_wrap: contact.supportsGiftWrap,
+          preferred_encryption: contact.preferredEncryption,
+          last_seen_hash: contact.lastSeenHash,
+          tags_hash: contact.tagsHash,
+          added_at: contact.addedAt.toISOString(),
+          added_by_hash: contact.addedByHash,
+        });
 
       if (error) {
         throw new Error(`Database error: ${error.message}`);
@@ -808,7 +822,7 @@ export class UnifiedMessagingService {
         this.pendingApprovals.set(approvalId, approvalRequest);
 
         // Store approval request in database
-        await supabase.from("guardian_approvals").insert({
+        await (await getSupabaseClient()).from("guardian_approvals").insert({
           id: approvalId,
           group_id: groupId,
           message_id: approvalId,
@@ -827,7 +841,7 @@ export class UnifiedMessagingService {
       // Add user to group directly
       const membershipId = await PrivacyUtils.generateEncryptedUUID();
 
-      await supabase.from("group_memberships").insert({
+      await (await getSupabaseClient()).from("group_memberships").insert({
         id: membershipId,
         group_session_id: groupId,
         member_hash: this.userSession.userHash,
@@ -906,7 +920,7 @@ export class UnifiedMessagingService {
 
       // Log the leave action if reason provided
       if (reason) {
-        await supabase.from("group_activity_log").insert({
+        await (await getSupabaseClient()).from("group_activity_log").insert({
           group_session_id: groupId,
           member_hash: this.userSession.userHash,
           activity_type: "member_left",

@@ -3,8 +3,8 @@
  * @description React hook for managing authentication state and API calls
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { authAPI, getAuthStatus } from '../lib/api.js';
+import { useCallback, useState } from "react";
+import { authAPI, getAuthStatus } from "../lib/api.js";
 
 export interface User {
   id: string;
@@ -26,6 +26,7 @@ export interface AuthActions {
   login: (method: "nostr" | "nwc" | "otp", data: any) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  checkAuthStatus: () => Promise<void>; // Manual auth check when needed
   clearError: () => void;
 }
 
@@ -33,16 +34,15 @@ export function useAuth(): AuthState & AuthActions {
   const [state, setState] = useState<AuthState>({
     user: null,
     authenticated: false,
-    loading: true,
+    loading: false, // Not loading initially since we don't auto-check auth
     error: null,
     userRole: null,
     familyId: null,
   });
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
+  // Don't automatically check auth status on mount to prevent unnecessary database calls
+  // Auth status will be checked only when user attempts to access protected features
+  // This prevents multiple supabase client instances on landing page load
 
   const checkAuthStatus = useCallback(async () => {
     try {
@@ -206,6 +206,7 @@ export function useAuth(): AuthState & AuthActions {
     login,
     logout,
     refreshSession,
+    checkAuthStatus,
     clearError,
   };
 }

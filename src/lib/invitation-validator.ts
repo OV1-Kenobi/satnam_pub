@@ -11,7 +11,15 @@
  * - No exposure of user identifiers or sensitive information
  */
 
-import { supabase } from "./supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // Client-side rate limiting for validation requests
 const validationRateLimit = new Map<
@@ -127,8 +135,8 @@ async function getPublicInvitationDetails(
       error: isExpired
         ? "Invitation has expired"
         : isUsed
-          ? "Invitation has already been used"
-          : undefined,
+        ? "Invitation has already been used"
+        : undefined,
       welcomeMessage: personalMessage
         ? `You've been invited to join Satnam.pub! ${personalMessage}`
         : `You've been invited to join Satnam.pub!`,
@@ -161,8 +169,10 @@ async function trackInvitationView(inviteToken: string): Promise<void> {
     };
 
     // Store the view event in Supabase (privacy-preserving)
-    await supabase.from("invitation_analytics").insert(eventData);
-    
+    await (await getSupabaseClient())
+      .from("invitation_analytics")
+      .insert(eventData);
+
     console.log("Invitation view tracked", {
       inviteToken,
       hasPersonalMessage: !!eventData.user_agent_hash,
@@ -224,7 +234,7 @@ export async function validateInvitation(
  */
 export function extractInvitationTokenFromURL(): string | null {
   const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get('token') || urlParams.get('invite') || null;
+  return urlParams.get("token") || urlParams.get("invite") || null;
 }
 
 /**
@@ -237,4 +247,4 @@ export async function validateInvitationFromURL(): Promise<InvitationDetails | n
     return null;
   }
   return await validateInvitation(token);
-} 
+}

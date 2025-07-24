@@ -29,21 +29,28 @@
  * ```
  */
 
-import { browserCron, type BrowserCronJob } from '../types/cron';
+import type { WebSocket as WSType } from "ws";
+import { z } from "zod";
+import { browserCron, type BrowserCronJob } from "../types/cron";
 
 const cron = browserCron;
-import type { WebSocket as WSType } from "ws";
-import WebSocket from "ws";
-import { z } from "zod";
 
+import { FamilyLiquidityManager } from "./family-liquidity-manager";
 import { LightningClient } from "./lightning-client";
 import {
   encryptSensitiveData,
   generateSecureUUID,
   logPrivacyOperation,
 } from "./privacy/encryption";
-import { supabase } from "./supabase";
-import { FamilyLiquidityManager } from "./family-liquidity-manager";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 /**
  * Validation schemas for type safety and input validation
@@ -642,7 +649,11 @@ export class EnhancedFamilyCoordinator {
 
       this.wsServer = new (require("ws").WebSocketServer)({
         port,
-        verifyClient: (info: { origin: string; req: unknown; secure: boolean }) => {
+        verifyClient: (info: {
+          origin: string;
+          req: unknown;
+          secure: boolean;
+        }) => {
           // TODO: Implement proper authentication logic
           // Should verify JWT token or other authentication mechanism
           return true;
@@ -938,7 +949,9 @@ export class EnhancedFamilyCoordinator {
       }
 
       if (routeIndex >= routes.length) {
-        throw new Error(`Route index ${routeIndex} out of bounds (${routes.length} routes available)`);
+        throw new Error(
+          `Route index ${routeIndex} out of bounds (${routes.length} routes available)`
+        );
       }
 
       const selectedRoute = routes[routeIndex];
@@ -972,7 +985,9 @@ export class EnhancedFamilyCoordinator {
           amount,
           selectedRoute
         );
-      } else if (selectedRoute.path.some(step => step.layer === "lightning")) {
+      } else if (
+        selectedRoute.path.some((step) => step.layer === "lightning")
+      ) {
         // Lightning payment - use PhoenixD LSP
         executionResult = await this.executeLightningPayment(
           fromMemberId,
@@ -980,7 +995,7 @@ export class EnhancedFamilyCoordinator {
           amount,
           selectedRoute
         );
-      } else if (selectedRoute.path.some(step => step.layer === "ecash")) {
+      } else if (selectedRoute.path.some((step) => step.layer === "ecash")) {
         // eCash payment
         executionResult = await this.executeECashPayment(
           fromMemberId,
@@ -1046,15 +1061,20 @@ export class EnhancedFamilyCoordinator {
   ): Promise<PaymentExecutionResult> {
     try {
       // For internal payments, we can use eCash or direct balance transfer
-      const isECashRoute = route.path.some(step => step.layer === "ecash");
+      const isECashRoute = route.path.some((step) => step.layer === "ecash");
 
       if (isECashRoute) {
         // Execute eCash payment
-        return await this.executeECashPayment(fromMemberId, toDestination, amount, route);
+        return await this.executeECashPayment(
+          fromMemberId,
+          toDestination,
+          amount,
+          route
+        );
       } else {
         // Direct internal transfer
         const transactionId = generateSecureUUID();
-        
+
         // Update family member balances (this would be implemented with proper database transactions)
         // For now, return a mock successful result
         return {
@@ -1069,7 +1089,8 @@ export class EnhancedFamilyCoordinator {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Internal payment failed",
+        error:
+          error instanceof Error ? error.message : "Internal payment failed",
         actualFee: 0,
         executionTime: 0,
         routingHops: 0,
@@ -1118,7 +1139,8 @@ export class EnhancedFamilyCoordinator {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Lightning payment failed",
+        error:
+          error instanceof Error ? error.message : "Lightning payment failed",
         actualFee: route.estimatedFee,
         executionTime: 0,
         routingHops: route.path.length,
@@ -1140,7 +1162,7 @@ export class EnhancedFamilyCoordinator {
       // eCash payments are typically internal to the federation
       // This would integrate with the Fedimint federation
       const transactionId = generateSecureUUID();
-      
+
       // Mock eCash payment execution
       // In practice, this would create eCash tokens and transfer them
       return {
@@ -1381,7 +1403,16 @@ export class EnhancedFamilyCoordinator {
    * @param ecash - eCash layer status
    * @returns {number} Health score (0-100)
    */
-  private calculateHealthScore(lightning: { capacity: number; localBalance: number; activeChannels: number; pendingHtlcs: number; inactiveChannels: number }, ecash: { totalBalance: number; availableBalance: number }): number {
+  private calculateHealthScore(
+    lightning: {
+      capacity: number;
+      localBalance: number;
+      activeChannels: number;
+      pendingHtlcs: number;
+      inactiveChannels: number;
+    },
+    ecash: { totalBalance: number; availableBalance: number }
+  ): number {
     let score = 100;
 
     // Penalize for low liquidity
@@ -1411,7 +1442,13 @@ export class EnhancedFamilyCoordinator {
    * @returns {string[]} Array of recommendations
    */
   private generateLiquidityRecommendations(
-    lightning: { capacity: number; localBalance: number; activeChannels: number; pendingHtlcs: number; inactiveChannels: number },
+    lightning: {
+      capacity: number;
+      localBalance: number;
+      activeChannels: number;
+      pendingHtlcs: number;
+      inactiveChannels: number;
+    },
     ecash: { totalBalance: number; availableBalance: number },
     utilization: number
   ): string[] {
@@ -1419,35 +1456,49 @@ export class EnhancedFamilyCoordinator {
 
     // Lightning-specific recommendations
     if (lightning.capacity < 1000000) {
-      recommendations.push("Consider opening more Lightning channels for better liquidity");
+      recommendations.push(
+        "Consider opening more Lightning channels for better liquidity"
+      );
     }
 
     if (lightning.localBalance < lightning.capacity * 0.2) {
-      recommendations.push("Local balance is low - consider rebalancing channels");
+      recommendations.push(
+        "Local balance is low - consider rebalancing channels"
+      );
     }
 
     if (lightning.pendingHtlcs > 0) {
-      recommendations.push("Pending HTLCs detected - monitor for potential issues");
+      recommendations.push(
+        "Pending HTLCs detected - monitor for potential issues"
+      );
     }
 
     if (lightning.inactiveChannels > lightning.activeChannels * 0.3) {
-      recommendations.push("High number of inactive channels - consider cleanup");
+      recommendations.push(
+        "High number of inactive channels - consider cleanup"
+      );
     }
 
     // eCash-specific recommendations
     if (ecash.totalBalance < 500000) {
-      recommendations.push("Consider joining more eCash federations for diversification");
+      recommendations.push(
+        "Consider joining more eCash federations for diversification"
+      );
     }
 
     if (ecash.availableBalance < ecash.totalBalance * 0.1) {
-      recommendations.push("eCash available balance is low - check federation status");
+      recommendations.push(
+        "eCash available balance is low - check federation status"
+      );
     }
 
     // Overall recommendations
     if (utilization > 0.9) {
       recommendations.push("High utilization - consider increasing capacity");
     } else if (utilization < 0.1) {
-      recommendations.push("Low utilization - consider optimizing liquidity allocation");
+      recommendations.push(
+        "Low utilization - consider optimizing liquidity allocation"
+      );
     }
 
     return recommendations;
@@ -1462,11 +1513,21 @@ export class EnhancedFamilyCoordinator {
    * @returns {Array<{level: string, message: string, timestamp: Date}>} Array of alerts
    */
   private generateLiquidityAlerts(
-    lightning: { capacity: number; localBalance: number; activeChannels: number; pendingHtlcs: number; inactiveChannels: number },
+    lightning: {
+      capacity: number;
+      localBalance: number;
+      activeChannels: number;
+      pendingHtlcs: number;
+      inactiveChannels: number;
+    },
     ecash: { totalBalance: number; availableBalance: number },
     utilization: number
   ) {
-    const alerts: Array<{level: "info" | "warning" | "critical", message: string, timestamp: Date}> = [];
+    const alerts: Array<{
+      level: "info" | "warning" | "critical";
+      message: string;
+      timestamp: Date;
+    }> = [];
 
     // Critical alerts
     if (lightning.localBalance < 100000) {
@@ -1539,16 +1600,21 @@ export class EnhancedFamilyCoordinator {
     try {
       // Import and use the PaymentAutomationService
       const { PaymentAutomationService } = await import("./payment-automation");
-      
+
       // Get pending payment schedules and process them
-      const pendingSchedules = await PaymentAutomationService.getPaymentSchedules(this.config.familyId);
-      const dueSchedules = pendingSchedules.filter(schedule => 
-        new Date(schedule.nextPaymentDate) <= new Date() && 
-        schedule.status === 'active'
+      const pendingSchedules =
+        await PaymentAutomationService.getPaymentSchedules(
+          this.config.familyId
+        );
+      const dueSchedules = pendingSchedules.filter(
+        (schedule) =>
+          new Date(schedule.nextPaymentDate) <= new Date() &&
+          schedule.status === "active"
       );
 
       // Also get pending payment transactions
-      const pendingTransactions = await PaymentAutomationService.getPendingPayments(this.config.familyId);
+      const pendingTransactions =
+        await PaymentAutomationService.getPendingPayments(this.config.familyId);
 
       let successful = 0;
       let failed = 0;
@@ -1562,7 +1628,10 @@ export class EnhancedFamilyCoordinator {
           totalAmount += schedule.amount;
         } catch (error) {
           failed++;
-          console.error(`Failed to process payment schedule ${schedule.id}:`, error);
+          console.error(
+            `Failed to process payment schedule ${schedule.id}:`,
+            error
+          );
         }
       }
 
@@ -1747,7 +1816,7 @@ export class EnhancedFamilyCoordinator {
   ): Promise<void> {
     try {
       // Type guard for data
-      if (typeof data !== 'object' || data === null) {
+      if (typeof data !== "object" || data === null) {
         return;
       }
 
@@ -1762,7 +1831,11 @@ export class EnhancedFamilyCoordinator {
         }
 
         case "request_emergency_liquidity":
-          if (messageData.memberId && messageData.amount && messageData.urgency) {
+          if (
+            messageData.memberId &&
+            messageData.amount &&
+            messageData.urgency
+          ) {
             const result = await this.handleEmergencyLiquidity(
               messageData.memberId,
               messageData.amount,

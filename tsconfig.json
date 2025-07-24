@@ -16,7 +16,7 @@
     "moduleResolution": "bundler",
 
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "baseUrl": ".",
 

@@ -1,12 +1,20 @@
 /**
  * Secure Credential Manager
- * 
+ *
  * Manages secure storage and retrieval of sensitive credentials
  * Implements AES-256-GCM encryption with PBKDF2 key derivation
  * Follows privacy-first principles with automatic expiration
  */
 
-import { supabase } from '../supabase';
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 export interface EncryptedCredential {
   credentialId: string;
@@ -61,29 +69,31 @@ export class SecureCredentialManager {
       // Generate unique credential ID and salt
       const credentialId = crypto.randomUUID();
       const salt = await this.generateSecureSalt();
-      
+
       // Create encryption key from password and salt
       const encryptionKey = await this.deriveKeyFromPassword(password, salt);
-      
+
       // Encrypt the data using AES-256-GCM
       const encryptedData = await this.encryptData(data, encryptionKey);
-      
+
       // Set expiration time
       const expiresAt = new Date(Date.now() + expirationHours * 60 * 60 * 1000);
-      
+
       // Store in database
-      const { error } = await supabase.from('secure_nostr_credentials').insert({
-        user_id: userId,
-        credential_id: credentialId,
-        salt: salt,
-        encrypted_nsec: encryptedData.encrypted,
-        iv: encryptedData.iv,
-        tag: encryptedData.tag,
-        created_at: new Date().toISOString(),
-        expires_at: expiresAt.toISOString(),
-        access_count: 0,
-        is_revoked: false,
-      });
+      const { error } = await (await getSupabaseClient())
+        .from("secure_nostr_credentials")
+        .insert({
+          user_id: userId,
+          credential_id: credentialId,
+          salt: salt,
+          encrypted_nsec: encryptedData.encrypted,
+          iv: encryptedData.iv,
+          tag: encryptedData.tag,
+          created_at: new Date().toISOString(),
+          expires_at: expiresAt.toISOString(),
+          access_count: 0,
+          is_revoked: false,
+        });
 
       if (error) {
         throw new Error(`Database error: ${error.message}`);
@@ -92,12 +102,14 @@ export class SecureCredentialManager {
       return {
         success: true,
         credentialId,
-        message: 'Credential stored securely',
+        message: "Credential stored securely",
       };
     } catch (error) {
       return {
         success: false,
-        message: `Failed to store credential: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to store credential: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -117,16 +129,16 @@ export class SecureCredentialManager {
     try {
       // Get credential from database
       const { data: credentials, error } = await supabase
-        .from('secure_nostr_credentials')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('credential_id', credentialId)
+        .from("secure_nostr_credentials")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("credential_id", credentialId)
         .single();
 
       if (error || !credentials) {
         return {
           success: false,
-          message: 'Credential not found',
+          message: "Credential not found",
         };
       }
 
@@ -135,7 +147,7 @@ export class SecureCredentialManager {
         await this.removeCredential(userId, credentialId);
         return {
           success: false,
-          message: 'Credential has expired',
+          message: "Credential has expired",
         };
       }
 
@@ -143,13 +155,16 @@ export class SecureCredentialManager {
       if (credentials.is_revoked) {
         return {
           success: false,
-          message: 'Credential has been revoked',
+          message: "Credential has been revoked",
         };
       }
 
       // Derive key from password and salt
-      const encryptionKey = await this.deriveKeyFromPassword(password, credentials.salt);
-      
+      const encryptionKey = await this.deriveKeyFromPassword(
+        password,
+        credentials.salt
+      );
+
       // Decrypt the data
       const decryptedData = await this.decryptData(
         credentials.encrypted_nsec,
@@ -164,12 +179,14 @@ export class SecureCredentialManager {
       return {
         success: true,
         data: decryptedData,
-        message: 'Credential retrieved successfully',
+        message: "Credential retrieved successfully",
       };
     } catch (error) {
       return {
         success: false,
-        message: `Failed to retrieve credential: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to retrieve credential: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -183,10 +200,10 @@ export class SecureCredentialManager {
   ): Promise<CredentialStatus | null> {
     try {
       const { data: credentials, error } = await supabase
-        .from('secure_nostr_credentials')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('credential_id', credentialId)
+        .from("secure_nostr_credentials")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("credential_id", credentialId)
         .single();
 
       if (error || !credentials) {
@@ -205,7 +222,7 @@ export class SecureCredentialManager {
         isRevoked: credentials.is_revoked,
       };
     } catch (error) {
-      console.error('Failed to get credential status:', error);
+      console.error("Failed to get credential status:", error);
       return null;
     }
   }
@@ -216,12 +233,12 @@ export class SecureCredentialManager {
   async removeCredential(userId: string, credentialId: string): Promise<void> {
     try {
       await supabase
-        .from('secure_nostr_credentials')
+        .from("secure_nostr_credentials")
         .delete()
-        .eq('user_id', userId)
-        .eq('credential_id', credentialId);
+        .eq("user_id", userId)
+        .eq("credential_id", credentialId);
     } catch (error) {
-      console.error('Failed to remove credential:', error);
+      console.error("Failed to remove credential:", error);
     }
   }
 
@@ -231,22 +248,22 @@ export class SecureCredentialManager {
   async revokeCredential(
     userId: string,
     credentialId: string,
-    reason: string = 'User requested revocation'
+    reason: string = "User requested revocation"
   ): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('secure_nostr_credentials')
+        .from("secure_nostr_credentials")
         .update({
           is_revoked: true,
           revoked_at: new Date().toISOString(),
           revocation_reason: reason,
         })
-        .eq('user_id', userId)
-        .eq('credential_id', credentialId);
+        .eq("user_id", userId)
+        .eq("credential_id", credentialId);
 
       return !error;
     } catch (error) {
-      console.error('Failed to revoke credential:', error);
+      console.error("Failed to revoke credential:", error);
       return false;
     }
   }
@@ -257,19 +274,19 @@ export class SecureCredentialManager {
   async cleanupExpiredCredentials(): Promise<number> {
     try {
       const { data, error } = await supabase
-        .from('secure_nostr_credentials')
+        .from("secure_nostr_credentials")
         .delete()
-        .lt('expires_at', new Date().toISOString())
-        .select('credential_id');
+        .lt("expires_at", new Date().toISOString())
+        .select("credential_id");
 
       if (error) {
-        console.error('Failed to cleanup expired credentials:', error);
+        console.error("Failed to cleanup expired credentials:", error);
         return 0;
       }
 
       return data?.length || 0;
     } catch (error) {
-      console.error('Failed to cleanup expired credentials:', error);
+      console.error("Failed to cleanup expired credentials:", error);
       return 0;
     }
   }
@@ -280,43 +297,51 @@ export class SecureCredentialManager {
   private async generateSecureSalt(): Promise<string> {
     const saltBytes = new Uint8Array(32);
     crypto.getRandomValues(saltBytes);
-    return Array.from(saltBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    return Array.from(saltBytes, (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
   }
 
   /**
    * Derive encryption key from password and salt using PBKDF2
    */
-  private async deriveKeyFromPassword(password: string, salt: string): Promise<CryptoKey> {
+  private async deriveKeyFromPassword(
+    password: string,
+    salt: string
+  ): Promise<CryptoKey> {
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
     const saltBuffer = encoder.encode(salt);
 
     const baseKey = await crypto.subtle.importKey(
-      'raw',
+      "raw",
       passwordBuffer,
-      'PBKDF2',
+      "PBKDF2",
       false,
-      ['deriveBits', 'deriveKey']
+      ["deriveBits", "deriveKey"]
     );
 
     return await crypto.subtle.deriveKey(
       {
-        name: 'PBKDF2',
+        name: "PBKDF2",
         salt: saltBuffer,
         iterations: 100000, // High iteration count for security
-        hash: 'SHA-256',
+        hash: "SHA-256",
       },
       baseKey,
-      { name: 'AES-GCM', length: 256 },
+      { name: "AES-GCM", length: 256 },
       false,
-      ['encrypt', 'decrypt']
+      ["encrypt", "decrypt"]
     );
   }
 
   /**
    * Encrypt data using AES-256-GCM
    */
-  private async encryptData(data: string, key: CryptoKey): Promise<{
+  private async encryptData(
+    data: string,
+    key: CryptoKey
+  ): Promise<{
     encrypted: string;
     iv: string;
     tag: string;
@@ -326,7 +351,7 @@ export class SecureCredentialManager {
     const iv = crypto.getRandomValues(new Uint8Array(12));
 
     const encryptedBuffer = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
+      { name: "AES-GCM", iv },
       key,
       dataBuffer
     );
@@ -337,9 +362,13 @@ export class SecureCredentialManager {
     const encrypted = encryptedArray.slice(0, -16);
 
     return {
-      encrypted: Array.from(encrypted, byte => byte.toString(16).padStart(2, '0')).join(''),
-      iv: Array.from(iv, byte => byte.toString(16).padStart(2, '0')).join(''),
-      tag: Array.from(tag, byte => byte.toString(16).padStart(2, '0')).join(''),
+      encrypted: Array.from(encrypted, (byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join(""),
+      iv: Array.from(iv, (byte) => byte.toString(16).padStart(2, "0")).join(""),
+      tag: Array.from(tag, (byte) => byte.toString(16).padStart(2, "0")).join(
+        ""
+      ),
     };
   }
 
@@ -353,22 +382,24 @@ export class SecureCredentialManager {
     tag: string
   ): Promise<string> {
     const encryptedBytes = new Uint8Array(
-      encrypted.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+      encrypted.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
     const ivBytes = new Uint8Array(
-      iv.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+      iv.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
     const tagBytes = new Uint8Array(
-      tag.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+      tag.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
 
     // Combine encrypted data with authentication tag
-    const combinedData = new Uint8Array(encryptedBytes.length + tagBytes.length);
+    const combinedData = new Uint8Array(
+      encryptedBytes.length + tagBytes.length
+    );
     combinedData.set(encryptedBytes);
     combinedData.set(tagBytes, encryptedBytes.length);
 
     const decryptedBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: ivBytes },
+      { name: "AES-GCM", iv: ivBytes },
       key,
       combinedData
     );
@@ -380,31 +411,34 @@ export class SecureCredentialManager {
   /**
    * Update access metadata
    */
-  private async updateAccessMetadata(userId: string, credentialId: string): Promise<void> {
+  private async updateAccessMetadata(
+    userId: string,
+    credentialId: string
+  ): Promise<void> {
     try {
       // Get current access count and increment
       const { data: currentCredential } = await supabase
-        .from('secure_nostr_credentials')
-        .select('access_count')
-        .eq('user_id', userId)
-        .eq('credential_id', credentialId)
+        .from("secure_nostr_credentials")
+        .select("access_count")
+        .eq("user_id", userId)
+        .eq("credential_id", credentialId)
         .single();
 
       if (currentCredential) {
         await supabase
-          .from('secure_nostr_credentials')
+          .from("secure_nostr_credentials")
           .update({
             last_accessed_at: new Date().toISOString(),
             access_count: (currentCredential.access_count || 0) + 1,
           })
-          .eq('user_id', userId)
-          .eq('credential_id', credentialId);
+          .eq("user_id", userId)
+          .eq("credential_id", credentialId);
       }
     } catch (error) {
-      console.error('Failed to update access metadata:', error);
+      console.error("Failed to update access metadata:", error);
     }
   }
 }
 
 // Export singleton instance
-export const secureCredentialManager = SecureCredentialManager.getInstance(); 
+export const secureCredentialManager = SecureCredentialManager.getInstance();

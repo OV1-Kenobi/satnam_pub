@@ -4,8 +4,15 @@
  * @compliance Master Context - Privacy-first, browser-compatible, Bitcoin-only
  */
 
-import { supabase } from "../supabase";
-import { generateBrowserFingerprint } from "../privacy/browser-fingerprint";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // Achievement Levels
 export type AchievementLevel =
@@ -448,7 +455,10 @@ export class BadgeSystemService {
   /**
    * Get available badges for a student
    */
-  async getAvailableBadges(studentPubkey: string, familyId?: string): Promise<BadgeDefinition[]> {
+  async getAvailableBadges(
+    studentPubkey: string,
+    familyId?: string
+  ): Promise<BadgeDefinition[]> {
     try {
       // Get student progress
       const progress = await this.getStudentProgress(studentPubkey);
@@ -458,9 +468,9 @@ export class BadgeSystemService {
 
       // Get all badge definitions
       const { data: badges, error } = await supabase
-        .from('badge_definitions')
-        .select('*')
-        .eq('enabled', true);
+        .from("badge_definitions")
+        .select("*")
+        .eq("enabled", true);
 
       if (error || !badges) {
         return [];
@@ -470,14 +480,21 @@ export class BadgeSystemService {
       const availableBadges: BadgeDefinition[] = [];
 
       for (const badge of badges) {
-        if (await this.checkBadgeEligibility(badge, progress, studentPubkey, familyId)) {
+        if (
+          await this.checkBadgeEligibility(
+            badge,
+            progress,
+            studentPubkey,
+            familyId
+          )
+        ) {
           availableBadges.push(badge);
         }
       }
 
       return availableBadges;
     } catch (error) {
-      console.error('Error getting available badges:', error);
+      console.error("Error getting available badges:", error);
       return [];
     }
   }
@@ -494,7 +511,7 @@ export class BadgeSystemService {
     try {
       // Check prerequisites
       if (badge.prerequisites.length > 0) {
-        const earnedBadges = progress.badges_earned.map(b => b.badge_id);
+        const earnedBadges = progress.badges_earned.map((b) => b.badge_id);
         for (const prerequisite of badge.prerequisites) {
           if (!earnedBadges.includes(prerequisite)) {
             return false;
@@ -506,21 +523,27 @@ export class BadgeSystemService {
       const criteria = badge.criteria;
       if (criteria.completion_requirements) {
         const req = criteria.completion_requirements;
-        
+
         if (req.lessons_completed && progress.subjects_progress) {
           const subjectProgress = progress.subjects_progress.find(
-            sp => sp.subject === badge.subject
+            (sp) => sp.subject === badge.subject
           );
-          if (!subjectProgress || subjectProgress.lessons_completed < req.lessons_completed) {
+          if (
+            !subjectProgress ||
+            subjectProgress.lessons_completed < req.lessons_completed
+          ) {
             return false;
           }
         }
 
         if (req.minimum_score && progress.subjects_progress) {
           const subjectProgress = progress.subjects_progress.find(
-            sp => sp.subject === badge.subject
+            (sp) => sp.subject === badge.subject
           );
-          if (!subjectProgress || subjectProgress.proficiency_score < req.minimum_score) {
+          if (
+            !subjectProgress ||
+            subjectProgress.proficiency_score < req.minimum_score
+          ) {
             return false;
           }
         }
@@ -528,19 +551,25 @@ export class BadgeSystemService {
 
       // Check time requirements
       if (criteria.time_requirements?.minimum_study_hours) {
-        if (progress.total_study_hours < criteria.time_requirements.minimum_study_hours) {
+        if (
+          progress.total_study_hours <
+          criteria.time_requirements.minimum_study_hours
+        ) {
           return false;
         }
       }
 
       // Check verification requirements
-      if (criteria.verification_requirements?.guardian_approval_required && !familyId) {
+      if (
+        criteria.verification_requirements?.guardian_approval_required &&
+        !familyId
+      ) {
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Error checking badge eligibility:', error);
+      console.error("Error checking badge eligibility:", error);
       return false;
     }
   }
@@ -552,25 +581,29 @@ export class BadgeSystemService {
     try {
       // Validate badge exists
       const { data: badge, error: badgeError } = await supabase
-        .from('badge_definitions')
-        .select('*')
-        .eq('badge_id', request.badgeId)
-        .eq('enabled', true)
+        .from("badge_definitions")
+        .select("*")
+        .eq("badge_id", request.badgeId)
+        .eq("enabled", true)
         .single();
 
       if (badgeError || !badge) {
-        throw new Error('Badge not found or disabled');
+        throw new Error("Badge not found or disabled");
       }
 
       // Check eligibility
       const progress = await this.getStudentProgress(request.recipientPubkey);
       if (!progress) {
-        throw new Error('Student progress not found');
+        throw new Error("Student progress not found");
       }
 
-      const isEligible = await this.checkBadgeEligibility(badge, progress, request.recipientPubkey);
+      const isEligible = await this.checkBadgeEligibility(
+        badge,
+        progress,
+        request.recipientPubkey
+      );
       if (!isEligible) {
-        throw new Error('Not eligible for this badge');
+        throw new Error("Not eligible for this badge");
       }
 
       // Create badge award
@@ -582,38 +615,41 @@ export class BadgeSystemService {
         issuer_pubkey: badge.issuer_pubkey,
         awarded_at: Date.now(),
         encrypted_evidence: await this.encryptEvidence(request.evidence),
-        verification_status: 'pending',
-        privacy_encrypted: request.privacyLevel === 'private',
+        verification_status: "pending",
+        privacy_encrypted: request.privacyLevel === "private",
         wot_verified: false,
         institutional_cosigned: false,
         evidence: {
           lessons_completed: request.evidence.lessons_completed,
-          quiz_scores: request.evidence.quiz_scores.map(qs => ({
+          quiz_scores: request.evidence.quiz_scores.map((qs) => ({
             ...qs,
-            completion_date: Date.now()
+            completion_date: Date.now(),
           })),
           practical_work: request.evidence.practical_work || [],
           guardian_approvals: [],
-          mentor_verification: request.mentorVerification ? {
-            mentor_pubkey: request.mentorVerification.mentor_pubkey,
-            mentor_nip05: request.mentorVerification.mentor_nip05,
-            verification_timestamp: Date.now(),
-            verification_notes: request.mentorVerification.verification_notes,
-            verification_level: 'basic',
-            competency_verified: [badge.subject],
-            mentor_signature: request.mentorVerification.mentor_signature
-          } : undefined
+          mentor_verification: request.mentorVerification
+            ? {
+                mentor_pubkey: request.mentorVerification.mentor_pubkey,
+                mentor_nip05: request.mentorVerification.mentor_nip05,
+                verification_timestamp: Date.now(),
+                verification_notes:
+                  request.mentorVerification.verification_notes,
+                verification_level: "basic",
+                competency_verified: [badge.subject],
+                mentor_signature: request.mentorVerification.mentor_signature,
+              }
+            : undefined,
         },
-        created_at: Date.now()
+        created_at: Date.now(),
       };
 
       // Save badge award
       const { error: saveError } = await supabase
-        .from('badge_awards')
+        .from("badge_awards")
         .insert([award]);
 
       if (saveError) {
-        throw new Error('Failed to save badge award');
+        throw new Error("Failed to save badge award");
       }
 
       // Update student progress
@@ -621,7 +657,7 @@ export class BadgeSystemService {
 
       return award;
     } catch (error) {
-      console.error('Error awarding badge:', error);
+      console.error("Error awarding badge:", error);
       return null;
     }
   }
@@ -629,12 +665,14 @@ export class BadgeSystemService {
   /**
    * Get student progress
    */
-  async getStudentProgress(studentPubkey: string): Promise<StudentProgress | null> {
+  async getStudentProgress(
+    studentPubkey: string
+  ): Promise<StudentProgress | null> {
     try {
       const { data, error } = await supabase
-        .from('student_progress')
-        .select('*')
-        .eq('student_pubkey_hash', await this.hashPubkey(studentPubkey))
+        .from("student_progress")
+        .select("*")
+        .eq("student_pubkey_hash", await this.hashPubkey(studentPubkey))
         .single();
 
       if (error || !data) {
@@ -643,7 +681,7 @@ export class BadgeSystemService {
 
       return data as StudentProgress;
     } catch (error) {
-      console.error('Error getting student progress:', error);
+      console.error("Error getting student progress:", error);
       return null;
     }
   }
@@ -651,13 +689,18 @@ export class BadgeSystemService {
   /**
    * Update student progress after badge award
    */
-  private async updateStudentProgress(progress: StudentProgress, badge: BadgeDefinition): Promise<void> {
+  private async updateStudentProgress(
+    progress: StudentProgress,
+    badge: BadgeDefinition
+  ): Promise<void> {
     try {
       // Update badges earned count
       progress.badges_earned_count += 1;
 
       // Update subject progress
-      const subjectProgress = progress.subjects_progress.find(sp => sp.subject === badge.subject);
+      const subjectProgress = progress.subjects_progress.find(
+        (sp) => sp.subject === badge.subject
+      );
       if (subjectProgress) {
         subjectProgress.badges_earned += 1;
         subjectProgress.last_activity = Date.now();
@@ -666,11 +709,11 @@ export class BadgeSystemService {
       // Update last activity
       progress.last_activity = Date.now();
 
-      await supabase
-        .from('student_progress')
+      await (await getSupabaseClient())
+        .from("student_progress")
         .upsert([progress]);
     } catch (error) {
-      console.error('Error updating student progress:', error);
+      console.error("Error updating student progress:", error);
     }
   }
 
@@ -680,9 +723,9 @@ export class BadgeSystemService {
   private async hashPubkey(pubkey: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(pubkey);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   /**
@@ -696,27 +739,37 @@ export class BadgeSystemService {
   /**
    * Get student dashboard data
    */
-  async getStudentDashboard(studentPubkey: string, familyId?: string): Promise<StudentDashboardData | null> {
+  async getStudentDashboard(
+    studentPubkey: string,
+    familyId?: string
+  ): Promise<StudentDashboardData | null> {
     try {
       const progress = await this.getStudentProgress(studentPubkey);
       if (!progress) {
         return null;
       }
 
-      const availableBadges = await this.getAvailableBadges(studentPubkey, familyId);
+      const availableBadges = await this.getAvailableBadges(
+        studentPubkey,
+        familyId
+      );
       const achievementsSummary = await this.getAchievementsSummary(progress);
-      const mentorInteractions = await this.getMentorInteractions(studentPubkey);
-      const credentializations = await this.getCredentializations(studentPubkey);
+      const mentorInteractions = await this.getMentorInteractions(
+        studentPubkey
+      );
+      const credentializations = await this.getCredentializations(
+        studentPubkey
+      );
 
       return {
         progress,
         available_badges: availableBadges,
         achievements_summary: achievementsSummary,
         mentor_interactions: mentorInteractions,
-        credentializations: credentializations
+        credentializations: credentializations,
       };
     } catch (error) {
-      console.error('Error getting student dashboard:', error);
+      console.error("Error getting student dashboard:", error);
       return null;
     }
   }
@@ -724,21 +777,38 @@ export class BadgeSystemService {
   /**
    * Get achievements summary
    */
-  private async getAchievementsSummary(progress: StudentProgress): Promise<AchievementsSummary> {
+  private async getAchievementsSummary(
+    progress: StudentProgress
+  ): Promise<AchievementsSummary> {
     const badgesByLevel: Record<AchievementLevel, number> = {
-      initiate: 0, apprentice: 0, journeyman: 0, craftsman: 0,
-      master: 0, guardian: 0, sage: 0
+      initiate: 0,
+      apprentice: 0,
+      journeyman: 0,
+      craftsman: 0,
+      master: 0,
+      guardian: 0,
+      sage: 0,
     };
 
     const badgesByCategory: Record<BadgeCategory, number> = {
-      knowledge: 0, practical: 0, security: 0, leadership: 0,
-      sovereignty: 0, family: 0, community: 0
+      knowledge: 0,
+      practical: 0,
+      security: 0,
+      leadership: 0,
+      sovereignty: 0,
+      family: 0,
+      community: 0,
     };
 
     const badgesBySubject: Record<EducationSubject, number> = {
-      'bitcoin-fundamentals': 0, 'lightning-network': 0, 'privacy-sovereignty': 0,
-      'self-custody': 0, 'family-treasury': 0, 'nostr-identity': 0,
-      'security-ops': 0, 'citadel-building': 0
+      "bitcoin-fundamentals": 0,
+      "lightning-network": 0,
+      "privacy-sovereignty": 0,
+      "self-custody": 0,
+      "family-treasury": 0,
+      "nostr-identity": 0,
+      "security-ops": 0,
+      "citadel-building": 0,
     };
 
     // Count badges by various criteria
@@ -752,29 +822,35 @@ export class BadgeSystemService {
       badges_by_level: badgesByLevel,
       badges_by_category: badgesByCategory,
       badges_by_subject: badgesBySubject,
-      wot_verified_badges: progress.badges_earned.filter(b => b.wot_verified).length,
-      institutional_cosigned_badges: progress.badges_earned.filter(b => b.institutional_cosigned).length,
+      wot_verified_badges: progress.badges_earned.filter((b) => b.wot_verified)
+        .length,
+      institutional_cosigned_badges: progress.badges_earned.filter(
+        (b) => b.institutional_cosigned
+      ).length,
       streak_info: {
         current_streak: progress.learning_streak_days,
         longest_streak: progress.learning_streak_days, // Would need to track separately
-        streak_start_date: Date.now() - (progress.learning_streak_days * 24 * 60 * 60 * 1000)
+        streak_start_date:
+          Date.now() - progress.learning_streak_days * 24 * 60 * 60 * 1000,
       },
       recent_achievements: progress.badges_earned.slice(-5),
       next_milestones: [],
-      mentor_relationships: []
+      mentor_relationships: [],
     };
   }
 
   /**
    * Get mentor interactions
    */
-  private async getMentorInteractions(studentPubkey: string): Promise<MentorInteraction[]> {
+  private async getMentorInteractions(
+    studentPubkey: string
+  ): Promise<MentorInteraction[]> {
     try {
       const { data, error } = await supabase
-        .from('mentor_interactions')
-        .select('*')
-        .eq('student_pubkey_hash', await this.hashPubkey(studentPubkey))
-        .order('interaction_timestamp', { ascending: false })
+        .from("mentor_interactions")
+        .select("*")
+        .eq("student_pubkey_hash", await this.hashPubkey(studentPubkey))
+        .order("interaction_timestamp", { ascending: false })
         .limit(10);
 
       if (error || !data) {
@@ -783,7 +859,7 @@ export class BadgeSystemService {
 
       return data as MentorInteraction[];
     } catch (error) {
-      console.error('Error getting mentor interactions:', error);
+      console.error("Error getting mentor interactions:", error);
       return [];
     }
   }
@@ -791,14 +867,16 @@ export class BadgeSystemService {
   /**
    * Get WoT notarizations
    */
-  private async getCredentializations(studentPubkey: string): Promise<WoTMentorNotarization[]> {
+  private async getCredentializations(
+    studentPubkey: string
+  ): Promise<WoTMentorNotarization[]> {
     try {
       const { data, error } = await supabase
-        .from('wot_mentor_notarizations')
-        .select('*')
-        .eq('student_pubkey_hash', await this.hashPubkey(studentPubkey))
-        .eq('revoked', false)
-        .order('created_at', { ascending: false });
+        .from("wot_mentor_notarizations")
+        .select("*")
+        .eq("student_pubkey_hash", await this.hashPubkey(studentPubkey))
+        .eq("revoked", false)
+        .order("created_at", { ascending: false });
 
       if (error || !data) {
         return [];
@@ -806,11 +884,11 @@ export class BadgeSystemService {
 
       return data as WoTMentorNotarization[];
     } catch (error) {
-      console.error('Error getting WoT notarizations:', error);
+      console.error("Error getting WoT notarizations:", error);
       return [];
     }
   }
 }
 
 // Export singleton instance
-export const badgeSystem = BadgeSystemService.getInstance(); 
+export const badgeSystem = BadgeSystemService.getInstance();

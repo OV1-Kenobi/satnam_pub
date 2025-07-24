@@ -5,7 +5,15 @@
  * @note Invitations use existing PostAuthInvitationModal system (/api/authenticated/generate-peer-invite)
  */
 
-import { supabase } from '../supabase';
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 export interface CharterDefinition {
   familyName: string;
@@ -46,7 +54,7 @@ export interface CreateFamilyFoundryResponse {
 export interface FamilyFoundryStatus {
   charterId: string;
   federationId: string;
-  status: 'creating' | 'active' | 'failed' | 'suspended';
+  status: "creating" | "active" | "failed" | "suspended";
   progress: number;
   errorMessage?: string;
 }
@@ -59,26 +67,26 @@ export class FamilyFoundryService {
     request: CreateFamilyFoundryRequest
   ): Promise<CreateFamilyFoundryResponse> {
     try {
-      const response = await fetch('/api/family/foundry', {
-        method: 'POST',
+      const response = await fetch("/api/family/foundry", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await this.getSessionToken()}`
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${await this.getSessionToken()}`,
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create family foundry');
+        throw new Error(errorData.error || "Failed to create family foundry");
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error creating family foundry:', error);
+      console.error("Error creating family foundry:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -86,16 +94,18 @@ export class FamilyFoundryService {
   /**
    * Get family foundry status by charter ID
    */
-  static async getFamilyFoundryStatus(charterId: string): Promise<FamilyFoundryStatus | null> {
+  static async getFamilyFoundryStatus(
+    charterId: string
+  ): Promise<FamilyFoundryStatus | null> {
     try {
       const { data, error } = await supabase
-        .from('family_federation_creations')
-        .select('*')
-        .eq('charter_id', charterId)
+        .from("family_federation_creations")
+        .select("*")
+        .eq("charter_id", charterId)
         .single();
 
       if (error) {
-        console.error('Error fetching family foundry status:', error);
+        console.error("Error fetching family foundry status:", error);
         return null;
       }
 
@@ -104,10 +114,10 @@ export class FamilyFoundryService {
         federationId: data.id,
         status: data.status,
         progress: data.progress,
-        errorMessage: data.error_message
+        errorMessage: data.error_message,
       };
     } catch (error) {
-      console.error('Error getting family foundry status:', error);
+      console.error("Error getting family foundry status:", error);
       return null;
     }
   }
@@ -118,19 +128,19 @@ export class FamilyFoundryService {
   static async getFamilyCharter(charterId: string) {
     try {
       const { data, error } = await supabase
-        .from('family_charters')
-        .select('*')
-        .eq('id', charterId)
+        .from("family_charters")
+        .select("*")
+        .eq("id", charterId)
         .single();
 
       if (error) {
-        console.error('Error fetching family charter:', error);
+        console.error("Error fetching family charter:", error);
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error('Error getting family charter:', error);
+      console.error("Error getting family charter:", error);
       return null;
     }
   }
@@ -141,19 +151,19 @@ export class FamilyFoundryService {
   static async getRBACConfig(charterId: string) {
     try {
       const { data, error } = await supabase
-        .from('family_rbac_configs')
-        .select('*')
-        .eq('charter_id', charterId)
-        .order('hierarchy_level', { ascending: false });
+        .from("family_rbac_configs")
+        .select("*")
+        .eq("charter_id", charterId)
+        .order("hierarchy_level", { ascending: false });
 
       if (error) {
-        console.error('Error fetching RBAC config:', error);
+        console.error("Error fetching RBAC config:", error);
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error('Error getting RBAC config:', error);
+      console.error("Error getting RBAC config:", error);
       return null;
     }
   }
@@ -162,32 +172,32 @@ export class FamilyFoundryService {
    * Update federation creation progress
    */
   static async updateFederationProgress(
-    federationId: string, 
-    progress: number, 
-    status?: 'creating' | 'active' | 'failed' | 'suspended'
+    federationId: string,
+    progress: number,
+    status?: "creating" | "active" | "failed" | "suspended"
   ): Promise<boolean> {
     try {
       const updateData: any = { progress };
       if (status) {
         updateData.status = status;
-        if (status === 'active') {
+        if (status === "active") {
           updateData.activated_at = new Date().toISOString();
         }
       }
 
       const { error } = await supabase
-        .from('family_federation_creations')
+        .from("family_federation_creations")
         .update(updateData)
-        .eq('id', federationId);
+        .eq("id", federationId);
 
       if (error) {
-        console.error('Error updating federation progress:', error);
+        console.error("Error updating federation progress:", error);
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Error updating federation progress:', error);
+      console.error("Error updating federation progress:", error);
       return false;
     }
   }
@@ -197,11 +207,13 @@ export class FamilyFoundryService {
    */
   private static async getSessionToken(): Promise<string> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      return session?.access_token || '';
+      const {
+        data: { session },
+      } = await (await getSupabaseClient()).auth.getSession();
+      return session?.access_token || "";
     } catch (error) {
-      console.error('Error getting session token:', error);
-      return '';
+      console.error("Error getting session token:", error);
+      return "";
     }
   }
-} 
+}

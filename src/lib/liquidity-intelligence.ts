@@ -5,16 +5,24 @@
  * with Lightning integration and privacy-first data handling.
  */
 
-import { browserCron, type BrowserCronJob } from '../types/cron';
-
-const cron = browserCron;
+import { browserCron, type BrowserCronJob } from "../types/cron";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
   generateSecureUUID,
   logPrivacyOperation,
 } from "./privacy/encryption";
-import { supabase } from "./supabase";
+
+const cron = browserCron;
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 export interface LiquidityForecast {
   id: string;
@@ -339,7 +347,9 @@ export class LiquidityIntelligenceSystem {
       });
 
       throw new Error(
-        `Forecast generation failed: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Forecast generation failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
@@ -684,7 +694,9 @@ export class LiquidityIntelligenceSystem {
           frequency: "weekly",
           magnitude: dailyPattern.magnitude,
           confidence: dailyPattern.confidence,
-          description: `Peak usage typically occurs on ${this.getDayName(dailyPattern.peakTime)}`,
+          description: `Peak usage typically occurs on ${this.getDayName(
+            dailyPattern.peakTime
+          )}`,
           lastObserved: new Date(),
         });
       }
@@ -775,7 +787,9 @@ export class LiquidityIntelligenceSystem {
         // Extract peak time from pattern description
         const match = hourlyPattern.description.match(/(\d{1,2}):?(\d{2})?/);
         if (match) {
-          peakTime = `${match[1].padStart(2, "0")}:${(match[2] || "00").padStart(2, "0")}`;
+          peakTime = `${match[1].padStart(2, "0")}:${(
+            match[2] || "00"
+          ).padStart(2, "0")}`;
         }
       }
 
@@ -1412,36 +1426,38 @@ export class LiquidityIntelligenceSystem {
       );
       const encryptedFamilyId = await encryptSensitiveData(forecast.familyId);
 
-      await supabase.from("secure_liquidity_forecasts").insert({
-        forecast_uuid: forecast.id,
-        encrypted_family_id: encryptedFamilyId.encrypted,
-        family_salt: encryptedFamilyId.salt,
-        family_iv: encryptedFamilyId.iv,
-        family_tag: encryptedFamilyId.tag,
-        forecast_date: forecast.forecastDate.toISOString(),
-        timeframe: forecast.timeframe,
-        encrypted_predictions: encryptedPredictions.encrypted,
-        predictions_salt: encryptedPredictions.salt,
-        predictions_iv: encryptedPredictions.iv,
-        predictions_tag: encryptedPredictions.tag,
-        encrypted_liquidity_needs: encryptedNeeds.encrypted,
-        needs_salt: encryptedNeeds.salt,
-        needs_iv: encryptedNeeds.iv,
-        needs_tag: encryptedNeeds.tag,
-        encrypted_recommendations: encryptedRecommendations.encrypted,
-        recommendations_salt: encryptedRecommendations.salt,
-        recommendations_iv: encryptedRecommendations.iv,
-        recommendations_tag: encryptedRecommendations.tag,
-        encrypted_risk_factors: encryptedRisks.encrypted,
-        risks_salt: encryptedRisks.salt,
-        risks_iv: encryptedRisks.iv,
-        risks_tag: encryptedRisks.tag,
-        encrypted_cost_optimization: encryptedCosts.encrypted,
-        cost_salt: encryptedCosts.salt,
-        cost_iv: encryptedCosts.iv,
-        cost_tag: encryptedCosts.tag,
-        created_at: forecast.createdAt.toISOString(),
-      });
+      await (await getSupabaseClient())
+        .from("secure_liquidity_forecasts")
+        .insert({
+          forecast_uuid: forecast.id,
+          encrypted_family_id: encryptedFamilyId.encrypted,
+          family_salt: encryptedFamilyId.salt,
+          family_iv: encryptedFamilyId.iv,
+          family_tag: encryptedFamilyId.tag,
+          forecast_date: forecast.forecastDate.toISOString(),
+          timeframe: forecast.timeframe,
+          encrypted_predictions: encryptedPredictions.encrypted,
+          predictions_salt: encryptedPredictions.salt,
+          predictions_iv: encryptedPredictions.iv,
+          predictions_tag: encryptedPredictions.tag,
+          encrypted_liquidity_needs: encryptedNeeds.encrypted,
+          needs_salt: encryptedNeeds.salt,
+          needs_iv: encryptedNeeds.iv,
+          needs_tag: encryptedNeeds.tag,
+          encrypted_recommendations: encryptedRecommendations.encrypted,
+          recommendations_salt: encryptedRecommendations.salt,
+          recommendations_iv: encryptedRecommendations.iv,
+          recommendations_tag: encryptedRecommendations.tag,
+          encrypted_risk_factors: encryptedRisks.encrypted,
+          risks_salt: encryptedRisks.salt,
+          risks_iv: encryptedRisks.iv,
+          risks_tag: encryptedRisks.tag,
+          encrypted_cost_optimization: encryptedCosts.encrypted,
+          cost_salt: encryptedCosts.salt,
+          cost_iv: encryptedCosts.iv,
+          cost_tag: encryptedCosts.tag,
+          created_at: forecast.createdAt.toISOString(),
+        });
 
       console.log(`💾 Encrypted forecast stored: ${forecast.id}`);
     } catch (error) {

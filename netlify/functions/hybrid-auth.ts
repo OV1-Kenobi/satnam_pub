@@ -13,7 +13,15 @@ import {
   sanitizeNWCData,
   validateNWCUri,
 } from "../utils/nwc-validation";
-import { supabase } from "./supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { default: supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // Types for our hybrid auth system
 export interface NostrProfile {
@@ -60,16 +68,22 @@ export class HybridAuth {
 
   constructor() {
     this.pool = new SimplePool();
-    this.relays = process.env.NOSTR_RELAYS?.split(',') || ['wss://relay.damus.io', 'wss://nos.lol'];
+    this.relays = process.env.NOSTR_RELAYS?.split(",") || [
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+    ];
   }
 
-  async authenticateWithNostr(nostrEvent: NostrEvent, nip05?: string): Promise<AuthResult> {
+  async authenticateWithNostr(
+    nostrEvent: NostrEvent,
+    nip05?: string
+  ): Promise<AuthResult> {
     try {
       // Verify the event signature
       if (!(verifyEvent as any)(nostrEvent)) {
         return {
           success: false,
-          error: "Invalid event signature"
+          error: "Invalid event signature",
         };
       }
 
@@ -79,7 +93,7 @@ export class HybridAuth {
       if (eventAge > 300) {
         return {
           success: false,
-          error: "Event is too old"
+          error: "Event is too old",
         };
       }
 
@@ -93,11 +107,11 @@ export class HybridAuth {
         .eq("npub", npub)
         .single();
 
-      if (userError && userError.code !== 'PGRST116') {
+      if (userError && userError.code !== "PGRST116") {
         console.error("Database error:", userError);
         return {
           success: false,
-          error: "Database error"
+          error: "Database error",
         };
       }
 
@@ -105,16 +119,18 @@ export class HybridAuth {
       if (!existingUser) {
         // Create new user with privacy-safe hashed ID
         const hashedUserId = await this.generatePrivacyHash(npub + Date.now());
-        
+
         const { data: newUser, error: createError } = await supabase
           .from("user_identities")
-          .insert([{
-            hashed_user_id: hashedUserId,
-            npub,
-            nip05: nip05 || null,
-            supabase_session: null as any,
-            created_at: new Date().toISOString()
-          }])
+          .insert([
+            {
+              hashed_user_id: hashedUserId,
+              npub,
+              nip05: nip05 || null,
+              supabase_session: null as any,
+              created_at: new Date().toISOString(),
+            },
+          ])
           .select()
           .single();
 
@@ -122,7 +138,7 @@ export class HybridAuth {
           console.error("Error creating user:", createError);
           return {
             success: false,
-            error: "Failed to create user"
+            error: "Failed to create user",
           };
         }
 
@@ -135,7 +151,7 @@ export class HybridAuth {
       const token = await this.generateJWT({
         userId: userData.hashed_user_id,
         npub: userData.npub,
-        nip05: userData.nip05
+        nip05: userData.nip05,
       });
 
       return {
@@ -143,16 +159,15 @@ export class HybridAuth {
         data: {
           userId: userData.hashed_user_id,
           npub: userData.npub,
-          nip05: userData.nip05
+          nip05: userData.nip05,
         },
-        token
+        token,
       };
-
     } catch (error) {
       console.error("Error in authenticateWithNostr:", error);
       return {
         success: false,
-        error: "Authentication failed"
+        error: "Authentication failed",
       };
     }
   }
@@ -175,12 +190,14 @@ export class HybridAuth {
       // Store NWC connection securely
       const { data: nwcConnection, error: nwcError } = await supabase
         .from("nwc_connections")
-        .insert([{
-          pubkey: nwcData.pubkey,
-          relay: nwcData.relay,
-          permissions: nwcData.permissions || [],
-          created_at: new Date().toISOString()
-        }])
+        .insert([
+          {
+            pubkey: nwcData.pubkey,
+            relay: nwcData.relay,
+            permissions: nwcData.permissions || [],
+            created_at: new Date().toISOString(),
+          },
+        ])
         .select()
         .single();
 
@@ -188,7 +205,7 @@ export class HybridAuth {
         console.error("Error storing NWC connection:", nwcError);
         return {
           success: false,
-          error: "Failed to store NWC connection"
+          error: "Failed to store NWC connection",
         };
       }
 
@@ -196,15 +213,14 @@ export class HybridAuth {
         success: true,
         data: {
           connectionId: nwcConnection.id,
-          pubkey: nwcConnection.pubkey
-        }
+          pubkey: nwcConnection.pubkey,
+        },
       };
-
     } catch (error) {
       console.error("Error in authenticateWithNWC:", error);
       return {
         success: false,
-        error: "NWC authentication failed"
+        error: "NWC authentication failed",
       };
     }
   }
@@ -217,22 +233,24 @@ export class HybridAuth {
 
       // Store OTP in database (with expiration)
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-      
-      const { error: storeError } = await supabase
+
+      const { error: storeError } = await (await getSupabaseClient())
         .from("otp_codes")
-        .insert([{
-          otp_key: otpKey,
-          npub,
-          otp_code: otp,
-          expires_at: expiresAt.toISOString(),
-          created_at: new Date().toISOString()
-        }]);
+        .insert([
+          {
+            otp_key: otpKey,
+            npub,
+            otp_code: otp,
+            expires_at: expiresAt.toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ]);
 
       if (storeError) {
         console.error("Error storing OTP:", storeError);
         return {
           success: false,
-          error: "Failed to generate OTP"
+          error: "Failed to generate OTP",
         };
       }
 
@@ -241,14 +259,13 @@ export class HybridAuth {
 
       return {
         success: true,
-        otpKey
+        otpKey,
       };
-
     } catch (error) {
       console.error("Error in sendOTP:", error);
       return {
         success: false,
-        error: "Failed to send OTP"
+        error: "Failed to send OTP",
       };
     }
   }
@@ -266,7 +283,7 @@ export class HybridAuth {
       if (otpError || !otpData) {
         return {
           success: false,
-          error: "Invalid OTP"
+          error: "Invalid OTP",
         };
       }
 
@@ -276,18 +293,20 @@ export class HybridAuth {
       if (now > expiresAt) {
         return {
           success: false,
-          error: "OTP expired"
+          error: "OTP expired",
         };
       }
 
       // Delete used OTP
-      await supabase
+      await (await getSupabaseClient())
         .from("otp_codes")
         .delete()
         .eq("otp_key", otpKey);
 
       // Get user data
-      const { data: userData, error: userError } = await supabase
+      const { data: userData, error: userError } = await (
+        await getSupabaseClient()
+      )
         .from("user_identities")
         .select("*")
         .eq("npub", otpData.npub)
@@ -296,7 +315,7 @@ export class HybridAuth {
       if (userError || !userData) {
         return {
           success: false,
-          error: "User not found"
+          error: "User not found",
         };
       }
 
@@ -304,7 +323,7 @@ export class HybridAuth {
       const token = await this.generateJWT({
         userId: userData.hashed_user_id,
         npub: userData.npub,
-        nip05: userData.nip05
+        nip05: userData.nip05,
       });
 
       return {
@@ -312,36 +331,40 @@ export class HybridAuth {
         data: {
           userId: userData.hashed_user_id,
           npub: userData.npub,
-          nip05: userData.nip05
+          nip05: userData.nip05,
         },
-        token
+        token,
       };
-
     } catch (error) {
       console.error("Error in verifyOTP:", error);
       return {
         success: false,
-        error: "OTP verification failed"
+        error: "OTP verification failed",
       };
     }
   }
 
-  private async sendNostrDM(recipientNpub: string, message: string): Promise<void> {
+  private async sendNostrDM(
+    recipientNpub: string,
+    message: string
+  ): Promise<void> {
     try {
       // Generate temporary keys for sending DM
       const senderPrivkey = (generatePrivateKey as any)();
       const senderPubkey = (getPublicKey as any)(senderPrivkey);
 
-      const dmEvent = (finishEvent as any)({
-        kind: 4,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [['p', nip19.decode(recipientNpub).data as string]],
-        content: message,
-      }, senderPrivkey);
+      const dmEvent = (finishEvent as any)(
+        {
+          kind: 4,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [["p", nip19.decode(recipientNpub).data as string]],
+          content: message,
+        },
+        senderPrivkey
+      );
 
       // Publish to relays
       await this.pool.publish(this.relays, dmEvent);
-
     } catch (error) {
       console.error("Error sending Nostr DM:", error);
     }
@@ -349,20 +372,22 @@ export class HybridAuth {
 
   private async generateJWT(payload: any): Promise<string> {
     // Simplified JWT implementation for Netlify Functions
-    const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-    const payloadStr = btoa(JSON.stringify({
-      ...payload,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
-    }));
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const payloadStr = btoa(
+      JSON.stringify({
+        ...payload,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
+      })
+    );
 
     return `${header}.${payloadStr}.signature`;
   }
 
   private async generatePrivacyHash(data: string): Promise<string> {
     // Use Node.js crypto for Netlify Functions
-    const crypto = require('crypto');
-    return crypto.createHash('sha256').update(data).digest('hex');
+    const crypto = require("crypto");
+    return crypto.createHash("sha256").update(data).digest("hex");
   }
 
   async createSession(userData: any, session: any): Promise<Session> {
@@ -371,16 +396,18 @@ export class HybridAuth {
       npub: userData.npub,
       nip05: userData.nip05,
       created_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
     };
 
     // Store session in database
-    const { error } = await supabase
+    const { error } = await (await getSupabaseClient())
       .from("user_sessions")
-      .insert([{
-        ...sessionData,
-        supabase_session: session as any,
-      }]);
+      .insert([
+        {
+          ...sessionData,
+          supabase_session: session as any,
+        },
+      ]);
 
     if (error) {
       console.error("Error creating session:", error);

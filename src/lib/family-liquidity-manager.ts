@@ -14,7 +14,15 @@
 
 import { FamilyAPI } from "./family-api";
 import { LightningClient } from "./lightning-client";
-import { supabase } from "./supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 export interface FamilyLiquidityConfig {
   familyId: string;
@@ -397,7 +405,7 @@ export class FamilyLiquidityManager {
         created_at: new Date().toISOString(),
       };
 
-      await supabase.from("family_alerts").insert(alertData);
+      await (await getSupabaseClient()).from("family_alerts").insert(alertData);
 
       console.log(
         `🚨 ${level.toUpperCase()} liquidity alert sent for family ${
@@ -447,14 +455,16 @@ export class FamilyLiquidityManager {
 
       if (result.success) {
         // PRIVACY-FIRST: Log emergency liquidity usage with anonymized data
-        await supabase.from("emergency_liquidity_log").insert({
-          family_hash: this.hashId(this.config.familyId), // Hash family ID
-          member_hash: this.hashId(memberId), // Hash member ID
-          amount_range: this.anonymizeAmount(amount), // Amount range instead of exact amount
-          reason_category: this.categorizeReason(reason), // Generic category instead of specific reason
-          transaction_hash: this.hashId(result.payment_hash), // Hash transaction ID
-          created_at: new Date().toISOString(),
-        });
+        await (await getSupabaseClient())
+          .from("emergency_liquidity_log")
+          .insert({
+            family_hash: this.hashId(this.config.familyId), // Hash family ID
+            member_hash: this.hashId(memberId), // Hash member ID
+            amount_range: this.anonymizeAmount(amount), // Amount range instead of exact amount
+            reason_category: this.categorizeReason(reason), // Generic category instead of specific reason
+            transaction_hash: this.hashId(result.payment_hash), // Hash transaction ID
+            created_at: new Date().toISOString(),
+          });
 
         return {
           success: true,

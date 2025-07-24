@@ -4,6 +4,9 @@
  */
 
 function getEnvVar(key, defaultValue) {
+  if (typeof import.meta !== "undefined" && import.meta.env) {
+    return import.meta.env[key] || defaultValue || "";
+  }
   if (typeof process !== "undefined" && process.env) {
     return process.env[key] || defaultValue || "";
   }

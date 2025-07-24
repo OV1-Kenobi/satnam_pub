@@ -17,7 +17,15 @@ import {
   decryptSensitiveData,
   encryptSensitiveData,
 } from "../privacy/encryption";
-import { supabase } from "../supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // Privacy-first types - NO npubs/nip05 stored
 export interface PrivacyUser {
@@ -649,7 +657,7 @@ export class PrivacyFirstAuth {
       .eq("user_hash", userHash);
 
     // Log attempt for security monitoring
-    await supabase.from("otp_attempts").insert([
+    await (await getSupabaseClient()).from("otp_attempts").insert([
       {
         user_hash: userHash,
         attempt_result: attemptResult,
@@ -854,7 +862,7 @@ export class PrivacyFirstAuth {
       }
 
       // Log attempt for security monitoring
-      await supabase.from("nip05_auth_attempts").insert([
+      await (await getSupabaseClient()).from("nip05_auth_attempts").insert([
         {
           user_hash: userHash,
           nip05_hash: nip05Hash,
@@ -879,7 +887,7 @@ export class PrivacyFirstAuth {
       .eq("nip05_hash", nip05Hash);
 
     // Log successful attempt
-    await supabase.from("nip05_auth_attempts").insert([
+    await (await getSupabaseClient()).from("nip05_auth_attempts").insert([
       {
         nip05_hash: nip05Hash,
         attempt_result: "success",
@@ -1248,7 +1256,7 @@ export class PrivacyFirstAuth {
       const {
         data: { session },
         error,
-      } = await supabase.auth.getSession();
+      } = await (await getSupabaseClient()).auth.getSession();
       if (error || !session) return null;
 
       // Session metadata is stored encrypted
@@ -1273,7 +1281,7 @@ export class PrivacyFirstAuth {
         await this.rotateSessionKeys(session.userHash);
       }
 
-      const { error } = await supabase.auth.signOut();
+      const { error } = await (await getSupabaseClient()).auth.signOut();
       return !error;
     } catch {
       return false;
@@ -1309,7 +1317,9 @@ export class PrivacyFirstAuth {
     };
 
     // Store encrypted session in Supabase metadata
-    await supabase.auth.updateUser({
+    await (
+      await getSupabaseClient()
+    ).auth.updateUser({
       data: {
         privacySession: JSON.stringify(session),
         hashedUUID: user.hashedUUID,
@@ -1376,7 +1386,9 @@ export class PrivacyFirstAuth {
       });
 
       // Step 7: Update Supabase auth session
-      await supabase.auth.updateUser({
+      await (
+        await getSupabaseClient()
+      ).auth.updateUser({
         data: {
           rotatedKeys: true,
           lastKeyRotation: rotationTimestamp,

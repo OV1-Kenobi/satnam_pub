@@ -22,6 +22,11 @@ const isProduction = getEnvVar('NODE_ENV') === 'production';
 export default defineConfig({
   plugins: [],
 
+  esbuild: {
+    jsx: 'automatic',
+    jsxImportSource: 'react'
+  },
+
   resolve: {
     alias: {
       "@": resolve("src"),

@@ -6,7 +6,15 @@
  * @security Privacy-first: NO PII stored, only hashed UUIDs, never log npubs
  */
 
-import { supabase } from "./supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 import {
   ApprovalRequest,
