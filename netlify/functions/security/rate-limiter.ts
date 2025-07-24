@@ -4,7 +4,11 @@
  */
 
 import * as crypto from "crypto";
-import { NextFunction, Request, Response } from "../../../types/netlify-functions";
+import {
+  NextFunction,
+  Request,
+  Response,
+} from "../../../types/netlify-functions";
 import { supabase } from "../supabase";
 
 // Extend Request interface to include user property
@@ -57,7 +61,10 @@ async function hashRateLimitKey(data: string): Promise<string> {
   const dataBuffer = encoder.encode(data + salt);
   const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32); // Use first 32 chars for uniqueness
+  return hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .substring(0, 32); // Use first 32 chars for uniqueness
 }
 
 class MemoryRateLimiter {
@@ -66,12 +73,9 @@ class MemoryRateLimiter {
 
   constructor() {
     // Clean up expired entries every 5 minutes
-    this.cleanupInterval = setInterval(
-      () => {
-        this.cleanup();
-      },
-      5 * 60 * 1000
-    );
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, 5 * 60 * 1000);
   }
 
   private cleanup(): void {
@@ -307,6 +311,16 @@ export const apiRateLimit = createRateLimit({
 });
 
 /**
+ * General rate limiter (alias for apiRateLimit)
+ */
+export const rateLimiter = apiRateLimit;
+
+/**
+ * Rate limit function (alias for createRateLimit)
+ */
+export const rateLimit = createRateLimit;
+
+/**
  * Get fail-open monitoring metrics
  */
 export function getFailOpenMetrics(): {
@@ -353,7 +367,9 @@ export async function monitorFailOpenScenarios(): Promise<{
 
   // Critical: High frequency of failures (>10 in last 5 minutes)
   if (metrics.isCurrentlyFailing && metrics.totalFailOpenCount > 10) {
-    const alertMessage = `🚨 CRITICAL: Rate limiter failing open frequently (${metrics.totalFailOpenCount} times, last failure: ${metrics.lastFailOpenTime?.toISOString()})`;
+    const alertMessage = `🚨 CRITICAL: Rate limiter failing open frequently (${
+      metrics.totalFailOpenCount
+    } times, last failure: ${metrics.lastFailOpenTime?.toISOString()})`;
 
     await logSecurityEvent("rate_limit_fail_open_alert", {
       alertLevel: "critical",
@@ -371,7 +387,9 @@ export async function monitorFailOpenScenarios(): Promise<{
 
   // Warning: Some failures detected
   if (metrics.totalFailOpenCount > 0) {
-    const alertMessage = `⚠️  WARNING: Rate limiter has failed open ${metrics.totalFailOpenCount} times (last: ${metrics.lastFailOpenTime?.toISOString()})`;
+    const alertMessage = `⚠️  WARNING: Rate limiter has failed open ${
+      metrics.totalFailOpenCount
+    } times (last: ${metrics.lastFailOpenTime?.toISOString()})`;
 
     return {
       alertLevel: "warning",
@@ -628,9 +646,6 @@ export function createDatabaseRateLimit(options: {
 }
 
 // Schedule cleanup every hour
-setInterval(
-  () => {
-    DatabaseRateLimiter.cleanup();
-  },
-  60 * 60 * 1000
-);
+setInterval(() => {
+  DatabaseRateLimiter.cleanup();
+}, 60 * 60 * 1000);

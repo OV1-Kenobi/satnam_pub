@@ -15,6 +15,36 @@ export interface ValidationResult {
 }
 
 /**
+ * General input validation function
+ */
+export function validateInput(
+  input: unknown,
+  type:
+    | "username"
+    | "email"
+    | "pubkey"
+    | "amount"
+    | "text"
+    | "familyId" = "text"
+): ValidationResult {
+  switch (type) {
+    case "username":
+      return validateUsername(input);
+    case "email":
+      return validateEmail(input);
+    case "pubkey":
+      return validateNostrPubkey(input);
+    case "amount":
+      return validateLightningAmount(input);
+    case "familyId":
+      return validateFamilyId(input);
+    case "text":
+    default:
+      return sanitizeText(input);
+  }
+}
+
+/**
  * Validate and sanitize username
  */
 export function validateUsername(username: unknown): ValidationResult {

@@ -102,10 +102,7 @@
 [functions]
   # Node.js version for functions
   node_bundler = "esbuild"
-
-  # ESM support for import.meta
-  [functions.build]
-    format = "esm"
+  external_node_modules = ["pg", "redis", "jsonwebtoken"]
 
   # Scheduled functions for cleanup tasks
   [functions.scheduled]
