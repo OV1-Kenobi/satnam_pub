@@ -13,7 +13,8 @@ import {
   logPrivacyOperation,
 } from "./privacy/encryption";
 
-const cron = browserCron;
+// Lazy initialization to prevent temporal dead zone issues
+const getCron = () => browserCron;
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
@@ -196,7 +197,7 @@ export class LiquidityIntelligenceSystem {
    */
   private setupForecastingSchedule(): void {
     // Daily forecasting at 6 AM
-    const dailyJob = cron.schedule(
+    const dailyJob = getCron().schedule(
       "0 6 * * *",
       async () => {
         try {
@@ -209,7 +210,7 @@ export class LiquidityIntelligenceSystem {
     );
 
     // Weekly forecasting on Sundays at 7 AM
-    const weeklyJob = cron.schedule(
+    const weeklyJob = getCron().schedule(
       "0 7 * * 0",
       async () => {
         try {
@@ -222,7 +223,7 @@ export class LiquidityIntelligenceSystem {
     );
 
     // Monthly forecasting on the 1st at 8 AM
-    const monthlyJob = cron.schedule(
+    const monthlyJob = getCron().schedule(
       "0 8 1 * *",
       async () => {
         try {
@@ -521,7 +522,7 @@ export class LiquidityIntelligenceSystem {
       const monitoringThresholds = { ...defaultThresholds, ...thresholds };
 
       // Setup monitoring job every 5 minutes
-      const monitoringJob = cron.schedule(
+      const monitoringJob = getCron().schedule(
         "*/5 * * * *",
         async () => {
           try {
