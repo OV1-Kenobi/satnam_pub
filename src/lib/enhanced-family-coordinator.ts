@@ -33,7 +33,8 @@ import type { WebSocket as WSType } from "ws";
 import { z } from "zod";
 import { browserCron, type BrowserCronJob } from "../types/cron";
 
-const cron = browserCron;
+// Lazy initialization to prevent temporal dead zone issues
+const getCron = () => browserCron;
 
 import { FamilyLiquidityManager } from "./family-liquidity-manager";
 import { LightningClient } from "./lightning-client";
@@ -544,7 +545,7 @@ export class EnhancedFamilyCoordinator {
         this.config.paymentAutomation &&
         this.config.cronSchedules.paymentDistribution
       ) {
-        const paymentJob = cron.schedule(
+        const paymentJob = getCron().schedule(
           this.config.cronSchedules.paymentDistribution,
           async () => {
             try {
@@ -574,7 +575,7 @@ export class EnhancedFamilyCoordinator {
 
       // Liquidity rebalancing job
       if (this.config.cronSchedules.liquidityRebalancing) {
-        const rebalanceJob = cron.schedule(
+        const rebalanceJob = getCron().schedule(
           this.config.cronSchedules.liquidityRebalancing,
           async () => {
             try {
@@ -603,7 +604,7 @@ export class EnhancedFamilyCoordinator {
 
       // Health check job
       if (this.config.cronSchedules.healthChecks) {
-        const healthJob = cron.schedule(
+        const healthJob = getCron().schedule(
           this.config.cronSchedules.healthChecks,
           async () => {
             try {

@@ -586,6 +586,8 @@ export class EmergencyRecoverySystem {
     error?: string;
   }> {
     try {
+      const supabase = await getSupabaseClient();
+
       const { data: requests, error } = await supabase
         .from("emergency_recovery_requests")
         .select("*")
@@ -596,15 +598,19 @@ export class EmergencyRecoverySystem {
         throw error;
       }
 
-      const activeRequests = requests.filter(
-        (r) => r.status === "pending" || r.status === "approved"
+      const typedRequests = (requests || []) as EmergencyRecoveryRequest[];
+
+      const activeRequests = typedRequests.filter(
+        (r: EmergencyRecoveryRequest) =>
+          r.status === "pending" || r.status === "approved"
       );
-      const completedRequests = requests.filter(
-        (r) => r.status === "completed" || r.status === "rejected"
+      const completedRequests = typedRequests.filter(
+        (r: EmergencyRecoveryRequest) =>
+          r.status === "completed" || r.status === "rejected"
       );
 
       const config = await this.getRecoveryConfig(userId);
-      const attemptCount = requests.length;
+      const attemptCount = typedRequests.length;
 
       return {
         success: true,
@@ -614,7 +620,9 @@ export class EmergencyRecoverySystem {
           recoveryConfig: config!,
           attemptCount,
           lastAttempt:
-            requests.length > 0 ? new Date(requests[0].created_at) : undefined,
+            typedRequests.length > 0
+              ? new Date(typedRequests[0].createdAt)
+              : undefined,
         },
       };
     } catch (error) {

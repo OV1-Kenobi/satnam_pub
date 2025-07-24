@@ -3,7 +3,7 @@
  * @description React hook for managing authentication state and API calls
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { authAPI, getAuthStatus } from "../lib/api.js";
 
 export interface User {
@@ -40,9 +40,13 @@ export function useAuth(): AuthState & AuthActions {
     familyId: null,
   });
 
-  // Don't automatically check auth status on mount to prevent unnecessary database calls
-  // Auth status will be checked only when user attempts to access protected features
-  // This prevents multiple supabase client instances on landing page load
+  // Check authentication status on mount
+  useEffect(() => {
+    // Only check auth if we're not on the landing page
+    if (window.location.pathname !== "/") {
+      checkAuthStatus();
+    }
+  }, []);
 
   const checkAuthStatus = useCallback(async () => {
     try {
