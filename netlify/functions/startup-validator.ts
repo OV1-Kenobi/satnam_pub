@@ -1,17 +1,4 @@
-/**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
- */
-function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ import.meta;
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
-}
+import { getEnvVar } from "./utils/env.js";
 
 /**
  * @fileoverview Application Startup Security Validator
@@ -19,8 +6,8 @@ function getEnvVar(key: string): string | undefined {
  * This addresses the critical issue where Argon2 parameters were not validated during startup
  */
 
+import { validateArgon2ConfigOnStartup } from "../../api/lib/security.js";
 import { enforceGoldStandardOnStartup } from "./crypto-validator";
-import { validateArgon2ConfigOnStartup } from "./security";
 
 /**
  * Startup validation configuration

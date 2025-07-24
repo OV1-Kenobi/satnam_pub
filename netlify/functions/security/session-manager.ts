@@ -1,21 +1,4 @@
-/**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
- */
-function getEnvVar(key: string): string | undefined {
-  // Netlify Functions use process.env primarily
-  if (typeof process !== "undefined" && process.env) {
-    return process.env[key];
-  }
-
-  // Fallback for other environments (though not typical in Netlify Functions)
-  if (typeof globalThis !== "undefined" && (globalThis as any).process?.env) {
-    return (globalThis as any).process.env[key];
-  }
-
-  return undefined;
-}
+import { getEnvVar } from "../utils/env.js";
 
 /**
  * Secure Session Management with JWT Tokens
@@ -54,16 +37,6 @@ export class SecureSessionManager {
   private static readonly REFRESH_EXPIRY = 7 * 24 * 60 * 60; // 7 days
 
   /**
-   * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
-   */
-  private static getEnvVar(key: string): string | undefined {
-    if (typeof import.meta !== "undefined" && (import.meta as any).env) {
-      return (import.meta as any).env[key];
-    }
-    return process.env[key];
-  }
-
-  /**
    * CRITICAL SECURITY: JWT secret from Vault (mandatory in production)
    */
   private static async getJWTSecret(): Promise<string> {
@@ -74,10 +47,10 @@ export class SecureSessionManager {
       // Vault fallback to environment
     }
 
-    const envSecret = this.getEnvVar("JWT_SECRET");
+    const envSecret = getEnvVar("JWT_SECRET");
     if (envSecret) return envSecret;
 
-    if (this.getEnvVar("NODE_ENV") === "production") {
+    if (getEnvVar("NODE_ENV") === "production") {
       throw new Error("JWT_SECRET must be configured in Vault for production");
     }
 
@@ -95,10 +68,10 @@ export class SecureSessionManager {
       // Vault fallback to environment
     }
 
-    const envSecret = this.getEnvVar("JWT_REFRESH_SECRET");
+    const envSecret = getEnvVar("JWT_REFRESH_SECRET");
     if (envSecret) return envSecret;
 
-    if (this.getEnvVar("NODE_ENV") === "production") {
+    if (getEnvVar("NODE_ENV") === "production") {
       throw new Error(
         "JWT_REFRESH_SECRET must be configured in Vault for production"
       );
@@ -123,14 +96,14 @@ export class SecureSessionManager {
       // Vault fallback to environment
     }
 
-    const envSalt = this.getEnvVar("AUTH_SALT");
+    const envSalt = getEnvVar("AUTH_SALT");
     if (envSalt) {
       return new Uint8Array(
-        envSalt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+        envSalt.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
       );
     }
 
-    if (this.getEnvVar("NODE_ENV") === "production") {
+    if (getEnvVar("NODE_ENV") === "production") {
       throw new Error("AUTH_SALT must be configured in Vault for production");
     }
 

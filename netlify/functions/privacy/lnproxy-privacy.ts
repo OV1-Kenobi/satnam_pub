@@ -1,18 +1,4 @@
-
-/**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
- */
-function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
-}
+import { getEnvVar } from "../utils/env.js";
 
 /**
  * LNProxy Privacy Layer for Satnam.pub Family Payments
@@ -91,13 +77,7 @@ export class SatnamPrivacyLayer {
     defaultRoutingBudgetPpm?: number;
     requestTimeout?: number;
   }) {
-    // Environment variable helper that works in both Vite and Node.js
-    const getEnvVar = (key: string): string => {
-      if (typeof import.meta !== "undefined" && import.meta.env) {
-        return import.meta.env[key] || "";
-      }
-      return process.env[key] || "";
-    };
+    // Use centralized environment variable helper
 
     this.lnproxyUrl =
       options?.lnproxyUrl ||
@@ -120,7 +100,7 @@ export class SatnamPrivacyLayer {
   async wrapInvoiceForPrivacy(
     originalInvoice: string,
     description: string = "Satnam.pub family payment",
-    routingBudgetPpm?: number,
+    routingBudgetPpm?: number
   ): Promise<PrivacyWrappedInvoice> {
     // Validate input
     if (!originalInvoice || !originalInvoice.trim()) {
@@ -145,7 +125,7 @@ export class SatnamPrivacyLayer {
       const controller = new AbortController();
       const timeoutId = setTimeout(
         () => controller.abort(),
-        this.requestTimeout,
+        this.requestTimeout
       );
 
       const response = await fetch(`${this.lnproxyUrl}/api/spec`, {
@@ -164,7 +144,7 @@ export class SatnamPrivacyLayer {
       if (!response.ok) {
         console.warn(
           `Privacy wrapping failed (HTTP ${response.status}), using original invoice`,
-          { responseTime },
+          { responseTime }
         );
         return this.createFallbackResponse(originalInvoice);
       }
@@ -201,7 +181,7 @@ export class SatnamPrivacyLayer {
           console.warn("Privacy request timed out, using original invoice");
         } else if (error.message.includes("network")) {
           console.warn(
-            "Network error during privacy wrapping, using original invoice",
+            "Network error during privacy wrapping, using original invoice"
           );
         }
       }
@@ -260,7 +240,7 @@ export class SatnamPrivacyLayer {
    * @returns Fallback response structure
    */
   private createFallbackResponse(
-    originalInvoice: string,
+    originalInvoice: string
   ): PrivacyWrappedInvoice {
     return {
       wrappedInvoice: originalInvoice,
@@ -313,7 +293,7 @@ export function createPrivacyLayer(options?: {
  */
 export async function wrapInvoiceForPrivacy(
   originalInvoice: string,
-  description?: string,
+  description?: string
 ): Promise<PrivacyWrappedInvoice> {
   const privacy = createPrivacyLayer();
   return privacy.wrapInvoiceForPrivacy(originalInvoice, description);

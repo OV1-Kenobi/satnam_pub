@@ -1,18 +1,4 @@
-
-/**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
- */
-function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
-}
+import { getEnvVar } from "../utils/env.js";
 
 /**
  * User Service for Database Operations
@@ -23,7 +9,7 @@ function getEnvVar(key: string): string | undefined {
 
 import { createHash } from "crypto";
 import { FamilyFederationUser } from "../../src/types/auth";
-import { defaultLogger as logger } from '../../utils/logger.js';
+import { defaultLogger as logger } from "../../utils/logger.js";
 import db from "../db";
 
 export interface UserProfile {

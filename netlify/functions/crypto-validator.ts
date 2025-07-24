@@ -3,9 +3,7 @@
  * @param {string} key - Environment variable key
  * @returns {string|undefined} Environment variable value
  */
-function getEnvVar(key: string): string | undefined {
-  return process.env[key];
-}
+import { getEnvVar } from "./utils/env.js";
 
 /**
  * @fileoverview Gold Standard Crypto Configuration Validator

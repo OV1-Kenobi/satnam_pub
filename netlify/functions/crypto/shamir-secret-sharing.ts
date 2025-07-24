@@ -13,21 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { nip19 } from "../../../src/lib/nostr-browser";
 import { PrivacyUtils } from "../privacy/encryption";
 
-/**
- * CRITICAL SECURITY: Master Context environment variable access pattern
- * Ensures browser compatibility with import.meta.env while maintaining serverless support
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
- */
-function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = import.meta as any;
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
-}
+import { getEnvVar } from "../utils/env.js";
 
 // Initialize Supabase client for session management
 const supabase = createClient(
