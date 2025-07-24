@@ -1,4 +1,3 @@
-
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -6,7 +5,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -250,41 +249,25 @@ export async function developmentStartupValidation(): Promise<void> {
 }
 
 /**
- * Validate that Argon2 parameters are actually being used in crypto operations
- * This addresses the specific issue mentioned in the code review
+ * Validate crypto operations (Argon2 removed - using Web Crypto API PBKDF2)
+ * Master Context compliance: Browser-compatible cryptography only
  */
 export async function validateArgon2Usage(): Promise<boolean> {
-  console.log("🔍 Validating Argon2 Parameter Usage...");
+  console.log("🔍 Validating Web Crypto API PBKDF2 Usage...");
 
   try {
-    // Import the security module to check if Argon2 config is accessible
-    const argon2Module = await import("argon2");
-    const argon2 = argon2Module.default || argon2Module;
-
-    // Verify Argon2 is installed and working
-    if (!argon2 || !argon2.argon2id) {
-      console.error("❌ Argon2 library not properly installed");
+    // Validate Web Crypto API is available
+    if (typeof crypto === "undefined" || !crypto.subtle) {
+      console.error("❌ Web Crypto API not available");
       return false;
     }
 
-    // Check if environment variables are being read
-    const memCost = getEnvVar("ARGON")2_MEMORY_COST;
-    const timeCost = getEnvVar("ARGON")2_TIME_COST;
-    const parallelism = getEnvVar("ARGON")2_PARALLELISM;
-
-    console.log(`📊 Current Argon2 Configuration:`);
-    console.log(
-      `   Memory Cost: ${memCost || "default (16)"} -> ${Math.pow(2, parseInt(memCost || "16")) / (1024 * 1024)}MB`
-    );
-    console.log(`   Time Cost: ${timeCost || "default (3)"} iterations`);
-    console.log(`   Parallelism: ${parallelism || "default (1)"} thread(s)`);
-
-    console.log("✅ Argon2 parameters are being read from environment");
-    console.log("✅ Argon2 usage validation complete\n");
+    console.log("✅ Web Crypto API PBKDF2 available");
+    console.log("✅ Master Context compliant cryptography validated\n");
 
     return true;
   } catch (error) {
-    console.error("❌ Argon2 usage validation failed:", error);
+    console.error("❌ Crypto validation failed:", error);
     return false;
   }
 }

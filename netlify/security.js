@@ -94,3 +94,22 @@ export function generateSecureToken(length = 32) {
     .replace(/[+/]/g, '')
     .substring(0, length);
 }
+
+export async function encryptCredentials(data, password) {
+  const salt = generateSalt();
+  const key = await deriveEncryptionKey(password, salt);
+  const encrypted = await encryptData(data, key);
+
+  // Combine salt and encrypted data
+  const saltB64 = btoa(String.fromCharCode(...salt));
+  return `${saltB64}:${encrypted}`;
+}
+
+export async function decryptCredentials(encryptedData, password) {
+  const [saltB64, encrypted] = encryptedData.split(':');
+  const salt = new Uint8Array(
+    atob(saltB64).split('').map(char => char.charCodeAt(0))
+  );
+  const key = await deriveEncryptionKey(password, salt);
+  return await decryptData(encrypted, key);
+}

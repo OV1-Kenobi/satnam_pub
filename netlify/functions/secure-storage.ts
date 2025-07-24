@@ -1,6 +1,10 @@
 // lib/secure-storage.ts
-import { generateSecretKey, getPublicKey, nip19 } from "../../src/lib/nostr-browser";
-import { decryptCredentials, encryptCredentials } from "./security";
+import {
+  generateSecretKey,
+  getPublicKey,
+  nip19,
+} from "../../src/lib/nostr-browser";
+import { decryptCredentials, encryptCredentials } from "../security.js";
 import { supabase } from "./supabase";
 
 export interface EncryptedKeyData {
@@ -142,7 +146,9 @@ export class SecureStorage {
    */
   static generateNewAccountKeyPair(): NewAccountKeyPair {
     const privateKeyBytes = generateSecretKey();
-    const hexPrivateKey = Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    const hexPrivateKey = Array.from(privateKeyBytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     const hexPublicKey = getPublicKey(privateKeyBytes);
 
     return {
@@ -478,7 +484,9 @@ export class SecureStorage {
               updateError.message?.includes("conflict")
             ) {
               console.log(
-                `Optimistic locking conflict, retrying attempt ${attempt + 1}/${maxRetries}`
+                `Optimistic locking conflict, retrying attempt ${
+                  attempt + 1
+                }/${maxRetries}`
               );
               // Clear sensitive data before retry happens in finally block
               continue;
@@ -560,8 +568,9 @@ export class SecureStorage {
             return false;
           }
 
-          const { error: commitError } =
-            await supabase.rpc("commit_transaction");
+          const { error: commitError } = await supabase.rpc(
+            "commit_transaction"
+          );
           if (commitError) {
             console.error(
               "Failed to commit deletion transaction:",
