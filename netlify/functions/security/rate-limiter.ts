@@ -128,7 +128,7 @@ class MemoryRateLimiter {
 }
 
 // Global rate limiter instance
-const rateLimiter = new MemoryRateLimiter();
+const memoryRateLimiter = new MemoryRateLimiter();
 
 // Fail-open monitoring counters
 let failOpenCount = 0;
@@ -156,7 +156,7 @@ export function createRateLimit(options: RateLimitOptions) {
 
   return (req: Request, res: Response, next: NextFunction): void => {
     const key = `${keyGenerator(req)}:${req.route?.path || req.path}`;
-    const result = rateLimiter.increment(key, windowMs, maxRequests);
+    const result = memoryRateLimiter.increment(key, windowMs, maxRequests);
 
     if (result.blocked) {
       console.warn(`🚨 Rate limit exceeded for ${key}`, {
@@ -190,7 +190,7 @@ export function createRateLimit(options: RateLimitOptions) {
       res.send = function (data: any) {
         // If response is successful, decrement the counter
         if (res.statusCode < 400) {
-          const currentEntry = rateLimiter.increment(
+          const currentEntry = memoryRateLimiter.increment(
             key,
             windowMs,
             maxRequests
@@ -409,16 +409,16 @@ export async function monitorFailOpenScenarios(): Promise<{
  * Cleanup rate limiter on process exit
  */
 process.on("exit", () => {
-  rateLimiter.destroy();
+  memoryRateLimiter.destroy();
 });
 
 process.on("SIGINT", () => {
-  rateLimiter.destroy();
+  memoryRateLimiter.destroy();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  rateLimiter.destroy();
+  memoryRateLimiter.destroy();
   process.exit(0);
 });
 

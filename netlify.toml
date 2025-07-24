@@ -104,6 +104,10 @@
   node_bundler = "esbuild"
   external_node_modules = ["pg", "redis", "jsonwebtoken"]
 
+# Force ESM format for all functions
+[functions."*"]
+  node_bundler = "esbuild"
+
   # Scheduled functions for cleanup tasks
   [functions.scheduled]
     cleanup-expired-credentials = "0 */6 * * *"  # Run every 6 hours
