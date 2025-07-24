@@ -1,12 +1,11 @@
 [build]
-  # Build settings for Vite React app
+  command = "npm ci --legacy-peer-deps && ./node_modules/.bin/vite build --mode production"
   publish = "dist"
-  command = "npm run build:no-check"
 
-  # Environment variables for build
-  [build.environment]
-    NODE_VERSION = "20"
-    NPM_FLAGS = "--legacy-peer-deps"
+[build.environment]
+  NODE_VERSION = "22.16.0"
+  NPM_VERSION = "10.8.2"
+  CI = "true"
 
 # Development server configuration
 [dev]

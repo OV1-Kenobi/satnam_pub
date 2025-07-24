@@ -32,24 +32,8 @@ function getEnvVar(key) {
   return process.env[key];
 }
 
-// Dynamic import to avoid WebAssembly build issues
-let argon2 = null;
-
-/**
- * Get Argon2 module with fallback handling
- * @returns {Promise<Object|null>} Argon2 module or null if unavailable
- */
-async function getArgon2() {
-  if (!argon2) {
-    try {
-      argon2 = await import('argon2-browser');
-    } catch (error) {
-      // PRIVACY: No sensitive error data logging
-      return null;
-    }
-  }
-  return argon2;
-}
+// MASTER CONTEXT COMPLIANCE: Use Web Crypto API only (no Node.js dependencies)
+// Removed argon2-browser to maintain browser-only serverless architecture
 
 /**
  * Security configuration constants following Master Context requirements
@@ -255,51 +239,35 @@ function arrayToString(array) {
  */
 export async function deriveEncryptionKey(passphrase, salt) {
   try {
-    const argon2Module = await getArgon2();
-    
-    if (argon2Module && argon2Module.hash) {
-      // Use Argon2id (gold standard)
-      const hash = await argon2Module.hash({
-        pass: passphrase,
-        salt: salt,
-        type: 2, // Argon2id
-        mem: 2 ** SECURITY_CONFIG.ARGON2_MEMORY_COST,
-        time: SECURITY_CONFIG.ARGON2_TIME_COST,
-        parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
-        hashLen: SECURITY_CONFIG.AES_KEY_LENGTH,
-      });
+    // MASTER CONTEXT COMPLIANCE: Use Web Crypto API PBKDF2 with high iteration count
+    // Removed argon2-browser dependency to maintain browser-only serverless architecture
+    const encoder = new TextEncoder();
+    const passphraseBuffer = encoder.encode(passphrase);
 
-      return hash.hash;
-    } else {
-      // Fallback to PBKDF2 with high iteration count
-      const encoder = new TextEncoder();
-      const passphraseBuffer = encoder.encode(passphrase);
-      
-      const key = await crypto.subtle.importKey(
-        'raw',
-        passphraseBuffer,
-        { name: 'PBKDF2' },
-        false,
-        ['deriveBits']
-      );
-      
-      // Convert Uint8Array to proper ArrayBuffer for Web Crypto API compatibility
-      const saltBuffer = new ArrayBuffer(salt.length);
-      new Uint8Array(saltBuffer).set(salt);
+    const key = await crypto.subtle.importKey(
+      'raw',
+      passphraseBuffer,
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
 
-      const derivedBits = await crypto.subtle.deriveBits(
-        {
-          name: 'PBKDF2',
-          salt: saltBuffer,
-          iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
-          hash: 'SHA-256'
-        },
-        key,
-        SECURITY_CONFIG.AES_KEY_LENGTH * 8
-      );
-      
-      return new Uint8Array(derivedBits);
-    }
+    // Convert Uint8Array to proper ArrayBuffer for Web Crypto API compatibility
+    const saltBuffer = new ArrayBuffer(salt.length);
+    new Uint8Array(saltBuffer).set(salt);
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: saltBuffer,
+        iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
+        hash: 'SHA-256'
+      },
+      key,
+      SECURITY_CONFIG.AES_KEY_LENGTH * 8
+    );
+
+    return new Uint8Array(derivedBits);
   } catch (error) {
     throw new Error(
       `Key derivation failed: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -554,54 +522,27 @@ export async function restoreCredentialsFromBackup(encryptedBackup, passphrase) 
  */
 export async function verifyPassphrase(passphrase, hash) {
   try {
-    const argon2Module = await getArgon2();
-
-    if (argon2Module && argon2Module.verify) {
-      // Use Argon2id verification
-      const result = await argon2Module.verify({
-        pass: passphrase,
-        encoded: hash,
-        type: 2, // Argon2id
-      });
-      return Boolean(result);
-    } else {
-      // Fallback to PBKDF2 verification
-      // PRIVACY: No sensitive error data logging
-      return false; // For now, return false to maintain security
+    // MASTER CONTEXT COMPLIANCE: Use Web Crypto API PBKDF2 verification
+    // Parse the hash format: pbkdf2:iterations:salt:hash
+    if (!hash.startsWith('pbkdf2:')) {
+      // Legacy hash format not supported without argon2-browser
+      return false;
     }
-  } catch (error) {
-    // Always return false on error to prevent information leakage
-    return false;
-  }
-}
 
-/**
- * Generates a secure Argon2id hash for password storage
- * Gold Standard: Uses Argon2id with configurable parameters
- * Fallback: PBKDF2 with high iteration count if Argon2 fails to load
- * @param {string} passphrase - Passphrase to hash
- * @returns {Promise<string>} Secure hash
- */
-export async function hashPassphrase(passphrase) {
-  const salt = await generateRandomBytes(SECURITY_CONFIG.SALT_LENGTH);
+    const parts = hash.split(':');
+    if (parts.length !== 4) {
+      return false;
+    }
 
-  const argon2Module = await getArgon2();
+    const iterations = parseInt(parts[1]);
+    const saltBase64 = parts[2];
+    const expectedHashBase64 = parts[3];
 
-  if (argon2Module && argon2Module.hash) {
-    // Use Argon2id (gold standard)
-    const hash = await argon2Module.hash({
-      pass: passphrase,
-      salt: salt,
-      type: 2, // Argon2id
-      mem: 2 ** SECURITY_CONFIG.ARGON2_MEMORY_COST,
-      time: SECURITY_CONFIG.ARGON2_TIME_COST,
-      parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
-      hashLen: SECURITY_CONFIG.AES_KEY_LENGTH,
-    });
+    // Decode salt and expected hash
+    const salt = base64ToArray(saltBase64);
+    const expectedHash = base64ToArray(expectedHashBase64);
 
-    return hash.encoded;
-  } else {
-    // Fallback to PBKDF2 with high iteration count
+    // Derive key using same parameters
     const encoder = new TextEncoder();
     const passphraseBuffer = encoder.encode(passphrase);
 
@@ -613,7 +554,6 @@ export async function hashPassphrase(passphrase) {
       ['deriveBits']
     );
 
-    // Convert salt to proper ArrayBuffer for Web Crypto API compatibility
     const saltBuffer = new ArrayBuffer(salt.length);
     new Uint8Array(saltBuffer).set(salt);
 
@@ -621,20 +561,74 @@ export async function hashPassphrase(passphrase) {
       {
         name: 'PBKDF2',
         salt: saltBuffer,
-        iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
+        iterations: iterations,
         hash: 'SHA-256'
       },
       key,
       SECURITY_CONFIG.AES_KEY_LENGTH * 8
     );
 
-    // Create a simple hash format for PBKDF2 (not as secure as Argon2)
-    const hashArray = new Uint8Array(derivedBits);
-    const saltBase64 = arrayToBase64(salt);
-    const hashBase64 = arrayToBase64(hashArray);
+    const computedHash = new Uint8Array(derivedBits);
 
-    return `pbkdf2:${SECURITY_CONFIG.PBKDF2_ITERATIONS}:${saltBase64}:${hashBase64}`;
+    // Constant-time comparison to prevent timing attacks
+    if (computedHash.length !== expectedHash.length) {
+      return false;
+    }
+
+    let result = 0;
+    for (let i = 0; i < computedHash.length; i++) {
+      result |= computedHash[i] ^ expectedHash[i];
+    }
+
+    return result === 0;
+  } catch (error) {
+    // Always return false on error to prevent information leakage
+    return false;
   }
+}
+
+/**
+ * Generates a secure PBKDF2 hash for password storage
+ * MASTER CONTEXT COMPLIANCE: Uses Web Crypto API PBKDF2 with high iteration count
+ * @param {string} passphrase - Passphrase to hash
+ * @returns {Promise<string>} Secure hash
+ */
+export async function hashPassphrase(passphrase) {
+  const salt = await generateRandomBytes(SECURITY_CONFIG.SALT_LENGTH);
+
+  // MASTER CONTEXT COMPLIANCE: Use Web Crypto API PBKDF2 with high iteration count
+  const encoder = new TextEncoder();
+  const passphraseBuffer = encoder.encode(passphrase);
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    passphraseBuffer,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+
+  // Convert salt to proper ArrayBuffer for Web Crypto API compatibility
+  const saltBuffer = new ArrayBuffer(salt.length);
+  new Uint8Array(saltBuffer).set(salt);
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltBuffer,
+      iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
+      hash: 'SHA-256'
+    },
+    key,
+    SECURITY_CONFIG.AES_KEY_LENGTH * 8
+  );
+
+  // Create hash format for PBKDF2
+  const hashArray = new Uint8Array(derivedBits);
+  const saltBase64 = arrayToBase64(salt);
+  const hashBase64 = arrayToBase64(hashArray);
+
+  return `pbkdf2:${SECURITY_CONFIG.PBKDF2_ITERATIONS}:${saltBase64}:${hashBase64}`;
 }
 
 /**

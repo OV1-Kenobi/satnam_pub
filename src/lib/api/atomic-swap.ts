@@ -113,9 +113,12 @@ class AtomicSwapAPI {
     error?: string;
   }> {
     await this.ensureApiClient();
-    return this.apiClient.request(`/api/atomic-swap/history/${memberId}?limit=${limit}`, {
-      method: "GET",
-    });
+    return this.apiClient.request(
+      `/api/atomic-swap/history/${memberId}?limit=${limit}`,
+      {
+        method: "GET",
+      }
+    );
   }
 
   /**
@@ -153,7 +156,7 @@ export function getAtomicSwapAPI(): AtomicSwapAPI {
 export const atomicSwapAPI = new Proxy({} as AtomicSwapAPI, {
   get(target, prop) {
     return getAtomicSwapAPI()[prop as keyof AtomicSwapAPI];
-  }
+  },
 });
 
 export type {
