@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npx vite",
     "build": "npx vite build --mode production",
-    "build:no-check": "npx vite build --mode production --force",
+    "build:no-check": "npx vite build --mode production",
     "preview": "npx vite preview",
     "type-check": "tsc --noEmit",
     "test": "vitest",
