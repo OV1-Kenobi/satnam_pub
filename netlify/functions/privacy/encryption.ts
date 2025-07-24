@@ -8,7 +8,7 @@ import { getEnvVar } from "../utils/env.js";
 
 import * as crypto from "crypto";
 import { randomBytes } from "crypto";
-import { deriveEncryptionKey } from "../security.js";
+import { deriveEncryptionKey } from "../../security.js";
 
 /**
  * Encryption configuration
