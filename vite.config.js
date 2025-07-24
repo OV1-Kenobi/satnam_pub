@@ -1,7 +1,5 @@
 import { resolve } from "path";
 import { defineConfig } from "vite";
-import topLevelAwait from "vite-plugin-top-level-await";
-import wasm from "vite-plugin-wasm";
 
 // Bitcoin-secure environment variable helper with proper typing
 function getEnvVar(key) {
@@ -22,10 +20,7 @@ const isDevelopment = getEnvVar('NODE_ENV') === 'development';
 const isProduction = getEnvVar('NODE_ENV') === 'production';
 
 export default defineConfig({
-  plugins: [
-    wasm(),
-    topLevelAwait(),
-  ],
+  plugins: [],
 
   resolve: {
     alias: {

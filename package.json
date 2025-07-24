@@ -75,9 +75,6 @@
     "node-mocks-http": "^1.17.2",
     "tsx": "^4.20.3",
     "typescript": "^5.6.3",
-    "vite": "^5.4.19",
-    "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.5.0",
     "vitest": "^3.2.4"
   }
 }
