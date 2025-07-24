@@ -8,7 +8,7 @@ import {
   configureCryptoStrategy,
   getCryptoEnvironmentInfo,
   preloadCryptoModules,
-} from '../utils/crypto-factory.js';
+} from "../../utils/crypto-factory.js";
 
 // Define crypto profiles for different app features
 export type CryptoProfile =
@@ -39,13 +39,21 @@ const CRYPTO_PROFILES: Record<CryptoProfile, CryptoModuleSet> = {
     dependencies: ["minimal"],
   },
   nostr: {
-    modules: ["crypto-modules/nostr", "src/lib/nostr-browser", "@noble/secp256k1"],
+    modules: [
+      "crypto-modules/nostr",
+      "src/lib/nostr-browser",
+      "@noble/secp256k1",
+    ],
     description: "Nostr protocol support (key generation, NIP-07)",
     size: "medium",
     dependencies: ["minimal"],
   },
   messaging: {
-    modules: ["crypto-modules/hash", "src/lib/nostr-browser/nip04", "src/lib/nostr-browser/nip59"],
+    modules: [
+      "crypto-modules/hash",
+      "src/lib/nostr-browser/nip04",
+      "src/lib/nostr-browser/nip59",
+    ],
     description: "End-to-end messaging encryption",
     size: "medium",
     dependencies: ["nostr"],
@@ -144,7 +152,7 @@ async function loadProfileModules(profile: CryptoProfile): Promise<void> {
     case "auth":
       // Load TOTP/HOTP functions
       const { generateTOTP, generateHOTP } = await import(
-        "../utils/crypto-lazy"
+        "../../utils/crypto-lazy"
       );
       // Cache these functions
       await generateTOTP("test", 0).catch(() => {}); // Warm up
@@ -152,19 +160,19 @@ async function loadProfileModules(profile: CryptoProfile): Promise<void> {
 
     case "nostr":
       // Load Nostr crypto modules
-      const { loadNostrCrypto } = await import("../utils/crypto-modules");
+      const { loadNostrCrypto } = await import("../../utils/crypto-modules");
       await loadNostrCrypto();
       break;
 
     case "messaging":
       // Load messaging crypto
-      const { loadHashCrypto } = await import("../utils/crypto-modules");
+      const { loadHashCrypto } = await import("../../utils/crypto-modules");
       await loadHashCrypto();
       break;
 
     case "recovery":
       // Load BIP crypto modules
-      const { loadBipCrypto } = await import("../utils/crypto-modules");
+      const { loadBipCrypto } = await import("../../utils/crypto-modules");
       await loadBipCrypto();
       break;
 

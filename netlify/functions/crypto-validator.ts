@@ -1,4 +1,3 @@
-
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -6,7 +5,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -20,7 +19,10 @@ function getEnvVar(key: string): string | undefined {
  * for high-tech users who demand the absolute best in cryptographic protection
  */
 
-import { getArgon2Config, validateArgon2ConfigOnStartup } from "./security";
+import {
+  getArgon2Config,
+  validateArgon2ConfigOnStartup,
+} from "../../api/lib/security.js";
 
 /**
  * Gold Standard Encryption Configuration Requirements
@@ -194,7 +196,9 @@ function validateArgon2Configuration(): {
         description: "Argon2 memory cost below secure minimum",
         currentValue: `${memoryUsageMB}MB`,
         requiredValue: `${GOLD_STANDARD_REQUIREMENTS.MINIMUM_MEMORY_MB}MB`,
-        fix: `Set ARGON2_MEMORY_COST=${Math.log2(GOLD_STANDARD_REQUIREMENTS.MINIMUM_MEMORY_MB * 1024 * 1024)} in .env.local`,
+        fix: `Set ARGON2_MEMORY_COST=${Math.log2(
+          GOLD_STANDARD_REQUIREMENTS.MINIMUM_MEMORY_MB * 1024 * 1024
+        )} in .env.local`,
       });
     } else if (
       memoryUsageMB < GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_MEMORY_MB
@@ -405,16 +409,22 @@ export function displayValidationResults(result: CryptoValidationResult): void {
   console.log("📊 CONFIGURATION SUMMARY");
   console.log("─".repeat(40));
   console.log(
-    `Argon2 Memory: ${result.configSummary.argon2.memoryMB}MB ${result.configSummary.argon2.meetsGoldStandard ? "✅" : "⚠️"}`
+    `Argon2 Memory: ${result.configSummary.argon2.memoryMB}MB ${
+      result.configSummary.argon2.meetsGoldStandard ? "✅" : "⚠️"
+    }`
   );
   console.log(
     `Argon2 Time Cost: ${result.configSummary.argon2.timeCost} iterations`
   );
   console.log(
-    `Encryption: ${result.configSummary.encryption.algorithm} ${result.configSummary.encryption.usesAuthenticatedEncryption ? "✅" : "❌"}`
+    `Encryption: ${result.configSummary.encryption.algorithm} ${
+      result.configSummary.encryption.usesAuthenticatedEncryption ? "✅" : "❌"
+    }`
   );
   console.log(
-    `Environment: ${result.configSummary.environment.nodeEnv} ${result.configSummary.environment.configurationComplete ? "✅" : "⚠️"}`
+    `Environment: ${result.configSummary.environment.nodeEnv} ${
+      result.configSummary.environment.configurationComplete ? "✅" : "⚠️"
+    }`
   );
   console.log();
 

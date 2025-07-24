@@ -102,7 +102,11 @@
 [functions]
   # Node.js version for functions
   node_bundler = "esbuild"
-  
+
+  # ESM support for import.meta
+  [functions.build]
+    format = "esm"
+
   # Scheduled functions for cleanup tasks
   [functions.scheduled]
-    cleanup-expired-credentials = "0 */6 * * *"  # Run every 6 hours 
+    cleanup-expired-credentials = "0 */6 * * *"  # Run every 6 hours

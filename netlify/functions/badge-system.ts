@@ -5,9 +5,9 @@
  */
 
 import { Handler } from "@netlify/functions";
-import { supabase } from "../db";
-import { validateInput } from "../security/input-validation";
-import { rateLimiter } from "../security/rate-limiter";
+import { validateInput } from "./security/input-validation.js";
+import { rateLimiter } from "./security/rate-limiter.js";
+import { supabase } from "./supabase.js";
 
 // Rate limiting configuration
 const BADGE_RATE_LIMITS = {
