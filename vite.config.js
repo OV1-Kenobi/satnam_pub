@@ -1,4 +1,3 @@
-import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import { defineConfig } from "vite";
 import topLevelAwait from "vite-plugin-top-level-await";
@@ -24,7 +23,6 @@ const isProduction = getEnvVar('NODE_ENV') === 'production';
 
 export default defineConfig({
   plugins: [
-    react(),
     wasm(),
     topLevelAwait(),
   ],

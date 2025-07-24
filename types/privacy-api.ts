@@ -7,9 +7,9 @@ import { PrivacyLevel } from "../src/types/privacy";
 
 // Re-export the standardized privacy types
 export type {
+  PrivacyLevel,
   PrivacyMetrics,
   PrivacySettings,
-  PrivacyLevel,
 } from "../src/types/privacy";
 
 // Enhanced request types with privacy support
@@ -174,22 +174,15 @@ export interface FamilyMember {
   id: string;
   username: string;
   memberRole: "offspring" | "adult" | "steward" | "guardian";
+  role: "offspring" | "adult" | "steward" | "guardian"; // Alias for compatibility
   lightningAddress: string;
-  balance: number;
+  lightningBalance: number;
   nip05Verified: boolean;
+  preferredRouting: "lightning" | "cashu" | "fedimint";
   spendingLimits: {
     daily: number;
     weekly: number;
   };
-}
-
-export interface FamilyMember {
-  id: string;
-  username: string;
-  role: "offspring" | "adult" | "steward" | "guardian";
-  lightningAddress: string;
-  lightningBalance: number;
-  preferredRouting: "lightning" | "cashu" | "fedimint";
   balance: {
     lightning: number;
     cashu: number;
