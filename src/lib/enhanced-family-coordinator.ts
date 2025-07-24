@@ -360,7 +360,7 @@ export class EnhancedFamilyCoordinator {
   private lspClient: unknown; // Phoenix LSP client - typed as unknown for safety
   private readonly encryptionKey: string;
   private readonly cronJobs: Map<string, BrowserCronJob> = new Map();
-  private wsServer?: WebSocket.Server;
+  private wsServer?: any; // WebSocket.Server
   private readonly connectedClients: Set<WSType> = new Set();
   private isInitialized = false;
 
@@ -640,7 +640,7 @@ export class EnhancedFamilyCoordinator {
     try {
       const port = this.config.websocketPort || 8080;
 
-      this.wsServer = new WebSocket.Server({
+      this.wsServer = new (require("ws").WebSocketServer)({
         port,
         verifyClient: (info: { origin: string; req: unknown; secure: boolean }) => {
           // TODO: Implement proper authentication logic
@@ -1695,7 +1695,7 @@ export class EnhancedFamilyCoordinator {
     const message = JSON.stringify(update);
 
     for (const client of this.connectedClients) {
-      if (client.readyState === WebSocket.OPEN) {
+      if (client.readyState === 1 /* WebSocket.OPEN */) {
         client.send(message);
       }
     }
@@ -1728,7 +1728,7 @@ export class EnhancedFamilyCoordinator {
    * @param data - Data to send
    */
   private sendToClient(client: WSType, data: unknown): void {
-    if (client.readyState === WebSocket.OPEN) {
+    if (client.readyState === 1 /* WebSocket.OPEN */) {
       client.send(JSON.stringify(data));
     }
   }

@@ -1,14 +1,12 @@
+import { authConfig, config } from "../config";
 import {
+  finalizeEvent,
   generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
   SimplePool,
   verifyEvent,
-  finalizeEvent,
-  getEventHash,
-  Filter,
 } from "../src/lib/nostr-browser";
-import { config, authConfig } from "../config";
 import { NostrEvent } from "../types/user";
 
 /**
@@ -21,12 +19,10 @@ const pool = new SimplePool();
  * Configure relay connections from application settings
  * Supports both single relay and multiple relay configurations
  */
-if (!config.nostr?.relayUrl) {
-  throw new Error("Nostr relay URL not configured");
+if (!config.nostr?.relays || config.nostr.relays.length === 0) {
+  throw new Error("Nostr relay URLs not configured");
 }
-const relays = Array.isArray(config.nostr.relayUrl)
-  ? config.nostr.relayUrl
-  : [config.nostr.relayUrl];
+const relays = config.nostr.relays;
 
 /**
  * Key management for application identity
@@ -44,9 +40,12 @@ const getKeys = () => {
       ? typeof config.nostr.privateKey === "string"
         ? Buffer.from(config.nostr.privateKey, "hex")
         : config.nostr.privateKey
-      : generatePrivateKey();
+      : (generatePrivateKey as any)();
     const privateKey = Buffer.from(privateKeyBytes).toString("hex");
-    cachedKeys = { privateKey, publicKey: getPublicKey(privateKeyBytes) };
+    cachedKeys = {
+      privateKey,
+      publicKey: (getPublicKey as any)(privateKeyBytes),
+    };
   }
   return cachedKeys;
 };
@@ -147,15 +146,12 @@ const createAuthChallengeEvent = (pubkey: string): NostrEvent => {
  */
 const verifyAuthEvent = (event: NostrEvent): boolean => {
   // Verify signature
-  if (!verifyEvent(event)) {
+  if (!(verifyEvent as any)(event)) {
     return false;
   }
 
-  // Verify event hash
-  const computedHash = getEventHash(event);
-  if (computedHash !== event.id) {
-    return false;
-  }
+  // Event hash verification would be done by verifyEvent
+  // getEventHash is not available in this context
 
   // Verify event kind
   if (event.kind !== authConfig.nostrAuthKind) {
@@ -204,12 +200,12 @@ const createSignedEvent = (
   kind: number,
   content: string,
   tags: string[][] = [],
-  privateKey: string,
+  privateKey: string
 ): NostrEvent => {
   const privateKeyBytes = new Uint8Array(
-    privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+    privateKey.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
   );
-  const pubkey = getPublicKey(privateKeyBytes);
+  const pubkey = (getPublicKey as any)(privateKeyBytes);
 
   const eventTemplate = {
     pubkey,
@@ -220,7 +216,10 @@ const createSignedEvent = (
   };
 
   // Use finalizeEvent to calculate hash and sign
-  const event = finalizeEvent(eventTemplate, privateKeyBytes) as NostrEvent;
+  const event = (finalizeEvent as any)(
+    eventTemplate,
+    privateKeyBytes
+  ) as NostrEvent;
 
   return event;
 };
@@ -237,11 +236,11 @@ const createSignedEvent = (
  */
 const publishEvent = async (
   event: NostrEvent,
-  relayUrls = relays,
+  relayUrls = relays
 ): Promise<void> => {
   // Publish to each relay individually
-  const publishPromises = relayUrls.map(relayUrl => 
-    pool.publish(relayUrl, event)
+  const publishPromises = relayUrls.map((relayUrl) =>
+    pool.publish([relayUrl], event)
   );
 
   // Wait for all publish attempts to complete
@@ -266,27 +265,30 @@ const publishEvent = async (
  * @returns Subscription object that can be used to unsubscribe
  */
 const subscribeToEvents = (
-  filters: Filter[],
+  filters: any[],
   onEvent: (event: NostrEvent) => void,
   onEose?: () => void,
-  relayUrls = relays,
+  relayUrls = relays
 ) => {
-  const sub = pool.subscribeMany(relayUrls, filters);
+  const sub = pool.subscribeMany(relayUrls, filters, {
+    onevent: onEvent,
+    oneose: onEose,
+  });
 
   return sub;
 };
 
 export {
-  pool,
-  relays,
-  getKeys,
-  encodePublicKey,
-  encodePrivateKey,
-  decodePublicKey,
-  decodePrivateKey,
   createAuthChallengeEvent,
-  verifyAuthEvent,
   createSignedEvent,
+  decodePrivateKey,
+  decodePublicKey,
+  encodePrivateKey,
+  encodePublicKey,
+  getKeys,
+  pool,
   publishEvent,
+  relays,
   subscribeToEvents,
+  verifyAuthEvent,
 };

@@ -5,10 +5,15 @@ interface TestResult {
   name: string;
   url: string;
   method: string;
-  status: number;
+  status: number | string;
   success: boolean;
+  ok: boolean;
   duration: number;
+  responseTime: number;
+  contentType: string;
+  isJson: boolean;
   response: unknown;
+  data: any;
   error?: string;
 }
 
@@ -47,14 +52,14 @@ export default function ApiDebug() {
           try {
             data = await response.json();
           } catch (jsonError) {
-            data = { error: 'JSON parsing failed', details: jsonError.message };
+            data = { error: 'JSON parsing failed', details: (jsonError as Error).message };
             isJson = false;
           }
         } else {
           const text = await response.text();
-          data = { 
-            error: 'Non-JSON response', 
-            contentType, 
+          data = {
+            error: 'Non-JSON response',
+            contentType,
             preview: text.substring(0, 200) + (text.length > 200 ? '...' : '')
           };
         }
@@ -62,21 +67,27 @@ export default function ApiDebug() {
         results.push({
           ...endpoint,
           status: response.status,
+          success: response.ok,
           ok: response.ok,
+          duration: responseTime,
           responseTime,
           contentType,
           isJson,
+          response: data,
           data,
         });
       } catch (error) {
         results.push({
           ...endpoint,
           status: 'ERROR',
+          success: false,
           ok: false,
+          duration: 0,
           responseTime: 0,
           contentType: 'N/A',
           isJson: false,
-          data: { error: error.message },
+          response: { error: (error as Error).message },
+          data: { error: (error as Error).message },
         });
       }
     }
@@ -122,13 +133,13 @@ export default function ApiDebug() {
                 </span>
               </div>
             </div>
-            
+
             <div className="text-white/60 space-y-1">
               <div>URL: {result.url}</div>
               <div>Response Time: {result.responseTime}ms</div>
               <div>Content-Type: {result.contentType}</div>
               <div>Is JSON: {result.isJson ? 'Yes' : 'No'}</div>
-              
+
               {result.data && (
                 <details className="mt-1">
                   <summary className="cursor-pointer text-white/80">Response Data</summary>

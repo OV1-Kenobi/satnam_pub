@@ -9,7 +9,7 @@ import {
   isSupabaseMocked,
   supabase,
   testSupabaseConnection,
-} from "../lib/supabase-server";
+} from '../lib/supabase-server.js';
 
 async function runPrivacyStandardizationMigration() {
   console.log("🔒 Starting Privacy Level Standardization Migration...");

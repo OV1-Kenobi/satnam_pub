@@ -7,16 +7,8 @@
  * @fileoverview Enhanced Nostr dual-mode management system
  */
 
-import {
-  Filter,
-  finalizeEvent,
-  generateSecretKey,
-  getPublicKey,
-  nip19,
-  NostrEvent,
-  SimplePool,
-} from "../src/lib/nostr-browser";
 import { config } from "../config";
+import { SimplePool } from "../src/lib/nostr-browser";
 
 // Operation Context Types (matching PhoenixD manager)
 type OperationMode = "individual" | "family";
@@ -156,13 +148,10 @@ export class EnhancedNostrManager {
    * Initialize default relay connections
    */
   private initializeDefaultRelays(): void {
-    const defaultRelays = config.nostr?.relayUrl
-      ? Array.isArray(config.nostr.relayUrl)
-        ? config.nostr.relayUrl
-        : [config.nostr.relayUrl]
-      : ["wss://relay.damus.io", "wss://nos.lol"];
+    const defaultRelays = (config as any).nostr?.relays ||
+      config.nostr?.relays || ["wss://relay.damus.io", "wss://nos.lol"];
 
-    defaultRelays.forEach((url) => {
+    defaultRelays.forEach((url: string) => {
       this.relayConnections.set(url, {
         url,
         status: "disconnected",
@@ -183,9 +172,9 @@ export class EnhancedNostrManager {
     // Generate or use provided private key
     const privKey = privateKey
       ? Buffer.from(privateKey, "hex")
-      : generateSecretKey();
-    const privKeyHex = Buffer.from(privKey).toString("hex");
-    const pubKey = getPublicKey(privKey);
+      : generatePrivateKey();
+    const privKeyHex = Buffer.from(privKey as any).toString("hex");
+    const pubKey = getPublicKey(privKey as any);
 
     const account: IndividualNostrAccount = {
       userId,
@@ -243,10 +232,20 @@ export class EnhancedNostrManager {
       ...member,
       npub: nip19.npubEncode(member.publicKey),
       permissions: {
-        canPublishEvents: member.role === "adult" || member.role === "steward" || member.role === "guardian",
-        canManageRelays: member.role === "adult" || member.role === "steward" || member.role === "guardian",
-        canModerate: member.role === "adult" || member.role === "steward" || member.role === "guardian",
-        requiresApproval: member.role === "offspring" || member.role === "private",
+        canPublishEvents:
+          member.role === "adult" ||
+          member.role === "steward" ||
+          member.role === "guardian",
+        canManageRelays:
+          member.role === "adult" ||
+          member.role === "steward" ||
+          member.role === "guardian",
+        canModerate:
+          member.role === "adult" ||
+          member.role === "steward" ||
+          member.role === "guardian",
+        requiresApproval:
+          member.role === "offspring" || member.role === "private",
         ...member.permissions,
       },
       restrictions:
@@ -342,7 +341,9 @@ export class EnhancedNostrManager {
       }
 
       // Create operation record
-      const operationId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const operationId = `evt_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const operation: NostrEventOperation = {
         id: operationId,
         context,
@@ -376,7 +377,11 @@ export class EnhancedNostrManager {
 
       const signedEvent = finalizeEvent(
         event,
-        new Uint8Array(account.privateKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || [])
+        new Uint8Array(
+          account.privateKey
+            .match(/.{1,2}/g)
+            ?.map((byte) => parseInt(byte, 16)) || []
+        ) as any
       );
 
       // Publish to relays
@@ -385,7 +390,7 @@ export class EnhancedNostrManager {
 
       // Publish to each relay individually
       for (const relay of relays) {
-        await this.pool.publish(relay, signedEvent);
+        await this.pool.publish([relay], signedEvent);
       }
 
       // Update operation status
@@ -404,7 +409,9 @@ export class EnhancedNostrManager {
         message: "Event published successfully",
       };
     } catch (error) {
-      const operationId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const operationId = `evt_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const operation: NostrEventOperation = {
         id: operationId,
         context,
@@ -421,7 +428,9 @@ export class EnhancedNostrManager {
       return {
         success: false,
         operationId,
-        message: `Event publication failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Event publication failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -490,12 +499,12 @@ export class EnhancedNostrManager {
 
       const signedEvent = finalizeEvent(
         event,
-        new Uint8Array(Buffer.from(account.privateKey, "hex"))
+        new Uint8Array(Buffer.from(account.privateKey, "hex")) as any
       );
 
       // Publish to family relays
       for (const relay of federation.sharedRelays) {
-        await this.pool.publish(relay, signedEvent);
+        await this.pool.publish([relay], signedEvent);
       }
 
       // Update operation
@@ -517,7 +526,9 @@ export class EnhancedNostrManager {
 
       return {
         success: false,
-        message: `Event approval failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Event approval failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -538,10 +549,10 @@ export class EnhancedNostrManager {
 
     const signedEvent = finalizeEvent(
       event,
-      new Uint8Array(Buffer.from(account.privateKey, "hex"))
+      new Uint8Array(Buffer.from(account.privateKey, "hex")) as any
     );
     for (const relay of account.relays) {
-      await this.pool.publish(relay, signedEvent);
+      await this.pool.publish([relay], signedEvent);
     }
   }
 
@@ -566,7 +577,7 @@ export class EnhancedNostrManager {
   generateNsecForOperation(userId: string): string | null {
     const account = this.individualAccounts.get(userId);
     if (!account) return null;
-    
+
     // Generate nsec only for the operation, don't store it
     return nip19.nsecEncode(account.privateKey);
   }
@@ -598,16 +609,19 @@ export class EnhancedNostrManager {
       // Generate unique credential ID and salt
       const credentialId = crypto.randomUUID();
       const salt = await this.generateSecureSalt();
-      
+
       // Create encryption key from user password and salt
-      const encryptionKey = await this.deriveKeyFromPassword(userPassword, salt);
-      
+      const encryptionKey = await this.deriveKeyFromPassword(
+        userPassword,
+        salt
+      );
+
       // Encrypt the nsec using AES-256-GCM
       const encryptedData = await this.encryptNsec(nsec, encryptionKey);
-      
+
       // Set expiration time
       const expiresAt = new Date(Date.now() + expirationHours * 60 * 60 * 1000);
-      
+
       // Store encrypted credential in account
       account.encryptedCredentials = {
         credentialId,
@@ -620,7 +634,10 @@ export class EnhancedNostrManager {
       };
 
       // Store in database with encrypted data
-      await this.storeEncryptedCredentialInDatabase(userId, account.encryptedCredentials);
+      await this.storeEncryptedCredentialInDatabase(
+        userId,
+        account.encryptedCredentials
+      );
 
       // Clear any plain text nsec from memory
       account.nsec = undefined;
@@ -634,7 +651,9 @@ export class EnhancedNostrManager {
       return {
         success: false,
         credentialId: "",
-        message: `Failed to store nsec credential: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Failed to store nsec credential: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -662,7 +681,7 @@ export class EnhancedNostrManager {
       }
 
       const credentials = account.encryptedCredentials;
-      
+
       // Check if credential has expired
       if (new Date() > credentials.expiresAt) {
         // Clean up expired credential
@@ -682,8 +701,11 @@ export class EnhancedNostrManager {
       }
 
       // Derive key from password and salt
-      const encryptionKey = await this.deriveKeyFromPassword(userPassword, credentials.salt);
-      
+      const encryptionKey = await this.deriveKeyFromPassword(
+        userPassword,
+        credentials.salt
+      );
+
       // Decrypt the nsec
       const decryptedNsec = await this.decryptNsec(
         credentials.encryptedNsec,
@@ -700,7 +722,9 @@ export class EnhancedNostrManager {
     } catch (error) {
       return {
         success: false,
-        message: `Failed to retrieve nsec: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Failed to retrieve nsec: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
@@ -708,12 +732,15 @@ export class EnhancedNostrManager {
   /**
    * Remove expired or used credentials
    */
-  async removeExpiredCredential(userId: string, credentialId: string): Promise<void> {
+  async removeExpiredCredential(
+    userId: string,
+    credentialId: string
+  ): Promise<void> {
     const account = this.individualAccounts.get(userId);
     if (account?.encryptedCredentials?.credentialId === credentialId) {
       // Clear from memory
       account.encryptedCredentials = undefined;
-      
+
       // Remove from database
       await this.removeCredentialFromDatabase(userId, credentialId);
     }
@@ -725,43 +752,51 @@ export class EnhancedNostrManager {
   private async generateSecureSalt(): Promise<string> {
     const saltBytes = new Uint8Array(32);
     crypto.getRandomValues(saltBytes);
-    return Array.from(saltBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    return Array.from(saltBytes, (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
   }
 
   /**
    * Derive encryption key from password and salt using PBKDF2
    */
-  private async deriveKeyFromPassword(password: string, salt: string): Promise<CryptoKey> {
+  private async deriveKeyFromPassword(
+    password: string,
+    salt: string
+  ): Promise<CryptoKey> {
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
     const saltBuffer = encoder.encode(salt);
 
     const baseKey = await crypto.subtle.importKey(
-      'raw',
+      "raw",
       passwordBuffer,
-      'PBKDF2',
+      "PBKDF2",
       false,
-      ['deriveBits', 'deriveKey']
+      ["deriveBits", "deriveKey"]
     );
 
     return await crypto.subtle.deriveKey(
       {
-        name: 'PBKDF2',
+        name: "PBKDF2",
         salt: saltBuffer,
         iterations: 100000, // High iteration count for security
-        hash: 'SHA-256',
+        hash: "SHA-256",
       },
       baseKey,
-      { name: 'AES-GCM', length: 256 },
+      { name: "AES-GCM", length: 256 },
       false,
-      ['encrypt', 'decrypt']
+      ["encrypt", "decrypt"]
     );
   }
 
   /**
    * Encrypt nsec using AES-256-GCM
    */
-  private async encryptNsec(nsec: string, key: CryptoKey): Promise<{
+  private async encryptNsec(
+    nsec: string,
+    key: CryptoKey
+  ): Promise<{
     encrypted: string;
     iv: string;
     tag: string;
@@ -771,7 +806,7 @@ export class EnhancedNostrManager {
     const iv = crypto.getRandomValues(new Uint8Array(12));
 
     const encryptedBuffer = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
+      { name: "AES-GCM", iv },
       key,
       data
     );
@@ -782,9 +817,13 @@ export class EnhancedNostrManager {
     const encrypted = encryptedArray.slice(0, -16);
 
     return {
-      encrypted: Array.from(encrypted, byte => byte.toString(16).padStart(2, '0')).join(''),
-      iv: Array.from(iv, byte => byte.toString(16).padStart(2, '0')).join(''),
-      tag: Array.from(tag, byte => byte.toString(16).padStart(2, '0')).join(''),
+      encrypted: Array.from(encrypted, (byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join(""),
+      iv: Array.from(iv, (byte) => byte.toString(16).padStart(2, "0")).join(""),
+      tag: Array.from(tag, (byte) => byte.toString(16).padStart(2, "0")).join(
+        ""
+      ),
     };
   }
 
@@ -798,22 +837,24 @@ export class EnhancedNostrManager {
     tag: string
   ): Promise<string> {
     const encryptedBytes = new Uint8Array(
-      encrypted.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+      encrypted.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
     const ivBytes = new Uint8Array(
-      iv.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+      iv.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
     const tagBytes = new Uint8Array(
-      tag.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+      tag.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
 
     // Combine encrypted data with authentication tag
-    const combinedData = new Uint8Array(encryptedBytes.length + tagBytes.length);
+    const combinedData = new Uint8Array(
+      encryptedBytes.length + tagBytes.length
+    );
     combinedData.set(encryptedBytes);
     combinedData.set(tagBytes, encryptedBytes.length);
 
     const decryptedBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: ivBytes },
+      { name: "AES-GCM", iv: ivBytes },
       key,
       combinedData
     );
@@ -827,14 +868,14 @@ export class EnhancedNostrManager {
    */
   private async storeEncryptedCredentialInDatabase(
     userId: string,
-    credentials: IndividualNostrAccount['encryptedCredentials']
+    credentials: IndividualNostrAccount["encryptedCredentials"]
   ): Promise<void> {
     if (!credentials) return;
 
     // Import supabase for database operations
-    const { supabase } = await import('../src/lib/supabase');
+    const { supabase } = await import("../src/lib/supabase");
 
-    await supabase.from('secure_nostr_credentials').insert({
+    await supabase.from("secure_nostr_credentials").insert({
       user_id: userId,
       credential_id: credentials.credentialId,
       salt: credentials.salt,
@@ -849,14 +890,17 @@ export class EnhancedNostrManager {
   /**
    * Remove credential from database
    */
-  private async removeCredentialFromDatabase(userId: string, credentialId: string): Promise<void> {
-    const { supabase } = await import('../src/lib/supabase');
+  private async removeCredentialFromDatabase(
+    userId: string,
+    credentialId: string
+  ): Promise<void> {
+    const { supabase } = await import("../src/lib/supabase");
 
     await supabase
-      .from('secure_nostr_credentials')
+      .from("secure_nostr_credentials")
       .delete()
-      .eq('user_id', userId)
-      .eq('credential_id', credentialId);
+      .eq("user_id", userId)
+      .eq("credential_id", credentialId);
   }
 
   /**
@@ -889,15 +933,18 @@ export class EnhancedNostrManager {
    */
   async subscribeToEvents(
     context: NostrOperationContext,
-    filters: Filter[],
-    onEvent: (event: NostrEvent) => void
+    filters: any[],
+    onEvent: (event: any) => void
   ): Promise<string> {
     const relays =
       context.mode === "individual"
         ? this.individualAccounts.get(context.userId)?.relays || []
         : this.familyFederations.get(context.familyId!)?.sharedRelays || [];
 
-    const subscription = this.pool.subscribeMany(relays, filters);
+    const subscription = this.pool.subscribeMany(relays, filters, {
+      onevent: () => {},
+      oneose: () => {},
+    });
 
     return subscription.toString();
   }
@@ -906,7 +953,7 @@ export class EnhancedNostrManager {
    * Close relay connections
    */
   async close(): Promise<void> {
-    this.pool.closeAll();
+    (this.pool as any).close();
   }
 }
 

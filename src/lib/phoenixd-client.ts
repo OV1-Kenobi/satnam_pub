@@ -13,8 +13,15 @@ import {
   type PrivacyWrappedInvoice,
 } from "./privacy/lnproxy-privacy";
 
-// Import Vault configuration
-import { VaultConfigManager } from '../../lib/vault-config';
+// Lazy import to prevent client creation on page load
+let vaultConfigManager: any = null;
+const getVaultConfigManager = async () => {
+  if (!vaultConfigManager) {
+    const { VaultConfigManager } = await import("../../lib/vault-config");
+    vaultConfigManager = VaultConfigManager.getInstance();
+  }
+  return vaultConfigManager;
+};
 
 // PhoenixD API Types
 interface PhoenixdNodeInfo {
@@ -129,21 +136,23 @@ interface PhoenixdClientConfig {
 }
 
 export class PhoenixdClient {
-  private config: VaultConfigManager;
+  private config: any = null;
   private baseUrl: string;
   private authToken: string | null = null;
   private isInitialized: boolean = false;
 
   constructor() {
     // Browser-only implementation
-    if (typeof window === 'undefined') {
-      throw new Error("PhoenixdClient is browser-only and cannot run in server environment");
+    if (typeof window === "undefined") {
+      throw new Error(
+        "PhoenixdClient is browser-only and cannot run in server environment"
+      );
     }
 
-    console.log("🔐 Initializing browser-only PhoenixD client");
-    this.config = VaultConfigManager.getInstance();
-    this.baseUrl = '';
-    this.initializeClient();
+    console.log("🔐 Creating PhoenixD client (lazy initialization)");
+    this.baseUrl = "";
+    // Don't initialize immediately - wait for first use
+    // this.initializeClient();
   }
 
   /**
@@ -151,12 +160,18 @@ export class PhoenixdClient {
    */
   private async initializeClient(): Promise<void> {
     try {
-      // Load PhoenixD configuration from Vault
-      const phoenixdUrl = await this.config.getSecret('phoenixd_url');
-      const phoenixdToken = await this.config.getSecret('phoenixd_auth_token');
+      // Load PhoenixD configuration from Vault (lazy initialization)
+      if (!this.config) {
+        this.config = await getVaultConfigManager();
+      }
+
+      const phoenixdUrl = await this.config.getSecret("phoenixd_url");
+      const phoenixdToken = await this.config.getSecret("phoenixd_auth_token");
 
       if (!phoenixdUrl || !phoenixdToken) {
-        console.warn("⚠️  PhoenixD credentials not found in Vault - client disabled");
+        console.warn(
+          "⚠️  PhoenixD credentials not found in Vault - client disabled"
+        );
         return;
       }
 
@@ -176,8 +191,9 @@ export class PhoenixdClient {
    */
   async getNodeInfo(): Promise<PhoenixdNodeInfo> {
     try {
-      const response: AxiosResponse<PhoenixdNodeInfo> =
-        await axios.get(`${this.baseUrl}/getinfo`);
+      const response: AxiosResponse<PhoenixdNodeInfo> = await axios.get(
+        `${this.baseUrl}/getinfo`
+      );
       return response.data;
     } catch (error) {
       console.error("❌ Failed to get PhoenixD node info:", error);
@@ -190,8 +206,9 @@ export class PhoenixdClient {
    */
   async getBalance(): Promise<PhoenixdBalance> {
     try {
-      const response: AxiosResponse<PhoenixdBalance> =
-        await axios.get(`${this.baseUrl}/getbalance`);
+      const response: AxiosResponse<PhoenixdBalance> = await axios.get(
+        `${this.baseUrl}/getbalance`
+      );
       return response.data;
     } catch (error) {
       console.error("❌ Failed to get PhoenixD balance:", error);
@@ -204,8 +221,9 @@ export class PhoenixdClient {
    */
   async listChannels(): Promise<PhoenixdChannel[]> {
     try {
-      const response: AxiosResponse<PhoenixdChannel[]> =
-        await axios.get(`${this.baseUrl}/listchannels`);
+      const response: AxiosResponse<PhoenixdChannel[]> = await axios.get(
+        `${this.baseUrl}/listchannels`
+      );
       return response.data;
     } catch (error) {
       console.error("❌ Failed to list PhoenixD channels:", error);
@@ -232,8 +250,10 @@ export class PhoenixdClient {
         description: description || "Satnam.pub family payment",
       };
 
-      const response: AxiosResponse<PhoenixdInvoice> =
-        await axios.post(`${this.baseUrl}/createinvoice`, requestData);
+      const response: AxiosResponse<PhoenixdInvoice> = await axios.post(
+        `${this.baseUrl}/createinvoice`,
+        requestData
+      );
       const invoice = response.data;
 
       console.log(`⚡ Created PhoenixD invoice: ${amountSat} sats`);
@@ -254,7 +274,10 @@ export class PhoenixdClient {
           );
           return { ...invoice, privacy: privacyWrapped };
         } catch (error) {
-          console.warn("⚠️  Privacy wrapping failed, using standard invoice:", error);
+          console.warn(
+            "⚠️  Privacy wrapping failed, using standard invoice:",
+            error
+          );
         }
       }
 
@@ -279,8 +302,10 @@ export class PhoenixdClient {
         requestData.amountSat = amountSat;
       }
 
-      const response: AxiosResponse<PhoenixdPayment> =
-        await axios.post(`${this.baseUrl}/payinvoice`, requestData);
+      const response: AxiosResponse<PhoenixdPayment> = await axios.post(
+        `${this.baseUrl}/payinvoice`,
+        requestData
+      );
       console.log(
         `💸 Paid invoice: ${response.data.sent} sats (fees: ${response.data.fees})`
       );
@@ -307,10 +332,9 @@ export class PhoenixdClient {
     request: PhoenixdLiquidityRequest
   ): Promise<PhoenixdLiquidityResponse> {
     try {
-      if (request.amountSat < 50000) { // Assuming a default minChannelSize or load from config
-        throw new Error(
-          `Liquidity amount must be at least 50000 sats`
-        );
+      if (request.amountSat < 50000) {
+        // Assuming a default minChannelSize or load from config
+        throw new Error(`Liquidity amount must be at least 50000 sats`);
       }
 
       const response: AxiosResponse<PhoenixdLiquidityResponse> =

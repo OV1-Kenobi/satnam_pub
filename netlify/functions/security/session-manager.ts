@@ -1,4 +1,23 @@
 /**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  // Netlify Functions use process.env primarily
+  if (typeof process !== "undefined" && process.env) {
+    return process.env[key];
+  }
+
+  // Fallback for other environments (though not typical in Netlify Functions)
+  if (typeof globalThis !== "undefined" && (globalThis as any).process?.env) {
+    return (globalThis as any).process.env[key];
+  }
+
+  return undefined;
+}
+
+/**
  * Secure Session Management with JWT Tokens
  *
  * MASTER CONTEXT COMPLIANCE:

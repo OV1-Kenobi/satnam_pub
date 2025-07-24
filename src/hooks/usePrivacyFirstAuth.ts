@@ -5,7 +5,10 @@
  * - Hashed UUIDs only (no npubs/nip05 in database)
  * - Perfect forward secrecy
  * - Anonymous by default
- * - 3 auth methods: NWC, OTP, NIP-07
+ * - 4 auth methods: NIP-05/Password, OTP, NIP-07, Nsec
+ *
+ * NOTE: NWC (Nostr Wallet Connect) is now a wallet connection feature,
+ * not an authentication method. It's used for Lightning payments after authentication.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -15,8 +18,35 @@ import {
   createPrivacyFirstAuth,
   PrivacyUser,
   SecureSession,
-} from "../lib/auth/privacy-first-auth";
+} from '../lib/auth/privacy-first-auth.js';
+import { nip19 } from "../lib/nostr-browser";
 import { FamilyFederationUser } from "../types/auth";
+
+// Helper function to extract pubkey from nsec (zero-knowledge protocol)
+async function extractPubkeyFromNsec(nsecKey: string): Promise<string | null> {
+  try {
+    if (!nsecKey.startsWith("nsec1")) {
+      return null;
+    }
+
+    // Decode nsec to get private key bytes
+    const { type, data } = nip19.decode(nsecKey);
+    if (type !== "nsec") {
+      return null;
+    }
+
+    // Generate public key from private key
+    // This is done in memory only and immediately cleared
+    const { getPublicKey } = await import("nostr-tools/pure");
+    const privateKeyBytes =
+      typeof data === "string" ? new TextEncoder().encode(data) : data;
+    const pubkey = getPublicKey(privateKeyBytes);
+
+    return pubkey;
+  } catch (error) {
+    return null;
+  }
+}
 
 interface PrivacyAuthState {
   user: PrivacyUser | null;
@@ -28,13 +58,17 @@ interface PrivacyAuthState {
 }
 
 interface PrivacyAuthActions {
-  // 3 Authentication methods (ALWAYS MAXIMUM PRIVACY)
-  authenticateNWC: (nwcString: string) => Promise<boolean>;
+  // 4 Authentication methods (ALWAYS MAXIMUM PRIVACY)
+  authenticateNsec: (nsecKey: string) => Promise<boolean>;
   authenticateOTP: (identifier: string, otpCode: string) => Promise<boolean>;
   authenticateNIP07: (
     challenge: string,
     signature: string,
     pubkey: string
+  ) => Promise<boolean>;
+  authenticateNIP05Password: (
+    nip05: string,
+    password: string
   ) => Promise<boolean>;
 
   // Session management
@@ -157,29 +191,44 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     }
   }, []);
 
-  // NWC Authentication (ALWAYS MAXIMUM PRIVACY)
-  const authenticateNWC = useCallback(
-    async (nwcString: string): Promise<boolean> => {
+  // Nsec Authentication (ALWAYS MAXIMUM PRIVACY with Zero-Knowledge Protocol)
+  const authenticateNsec = useCallback(
+    async (nsecKey: string): Promise<boolean> => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        // Extract pubkey from NWC string for hashing (not stored)
-        const nwcPubkey = extractPubkeyFromNWC(nwcString);
-        if (!nwcPubkey) {
+        // Validate nsec format
+        if (!nsecKey.startsWith("nsec1")) {
           setState((prev) => ({
             ...prev,
             loading: false,
-            error: "Invalid NWC connection string",
+            error: "Invalid Nsec format. Must start with 'nsec1'",
+          }));
+          return false;
+        }
+
+        // Extract pubkey from nsec for hashing (not stored)
+        // This is done in memory only and immediately cleared
+        const pubkey = await extractPubkeyFromNsec(nsecKey);
+        if (!pubkey) {
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: "Invalid Nsec private key",
           }));
           return false;
         }
 
         const credentials: AuthCredentials = {
-          nwcString,
-          nwcPubkey,
+          nsecKey,
+          pubkey, // Ephemeral - not stored
         };
 
-        const result = await auth.authenticateNWC(credentials);
+        const result = await auth.authenticateNsec(credentials);
+
+        // Clear nsec from memory immediately after use
+        credentials.nsecKey = "";
+
         return handleAuthResult(result);
       } catch (error) {
         setState((prev) => ({
@@ -188,7 +237,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
           error:
             error instanceof Error
               ? error.message
-              : "NWC authentication failed",
+              : "Nsec authentication failed",
         }));
         return false;
       }
@@ -250,6 +299,34 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
             error instanceof Error
               ? error.message
               : "NIP-07 authentication failed",
+        }));
+        return false;
+      }
+    },
+    [handleAuthResult]
+  );
+
+  // NIP-05/Password Authentication (ALWAYS MAXIMUM PRIVACY)
+  const authenticateNIP05Password = useCallback(
+    async (nip05: string, password: string): Promise<boolean> => {
+      try {
+        setState((prev) => ({ ...prev, loading: true, error: null }));
+
+        const credentials: AuthCredentials = {
+          nip05,
+          password,
+        };
+
+        const result = await auth.authenticateNIP05Password(credentials);
+        return handleAuthResult(result);
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "NIP-05/Password authentication failed",
         }));
         return false;
       }
@@ -329,11 +406,38 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     if (!state.session) return false;
 
     try {
-      // Trigger key rotation through logout/login cycle
-      await refreshSession();
-      return true;
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      // Use the comprehensive key rotation method
+      const result = await auth.rotateSessionKeys(state.session.userHash);
+
+      if (result.success) {
+        // Refresh session to get updated keys and metadata
+        await refreshSession();
+
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: null,
+        }));
+
+        return true;
+      } else {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: result.error || "Key rotation failed",
+        }));
+
+        return false;
+      }
     } catch (error) {
-      // ✅ NO LOGGING - Following Master Context privacy-first principles
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : "Key rotation failed",
+      }));
+
       return false;
     }
   }, [state.session, refreshSession]);
@@ -352,7 +456,11 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
       nip05: `anonymous@privacy.federation`, // Generic anonymous identifier
       federationRole: state.user.federationRole,
       authMethod:
-        state.user.authMethod === "nip07" ? "otp" : state.user.authMethod, // Map to supported types
+        state.user.authMethod === "nip07"
+          ? "otp"
+          : state.user.authMethod === "nip05-password"
+          ? "otp"
+          : state.user.authMethod, // Map to supported types
       isWhitelisted: state.user.isWhitelisted,
       votingPower: state.user.votingPower,
       stewardApproved: state.user.stewardApproved,
@@ -363,9 +471,10 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
 
   return {
     ...state,
-    authenticateNWC,
+    authenticateNsec,
     authenticateOTP,
     authenticateNIP07,
+    authenticateNIP05Password,
     logout,
     refreshSession,
     checkPermission,
@@ -374,17 +483,4 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     clearError,
     getLegacyUser,
   };
-}
-
-// Helper function to extract pubkey from NWC string (for hashing only)
-function extractPubkeyFromNWC(nwcString: string): string | null {
-  try {
-    // NWC format: nostr+walletconnect://pubkey@relay?secret=...
-    const url = new URL(nwcString);
-    const pubkey = url.pathname.substring(2); // Remove the '//' prefix
-    const atIndex = pubkey.indexOf("@");
-    return atIndex > 0 ? pubkey.substring(0, atIndex) : pubkey;
-  } catch {
-    return null;
-  }
 }

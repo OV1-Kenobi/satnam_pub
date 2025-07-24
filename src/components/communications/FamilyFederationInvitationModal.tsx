@@ -1,8 +1,20 @@
 import { useState } from 'react';
-import { FamilyNostrFederation } from '../../lib/fedimint/family-nostr-federation';
-import { PrivacyLevel, getDefaultPrivacyLevel } from './PrivacyLevelSelector.tsx';
+import { FamilyNostrFederation, NostrEvent } from '../../lib/fedimint/family-nostr-federation.js';
+import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 
-export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }) {
+interface FamilyData {
+  federationId: string;
+  familyName: string;
+  guardianThreshold: number;
+}
+
+interface FamilyFederationInvitationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  familyData: FamilyData;
+}
+
+export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }: FamilyFederationInvitationModalProps) {
   const [inviteeNpub, setInviteeNpub] = useState('');
   const [inviteeRole, setInviteeRole] = useState('child');
   const [invitationMessage, setInvitationMessage] = useState('');
@@ -21,11 +33,11 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData })
       case PrivacyLevel.GIFTWRAPPED:
         // Use Gift Wrapped implementation for complete privacy
         return await sendGiftWrappedMessage(content, recipient);
-      
+
       case PrivacyLevel.ENCRYPTED:
         // Use encrypted DM implementation
         return await sendEncryptedDM(content, recipient);
-      
+
       case PrivacyLevel.MINIMAL:
         // Use standard message implementation
         return await sendStandardMessage(content, recipient);
@@ -82,8 +94,10 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData })
       // Send message using selected privacy level
       await sendMessage(invitationContent, inviteeNpub, privacyLevel);
 
-      const invitationEvent = {
-        kind: privacyLevel === PrivacyLevel.MAXIMUM ? 14 : privacyLevel === PrivacyLevel.SELECTIVE ? 4 : 1, // Gift Wrapped DM, Encrypted DM, or Public Note
+      const invitationEvent: NostrEvent = {
+        pubkey: '', // Will be filled by the federation service
+        created_at: Math.floor(Date.now() / 1000),
+        kind: privacyLevel === PrivacyLevel.GIFTWRAPPED ? 14 : privacyLevel === PrivacyLevel.ENCRYPTED ? 4 : 1, // Gift Wrapped DM, Encrypted DM, or Public Note
         content: invitationContent,
         tags: [
           ['p', inviteeNpub],
@@ -99,11 +113,11 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData })
         'family-invitation'
       );
 
-      if (result.guardianApprovalRequired) {
-        alert(`Family invitation queued for guardian approval. ${result.approvalsReceived}/${result.thresholdRequired} approvals needed.`);
-      } else {
+      if (result.success) {
         alert('Family invitation sent successfully!');
         onClose();
+      } else {
+        alert(`Failed to send invitation: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to send family invitation:', error);
@@ -115,7 +129,7 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData })
 
   return (
     <div className="modal-overlay transition-opacity duration-300">
-      <div 
+      <div
         className="modal-content transform transition-all duration-300"
         onClick={(e) => e.stopPropagation()}
       >
@@ -162,8 +176,8 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData })
               onChange={(e) => setInviteeRole(e.target.value)}
               className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:bg-white/20 focus:border-purple-400 transition-all duration-300"
             >
-                          <option value="offspring" className="bg-purple-900 text-white">Offspring (Limited spending, guardian protection)</option>
-            <option value="adult" className="bg-purple-900 text-white">Adult (Full access, guardian responsibilities)</option>
+              <option value="offspring" className="bg-purple-900 text-white">Offspring (Limited spending, guardian protection)</option>
+              <option value="adult" className="bg-purple-900 text-white">Adult (Full access, guardian responsibilities)</option>
               <option value="guardian" className="bg-purple-900 text-white">Guardian (Approval authority, family oversight)</option>
             </select>
           </div>

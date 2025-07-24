@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 // lib/__tests__/test-setup.ts
 // Centralized test setup to prevent multiple GoTrueClient instances
 
@@ -9,7 +25,7 @@ import { supabase } from "../supabase";
 config({ path: resolve(process.cwd(), ".env.test") });
 
 // Ensure we're in test mode
-process.env.NODE_ENV = "test";
+getEnvVar("NODE_ENV") = "test";
 
 // Validate required environment variables
 const requiredVars = ["SUPABASE_URL", "SUPABASE_ANON_KEY"];
@@ -26,9 +42,9 @@ export function getTestSupabaseClient() {
 
 // Test configuration constants
 export const TEST_CONFIG = {
-  SUPABASE_URL: process.env.SUPABASE_URL!,
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY!,
-  DATABASE_URL: process.env.DATABASE_URL!,
+  SUPABASE_URL: getEnvVar("SUPABASE_URL")!,
+  SUPABASE_ANON_KEY: getEnvVar("SUPABASE_ANON_KEY")!,
+  DATABASE_URL: getEnvVar("DATABASE_URL")!,
 
   // Test user data
   TEST_USER_ID: "test-user-" + Date.now(),

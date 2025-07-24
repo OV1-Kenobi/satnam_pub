@@ -9,13 +9,17 @@
  */
 
 // Browser-compatible crypto using Web Crypto API
-import { createClient } from '@supabase/supabase-js';
+// Use the singleton Supabase client instead of creating a new one
+let supabase: any = null;
 
-// Initialize Supabase client using browser-compatible environment variables
-// In a real browser environment, these would be injected by the build system
-const supabaseUrl = (window as any).__SUPABASE_URL__ || '';
-const supabaseKey = (window as any).__SUPABASE_ANON_KEY__ || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Lazy initialization of the singleton client
+const getSupabaseClient = async () => {
+  if (!supabase) {
+    const { supabase: singletonClient } = await import("../src/lib/supabase");
+    supabase = singletonClient;
+  }
+  return supabase;
+};
 
 export interface OTPCreateOptions {
   identifier: string; // npub or nip05
@@ -62,7 +66,7 @@ async function hashIdentifier(identifier: string): Promise<string> {
   const data = encoder.encode(identifier);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -73,7 +77,7 @@ async function hashOTPWithSalt(otp: string, salt: string): Promise<string> {
   const data = encoder.encode(otp + salt);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -83,9 +87,11 @@ async function hashOTPWithSalt(otp: string, salt: string): Promise<string> {
 async function generateSessionId(): Promise<string> {
   const timestamp = Date.now().toString();
   const randomBytes = Array.from(crypto.getRandomValues(new Uint8Array(24)))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   const entropy = Array.from(crypto.getRandomValues(new Uint8Array(8)))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
   // Create a unique identifier by hashing combined data
   const uniqueData = `${timestamp}-${randomBytes}-${entropy}`;
@@ -93,7 +99,7 @@ async function generateSessionId(): Promise<string> {
   const data = encoder.encode(uniqueData);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -101,7 +107,8 @@ async function generateSessionId(): Promise<string> {
  */
 function generateSalt(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -138,7 +145,8 @@ export class OTPStorageService {
 
     // Store in Supabase using direct insert (fallback if functions don't exist)
     try {
-      const { error } = await supabase.from("family_otp_verification").insert({
+      const client = await getSupabaseClient();
+      const { error } = await client.from("family_otp_verification").insert({
         id: sessionId,
         recipient_npub: hashedIdentifier, // Store hash, not actual npub
         otp_hash: otpHash,
@@ -179,7 +187,8 @@ export class OTPStorageService {
   static async verifyOTP(options: OTPVerifyOptions): Promise<OTPVerifyResult> {
     try {
       // Get OTP record (don't filter by used status yet)
-      const { data: otpRecord, error: fetchError } = await supabase
+      const client = await getSupabaseClient();
+      const { data: otpRecord, error: fetchError } = await client
         .from("family_otp_verification")
         .select("*")
         .eq("id", options.sessionId)
@@ -230,18 +239,21 @@ export class OTPStorageService {
       }
 
       // Verify OTP
-      const providedOTPHash = await hashOTPWithSalt(options.otp, otpRecord.salt);
+      const providedOTPHash = await hashOTPWithSalt(
+        options.otp,
+        otpRecord.salt
+      );
       const isValid = providedOTPHash === otpRecord.otp_hash;
 
       // Update attempts count
-      await supabase
+      await client
         .from("family_otp_verification")
         .update({ attempts: otpRecord.attempts + 1 })
         .eq("id", options.sessionId);
 
       if (isValid) {
         // Mark as used
-        await supabase
+        await client
           .from("family_otp_verification")
           .update({ used: true, used_at: new Date().toISOString() })
           .eq("id", options.sessionId);
@@ -256,7 +268,8 @@ export class OTPStorageService {
           success: true,
           data: {
             hashedIdentifier: otpRecord.recipient_npub,
-            attemptsRemaining: OTP_CONFIG.MAX_ATTEMPTS - (otpRecord.attempts + 1),
+            attemptsRemaining:
+              OTP_CONFIG.MAX_ATTEMPTS - (otpRecord.attempts + 1),
           },
         };
       } else {
@@ -273,7 +286,8 @@ export class OTPStorageService {
           error: "Invalid OTP",
           data: {
             hashedIdentifier: otpRecord.recipient_npub,
-            attemptsRemaining: OTP_CONFIG.MAX_ATTEMPTS - (otpRecord.attempts + 1),
+            attemptsRemaining:
+              OTP_CONFIG.MAX_ATTEMPTS - (otpRecord.attempts + 1),
           },
         };
       }
@@ -398,15 +412,20 @@ export class OTPStorageService {
       }
 
       const totalCreated = logs.length;
-      const totalVerified = logs.filter(log => log.used).length;
-      const totalExpired = logs.filter(log => new Date(log.expires_at) < new Date()).length;
-      const totalFailed = logs.filter(log => log.attempts >= OTP_CONFIG.MAX_ATTEMPTS).length;
-      
-      const totalAttempts = logs.reduce((sum, log) => {
+      const totalVerified = logs.filter((log: any) => log.used).length;
+      const totalExpired = logs.filter(
+        (log: any) => new Date(log.expires_at) < new Date()
+      ).length;
+      const totalFailed = logs.filter(
+        (log: any) => log.attempts >= OTP_CONFIG.MAX_ATTEMPTS
+      ).length;
+
+      const totalAttempts = logs.reduce((sum: number, log: any) => {
         return sum + (log.details?.attempts || 0);
       }, 0);
-      
-      const averageAttempts = totalCreated > 0 ? totalAttempts / totalCreated : 0;
+
+      const averageAttempts =
+        totalCreated > 0 ? totalAttempts / totalCreated : 0;
 
       return {
         totalCreated,

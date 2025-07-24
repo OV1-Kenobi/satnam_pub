@@ -1,10 +1,10 @@
 import { CheckCircle, Copy, Download, QrCode, Send } from "lucide-react";
 import React from "react";
-import { formatSats, getStatusColor, getStatusIcon } from "../../lib/utils";
-import { SatnamFamilyMember } from "../../types/shared";
+import { formatSats, getStatusColor, getStatusIcon } from '../../lib/utils.js';
+import { FamilyMember } from "../../types/shared";
 
 interface FamilyMembersSectionProps {
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
   copiedAddress: string | null;
   onSendPayment: (memberId: string) => void;
   onGenerateInvoice: (memberId: string) => void;
@@ -53,14 +53,13 @@ const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
           <div key={member.id} className="bg-white/10 rounded-xl p-6 hover:bg-white/15 transition-all duration-300 border border-white/20">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
-                  (member.role === "adult" || member.role === "guardian" || member.role === "steward")
-                    ? "bg-gradient-to-br from-yellow-400 to-orange-500"
-                    : member.role === "offspring"
-                      ? "bg-gradient-to-br from-green-400 to-blue-500"
-                      : "bg-gradient-to-br from-blue-400 to-purple-500"
-                }`}>
-                  {member.username.charAt(0)}
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${(member.role === "adult" || member.role === "guardian" || member.role === "steward")
+                  ? "bg-gradient-to-br from-yellow-400 to-orange-500"
+                  : member.role === "offspring"
+                    ? "bg-gradient-to-br from-green-400 to-blue-500"
+                    : "bg-gradient-to-br from-blue-400 to-purple-500"
+                  }`}>
+                  {member.username?.charAt(0) || 'U'}
                 </div>
                 <div>
                   <h3 className="text-white font-bold text-lg">{member.username}</h3>
@@ -86,7 +85,7 @@ const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <span className="text-purple-200 text-sm">Lightning Address</span>
                 <button
-                  onClick={() => onCopyAddress(member.lightningAddress)}
+                  onClick={() => onCopyAddress(member.lightningAddress || '')}
                   className="text-purple-200 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-transparent rounded p-1"
                   aria-label={`Copy lightning address for ${member.username}`}
                   title={copiedAddress === member.lightningAddress ? "Copied!" : "Copy address"}

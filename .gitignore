@@ -31,12 +31,20 @@ tsconfig.tsbuildinfo
 *.sln
 *.sw?
 
-# Environment variables
+# Environment variables - CRITICAL: Never commit these!
 .env
+.env.*
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env.backup
+.env.example.local
+
+# Supabase credentials - CRITICAL SECURITY
+supabase/.env
+.supabase/
+**/supabase/.env
 
 # Testing
 coverage/

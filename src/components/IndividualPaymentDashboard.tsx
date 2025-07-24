@@ -12,7 +12,7 @@ import {
   DollarSign,
   TrendingUp
 } from 'lucide-react';
-import { PaymentAutomationService, PaymentSchedule } from '../lib/payment-automation';
+import { PaymentAutomationService, PaymentSchedule } from '../lib/payment-automation.js';
 import { IndividualPaymentAutomationModal } from './shared';
 
 const IndividualPaymentDashboard: React.FC = () => {

@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview CSRF Protection for Satnam.pub Family Banking
  * @description Prevents Cross-Site Request Forgery attacks on sensitive operations
@@ -18,10 +34,10 @@ class CSRFProtection {
 
   constructor() {
     // Generate a secure secret for CSRF token signing
-    this.secret = process.env.CSRF_SECRET || randomBytes(32).toString("hex");
+    this.secret = getEnvVar("CSRF_SECRET") || randomBytes(32).toString("hex");
     this.tokenExpiry = 30 * 60 * 1000; // 30 minutes
 
-    if (!process.env.CSRF_SECRET) {
+    if (!getEnvVar("CSRF_SECRET")) {
       console.warn(
         "⚠️  CSRF_SECRET not set. Using generated secret (will invalidate tokens on restart)"
       );
@@ -73,7 +89,7 @@ class CSRFProtection {
 
       // Verify IP address (optional strict mode)
       const currentIp = req.ip || "unknown";
-      if (process.env.CSRF_STRICT_IP === "true" && tokenIp !== currentIp) {
+      if (getEnvVar("CSRF_STRICT_IP") === "true" && tokenIp !== currentIp) {
         return false;
       }
 
@@ -187,7 +203,7 @@ export function doubleSubmitCookie(
   // Set secure HTTP-only cookie
   res.cookie("csrf-token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: getEnvVar("NODE_ENV") === "production",
     sameSite: "strict",
     maxAge: 30 * 60 * 1000, // 30 minutes
   });
@@ -195,7 +211,7 @@ export function doubleSubmitCookie(
   // Also set non-HTTP-only cookie for client-side access
   res.cookie("csrf-token-client", token, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
+    secure: getEnvVar("NODE_ENV") === "production",
     sameSite: "strict",
     maxAge: 30 * 60 * 1000, // 30 minutes
   });
@@ -298,7 +314,7 @@ export function configureCORS(allowedOrigins: string[] = []) {
 
   const origins = [...defaultAllowedOrigins, ...allowedOrigins];
 
-  if (process.env.NODE_ENV === "development") {
+  if (getEnvVar("NODE_ENV") === "development") {
     origins.push(
       "http://localhost:3000",
       "http://localhost:5173",

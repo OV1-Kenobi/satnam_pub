@@ -20,7 +20,12 @@ export interface NIP07AuthChallenge {
 }
 
 // New hierarchical role system for Family Federations
-export type FederationRole = "private" | "offspring" | "adult" | "steward" | "guardian";
+export type FederationRole =
+  | "private"
+  | "offspring"
+  | "adult"
+  | "steward"
+  | "guardian";
 
 // Role hierarchy: Guardian > Steward > Adult > Offspring > Private (no hierarchy)
 export interface RolePermissions {
@@ -183,10 +188,16 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   userAuth: FamilyFederationUser | null;
+  user: FamilyFederationUser | null; // Alias for userAuth
   error: string | null;
   login: (authData: FamilyFederationUser) => void;
   logout: () => void;
   checkSession: () => Promise<boolean>;
+
+  // OTP operations for compatibility
+  sendOTP: (npub: string, nip05?: string) => Promise<void>;
+  verifyOTP: (otpKey: string, otp: string) => Promise<void>;
+  clearError: () => void;
 }
 
 // Identity Forge Registration Types

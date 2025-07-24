@@ -4,8 +4,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AtomicSwapRequest } from "../lib/internal-lightning-bridge";
 import { SatnamInternalLightningBridge } from "../lib/internal-lightning-bridge";
+import type { AtomicSwapRequest } from "../lib/internal-lightning-bridge.js";
 
 // Mock external dependencies
 const mockSupabase = {
@@ -116,7 +116,7 @@ describe("Atomic Swap Integration Tests", () => {
       toMemberId: "child_001",
       amount: 1000,
       swapType: "fedimint_to_lightning",
-      purpose: "weekly_payment",
+      purpose: "payment",
       requiresApproval: false,
     };
 
@@ -160,7 +160,7 @@ describe("Atomic Swap Integration Tests", () => {
       mockFedimint.atomicRedeemToPay.mockResolvedValueOnce({
         success: false,
         error: "Fedimint node unreachable",
-      });
+      } as any);
 
       const result = await bridge.executeAtomicSwap(fedimintToLightningRequest);
 
@@ -171,6 +171,8 @@ describe("Atomic Swap Integration Tests", () => {
     it("should handle lightning payment timeout and rollback", async () => {
       mockPhoenixd.waitForPayment.mockResolvedValueOnce({
         success: false,
+        paymentHash: "",
+        fee: 0,
       });
 
       const result = await bridge.executeAtomicSwap(fedimintToLightningRequest);
@@ -191,7 +193,7 @@ describe("Atomic Swap Integration Tests", () => {
       toMemberId: "child_001",
       amount: 2000,
       swapType: "fedimint_to_cashu",
-      purpose: "pocket_money",
+      purpose: "gift",
       requiresApproval: false,
     };
 
@@ -220,7 +222,7 @@ describe("Atomic Swap Integration Tests", () => {
       mockCashuManager.completeMint.mockResolvedValueOnce({
         success: false,
         error: "Cashu mint server error",
-      });
+      } as any);
 
       const result = await bridge.executeAtomicSwap(fedimintToCashuRequest);
 
@@ -238,7 +240,7 @@ describe("Atomic Swap Integration Tests", () => {
       toMemberId: "child_002",
       amount: 50000, // High amount requiring approval
       swapType: "fedimint_to_lightning",
-      purpose: "emergency_fund",
+      purpose: "emergency",
       requiresApproval: true,
     };
 
@@ -433,7 +435,7 @@ describe("Atomic Swap Integration Tests", () => {
         toMemberId: "child_001",
         amount: 0, // Invalid amount
         swapType: "fedimint_to_lightning",
-        purpose: "test",
+        purpose: "transfer",
         requiresApproval: false,
       };
 
@@ -459,7 +461,7 @@ describe("Atomic Swap Integration Tests", () => {
         toMemberId: "child_001",
         amount: 1000,
         swapType: "fedimint_to_lightning",
-        purpose: "test",
+        purpose: "transfer",
         requiresApproval: false,
       };
 

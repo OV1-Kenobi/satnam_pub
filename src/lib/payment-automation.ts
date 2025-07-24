@@ -126,47 +126,69 @@ async function isSpecificParentOfOffspring(
 }
 
 /**
- * MASTER CONTEXT: Check spending limits for offspring accounts
- * Only the specific parent who created the offspring can approve over-limit spending
- * @param offspringNpub - Offspring's npub
+ * MASTER CONTEXT: Check spending authorization based on sovereignty principles
+ * SOVEREIGNTY: Adults/Stewards/Guardians have NO spending limits on individual wallets
+ * AUTHORIZATION: Only Offspring accounts require parent approval for spending
+ * @param userNpub - User's npub
+ * @param userRole - User's role
  * @param amount - Payment amount in satoshis
- * @param approverNpub - Npub of the approver
+ * @param approverNpub - Npub of the approver (for offspring only)
  * @returns True if spending is authorized
  */
-async function checkOffspringSpendingAuthorization(
-  offspringNpub: string,
+async function checkSpendingAuthorization(
+  userNpub: string,
+  userRole: UserRole,
   amount: number,
-  approverNpub: string
+  approverNpub?: string
 ): Promise<boolean> {
   try {
-    // Get the specific parent for this offspring
-    const parentNpub = await getParentForOffspring(offspringNpub);
-
-    if (!parentNpub) {
-      return false; // No parent found, cannot authorize
+    // SOVEREIGNTY PRINCIPLE: Adults, Stewards, and Guardians have unlimited individual wallet spending
+    if (
+      userRole === "private" ||
+      userRole === "adult" ||
+      userRole === "steward" ||
+      userRole === "guardian"
+    ) {
+      return true; // No spending limits on individual wallets
     }
 
-    // Only the specific parent can authorize spending
-    if (approverNpub !== parentNpub) {
-      return false; // Not the correct parent
+    // PARENT-OFFSPRING AUTHORIZATION: Only offspring accounts have spending limits
+    if (userRole === "offspring") {
+      if (!approverNpub) {
+        return false; // Offspring requires parent approval
+      }
+
+      // Get the specific parent for this offspring
+      const parentNpub = await getParentForOffspring(userNpub);
+
+      if (!parentNpub) {
+        return false; // No parent found, cannot authorize
+      }
+
+      // Only the specific parent can authorize spending
+      if (approverNpub !== parentNpub) {
+        return false; // Not the correct parent
+      }
+
+      // Get offspring spending limits from their parent's configuration
+      const client = await getSupabaseClient();
+      const { data: limits, error } = await client
+        .from("offspring_spending_limits")
+        .select("dailyLimit, weeklyLimit, requiresApprovalAbove")
+        .eq("offspringNpub", userNpub)
+        .eq("parentNpub", parentNpub)
+        .single();
+
+      if (error || !limits) {
+        // No limits configured, parent must approve all spending
+        return true;
+      }
+
+      // Check if amount requires parent approval
+      return amount >= limits.requiresApprovalAbove;
     }
 
-    // Get offspring spending limits from their parent's configuration
-    const client = await getSupabaseClient();
-    const { data: limits, error } = await client
-      .from("offspring_spending_limits")
-      .select("dailyLimit, weeklyLimit, requiresApprovalAbove")
-      .eq("offspringNpub", offspringNpub)
-      .eq("parentNpub", parentNpub)
-      .single();
-
-    if (error || !limits) {
-      // No limits configured, parent must approve all spending
-      return true;
-    }
-
-    // Check if amount requires parent approval
-    return amount >= limits.requiresApprovalAbove;
+    return false; // Unknown role
   } catch (error) {
     return false;
   }
@@ -265,6 +287,7 @@ export interface PaymentSchedule {
   recipientId: string;
   recipientNpub: string;
   recipientRole?: UserRole; // MASTER CONTEXT: Role of recipient for parent-offspring authorization
+  paymentContext?: PaymentContext; // SOVEREIGNTY: "individual" = no approval needed for Adults/Stewards/Guardians, "family" = Family Federation funds
   amount: number; // in satoshis
   currency: "sats" | "ecash" | "fedimint";
   frequency: "daily" | "weekly" | "monthly" | "yearly" | "custom";
@@ -984,23 +1007,30 @@ export class PaymentAutomationService {
           ];
         }
       } else {
-        // For non-offspring, use family guardians/stewards as before
-        const { data: familyApprovers, error } = await client
-          .from("family_members")
-          .select("npub, role")
-          .eq("familyId", schedule.familyId)
-          .in("role", ["guardian", "steward", "adult"]);
+        // SOVEREIGNTY PRINCIPLE: Adults/Stewards/Guardians do NOT require approval for individual wallet spending
+        // This should only be reached for Family Federation fund operations, not individual wallets
+        if (schedule.paymentContext === "family") {
+          // Family Federation fund operations may require approval
+          const { data: familyApprovers, error } = await client
+            .from("family_members")
+            .select("npub, role")
+            .eq("familyId", schedule.familyId)
+            .in("role", ["guardian", "steward"]);
 
-        if (error) {
-          throw new Error(`Failed to fetch approvers: ${error.message}`);
+          if (error) {
+            throw new Error(
+              `Failed to fetch family approvers: ${error.message}`
+            );
+          }
+
+          approvers =
+            familyApprovers?.map((approver: any) => ({
+              npub: approver.npub,
+              role: approver.role as UserRole,
+              status: "pending" as const,
+            })) || [];
         }
-
-        approvers =
-          familyApprovers?.map((approver: any) => ({
-            npub: approver.npub,
-            role: approver.role as UserRole,
-            status: "pending" as const,
-          })) || [];
+        // Individual wallet operations for Adults/Stewards/Guardians require NO approval
       }
 
       const approvalRequest: Omit<

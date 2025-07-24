@@ -1,16 +1,32 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * Privacy and Encryption Verification Script
  * Verifies that the new Family Federation Authentication system
  * doesn't break existing privacy/encryption protocols
  */
 
-import { decryptCredentials, encryptCredentials } from "../lib/security";
+import { decryptCredentials, encryptCredentials } from '../lib/security.js';
 import {
   generateRandomHex,
   generateSecureToken,
   sha256,
-} from "../utils/crypto";
+} from '../utils/crypto.js';
 import { validateNWCUri } from "../utils/nwc-validation";
 
 console.log("🔐 Verifying Privacy and Encryption Integrity...\n");
@@ -234,7 +250,7 @@ function verifyDataSanitization() {
     const maliciousInputs = [
       '<script>alert("xss")</script>',
       '"; DROP TABLE users; --',
-      "${process.env.SECRET_KEY}",
+      `${getEnvVar("SECRET_KEY")}`,
       "../../../etc/passwd",
     ];
 

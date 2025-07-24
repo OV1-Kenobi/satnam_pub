@@ -5,7 +5,7 @@
 
 import { AlertCircle, CheckCircle, Loader, RefreshCw } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { checkServerHealth } from '../lib/api';
+import { checkServerHealth } from '../lib/api.js';
 
 interface ServerStatusProps {
   className?: string;

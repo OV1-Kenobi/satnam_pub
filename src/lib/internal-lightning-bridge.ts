@@ -1,9 +1,18 @@
 // Internal Lightning Bridge - Base Class and Configuration
 // File: src/lib/internal-lightning-bridge.ts
-import { supabase } from "./supabase";
 import { SatnamCrossMintCashuManager } from "./cross-mint-cashu-manager";
 import { FedimintClient } from "./fedimint-client";
 import { PhoenixdClient } from "./phoenixd-client";
+
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 export interface AtomicSwapRequest {
   fromContext: "family" | "individual";
@@ -160,7 +169,11 @@ export class SatnamInternalLightningBridge {
       );
 
       if (!lightningPayment || !lightningPayment.isPaid) {
-        throw new Error(`Lightning payment failed: ${lightningPayment?.paymentId || 'Unknown error'}`);
+        throw new Error(
+          `Lightning payment failed: ${
+            lightningPayment?.paymentId || "Unknown error"
+          }`
+        );
       }
 
       await this.logSwapStep(swapId, {
@@ -182,7 +195,7 @@ export class SatnamInternalLightningBridge {
         success: true,
         tokenId: `cashu_${Date.now()}`,
         fee: 0,
-        error: undefined
+        error: undefined,
       };
 
       if (!cashuToken.success) {
@@ -282,7 +295,7 @@ export class SatnamInternalLightningBridge {
         success: true,
         paymentHash: `lightning_${Date.now()}`,
         fee: 0,
-        error: undefined
+        error: undefined,
       };
 
       if (!lightningPayment.success) {
@@ -310,7 +323,7 @@ export class SatnamInternalLightningBridge {
         success: true,
         txId: `fedimint_${Date.now()}`,
         fee: 0,
-        error: undefined
+        error: undefined,
       };
 
       if (!fedimintDeposit.success) {
@@ -475,7 +488,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       txId: `fedimint_${Date.now()}`,
       fee: 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!fedimintRedemption.success) {
@@ -489,7 +502,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       paymentHash: lightningInvoice.paymentHash,
       fees: lightningInvoice.fees || 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!lightningPayment.success) {
@@ -532,7 +545,7 @@ export class SatnamInternalLightningBridge {
     const cashuMintRequest = {
       hash: `cashu_mint_${Date.now()}`,
       pr: `lnbc${request.amount}...`, // Simulated payment request
-      success: true
+      success: true,
     };
 
     // Step 2: Simulate Fedimint redemption (method doesn't exist yet)
@@ -540,7 +553,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       txId: `fedimint_${Date.now()}`,
       fee: 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!fedimintRedemption.success) {
@@ -555,7 +568,7 @@ export class SatnamInternalLightningBridge {
       tokenId: `cashu_${Date.now()}`,
       tokens: `cashu_tokens_${Date.now()}`,
       fee: 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!cashuTokens.success) {
@@ -610,7 +623,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       paymentHash: lightningInvoice.paymentHash,
       fees: lightningInvoice.fees || 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!lightningPayment.success) {
@@ -622,7 +635,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       txId: `fedimint_${Date.now()}`,
       fee: 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!fedimintDeposit.success) {
@@ -658,7 +671,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       paymentHash: `lightning_${Date.now()}`,
       fee: 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!cashuMelt.success) {
@@ -670,7 +683,7 @@ export class SatnamInternalLightningBridge {
       success: true,
       txId: `fedimint_${Date.now()}`,
       fee: 0,
-      error: undefined
+      error: undefined,
     };
 
     if (!fedimintDeposit.success) {

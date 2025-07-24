@@ -27,6 +27,55 @@ export class PrivacyEnhancedApiService {
    * Family API Methods with Privacy Support
    */
 
+  /**
+   * Make privacy-enhanced payment with flexible routing
+   * Unified method that handles both family and individual payments
+   */
+  async makePrivacyEnhancedPayment(paymentData: {
+    from: string;
+    to: string;
+    amount: number;
+    memo?: string;
+    privacyLevel: PrivacyLevel;
+    route?: string;
+  }): Promise<{
+    success: boolean;
+    transactionId?: string;
+    privacyScore?: number;
+    routingMethod?: string;
+    error?: string;
+  }> {
+    try {
+      // Convert the payment data to the standard PaymentRequest format
+      const paymentRequest: PaymentRequest = {
+        amount: paymentData.amount,
+        recipient: paymentData.to,
+        memo: paymentData.memo,
+        privacyLevel: paymentData.privacyLevel,
+        routingPreference: (paymentData.route as any) || "auto",
+      };
+
+      // Use individual payment method for now
+      const response = await this.sendIndividualPayment(
+        paymentData.from,
+        paymentRequest
+      );
+
+      return {
+        success: response.success,
+        transactionId: response.paymentId,
+        privacyScore: response.privacyMetrics?.anonymityScore,
+        routingMethod: response.routingUsed,
+        error: response.error,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Payment failed",
+      };
+    }
+  }
+
   async sendPrivacyAwarePayment(
     familyId: string,
     paymentRequest: PaymentRequest
@@ -113,7 +162,7 @@ export class PrivacyEnhancedApiService {
   ): Promise<IndividualWalletWithPrivacy> {
     try {
       const response = await fetch(
-        `${this.apiBaseUrl}/individual/privacy-wallet?memberId=${memberId}`
+        `${this.apiBaseUrl}/individual/wallet?memberId=${memberId}`
       );
       const result = await response.json();
 
@@ -133,7 +182,7 @@ export class PrivacyEnhancedApiService {
   ): Promise<{ success: boolean; message: string }> {
     try {
       const response = await fetch(
-        `${this.apiBaseUrl}/individual/privacy-wallet?memberId=${memberId}`,
+        `${this.apiBaseUrl}/individual/wallet?memberId=${memberId}`,
         {
           method: "POST",
           headers: {
@@ -297,7 +346,7 @@ export class PrivacyEnhancedApiService {
     }
   }
 
-  private handleApiError(error: any, context: string): PrivacyAPIError {
+  public handleApiError(error: any, context: string): PrivacyAPIError {
     console.error(`Privacy API Error (${context}):`, error);
 
     if (error instanceof Error) {
@@ -415,5 +464,5 @@ export function handlePrivacyApiError(
   error: any,
   context: string = "unknown"
 ): PrivacyAPIError {
-  return new PrivacyEnhancedApiService().handleApiError(error, context);
+  return privacyEnhancedApi.handleApiError(error, context);
 }

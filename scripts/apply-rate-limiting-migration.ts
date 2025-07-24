@@ -5,7 +5,7 @@
  * Quick script to apply the rate limiting database changes
  */
 
-import { supabase } from "../lib/supabase";
+import { supabase } from '../lib/supabase.js';
 
 async function applyRateLimitingMigration() {
   console.log("🚀 Applying rate limiting migration...");

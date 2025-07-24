@@ -22,24 +22,24 @@ export interface PrivacyLevelSelectorProps {
   variant?: 'modal' | 'card' // modal = purple theme, card = white theme
 }
 
-export function PrivacyLevelSelector({ 
-  selectedLevel, 
-  onLevelChange, 
+export function PrivacyLevelSelector({
+  selectedLevel,
+  onLevelChange,
   showMetrics = false,
   disabled = false,
   className = "",
   variant = 'modal'
 }: PrivacyLevelSelectorProps) {
-  
+
   const isModal = variant === 'modal'
-  
+
   const getColorClasses = (level: PrivacyLevel, isSelected: boolean) => {
     if (isModal) {
       // Purple theme for modals
       if (isSelected) {
         const colorMap = {
           [PrivacyLevel.GIFTWRAPPED]: 'border-green-500 bg-green-500/20 text-green-400',
-          [PrivacyLevel.ENCRYPTED]: 'border-blue-500 bg-blue-500/20 text-blue-400', 
+          [PrivacyLevel.ENCRYPTED]: 'border-blue-500 bg-blue-500/20 text-blue-400',
           [PrivacyLevel.MINIMAL]: 'border-yellow-500 bg-yellow-500/20 text-yellow-400'
         }
         return colorMap[level] || 'border-purple-500 bg-purple-500/20 text-purple-400'
@@ -56,13 +56,13 @@ export function PrivacyLevelSelector({
 
   const textColors = isModal ? {
     primary: 'text-white',
-    secondary: 'text-purple-200', 
+    secondary: 'text-purple-200',
     muted: 'text-purple-300',
     label: 'text-purple-200'
   } : {
     primary: 'text-gray-900',
     secondary: 'text-gray-600',
-    muted: 'text-gray-500', 
+    muted: 'text-gray-500',
     label: 'text-gray-900'
   }
 
@@ -76,13 +76,13 @@ export function PrivacyLevelSelector({
           Choose based on communication sensitivity
         </p>
       </div>
-      
+
       <div className="space-y-3">
         {PRIVACY_OPTIONS.map((option) => {
           const isSelected = selectedLevel === option.privacyLevel
           const colorClasses = getColorClasses(option.privacyLevel, isSelected)
           const metrics = calculatePrivacyMetrics(option.privacyLevel)
-          
+
           return (
             <div key={option.privacyLevel} className="privacy-option">
               <label className={`flex items-start space-x-4 p-4 border-2 rounded-lg cursor-pointer transition-all duration-300 ${colorClasses} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -95,17 +95,16 @@ export function PrivacyLevelSelector({
                   disabled={disabled}
                   className="sr-only" // Hide default radio, use custom styling
                 />
-                
+
                 <div className="flex-shrink-0 mt-1">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    isSelected 
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected
                       ? (isModal ? 'border-current bg-current' : 'border-purple-500 bg-purple-500')
                       : (isModal ? 'border-white/40' : 'border-gray-300')
-                  }`}>
+                    }`}>
                     {isSelected && <Check className="h-3 w-3 text-white" />}
                   </div>
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-3 mb-2">
                     <span className="text-2xl">{option.icon}</span>
@@ -118,20 +117,19 @@ export function PrivacyLevelSelector({
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className={`text-sm ${textColors.muted} mb-3`}>
                     <strong>Use Case:</strong> {option.useCase}
                   </div>
-                  
+
                   <div className="flex flex-wrap gap-2 mb-3">
                     {option.features.map((feature, index) => (
                       <span
                         key={index}
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          isModal 
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${isModal
                             ? 'bg-white/10 text-purple-200'
                             : 'bg-purple-100 text-purple-800'
-                        }`}
+                          }`}
                       >
                         {feature}
                       </span>
@@ -168,7 +166,7 @@ export function PrivacyLevelSelector({
           )
         })}
       </div>
-      
+
       {!isModal && (
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
           <div className="text-sm text-blue-800">
@@ -181,4 +179,6 @@ export function PrivacyLevelSelector({
 }
 
 // Re-export from types for convenience
-export { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy'
+export { getDefaultPrivacyLevel } from '../../types/privacy'
+export type { PrivacyLevel } from '../../types/privacy'
+

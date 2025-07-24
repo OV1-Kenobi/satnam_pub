@@ -12,7 +12,7 @@
  */
 
 import { NextFunction, Request, Response } from "express";
-import { defaultLogger as logger } from "../../utils/logger";
+import { defaultLogger as logger } from '../../utils/logger.js';
 import { sessionRefreshRateLimit } from "../security/rate-limiter";
 import { SecureSessionManager, SessionData } from "../security/session-manager";
 

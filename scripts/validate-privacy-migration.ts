@@ -7,7 +7,7 @@ import {
   isSupabaseMocked,
   supabase,
   testSupabaseConnection,
-} from "../lib/supabase-server";
+} from '../lib/supabase-server.js';
 import { PrivacyEnhancedApiService } from "../src/services/privacyEnhancedApi";
 import { PrivacyLevel } from "../src/types/privacy";
 

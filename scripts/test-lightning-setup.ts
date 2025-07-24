@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 // scripts/test-lightning-setup.ts
 /**
  * Test script for the secure, atomic Lightning setup process
@@ -9,7 +25,7 @@
  * 🔒 Database synchronization
  */
 
-import { IdentityRegistration } from "../lib/api/register-identity";
+import { IdentityRegistration } from '../lib/api/register-identity.js';
 import { PrivacyManager } from "../lib/crypto/privacy-manager";
 import { CitadelDatabase } from "../lib/supabase";
 
@@ -33,10 +49,10 @@ async function testAtomicLightningSetup() {
     console.log("\n⚡ Test 2: Lightning setup with external services");
 
     // Mock environment variables for testing
-    process.env.VOLTAGE_API_KEY = "test-voltage-key";
-    process.env.BTCPAY_SERVER_URL = "https://test.btcpay.server";
-    process.env.BTCPAY_API_KEY = "test-btcpay-key";
-    process.env.SERVICE_ENCRYPTION_KEY = "test-service-encryption-key-32-chars";
+    getEnvVar("VOLTAGE_API_KEY") = "test-voltage-key";
+    getEnvVar("BTCPAY_SERVER_URL") = "https://test.btcpay.server";
+    getEnvVar("BTCPAY_API_KEY") = "test-btcpay-key";
+    getEnvVar("SERVICE_ENCRYPTION_KEY") = "test-service-encryption-key-32-chars";
 
     const mockRequest = {
       userId: TEST_USER_ID,
@@ -78,7 +94,7 @@ async function testAtomicLightningSetup() {
         try {
           const decryptedBTCPay = PrivacyManager.decryptServiceConfig(
             lightningAddress.encrypted_btcpay_config,
-            process.env.SERVICE_ENCRYPTION_KEY!,
+            getEnvVar("SERVICE_ENCRYPTION_KEY")!,
           );
           console.log(
             "✅ BTCPay config decrypted successfully:",
@@ -94,7 +110,7 @@ async function testAtomicLightningSetup() {
         try {
           const decryptedVoltage = PrivacyManager.decryptServiceConfig(
             lightningAddress.encrypted_voltage_config,
-            process.env.SERVICE_ENCRYPTION_KEY!,
+            getEnvVar("SERVICE_ENCRYPTION_KEY")!,
           );
           console.log(
             "✅ Voltage config decrypted successfully:",
@@ -143,8 +159,8 @@ async function testFailureScenarios() {
   try {
     // Test failure with missing environment variables
     console.log("\n❌ Test: Missing service keys");
-    delete process.env.VOLTAGE_API_KEY;
-    delete process.env.BTCPAY_API_KEY;
+    delete getEnvVar("VOLTAGE_API_KEY");
+    delete getEnvVar("BTCPAY_API_KEY");
 
     const failureResult = await (
       IdentityRegistration as any

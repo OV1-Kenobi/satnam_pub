@@ -46,7 +46,7 @@ class PrivacyMigrationOrchestrator {
           // Check if new endpoints are accessible
           const endpoints = [
             "/api/family/privacy-enhanced-payments",
-            "/api/individual/privacy-wallet",
+            "/api/individual/wallet",
             "/api/communications/giftwrapped",
           ];
 

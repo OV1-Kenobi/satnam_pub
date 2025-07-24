@@ -1,6 +1,6 @@
 // lib/crypto/privacy-manager.ts
 import crypto from "crypto";
-import { constantTimeEquals } from "../../utils/crypto";
+import { constantTimeEquals } from '../../utils/crypto.js';
 
 export class PrivacyManager {
   /**

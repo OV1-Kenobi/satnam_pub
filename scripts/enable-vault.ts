@@ -1,4 +1,20 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Enable Supabase Vault Extension
  * @description Enables the supabase_vault extension and tests connectivity
@@ -16,8 +32,8 @@ async function enableVault() {
   console.log("═══════════════════════════════════════");
 
   // Check environment
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = getEnvVar("SUPABASE_URL");
+  const serviceRoleKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!supabaseUrl || !serviceRoleKey) {
     console.error("❌ Missing Supabase credentials!");

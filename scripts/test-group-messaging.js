@@ -1,18 +1,12 @@
 /**
- * @fileoverview Group Messaging Test Script
- * @description Tests NIP-28/29/59 group messaging with gift-wrapping and guardian approval
+ * @fileoverview Unified Messaging Test Script
+ * @description Tests NIP-28/29/59 group messaging with gift-wrapping and guardian approval using unified service
  */
 
-import { GroupMessagingService } from '../src/lib/group-messaging.ts';
 
-// Test configuration
+// Use default unified messaging configuration
 const TEST_CONFIG = {
-  relays: ['wss://relay.damus.io', 'wss://nos.lol'],
-  giftWrapEnabled: true,
-  guardianApprovalRequired: true,
-  guardianPubkeys: [],
-  maxGroupSize: 50,
-  messageRetentionDays: 30,
+  ...DEFAULT_UNIFIED_CONFIG,
   privacyDelayMs: 2000, // Shorter for testing
 };
 
@@ -41,16 +35,18 @@ class GroupMessagingTestSuite {
 
   async initialize() {
     try {
-      this.log('Initializing Group Messaging Test Suite...');
-      
+      this.log('Initializing Unified Messaging Test Suite...');
+
       // Initialize user service
-      this.userService = new GroupMessagingService(TEST_CONFIG, TEST_USER_NSEC);
+      this.userService = new UnifiedMessagingService(TEST_CONFIG);
+      await this.userService.initializeSession(TEST_USER_NSEC);
       this.log('User service initialized');
-      
+
       // Initialize guardian service
-      this.guardianService = new GroupMessagingService(TEST_CONFIG, TEST_GUARDIAN_NSEC);
+      this.guardianService = new UnifiedMessagingService(TEST_CONFIG);
+      await this.guardianService.initializeSession(TEST_GUARDIAN_NSEC);
       this.log('Guardian service initialized');
-      
+
       return true;
     } catch (error) {
       this.log(`Failed to initialize test suite: ${error.message}`, 'error');
@@ -368,4 +364,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { GroupMessagingTestSuite }; 
+export { GroupMessagingTestSuite };

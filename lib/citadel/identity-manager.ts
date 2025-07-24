@@ -20,11 +20,11 @@ export class CitadelIdentityManager {
   static async registerUser(username: string): Promise<NostrIdentity> {
     try {
       // Generate new Nostr key pair
-      const privateKeyBytes = generatePrivateKey();
+      const privateKeyBytes = (generatePrivateKey as any)();
       const privateKey = Array.from(privateKeyBytes, (byte) =>
-        byte.toString(16).padStart(2, "0"),
+        (byte as number).toString(16).padStart(2, "0")
       ).join("");
-      const pubkey = getPublicKey(privateKeyBytes);
+      const pubkey = (getPublicKey as any)(privateKeyBytes);
       const npub = nip19.npubEncode(pubkey);
 
       const identity: NostrIdentity = {
@@ -42,7 +42,9 @@ export class CitadelIdentityManager {
       return identity;
     } catch (error) {
       throw new Error(
-        `Failed to create Nostr identity: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to create Nostr identity: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -83,20 +85,22 @@ export class CitadelIdentityManager {
   /**
    * Derive private key from recovery phrase
    */
-  static async deriveFromRecoveryPhrase(phrase: string): Promise<NostrIdentity> {
+  static async deriveFromRecoveryPhrase(
+    phrase: string
+  ): Promise<NostrIdentity> {
     // For now, use a simple hash of the phrase
     // In production, use proper BIP39 derivation
     const hashBuffer = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(phrase),
+      new TextEncoder().encode(phrase)
     );
 
     // This is simplified - use proper derivation in production
-    const privateKeyBytes = generatePrivateKey();
+    const privateKeyBytes = (generatePrivateKey as any)();
     const privateKey = Array.from(privateKeyBytes, (byte) =>
-      byte.toString(16).padStart(2, "0"),
+      (byte as number).toString(16).padStart(2, "0")
     ).join("");
-    const pubkey = getPublicKey(privateKeyBytes);
+    const pubkey = (getPublicKey as any)(privateKeyBytes);
     const npub = nip19.npubEncode(pubkey);
 
     return {
@@ -149,7 +153,9 @@ export class CitadelIdentityManager {
       throw new Error("Invalid npub");
     } catch (error) {
       throw new Error(
-        `Failed to convert npub: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to convert npub: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -162,7 +168,9 @@ export class CitadelIdentityManager {
       return nip19.npubEncode(pubkey);
     } catch (error) {
       throw new Error(
-        `Failed to convert pubkey: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to convert pubkey: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -215,7 +223,7 @@ export class CitadelIdentityManager {
    */
   static restoreFromBackup(
     backupData: string,
-    password: string,
+    password: string
   ): Partial<NostrIdentity> {
     try {
       const data = JSON.parse(backupData);
@@ -229,7 +237,9 @@ export class CitadelIdentityManager {
       };
     } catch (error) {
       throw new Error(
-        `Failed to restore from backup: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to restore from backup: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }

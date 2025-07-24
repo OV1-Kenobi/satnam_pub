@@ -1,25 +1,29 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  CreditCard, 
-  Calendar, 
-  Settings, 
-  Users, 
-  Shield, 
-  Zap, 
-  Wallet, 
-  TrendingUp,
-  Router,
+import {
+  Bell,
+  Clock,
   Coins,
   Globe,
-  X,
-  Bell,
   Mail,
-  Clock,
-  Save
+  Router,
+  Save,
+  Settings,
+  Shield,
+  Users,
+  X,
+  Zap
 } from 'lucide-react';
-import { PaymentAutomationService, PaymentSchedule } from '../lib/payment-automation';
-import { FamilyWalletService } from '../lib/family-wallet';
-import { supabase } from '../lib/supabase';
+import React, { useState } from 'react';
+import { PaymentSchedule } from '../lib/payment-automation.js';
+
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import('../lib/supabase');
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // Basic type definitions for the modal
 interface NotificationSettings {
@@ -184,33 +188,33 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Available routing methods based on context
-  const availableRoutingMethods = context === 'individual' 
+  const availableRoutingMethods = context === 'individual'
     ? [
-        { value: 'breez', label: 'Breez Node', description: 'Primary Lightning node for individuals', icon: Zap },
-        { value: 'cashu_mint', label: 'Cashu eCash', description: 'Private eCash payments via mint', icon: Coins },
-        { value: 'external_ln', label: 'External Lightning', description: 'Route via external Lightning network', icon: Globe }
-      ]
+      { value: 'breez', label: 'Breez Node', description: 'Primary Lightning node for individuals', icon: Zap },
+      { value: 'cashu_mint', label: 'Cashu eCash', description: 'Private eCash payments via mint', icon: Coins },
+      { value: 'external_ln', label: 'External Lightning', description: 'Route via external Lightning network', icon: Globe }
+    ]
     : [
-        { value: 'phoenixd', label: 'PhoenixD', description: 'Family Lightning channels', icon: Zap },
-        { value: 'voltage', label: 'Voltage Enterprise', description: 'Enterprise Lightning infrastructure', icon: Router },
-        { value: 'internal_fedimint', label: 'Family Fedimint', description: 'Internal federation transfers', icon: Users },
-        { value: 'cashu_mint', label: 'Cashu eCash', description: 'Family eCash via mint', icon: Coins },
-        { value: 'external_ln', label: 'External Lightning', description: 'Route to external addresses', icon: Globe }
-      ];
+      { value: 'phoenixd', label: 'PhoenixD', description: 'Family Lightning channels', icon: Zap },
+      { value: 'voltage', label: 'Voltage Enterprise', description: 'Enterprise Lightning infrastructure', icon: Router },
+      { value: 'internal_fedimint', label: 'Family Fedimint', description: 'Internal federation transfers', icon: Users },
+      { value: 'cashu_mint', label: 'Cashu eCash', description: 'Family eCash via mint', icon: Coins },
+      { value: 'external_ln', label: 'External Lightning', description: 'Route to external addresses', icon: Globe }
+    ];
 
   // Available recipient types based on context
   const availableRecipientTypes = context === 'family'
     ? [
-        { value: 'family_member', label: 'Family Member', description: 'Send to family member', icon: Users },
-        { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
-        { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: Users },
-        { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
-      ]
+      { value: 'family_member', label: 'Family Member', description: 'Send to family member', icon: Users },
+      { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
+      { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: Users },
+      { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
+    ]
     : [
-        { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
-        { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: Users },
-        { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
-      ];
+      { value: 'ln_address', label: 'Lightning Address', description: 'External Lightning address', icon: Zap },
+      { value: 'npub', label: 'Nostr Profile', description: 'Send to Nostr pubkey', icon: Users },
+      { value: 'cashu_token', label: 'Cashu Token', description: 'Generate eCash token', icon: Coins }
+    ];
 
   if (!isOpen) return null;
 
@@ -364,11 +368,10 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
             <button
               key={tab.id}
               onClick={() => setCurrentTab(tab.id as any)}
-              className={`flex items-center space-x-2 px-6 py-3 font-medium transition-colors ${
-                currentTab === tab.id
+              className={`flex items-center space-x-2 px-6 py-3 font-medium transition-colors ${currentTab === tab.id
                   ? `${context === 'individual' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-orange-600 border-b-2 border-orange-600'}`
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               <tab.icon className="w-4 h-4" />
               <span>{tab.label}</span>
@@ -390,17 +393,15 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     <button
                       key={type.value}
                       onClick={() => handleRecipientTypeChange(type.value as string)}
-                      className={`flex items-center space-x-3 p-4 rounded-lg border-2 transition-colors ${
-                        formData.recipientType === type.value
+                      className={`flex items-center space-x-3 p-4 rounded-lg border-2 transition-colors ${formData.recipientType === type.value
                           ? `${context === 'individual' ? 'border-blue-500 bg-blue-50' : 'border-orange-500 bg-orange-50'}`
                           : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
-                      <type.icon className={`w-5 h-5 ${
-                        formData.recipientType === type.value
+                      <type.icon className={`w-5 h-5 ${formData.recipientType === type.value
                           ? `${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`
                           : 'text-gray-500'
-                      }`} />
+                        }`} />
                       <div className="text-left">
                         <div className="font-medium text-gray-900">{type.label}</div>
                         <div className="text-sm text-gray-500">{type.description}</div>
@@ -421,11 +422,10 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                       <button
                         key={member.id}
                         onClick={() => handleFamilyMemberSelect(member.id)}
-                        className={`flex items-center space-x-3 p-3 rounded-lg border-2 transition-colors ${
-                          formData.recipientAddress === (member.lightningAddress || member.npub || member.id)
+                        className={`flex items-center space-x-3 p-3 rounded-lg border-2 transition-colors ${formData.recipientAddress === (member.lightningAddress || member.npub || member.id)
                             ? 'border-orange-500 bg-orange-50'
                             : 'border-gray-200 hover:border-gray-300'
-                        }`}
+                          }`}
                       >
                         <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center font-semibold text-orange-600">
                           {member.avatar}
@@ -445,21 +445,20 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {formData.recipientType === 'ln_address' ? 'Lightning Address' : 
-                       formData.recipientType === 'npub' ? 'Nostr Public Key' :
-                       formData.recipientType === 'cashu_token' ? 'Cashu Mint URL' : 'Recipient Address'} *
+                      {formData.recipientType === 'ln_address' ? 'Lightning Address' :
+                        formData.recipientType === 'npub' ? 'Nostr Public Key' :
+                          formData.recipientType === 'cashu_token' ? 'Cashu Mint URL' : 'Recipient Address'} *
                     </label>
                     <input
                       type="text"
                       value={formData.recipientAddress}
                       onChange={(e) => setFormData(prev => ({ ...prev, recipientAddress: e.target.value }))}
-                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                        context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                      }`}
+                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                        }`}
                       placeholder={
                         formData.recipientType === 'ln_address' ? 'alice@getalby.com' :
-                        formData.recipientType === 'npub' ? 'npub1...' :
-                        formData.recipientType === 'cashu_token' ? 'https://mint.example.com' : 'Enter address'
+                          formData.recipientType === 'npub' ? 'npub1...' :
+                            formData.recipientType === 'cashu_token' ? 'https://mint.example.com' : 'Enter address'
                       }
                     />
                   </div>
@@ -472,9 +471,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                       type="text"
                       value={formData.recipientName}
                       onChange={(e) => setFormData(prev => ({ ...prev, recipientName: e.target.value }))}
-                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                        context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                      }`}
+                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                        }`}
                       placeholder="Alice"
                     />
                   </div>
@@ -488,16 +486,14 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     Payment Amount (sats) *
                   </label>
                   <div className="relative">
-                    <Zap className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ${
-                      context === 'individual' ? 'text-blue-500' : 'text-orange-500'
-                    }`} />
+                    <Zap className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ${context === 'individual' ? 'text-blue-500' : 'text-orange-500'
+                      }`} />
                     <input
                       type="number"
                       value={formData.amount}
                       onChange={(e) => setFormData(prev => ({ ...prev, amount: parseInt(e.target.value) }))}
-                      className={`w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                        context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                      }`}
+                      className={`w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                        }`}
                       placeholder="21000"
                       min="1000"
                     />
@@ -514,9 +510,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                   <select
                     value={formData.frequency}
                     onChange={(e) => setFormData(prev => ({ ...prev, frequency: e.target.value as any }))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   >
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
@@ -534,9 +529,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                   <select
                     value={formData.dayOfWeek}
                     onChange={(e) => setFormData(prev => ({ ...prev, dayOfWeek: parseInt(e.target.value) }))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   >
                     <option value={1}>Monday</option>
                     <option value={2}>Tuesday</option>
@@ -558,9 +552,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="number"
                     value={formData.dayOfMonth}
                     onChange={(e) => setFormData(prev => ({ ...prev, dayOfMonth: parseInt(e.target.value) }))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                     min="1"
                     max="31"
                   />
@@ -576,9 +569,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                   <select
                     value={formData.paymentPurpose}
                     onChange={(e) => setFormData(prev => ({ ...prev, paymentPurpose: e.target.value as any }))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   >
                     <option value="custom">Custom</option>
                     <option value="allowance">Allowance</option>
@@ -598,9 +590,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="text"
                     value={formData.memo}
                     onChange={(e) => setFormData(prev => ({ ...prev, memo: e.target.value }))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                     placeholder="Payment memo"
                   />
                 </div>
@@ -632,17 +623,15 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     <button
                       key={method.value}
                       onClick={() => setFormData(prev => ({ ...prev, paymentRouting: method.value as string }))}
-                      className={`flex items-center space-x-4 p-4 rounded-lg border-2 transition-colors ${
-                        formData.paymentRouting === method.value
+                      className={`flex items-center space-x-4 p-4 rounded-lg border-2 transition-colors ${formData.paymentRouting === method.value
                           ? `${context === 'individual' ? 'border-blue-500 bg-blue-50' : 'border-orange-500 bg-orange-50'}`
                           : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
-                      <method.icon className={`w-6 h-6 ${
-                        formData.paymentRouting === method.value
+                      <method.icon className={`w-6 h-6 ${formData.paymentRouting === method.value
                           ? `${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`
                           : 'text-gray-500'
-                      }`} />
+                        }`} />
                       <div className="text-left flex-1">
                         <div className="font-medium text-gray-900">{method.label}</div>
                         <div className="text-sm text-gray-500">{method.description}</div>
@@ -670,21 +659,19 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                       key={protocol.value}
                       disabled={protocol.disabled}
                       onClick={() => updateProtocolPreferences('primary', protocol.value)}
-                      className={`flex flex-col items-center space-y-2 p-3 rounded-lg border-2 transition-colors ${
-                        protocol.disabled
+                      className={`flex flex-col items-center space-y-2 p-3 rounded-lg border-2 transition-colors ${protocol.disabled
                           ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
                           : formData.protocolPreferences?.primary === protocol.value
                             ? `${context === 'individual' ? 'border-blue-500 bg-blue-50' : 'border-orange-500 bg-orange-50'}`
                             : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
-                      <protocol.icon className={`w-5 h-5 ${
-                        protocol.disabled
+                      <protocol.icon className={`w-5 h-5 ${protocol.disabled
                           ? 'text-gray-400'
                           : formData.protocolPreferences?.primary === protocol.value
                             ? `${context === 'individual' ? 'text-blue-600' : 'text-orange-600'}`
                             : 'text-gray-500'
-                      }`} />
+                        }`} />
                       <span className="text-sm font-medium">{protocol.label}</span>
                     </button>
                   ))}
@@ -702,9 +689,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     step="0.1"
                     value={formData.routingPreferences?.maxFeePercent}
                     onChange={(e) => updateRoutingPreferences('maxFeePercent', parseFloat(e.target.value))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                     min="0.1"
                     max="5"
                   />
@@ -718,9 +704,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                   <select
                     value={formData.routingPreferences?.routingStrategy}
                     onChange={(e) => updateRoutingPreferences('routingStrategy', e.target.value)}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   >
                     <option value="fastest">Fastest</option>
                     <option value="cheapest">Cheapest</option>
@@ -738,16 +723,14 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                 </div>
                 <button
                   onClick={() => updateRoutingPreferences('privacyMode', !formData.routingPreferences?.privacyMode)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    formData.routingPreferences?.privacyMode 
-                      ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}` 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.routingPreferences?.privacyMode
+                      ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}`
                       : 'bg-gray-300'
-                  }`}
+                    }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      formData.routingPreferences?.privacyMode ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.routingPreferences?.privacyMode ? 'translate-x-6' : 'translate-x-1'
+                      }`}
                   />
                 </button>
               </div>
@@ -776,9 +759,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="number"
                     value={formData.conditions?.maxDailySpend}
                     onChange={(e) => updateConditions('maxDailySpend', parseInt(e.target.value))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   />
                 </div>
 
@@ -790,9 +772,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="number"
                     value={formData.conditions?.maxTransactionSize}
                     onChange={(e) => updateConditions('maxTransactionSize', parseInt(e.target.value))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   />
                 </div>
 
@@ -804,9 +785,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="number"
                     value={formData.conditions?.requireApprovalAbove}
                     onChange={(e) => updateConditions('requireApprovalAbove', parseInt(e.target.value))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   />
                 </div>
               </div>
@@ -821,9 +801,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="number"
                     value={formData.conditions?.maxLightningAmount}
                     onChange={(e) => updateConditions('maxLightningAmount', parseInt(e.target.value))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   />
                 </div>
 
@@ -835,9 +814,8 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     type="number"
                     value={formData.conditions?.maxCashuAmount}
                     onChange={(e) => updateConditions('maxCashuAmount', parseInt(e.target.value))}
-                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                      context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-                    }`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${context === 'individual' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                      }`}
                   />
                 </div>
 
@@ -870,16 +848,14 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     </div>
                     <button
                       onClick={() => updateConditions(toggle.key as string, !(formData.conditions as any)?.[toggle.key])}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        (formData.conditions as any)?.[toggle.key] 
-                          ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}` 
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${(formData.conditions as any)?.[toggle.key]
+                          ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}`
                           : 'bg-gray-300'
-                      }`}
+                        }`}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          (formData.conditions as any)?.[toggle.key] ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(formData.conditions as any)?.[toggle.key] ? 'translate-x-6' : 'translate-x-1'
+                          }`}
                       />
                     </button>
                   </div>
@@ -933,16 +909,14 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                     </div>
                     <button
                       onClick={() => updateNotificationSettings(notification.key as string, !(formData.notificationSettings as any)?.[notification.key])}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        (formData.notificationSettings as any)?.[notification.key] 
-                          ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}` 
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${(formData.notificationSettings as any)?.[notification.key]
+                          ? `${context === 'individual' ? 'bg-blue-600' : 'bg-orange-600'}`
                           : 'bg-gray-300'
-                      }`}
+                        }`}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          (formData.notificationSettings as any)?.[notification.key] ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(formData.notificationSettings as any)?.[notification.key] ? 'translate-x-6' : 'translate-x-1'
+                          }`}
                       />
                     </button>
                   </div>
@@ -967,11 +941,10 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
                           : [...current, method.value as any];
                         updateNotificationSettings('notificationMethods', updated);
                       }}
-                      className={`flex items-center justify-center space-x-2 p-3 rounded-lg border-2 transition-colors ${
-                        formData.notificationSettings?.notificationMethods?.includes(method.value as any)
+                      className={`flex items-center justify-center space-x-2 p-3 rounded-lg border-2 transition-colors ${formData.notificationSettings?.notificationMethods?.includes(method.value as any)
                           ? `${context === 'individual' ? 'border-blue-500 bg-blue-50' : 'border-orange-500 bg-orange-50'}`
                           : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <method.icon className="w-4 h-4" />
                       <span className="font-medium">{method.label}</span>
@@ -1004,11 +977,10 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
             </button>
             <button
               onClick={handleSave}
-              className={`flex items-center space-x-2 px-4 py-2 text-white rounded-lg transition-colors ${
-                context === 'individual' 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
+              className={`flex items-center space-x-2 px-4 py-2 text-white rounded-lg transition-colors ${context === 'individual'
+                  ? 'bg-blue-600 hover:bg-blue-700'
                   : 'bg-orange-600 hover:bg-orange-700'
-              }`}
+                }`}
             >
               <Save className="w-4 h-4" />
               <span>{existingSchedule ? 'Update' : 'Create'} Schedule</span>

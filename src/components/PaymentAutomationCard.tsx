@@ -23,7 +23,7 @@ import {
   PaymentRouting,
   PaymentSchedule,
   RecipientType
-} from '../lib/payment-automation';
+} from '../lib/payment-automation.js';
 
 interface PaymentAutomationCardProps {
   context: PaymentContext;

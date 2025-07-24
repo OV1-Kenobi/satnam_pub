@@ -4,7 +4,15 @@
  * Supports: NIP-07, NWC, OTP, NIP-05 only
  */
 
-import { supabase } from "../supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 // Privacy-first types (Nostr-only)
 export interface PrivateAuthUser {
@@ -77,7 +85,7 @@ export class SupabaseAuthAdapter {
 
   async isAvailable(): Promise<boolean> {
     try {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await (await import("../supabase")).supabase.auth.getSession();
       return !error;
     } catch {
       return false;
@@ -91,11 +99,11 @@ export class SupabaseAuthAdapter {
       }
 
       // Store Nostr data in Supabase user metadata
-      const { data, error } = await supabase.auth.signInAnonymously();
-      
+      const { data, error } = await (await import("../supabase")).supabase.auth.signInAnonymously();
+
       if (data.user) {
         // Update user metadata after sign in
-        await supabase.auth.updateUser({
+        await (await import("../supabase")).supabase.auth.updateUser({
           data: {
             pubkey: credentials.pubkey,
             npub: this.pubkeyToNpub(credentials.pubkey),
@@ -133,11 +141,11 @@ export class SupabaseAuthAdapter {
       // Parse NWC connection string to get pubkey
       const pubkey = this.parseNwcPubkey(credentials.connectionString);
 
-      const { data, error } = await supabase.auth.signInAnonymously();
-      
+      const { data, error } = await (await import("../supabase")).supabase.auth.signInAnonymously();
+
       if (data.user) {
         // Update user metadata after sign in
-        await supabase.auth.updateUser({
+        await (await import("../supabase")).supabase.auth.updateUser({
           data: {
             pubkey,
             npub: this.pubkeyToNpub(pubkey),
@@ -177,11 +185,11 @@ export class SupabaseAuthAdapter {
         return { success: false, error: "Invalid OTP code" };
       }
 
-      const { data, error } = await supabase.auth.signInAnonymously();
-      
+      const { data, error } = await (await import("../supabase")).supabase.auth.signInAnonymously();
+
       if (data.user) {
         // Update user metadata after sign in
-        await supabase.auth.updateUser({
+        await (await import("../supabase")).supabase.auth.updateUser({
           data: {
             identifier: credentials.identifier,
             authMethod: "otp",
@@ -220,11 +228,11 @@ export class SupabaseAuthAdapter {
         return { success: false, error: "Invalid NIP-05 identifier" };
       }
 
-      const { data, error } = await supabase.auth.signInAnonymously();
-      
+      const { data, error } = await (await import("../supabase")).supabase.auth.signInAnonymously();
+
       if (data.user) {
         // Update user metadata after sign in
-        await supabase.auth.updateUser({
+        await (await import("../supabase")).supabase.auth.updateUser({
           data: {
             pubkey,
             npub: this.pubkeyToNpub(pubkey),
@@ -258,7 +266,7 @@ export class SupabaseAuthAdapter {
       const {
         data: { session },
         error,
-      } = await supabase.auth.getSession();
+      } = await (await import("../supabase")).supabase.auth.getSession();
       if (error || !session) return null;
 
       return {
@@ -274,7 +282,7 @@ export class SupabaseAuthAdapter {
 
   async logout(): Promise<boolean> {
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await (await import("../supabase")).supabase.auth.signOut();
       return !error;
     } catch {
       return false;

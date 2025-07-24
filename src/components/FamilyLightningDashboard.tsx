@@ -1,17 +1,17 @@
 import {
-    AlertTriangle,
-    RefreshCw,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { copyToClipboard } from "../lib/utils";
-import { SatnamFamilyMember } from "../types/shared";
+import { copyToClipboard } from '../lib/utils.js';
+import { FamilyMember } from "../types/shared";
 import {
-    FamilyMembersSection,
-    InvoiceModal,
-    NodeStatusSection,
-    PaymentModal,
-    QRCodeModal,
-    TransactionHistorySection,
+  FamilyMembersSection,
+  InvoiceModal,
+  NodeStatusSection,
+  PaymentModal,
+  QRCodeModal,
+  TransactionHistorySection,
 } from "./FamilyLightningDashboard/index";
 import { NodeStatus, Transaction } from "./FamilyLightningDashboard/types";
 
@@ -20,7 +20,7 @@ interface FamilyLightningDashboardProps {
 }
 
 const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ familyId }) => {
-  const [familyMembers, setFamilyMembers] = useState<SatnamFamilyMember[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [nodeStatus, setNodeStatus] = useState<NodeStatus>({
     phoenixd: { connected: false, automatedLiquidity: false },
@@ -45,9 +45,9 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
         // In a real implementation, this would be an API call
         // const response = await fetch(`/api/family/members?familyId=${familyId}`);
         // const data = await response.json();
-        
+
         // Mock data for demonstration
-        const mockMembers: SatnamFamilyMember[] = [
+        const mockMembers: FamilyMember[] = [
           {
             id: "1",
             username: "Satoshi",
@@ -75,7 +75,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
           {
             id: "3",
             username: "Alice",
-            role: "child",
+            role: "offspring",
             lightningAddress: "alice@satnam.pub",
             balance: 45000,
             nip05Verified: false,
@@ -87,7 +87,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
           {
             id: "4",
             username: "Bob",
-            role: "child",
+            role: "offspring",
             lightningAddress: "bob@satnam.pub",
             balance: 15000,
             nip05Verified: false,
@@ -97,7 +97,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
             },
           },
         ];
-        
+
         setFamilyMembers(mockMembers);
         setIsLoading(false);
       } catch (err) {
@@ -117,7 +117,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
         // In a real implementation, this would be an API call
         // const response = await fetch(`/api/payments/history?familyId=${familyId}`);
         // const data = await response.json();
-        
+
         // Mock data for demonstration
         const mockTransactions: Transaction[] = [
           {
@@ -165,7 +165,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
             status: "completed",
           },
         ];
-        
+
         setTransactions(mockTransactions);
       } catch (err) {
         console.error("Error fetching transactions:", err);
@@ -182,7 +182,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
         // In a real implementation, this would be an API call
         // const response = await fetch(`/api/phoenixd/status`);
         // const data = await response.json();
-        
+
         // Mock data for demonstration
         const mockStatus: NodeStatus = {
           phoenixd: {
@@ -202,7 +202,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
             operational: true,
           },
         };
-        
+
         setNodeStatus(mockStatus);
       } catch (err) {
         console.error("Error fetching node status:", err);
@@ -210,7 +210,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
     };
 
     fetchNodeStatus();
-    
+
     // Set up polling for real-time updates
     const interval = setInterval(fetchNodeStatus, 30000);
     return () => clearInterval(interval);
@@ -276,7 +276,7 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
         <AlertTriangle className="h-8 w-8 text-red-400 mx-auto mb-4" />
         <p className="text-white font-bold mb-2">Failed to load Lightning Banking</p>
         <p className="text-red-200">{error}</p>
-        <button 
+        <button
           className="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto"
           onClick={() => window.location.reload()}
         >
@@ -298,9 +298,9 @@ const FamilyLightningDashboard: React.FC<FamilyLightningDashboardProps> = ({ fam
       </div>
 
       {/* Node Status Section */}
-      <NodeStatusSection 
-        nodeStatus={nodeStatus} 
-        familyMembers={familyMembers} 
+      <NodeStatusSection
+        nodeStatus={nodeStatus}
+        familyMembers={familyMembers}
       />
 
       {/* Family Members Section */}

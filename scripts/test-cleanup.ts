@@ -6,7 +6,7 @@
 
 import { promises as fs } from "fs";
 import { join } from "path";
-import { TestDbHelper } from "../lib/__tests__/test-db-helper";
+import { TestDbHelper } from '../lib/__tests__/test-db-helper.js';
 
 async function cleanupTestData(): Promise<void> {
   console.log("🧹 Starting test data cleanup...");

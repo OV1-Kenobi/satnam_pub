@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 import * as fs from "fs";
 import * as path from "path";
 import { Pool, PoolClient } from "pg";
@@ -23,7 +39,7 @@ const pool = new Pool({
   ssl: config.database.ssl
     ? {
         rejectUnauthorized: false, // Supabase uses valid certificates but this helps with connection issues
-        ca: process.env.DATABASE_CA_CERT,
+        ca: getEnvVar("DATABASE_CA_CERT"),
       }
     : undefined,
 });
@@ -71,7 +87,7 @@ async function testDatabaseConnection() {
     console.log("✅ PostgreSQL database connection established");
   } catch (err) {
     console.error("Database connection error:", err);
-    if (process.env.NODE_ENV === "production") {
+    if (getEnvVar("NODE_ENV") === "production") {
       console.error(
         "❌ Database connection failed in production - this is critical"
       );

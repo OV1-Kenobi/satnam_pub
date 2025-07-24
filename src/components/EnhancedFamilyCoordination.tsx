@@ -20,7 +20,7 @@ import {
   Users
 } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
-import { EnhancedPhoenixdManager } from '../lib/enhanced-phoenixd-manager';
+import { EnhancedPhoenixdManager } from '../lib/enhanced-phoenixd-manager.js';
 import { LiquidityIntelligenceSystem, LiquidityMetrics } from '../lib/liquidity-intelligence';
 import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
 

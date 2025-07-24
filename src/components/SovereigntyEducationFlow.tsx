@@ -327,14 +327,14 @@ export default function SovereigntyEducationFlow({
           <div
             key={stage.level}
             className={`rounded-xl p-6 border-2 transition-all ${stage.current
-                ? `border-${stage.color}-500 bg-${stage.color}-900/20`
-                : 'border-gray-700 bg-gray-800/30'
+              ? `border-${stage.color}-500 bg-${stage.color}-900/20`
+              : 'border-gray-700 bg-gray-800/30'
               }`}
           >
             <div className="flex items-start space-x-4">
               <div className={`p-3 rounded-lg ${stage.current
-                  ? `bg-${stage.color}-500/20 text-${stage.color}-400`
-                  : 'bg-gray-700/50 text-gray-400'
+                ? `bg-${stage.color}-500/20 text-${stage.color}-400`
+                : 'bg-gray-700/50 text-gray-400'
                 }`}>
                 {stage.icon}
               </div>
@@ -359,8 +359,8 @@ export default function SovereigntyEducationFlow({
                     <span
                       key={feature}
                       className={`px-3 py-1 rounded-full text-sm ${stage.current
-                          ? 'bg-gray-700/50 text-gray-200'
-                          : 'bg-gray-800/50 text-gray-400'
+                        ? 'bg-gray-700/50 text-gray-200'
+                        : 'bg-gray-800/50 text-gray-400'
                         }`}
                     >
                       {feature}

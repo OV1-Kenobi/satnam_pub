@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Privacy-Enhanced Database Migration Runner
  * @description Executes SQL migration for privacy-first family nostr protection
@@ -23,13 +39,13 @@ try {
 
 const supabaseUrl =
   config?.supabase?.url ||
-  process.env.SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
+  getEnvVar("SUPABASE_URL") ||
+  getEnvVar("NEXT_PUBLIC_SUPABASE_URL");
 
 const supabaseServiceKey =
   config?.supabase?.serviceRoleKey ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY;
+  getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
+  getEnvVar("SUPABASE_SERVICE_KEY");
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error("❌ Missing Supabase configuration!");
@@ -264,7 +280,7 @@ async function checkPrivacyHealth() {
     }
 
     // Check privacy configuration
-    const masterKey = process.env.PRIVACY_MASTER_KEY;
+    const masterKey = getEnvVar("PRIVACY_MASTER_KEY");
     if (
       masterKey &&
       masterKey !==
@@ -349,7 +365,7 @@ async function main() {
     console.log("");
 
     // Ask for confirmation in production
-    if (process.env.NODE_ENV === "production") {
+    if (getEnvVar("NODE_ENV") === "production") {
       console.log("⚠️  Production environment detected!");
       console.log("   This migration will create new encrypted tables and");
       console.log("   may require data migration from existing tables.");

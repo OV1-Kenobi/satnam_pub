@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Application Startup Security Validator
  * @description Ensures all security protocols are properly configured before application starts
@@ -26,7 +42,7 @@ export async function validateSecurityOnStartup(
 ): Promise<boolean> {
   const finalConfig: StartupValidationConfig = {
     enforceGoldStandard: true,
-    exitOnFailure: process.env.NODE_ENV === "production",
+    exitOnFailure: getEnvVar("NODE_ENV") === "production",
     logLevel: "detailed",
     validateEnvironment: true,
     ...config,
@@ -134,11 +150,11 @@ function validateEnvironmentSafety(): boolean {
   });
 
   // Check for development warnings in production
-  if (process.env.NODE_ENV === "production") {
-    if (process.env.DEBUG_MODE === "true") {
+  if (getEnvVar("NODE_ENV") === "production") {
+    if (getEnvVar("DEBUG_MODE") === "true") {
       warnings.push("DEBUG_MODE is enabled in production");
     }
-    if (process.env.SQL_LOGGING === "true") {
+    if (getEnvVar("SQL_LOGGING") === "true") {
       warnings.push("SQL_LOGGING is enabled in production");
     }
   }
@@ -252,9 +268,9 @@ export async function validateArgon2Usage(): Promise<boolean> {
     }
 
     // Check if environment variables are being read
-    const memCost = process.env.ARGON2_MEMORY_COST;
-    const timeCost = process.env.ARGON2_TIME_COST;
-    const parallelism = process.env.ARGON2_PARALLELISM;
+    const memCost = getEnvVar("ARGON")2_MEMORY_COST;
+    const timeCost = getEnvVar("ARGON")2_TIME_COST;
+    const parallelism = getEnvVar("ARGON")2_PARALLELISM;
 
     console.log(`📊 Current Argon2 Configuration:`);
     console.log(

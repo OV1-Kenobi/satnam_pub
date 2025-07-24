@@ -1,3 +1,18 @@
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ import.meta;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 // lib/lightning/custom-node-service.ts
 /**
  * CUSTOM LIGHTNING NODE SERVICE
@@ -84,11 +99,11 @@ export class CustomLightningNodeService {
    */
   static async verifyCustomNode(
     userId: string,
-    nodeConfig: CustomLightningNodeConfig,
+    nodeConfig: CustomLightningNodeConfig
   ): Promise<CustomNodeVerificationResult> {
     try {
       console.log(
-        `🔍 Verifying custom ${nodeConfig.nodeType} node for user: ${userId}`,
+        `🔍 Verifying custom ${nodeConfig.nodeType} node for user: ${userId}`
       );
 
       let verificationResult: CustomNodeVerificationResult;
@@ -140,7 +155,7 @@ export class CustomLightningNodeService {
    * Verify LND Node Connection
    */
   private static async verifyLNDNode(
-    config: CustomLightningNodeConfig,
+    config: CustomLightningNodeConfig
   ): Promise<CustomNodeVerificationResult> {
     try {
       console.log("🔍 Verifying LND node connection...");
@@ -174,7 +189,9 @@ export class CustomLightningNodeService {
       };
     } catch (error) {
       throw new Error(
-        `LND verification failed: ${error instanceof Error ? error.message : String(error)}`,
+        `LND verification failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -183,7 +200,7 @@ export class CustomLightningNodeService {
    * Verify Core Lightning Node Connection
    */
   private static async verifyCLNNode(
-    config: CustomLightningNodeConfig,
+    config: CustomLightningNodeConfig
   ): Promise<CustomNodeVerificationResult> {
     try {
       console.log("🔍 Verifying Core Lightning node connection...");
@@ -208,7 +225,9 @@ export class CustomLightningNodeService {
       };
     } catch (error) {
       throw new Error(
-        `CLN verification failed: ${error instanceof Error ? error.message : String(error)}`,
+        `CLN verification failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -217,7 +236,7 @@ export class CustomLightningNodeService {
    * Verify LNBits Instance Connection
    */
   private static async verifyLNBitsNode(
-    config: CustomLightningNodeConfig,
+    config: CustomLightningNodeConfig
   ): Promise<CustomNodeVerificationResult> {
     try {
       console.log("🔍 Verifying LNBits instance connection...");
@@ -246,7 +265,9 @@ export class CustomLightningNodeService {
       };
     } catch (error) {
       throw new Error(
-        `LNBits verification failed: ${error instanceof Error ? error.message : String(error)}`,
+        `LNBits verification failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -255,7 +276,7 @@ export class CustomLightningNodeService {
    * Verify BTCPay Server Node Connection
    */
   private static async verifyBTCPayNode(
-    config: CustomLightningNodeConfig,
+    config: CustomLightningNodeConfig
   ): Promise<CustomNodeVerificationResult> {
     try {
       console.log("🔍 Verifying BTCPay Server connection...");
@@ -283,7 +304,9 @@ export class CustomLightningNodeService {
       };
     } catch (error) {
       throw new Error(
-        `BTCPay verification failed: ${error instanceof Error ? error.message : String(error)}`,
+        `BTCPay verification failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -292,7 +315,7 @@ export class CustomLightningNodeService {
    * Verify Eclair Node Connection
    */
   private static async verifyEclairNode(
-    config: CustomLightningNodeConfig,
+    config: CustomLightningNodeConfig
   ): Promise<CustomNodeVerificationResult> {
     try {
       console.log("🔍 Verifying Eclair node connection...");
@@ -313,7 +336,9 @@ export class CustomLightningNodeService {
       };
     } catch (error) {
       throw new Error(
-        `Eclair verification failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Eclair verification failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -326,7 +351,7 @@ export class CustomLightningNodeService {
     userId: string,
     username: string,
     nodeConfig: CustomLightningNodeConfig,
-    customDomain?: string,
+    customDomain?: string
   ): Promise<{
     success: boolean;
     lightningAddress: string;
@@ -336,7 +361,7 @@ export class CustomLightningNodeService {
   }> {
     try {
       console.log(
-        `⚡ Setting up custom Lightning infrastructure for: ${userId}`,
+        `⚡ Setting up custom Lightning infrastructure for: ${userId}`
       );
 
       // First verify the node
@@ -353,7 +378,7 @@ export class CustomLightningNodeService {
 
       // Generate Lightning address
       const domain =
-        customDomain || process.env.LIGHTNING_DOMAIN || "satnam.pub";
+        customDomain || getEnvVar("LIGHTNING_DOMAIN") || "satnam.pub";
       const lightningAddress = `${username}@${domain}`;
 
       // Determine setup type
@@ -363,14 +388,14 @@ export class CustomLightningNodeService {
 
       // Encrypt node credentials
       const encryptionKey =
-        process.env.CUSTOM_NODE_ENCRYPTION_KEY ??
-        process.env.SERVICE_ENCRYPTION_KEY;
+        getEnvVar("CUSTOM_NODE_ENCRYPTION_KEY") ??
+        getEnvVar("SERVICE_ENCRYPTION_KEY");
       if (!encryptionKey) {
         throw new Error("Missing encryption key for custom-node credentials");
       }
       const encryptedCredentials = PrivacyManager.encryptServiceConfig(
         nodeConfig.credentials,
-        encryptionKey,
+        encryptionKey
       );
 
       // Setup using atomic database function
@@ -389,22 +414,22 @@ export class CustomLightningNodeService {
           p_is_custom_node: true,
           p_custom_domain: customDomain || null,
           p_connection_url: CustomLightningNodeService.stripSecrets(
-            nodeConfig.connectionUrl,
+            nodeConfig.connectionUrl
           ),
           p_encrypted_node_credentials: encryptedCredentials,
           p_auth_method: nodeConfig.authMethod,
           p_is_testnet: nodeConfig.isTestnet || false,
-        },
+        }
       );
 
       if (atomicError) {
         throw new Error(
-          `Custom Lightning setup failed: ${atomicError.message}`,
+          `Custom Lightning setup failed: ${atomicError.message}`
         );
       }
 
       console.log(
-        `✅ Custom Lightning infrastructure setup completed: ${setupType}`,
+        `✅ Custom Lightning infrastructure setup completed: ${setupType}`
       );
 
       return {
@@ -435,7 +460,7 @@ export class CustomLightningNodeService {
   private static async logNodeVerification(
     userId: string,
     nodeConfig: CustomLightningNodeConfig,
-    result: CustomNodeVerificationResult,
+    result: CustomNodeVerificationResult
   ): Promise<void> {
     try {
       const { error } = await supabase
@@ -444,7 +469,7 @@ export class CustomLightningNodeService {
           user_id: userId,
           node_type: nodeConfig.nodeType,
           connection_url: CustomLightningNodeService.stripSecrets(
-            nodeConfig.connectionUrl,
+            nodeConfig.connectionUrl
           ),
           verification_status: result.success ? "success" : "failed",
           verification_details: {

@@ -1,7 +1,7 @@
 // lib/examples/privacy-client-example.ts
 // Example of how clients should interact with the privacy-first API
 
-import { PrivacyManager } from "../crypto/privacy-manager";
+import { PrivacyManager } from '../crypto/privacy-manager.js';
 
 export class PrivacyClientExample {
   /**

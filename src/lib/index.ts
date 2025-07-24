@@ -28,7 +28,8 @@ export * from "./enhanced-family-coordinator";
 export * from "./enhanced-phoenixd-manager";
 // Remove export * from './family-liquidity-manager' to avoid LiquidityStatus duplicate
 // export * from "./family-liquidity-manager";
-export * from "./family-phoenixd-manager";
+// DEPRECATED: family-phoenixd-manager.ts consolidated into enhanced-phoenixd-manager.ts
+// export * from "./family-phoenixd-manager";
 export * from "./internal-lightning-bridge";
 export * from "./liquidity-intelligence";
 export * from "./phoenixd-client";

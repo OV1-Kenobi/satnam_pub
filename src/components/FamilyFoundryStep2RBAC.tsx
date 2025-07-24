@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Shield, Plus, X, ArrowLeft, ArrowRight, Crown, Users, User, Baby } from 'lucide-react';
-import { RBACDefinition } from '../lib/api/family-foundry';
+import { RBACDefinition } from '../lib/api/family-foundry.js';
 
 interface FamilyFoundryStep2RBACProps {
   rbac: RBACDefinition;

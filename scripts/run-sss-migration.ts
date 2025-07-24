@@ -1,4 +1,19 @@
 /**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ import.meta;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
+/**
  * @fileoverview Shamir Secret Sharing Migration Runner
  * @description Sets up complete SSS infrastructure for family Nostr key management
  */
@@ -258,7 +273,8 @@ async function runSSSMigration(): Promise<void> {
     let config: any = {};
     try {
       const configModule = await import("../config");
-      config = configModule.config || configModule.default || configModule;
+      config =
+        configModule.config || (configModule as any).default || configModule;
     } catch {
       console.log(
         "ℹ️  No config file found, using environment variables directly"
@@ -269,13 +285,13 @@ async function runSSSMigration(): Promise<void> {
     // Read Supabase configuration with robust fallback
     const supabaseUrl =
       config?.supabase?.url ||
-      process.env.SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
+      getEnvVar("SUPABASE_URL") ||
+      getEnvVar("NEXT_PUBLIC_SUPABASE_URL");
 
     const supabaseServiceKey =
       config?.supabase?.serviceRoleKey ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_SERVICE_KEY;
+      getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
+      getEnvVar("SUPABASE_SERVICE_KEY");
 
     console.log("🔧 Supabase Configuration Check:");
     console.log(`   URL: ${supabaseUrl ? "✅ Found" : "❌ Missing"}`);
@@ -422,7 +438,8 @@ async function runSSSHealthCheck() {
     let config: any = {};
     try {
       const configModule = await import("../config");
-      config = configModule.config || configModule.default || configModule;
+      config =
+        configModule.config || (configModule as any).default || configModule;
     } catch {
       config = {};
     }
@@ -430,13 +447,13 @@ async function runSSSHealthCheck() {
     // Read Supabase configuration with robust fallback
     const supabaseUrl =
       config?.supabase?.url ||
-      process.env.SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
+      getEnvVar("SUPABASE_URL") ||
+      getEnvVar("NEXT_PUBLIC_SUPABASE_URL");
 
     const supabaseServiceKey =
       config?.supabase?.serviceRoleKey ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_SERVICE_KEY;
+      getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
+      getEnvVar("SUPABASE_SERVICE_KEY");
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error("❌ Missing Supabase configuration for health check!");
@@ -526,7 +543,7 @@ async function runSSSHealthCheck() {
     }
 
     // Check SSS configuration
-    const masterKey = process.env.PRIVACY_MASTER_KEY;
+    const masterKey = getEnvVar("PRIVACY_MASTER_KEY");
     if (
       masterKey &&
       masterKey !==
@@ -781,7 +798,7 @@ async function main() {
     console.log("   • Emergency Recovery Procedures");
     console.log("");
 
-    if (process.env.NODE_ENV === "production" && !args.includes("--force")) {
+    if (getEnvVar("NODE_ENV") === "production" && !args.includes("--force")) {
       console.log("⚠️  Production environment detected!");
       console.log("   Use --force flag to proceed with migration.");
       return;

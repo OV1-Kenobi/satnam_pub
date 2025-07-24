@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Lightning Health Check Script - Critical for Production Monitoring
 
-import { LightningClient } from "../lib/lightning-client";
+import { LightningClient } from "../lib/lightning-client.js";
 
 interface HealthMetrics {
   timestamp: string;
@@ -62,7 +62,7 @@ class LightningHealthMonitor {
         metrics.walletCount = wallets.length;
         metrics.totalBalance = wallets.reduce(
           (sum, wallet) => sum + wallet.balance,
-          0,
+          0
         );
 
         if (wallets.length === 0) {
@@ -73,12 +73,14 @@ class LightningHealthMonitor {
         const lowBalanceWallets = wallets.filter((w) => w.balance < 1000); // Less than 1000 sats
         if (lowBalanceWallets.length > 0) {
           metrics.warnings.push(
-            `${lowBalanceWallets.length} wallets have low balance (<1000 sats)`,
+            `${lowBalanceWallets.length} wallets have low balance (<1000 sats)`
           );
         }
       } catch (error) {
         metrics.errors.push(
-          `Wallet operation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+          `Wallet operation failed: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
         );
         metrics.nodeStatus = "degraded";
       }
@@ -86,25 +88,31 @@ class LightningHealthMonitor {
       // Test privacy service health
       try {
         const privacyHealth = await this.lightningClient.checkPrivacyHealth();
-        metrics.privacyHealth = privacyHealth;
+        metrics.privacyHealth = privacyHealth as any;
 
-        if (!privacyHealth.available) {
+        if (!(privacyHealth as any).available) {
           metrics.warnings.push(
-            "Privacy service (LNProxy) is not available - payments will not have privacy protection",
+            "Privacy service (LNProxy) is not available - payments will not have privacy protection"
           );
-        } else if (privacyHealth.responseTime > 3000) {
+        } else if ((privacyHealth as any).responseTime > 3000) {
           metrics.warnings.push(
-            `Privacy service slow response: ${privacyHealth.responseTime}ms`,
+            `Privacy service slow response: ${
+              (privacyHealth as any).responseTime
+            }ms`
           );
         }
       } catch (error) {
         metrics.warnings.push(
-          `Privacy health check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+          `Privacy health check failed: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
         );
       }
     } catch (error) {
       metrics.errors.push(
-        `Node health check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Node health check failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
       metrics.responseTime = Date.now() - startTime;
     }
@@ -124,11 +132,11 @@ class LightningHealthMonitor {
       metrics.nodeStatus === "healthy"
         ? "🟢"
         : metrics.nodeStatus === "degraded"
-          ? "🟡"
-          : "🔴";
+        ? "🟡"
+        : "🔴";
 
     console.log(
-      `${statusEmoji} Node Status: ${metrics.nodeStatus.toUpperCase()}`,
+      `${statusEmoji} Node Status: ${metrics.nodeStatus.toUpperCase()}`
     );
     console.log(`⏱️  Response Time: ${metrics.responseTime}ms`);
     console.log(`💰 Total Wallets: ${metrics.walletCount}`);
@@ -138,7 +146,9 @@ class LightningHealthMonitor {
     if (metrics.privacyHealth) {
       const privacyEmoji = metrics.privacyHealth.available ? "🟢" : "🔴";
       console.log(
-        `${privacyEmoji} Privacy Service: ${metrics.privacyHealth.available ? "Available" : "Unavailable"} (${metrics.privacyHealth.responseTime}ms)`,
+        `${privacyEmoji} Privacy Service: ${
+          metrics.privacyHealth.available ? "Available" : "Unavailable"
+        } (${metrics.privacyHealth.responseTime}ms)`
       );
     }
 

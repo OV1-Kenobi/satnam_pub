@@ -499,7 +499,7 @@ netlify/functions/      # Serverless functions
 ├── auth/
 │   ├── challenge.ts
 │   ├── nip07-signin.ts
-│   └── otp-verify.ts
+│   └── otp-verify.js
 ├── family/
 │   ├── members.ts
 │   └── treasury.ts
@@ -729,6 +729,7 @@ copies or substantial portions of the Software.
   - [Lightning Integration](docs/LIGHTNING_ADDRESSES.md)
   - [PhoenixD Integration](docs/PHOENIXD_INTEGRATION.md)
   - [Privacy Protection](docs/PRIVACY-PROTECTION.md)
+  - [Individual Wallet API](docs/INDIVIDUAL_WALLET_API.md) - **NEW** Individual Wallet Sovereignty API reference
 - **GitHub Issues**: Report bugs and request features
 - **Community**: Join our discussions on Nostr
 - **Email**: support@satnam.pub

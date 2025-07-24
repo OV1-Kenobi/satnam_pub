@@ -65,8 +65,8 @@ CREATE TABLE guardian_privacy_approvals (
 
 **Individual API**:
 
-- `GET /api/individual/privacy-wallet` - Wallet with privacy settings
-- `POST /api/individual/privacy-wallet` - Update privacy preferences
+- `GET /api/individual/wallet` - Unified wallet with privacy settings (privacy-enhanced)
+- `POST /api/individual/wallet` - Update privacy preferences and spending limits
 - `GET /api/individual/privacy-metrics` - Privacy usage analytics
 
 #### 2.2 Enhanced Request/Response Types

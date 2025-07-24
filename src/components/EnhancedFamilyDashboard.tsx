@@ -29,7 +29,7 @@ import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
 
 // Import consolidated types
 import { EnhancedFamilyTreasury } from '../../types/family';
-import { FamilyMember } from '../types/shared';
+import { FamilyMember } from '../../types/shared';
 
 interface EnhancedFamilyDashboardProps {
   onBack: () => void;

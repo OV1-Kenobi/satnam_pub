@@ -5,8 +5,17 @@
  * Shows cleanup statistics and manual trigger options
  */
 
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import React, { useEffect, useState } from 'react';
+
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import('../../lib/supabase');
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 interface CleanupStats {
   totalCredentials: number;
@@ -28,8 +37,9 @@ export const CredentialCleanupMonitor: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Get credential statistics
-      const { data: credentials, error: credentialsError } = await supabase
+      // Get credential statistics using lazy client
+      const client = await getSupabaseClient();
+      const { data: credentials, error: credentialsError } = await client
         .from('nostr_credential_status')
         .select('*');
 
@@ -40,9 +50,9 @@ export const CredentialCleanupMonitor: React.FC = () => {
       const now = new Date();
       const stats: CleanupStats = {
         totalCredentials: credentials?.length || 0,
-        activeCredentials: credentials?.filter(c => c.status === 'active').length || 0,
-        expiredCredentials: credentials?.filter(c => c.status === 'expired').length || 0,
-        revokedCredentials: credentials?.filter(c => c.status === 'revoked').length || 0,
+        activeCredentials: credentials?.filter((c: any) => c.status === 'active').length || 0,
+        expiredCredentials: credentials?.filter((c: any) => c.status === 'expired').length || 0,
+        revokedCredentials: credentials?.filter((c: any) => c.status === 'revoked').length || 0,
       };
 
       setStats(stats);
@@ -60,7 +70,8 @@ export const CredentialCleanupMonitor: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      const { data, error } = await supabase.rpc('cleanup_expired_nostr_credentials');
+      const client = await getSupabaseClient();
+      const { data, error } = await client.rpc('cleanup_expired_nostr_credentials');
 
       if (error) {
         throw new Error(`Cleanup failed: ${error.message}`);
@@ -154,7 +165,7 @@ export const CredentialCleanupMonitor: React.FC = () => {
               Total Credentials
             </div>
           </div>
-          
+
           <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">
               {stats.activeCredentials}
@@ -163,7 +174,7 @@ export const CredentialCleanupMonitor: React.FC = () => {
               Active
             </div>
           </div>
-          
+
           <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
             <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
               {stats.expiredCredentials}
@@ -172,7 +183,7 @@ export const CredentialCleanupMonitor: React.FC = () => {
               Expired
             </div>
           </div>
-          
+
           <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
             <div className="text-2xl font-bold text-red-600 dark:text-red-400">
               {stats.revokedCredentials}

@@ -9,7 +9,7 @@
  */
 
 import QRCode from 'qrcode';
-import { config } from '../../lib/config-manager.js';
+import { config } from '../../config.js';
 import db from '../../lib/db';
 
 export default async function handler(req, res) {
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     }
 
     // Generate the invitation URL (Master Context compliant)
-    const baseUrl = await config.getAppBaseUrl();
+    const baseUrl = config.api.baseUrl;
     const invitationUrl = `${baseUrl}?invite=${token}`;
     
     // Generate QR code as PNG data URL

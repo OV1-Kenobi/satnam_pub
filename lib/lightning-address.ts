@@ -10,11 +10,8 @@
  * ✅ Integration with unified family banking infrastructure
  */
 
-import {
-  getFamilyMember,
-  getFamilyMembers,
-  type FamilyMember,
-} from "./family-api";
+import type { FamilyMember } from "./family-api.d.ts";
+import { getFamilyMember, getFamilyMembers } from "./family-api.js";
 import { LightningClient } from "./lightning-client";
 // MASTER CONTEXT COMPLIANCE: Privacy operations handled by unified service
 // import { logPrivacyOperation } from "./privacy"; // Replaced with console logging for Master Context compliance

@@ -84,7 +84,7 @@ After deployment, verify these key features work:
 
 - `api/lnurl/[username].ts` - Lightning Address resolution
 - `api/family/enhanced-payment.ts` - Family payment processing
-- `api/phoenixd/payments.ts` - PhoenixD Lightning integration
+- `api/phoenixd/payments.js` - PhoenixD Lightning integration
 - `api/nostr/dual-mode-events.ts` - Nostr event handling
 
 ### Core Libraries

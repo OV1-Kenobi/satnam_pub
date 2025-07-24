@@ -1,6 +1,6 @@
 // Main components export file - All recovered components
 // Family Banking & Dashboard Components
-export { default as EnhancedFamilyDashboard } from "./EnhancedFamilyDashboard";
+export type { default as EnhancedFamilyDashboard } from "./EnhancedFamilyDashboard";
 export { default as FamilyFinancialsDashboard } from "./FamilyFinancialsDashboard";
 export { default as FamilyLightningDashboard } from "./FamilyLightningDashboard";
 export { default as FamilyLightningTreasury } from "./FamilyLightningTreasury";

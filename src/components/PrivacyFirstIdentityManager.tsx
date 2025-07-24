@@ -14,7 +14,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging';
-import { PrivacyFirstMessagingService } from '../lib/gift-wrapped-messaging/privacy-first-service';
+import { PrivacyFirstMessagingService } from '../lib/gift-wrapped-messaging/privacy-first-service.js';
 import { MESSAGING_CONFIG } from '../lib/gift-wrapped-messaging/privacy-first-service';
 import ContactsManagerModal from './ContactsManagerModal';
 

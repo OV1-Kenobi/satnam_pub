@@ -20,7 +20,7 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { formatSats } from '../../lib/utils';
+import { formatSats } from '../../lib/utils.js';
 import { PrivacyEnhancedApiService } from '../../services/privacyEnhancedApi';
 import { PrivacyLevel } from '../../types/privacy';
 import { FamilyMember, Transaction } from '../../types/shared';
@@ -212,10 +212,10 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                 </button>
               )}
               <div className="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                {memberData.username.charAt(0).toUpperCase()}
+                {(memberData.username || memberData.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">{memberData.username}'s Wallet</h1>
+                <h1 className="text-2xl font-bold text-white">{(memberData.username || memberData.name || 'Unknown User')}'s Wallet</h1>
                 <p className="text-purple-200 capitalize">{memberData.role} • Privacy-Enhanced</p>
               </div>
             </div>
@@ -251,8 +251,8 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white">Total Balance</h3>
                 <div className={`flex items-center space-x-2 text-sm px-3 py-1 rounded-full ${wallet.privacy_score >= 80 ? 'bg-green-500/20 text-green-400' :
-                    wallet.privacy_score >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-red-500/20 text-red-400'
+                  wallet.privacy_score >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-red-500/20 text-red-400'
                   }`}>
                   <Shield className="h-4 w-4" />
                   <span>{wallet.privacy_score}%</span>
@@ -375,26 +375,42 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-purple-200 text-sm">Daily Limit</span>
                       <span className="text-white font-semibold">
-                        {formatSats(memberData.spendingLimits.daily)} sats
+                        {memberData.spendingLimits.daily === -1 || memberData.spendingLimits.daily === undefined
+                          ? 'Unlimited'
+                          : `${formatSats(memberData.spendingLimits.daily)} sats`}
                       </span>
                     </div>
                     <div className="w-full bg-white/20 rounded-full h-2">
-                      <div className="bg-green-500 h-2 rounded-full" style={{ width: '35%' }} />
+                      <div className="bg-green-500 h-2 rounded-full" style={{
+                        width: memberData.spendingLimits.daily === -1 || memberData.spendingLimits.daily === undefined ? '100%' : '35%'
+                      }} />
                     </div>
-                    <div className="text-purple-300 text-xs mt-1">35% used today</div>
+                    <div className="text-purple-300 text-xs mt-1">
+                      {memberData.spendingLimits.daily === -1 || memberData.spendingLimits.daily === undefined
+                        ? 'Sovereign wallet - unlimited spending'
+                        : '35% used today'}
+                    </div>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-purple-200 text-sm">Weekly Limit</span>
                       <span className="text-white font-semibold">
-                        {formatSats(memberData.spendingLimits.weekly)} sats
+                        {memberData.spendingLimits.weekly === -1 || memberData.spendingLimits.weekly === undefined
+                          ? 'Unlimited'
+                          : `${formatSats(memberData.spendingLimits.weekly)} sats`}
                       </span>
                     </div>
                     <div className="w-full bg-white/20 rounded-full h-2">
-                      <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '62%' }} />
+                      <div className="bg-yellow-500 h-2 rounded-full" style={{
+                        width: memberData.spendingLimits.weekly === -1 || memberData.spendingLimits.weekly === undefined ? '100%' : '62%'
+                      }} />
                     </div>
-                    <div className="text-purple-300 text-xs mt-1">62% used this week</div>
+                    <div className="text-purple-300 text-xs mt-1">
+                      {memberData.spendingLimits.weekly === -1 || memberData.spendingLimits.weekly === undefined
+                        ? 'Sovereign wallet - unlimited spending'
+                        : '62% used this week'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -445,8 +461,8 @@ const PrivacyEnhancedIndividualDashboard: React.FC<PrivacyEnhancedIndividualDash
 
                     <div className="flex items-center justify-between">
                       <div className={`flex items-center space-x-2 text-xs px-2 py-1 rounded-full ${tx.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                          tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-red-500/20 text-red-400'
+                        tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                          'bg-red-500/20 text-red-400'
                         }`}>
                         <CheckCircle className="h-3 w-3" />
                         <span className="capitalize">{tx.status}</span>

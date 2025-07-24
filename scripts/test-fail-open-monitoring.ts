@@ -8,7 +8,7 @@ import {
   getFailOpenMetrics,
   monitorFailOpenScenarios,
   resetFailOpenMetrics,
-} from "../lib/security/rate-limiter";
+} from '../lib/security/rate-limiter.js';
 
 async function testFailOpenMonitoring() {
   console.log("🧪 Testing Fail-Open Monitoring System");

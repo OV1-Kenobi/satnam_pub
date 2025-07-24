@@ -1,8 +1,24 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 // Backend Integration Test Script for Production Readiness
 
 import dotenv from "dotenv";
-import { FamilyAPI } from "../lib/family-api";
+import { FamilyAPI } from '../lib/family-api.js';
 import { LightningClient } from "../lib/lightning-client";
 
 // Load environment variables
@@ -102,10 +118,10 @@ class BackendTestSuite {
 
     // Test environment variable security
     const hasRequiredVars = !!(
-      process.env.VOLTAGE_LNBITS_URL &&
-      process.env.VOLTAGE_LNBITS_ADMIN_KEY &&
-      process.env.SUPABASE_URL &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY
+      getEnvVar("VOLTAGE_LNBITS_URL") &&
+      getEnvVar("VOLTAGE_LNBITS_ADMIN_KEY") &&
+      getEnvVar("SUPABASE_URL") &&
+      getEnvVar("SUPABASE_SERVICE_ROLE_KEY")
     );
 
     this.log({
@@ -118,10 +134,10 @@ class BackendTestSuite {
 
     // Test API key security (should not log actual keys)
     const hasSecureKeys = !!(
-      process.env.VOLTAGE_LNBITS_ADMIN_KEY &&
-      process.env.VOLTAGE_LNBITS_ADMIN_KEY !== "demo-key" &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY.length > 20
+      getEnvVar("VOLTAGE_LNBITS_ADMIN_KEY") &&
+      getEnvVar("VOLTAGE_LNBITS_ADMIN_KEY") !== "demo-key" &&
+      getEnvVar("SUPABASE_SERVICE_ROLE_KEY") &&
+      getEnvVar("SUPABASE_SERVICE_ROLE_KEY").length > 20
     );
 
     this.log({

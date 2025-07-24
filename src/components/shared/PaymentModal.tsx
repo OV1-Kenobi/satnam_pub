@@ -1,12 +1,12 @@
 import { RefreshCw, Send, Shield, XCircle } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { formatSats } from "../../lib/utils";
-import { SatnamFamilyMember } from "../../types/shared";
+import { formatSats } from '../../lib/utils.js';
+import { FamilyMember } from "../../types/shared";
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
   selectedMember: string | null;
   onSelectedMemberChange: (memberId: string) => void;
 }

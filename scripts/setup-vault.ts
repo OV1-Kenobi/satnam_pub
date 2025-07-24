@@ -1,7 +1,26 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Vault Setup Script
  * @description Sets up Supabase Vault with required secrets for secure deployment
+ *
+ * MASTER CONTEXT NOTE: This is a Node.js-only development script.
+ * Production code should use getEnvVar() pattern instead of dotenv.
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +28,7 @@ import { randomBytes } from "crypto";
 import { config } from "dotenv";
 import * as readline from "readline";
 
-// Load environment variables - .env.local should override .env
+// Load environment variables - .env.local should override .env (Node.js development script only)
 config({ path: ".env" }); // Load base config first
 config({ path: ".env.local", override: true }); // Override with local config
 
@@ -76,8 +95,8 @@ class VaultSetup {
     );
 
     // Check environment
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = getEnvVar("SUPABASE_URL");
+    const serviceRoleKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !serviceRoleKey) {
       console.error("❌ Missing Supabase credentials!");

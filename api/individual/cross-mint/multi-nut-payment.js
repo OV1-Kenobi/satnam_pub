@@ -199,46 +199,65 @@ async function getExternalMints(memberId, userRole) {
 
 /**
  * Multi-Nut Payment API Handler - Netlify Functions compatible with Master Context compliance
- * @param {Object} req - Request object
- * @param {Object} res - Response object
- * @returns {Promise<void>}
+ * @param {Object} event - Netlify Functions event object
+ * @param {Object} context - Netlify Functions context object
+ * @returns {Promise<{statusCode: number, headers: Object, body: string}>}
  */
-export default async function handler(req, res) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+export default async function handler(event, context) {
+  // CORS headers for Netlify Functions
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Content-Type": "application/json",
+  };
 
   // Handle preflight requests
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 200,
+      headers,
+      body: "",
+    };
   }
 
-  if (req.method !== "POST") {
-    res.setHeader("Allow", ["POST"]);
-    res.status(405).json({
-      success: false,
-      error: "Method not allowed",
-      meta: {
-        timestamp: new Date().toISOString(),
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      headers: {
+        ...headers,
+        "Allow": "POST",
       },
-    });
-    return;
-  }
-
-  try {
-    // Validate session and get user role for sovereignty enforcement
-    const authHeader = req.headers.authorization;
-    const sessionValidation = await SecureSessionManager.validateSessionFromHeader(authHeader);
-
-    if (!sessionValidation.isAuthenticated) {
-      res.status(401).json({
+      body: JSON.stringify({
         success: false,
-        error: "Authentication required for multi-nut payment operations",
+        error: "Method not allowed",
         meta: {
           timestamp: new Date().toISOString(),
         },
-      });
-      return;
+      }),
+    };
+  }
+
+  try {
+    // Parse request body for Netlify Functions
+    const requestBody = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+
+    // Validate session and get user role for sovereignty enforcement
+    const authHeader = event.headers.authorization || event.headers.Authorization;
+    const sessionValidation = await SecureSessionManager.validateSessionFromHeader(authHeader);
+
+    if (!sessionValidation.isAuthenticated) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: "Authentication required for multi-nut payment operations",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        }),
+      };
     }
 
     const {
@@ -248,18 +267,21 @@ export default async function handler(req, res) {
       memo,
       mintPreference,
       userRole,
-    } = req.body;
+    } = requestBody;
 
     // Validate required fields
     if (!memberId || !amount || !recipient) {
-      res.status(400).json({
-        success: false,
-        error: "Missing required fields: memberId, amount, and recipient are required",
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-      return;
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: "Missing required fields: memberId, amount, recipient",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        }),
+      };
     }
 
     // Validate amount
@@ -279,16 +301,19 @@ export default async function handler(req, res) {
     const sovereigntyValidation = validateMultiNutPaymentSovereignty(userRoleForValidation, amount);
 
     if (!sovereigntyValidation.authorized) {
-      res.status(403).json({
-        success: false,
-        error: sovereigntyValidation.message || "Multi-nut payment amount exceeds spending limits",
-        meta: {
-          timestamp: new Date().toISOString(),
-          spendingLimit: sovereigntyValidation.spendingLimit,
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: "Cross-mint payment not authorized for this role and amount",
           requiresApproval: sovereigntyValidation.requiresApproval,
-        },
-      });
-      return;
+          meta: {
+            timestamp: new Date().toISOString(),
+            spendingLimit: sovereigntyValidation.spendingLimit,
+          },
+        }),
+      };
     }
 
     // Generate privacy-preserving payment hash
@@ -347,9 +372,11 @@ export default async function handler(req, res) {
       }
     );
 
-    res.status(200).json({
-      success: true,
-      data: {
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
         paymentId,
         totalAmount: amount,
         mintSources: mockMintSources,
@@ -361,22 +388,26 @@ export default async function handler(req, res) {
           spendingLimit: sovereigntyValidation.spendingLimit,
           requiresApproval: sovereigntyValidation.requiresApproval,
         },
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+        },
+      }),
+    };
   } catch (error) {
     // PRIVACY: No sensitive error data logging
-    res.status(500).json({
-      success: false,
-      error: "Failed to create multi-nut payment",
-      meta: {
-        timestamp: new Date().toISOString(),
-        demo: true,
-      },
-    });
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        success: false,
+        error: "Failed to create multi-nut payment",
+        meta: {
+          timestamp: new Date().toISOString(),
+          demo: true,
+        },
+      }),
+    };
   }
 }
 

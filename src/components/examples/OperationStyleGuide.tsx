@@ -5,7 +5,7 @@ import {
     getOperationIconGradient,
     getOperationInputClasses,
     getOperationModalClasses
-} from '../../utils/operationStyles';
+} from '../../utils/operationStyles.js';
 import OperationTypeBadge from '../OperationTypeBadge';
 
 /**

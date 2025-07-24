@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, Plus, Minus, Users, DollarSign, Bitcoin, CreditCard, ArrowRight, Crown, Shield, User, Baby, Settings } from 'lucide-react';
-import { PaymentCascadeNode } from '../lib/payment-automation';
+import { PaymentCascadeNode } from '../lib/payment-automation.js';
 
 interface FamilyMember {
   id: string;

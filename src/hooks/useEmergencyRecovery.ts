@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { EmergencyRecoveryLib } from "../../lib/emergency-recovery";
+import { EmergencyRecoveryLib } from '../../lib/emergency-recovery.js';
 import { FederationRole } from "../types/auth";
 
 interface UseEmergencyRecoveryProps {

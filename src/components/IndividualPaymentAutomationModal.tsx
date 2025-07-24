@@ -1,16 +1,15 @@
-import React, { useState } from 'react';
-import { 
-  CreditCard, 
-  Calendar, 
-  Settings, 
-  Zap, 
-  Wallet, 
-  X,
-  Save,
+import {
   Clock,
-  Users
+  CreditCard,
+  Save,
+  Settings,
+  Users,
+  Wallet,
+  X,
+  Zap
 } from 'lucide-react';
-import { PaymentAutomationService, PaymentSchedule } from '../lib/payment-automation';
+import React, { useState } from 'react';
+import { PaymentSchedule } from '../lib/payment-automation.js';
 import ContactsSelector from './shared/ContactsSelector';
 
 interface Contact {
@@ -58,7 +57,7 @@ const IndividualPaymentAutomationModal: React.FC<IndividualPaymentAutomationModa
     recipientAddress: existingSchedule?.recipientAddress || '',
     recipientName: existingSchedule?.recipientName || '',
     amount: existingSchedule?.amount || 21000,
-    frequency: existingSchedule?.frequency || 'weekly',
+    frequency: (existingSchedule?.frequency === 'yearly' ? 'monthly' : existingSchedule?.frequency) || 'weekly',
     dayOfWeek: existingSchedule?.dayOfWeek || 1,
     dayOfMonth: existingSchedule?.dayOfMonth || 1,
     enabled: existingSchedule?.enabled ?? true,
@@ -159,11 +158,10 @@ const IndividualPaymentAutomationModal: React.FC<IndividualPaymentAutomationModa
             <button
               key={tab.id}
               onClick={() => setCurrentTab(tab.id as 'basic' | 'advanced')}
-              className={`flex items-center space-x-2 px-6 py-3 font-medium transition-colors ${
-                currentTab === tab.id
+              className={`flex items-center space-x-2 px-6 py-3 font-medium transition-colors ${currentTab === tab.id
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               <tab.icon className="w-4 h-4" />
               <span>{tab.label}</span>
@@ -269,17 +267,15 @@ const IndividualPaymentAutomationModal: React.FC<IndividualPaymentAutomationModa
                     <button
                       key={method.value}
                       onClick={() => setFormData(prev => ({ ...prev, paymentMethod: method.value as 'lightning' | 'ecash' }))}
-                      className={`flex items-center space-x-3 p-4 rounded-lg border-2 transition-colors ${
-                        formData.paymentMethod === method.value
+                      className={`flex items-center space-x-3 p-4 rounded-lg border-2 transition-colors ${formData.paymentMethod === method.value
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
-                      <method.icon className={`w-5 h-5 ${
-                        formData.paymentMethod === method.value
+                      <method.icon className={`w-5 h-5 ${formData.paymentMethod === method.value
                           ? 'text-blue-600'
                           : 'text-gray-500'
-                      }`} />
+                        }`} />
                       <div className="text-left">
                         <div className="font-medium text-gray-900">{method.label}</div>
                         <div className="text-sm text-gray-500">{method.description}</div>
@@ -333,14 +329,12 @@ const IndividualPaymentAutomationModal: React.FC<IndividualPaymentAutomationModa
                 </div>
                 <button
                   onClick={() => setFormData(prev => ({ ...prev, enabled: !prev.enabled }))}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    formData.enabled ? 'bg-blue-600' : 'bg-gray-200'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.enabled ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                      formData.enabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${formData.enabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
                   />
                 </button>
               </div>

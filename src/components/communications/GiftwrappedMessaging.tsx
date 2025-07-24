@@ -1,6 +1,6 @@
 // src/components/communications/GiftwrappedMessaging.tsx - KEEP EXISTING NAME
 import { useEffect, useState } from 'react';
-import { FamilyNostrFederation } from '../../lib/fedimint/family-nostr-federation';
+import { FamilyNostrFederation } from '../../lib/fedimint/family-nostr-federation.js';
 import { GiftwrappedCommunicationService, GiftWrappedMessage } from '../../lib/giftwrapped-communication-service';
 
 interface FamilyMember {
@@ -26,9 +26,10 @@ interface Contact {
 
 interface GiftwrappedMessagingProps {
   familyMember: FamilyMember;
+  isModal?: boolean;
 }
 
-export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps) {
+export function GiftwrappedMessaging({ familyMember, isModal = false }: GiftwrappedMessagingProps) {
   const [messages, setMessages] = useState<GiftWrappedMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -37,7 +38,7 @@ export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const federation = new FamilyNostrFederation();
   const giftWrapService = new GiftwrappedCommunicationService();
 
@@ -99,6 +100,49 @@ export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps
     setRecipient(contact.npub);
   };
 
+  if (isModal) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Background Image with Overlay */}
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: `url('/Nostr Zapstorm.jpg')`,
+          }}
+        >
+          {/* Gradient overlay for better text readability */}
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-purple-800/70 to-purple-600/60"></div>
+          {/* Additional overlay for enhanced contrast */}
+          <div className="absolute inset-0 bg-black/30"></div>
+        </div>
+
+        {/* Modal Content */}
+        <div className="relative z-10 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">
+              Private Family Communications
+            </h3>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              <span className="text-xs text-purple-200">End-to-End Encrypted</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-900/50 border border-red-500/50 rounded-lg">
+              <p className="text-sm text-red-200">{error}</p>
+            </div>
+          )}
+
+          {/* Rest of the modal content will be added here */}
+          <div className="text-white">
+            <p>Communications interface will be implemented here...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
@@ -122,7 +166,7 @@ export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps
         <h4 className="font-medium text-gray-900 mb-2">Contacts</h4>
         <div className="max-h-32 overflow-y-auto space-y-1">
           {contacts.map(contact => (
-            <div 
+            <div
               key={contact.id}
               onClick={() => handleContactSelect(contact)}
               className="flex items-center justify-between p-2 rounded cursor-pointer hover:bg-gray-50"
@@ -142,7 +186,7 @@ export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps
       {/* Privacy Level Selector */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Privacy Level</label>
-        <select 
+        <select
           value={selectedPrivacyLevel}
           onChange={(e) => setSelectedPrivacyLevel(e.target.value as 'standard' | 'enhanced' | 'maximum')}
           className="w-full p-2 border border-gray-300 rounded-lg text-sm"
@@ -168,8 +212,8 @@ export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps
             <p className="text-sm text-gray-700">{message.content}</p>
             <div className="flex items-center space-x-2 mt-1">
               <span className="text-xs text-purple-600">
-                {message.privacyLevel === 'maximum' ? '🔒 Gift Wrapped' : 
-                 message.privacyLevel === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'}
+                {message.privacyLevel === 'maximum' ? '🔒 Gift Wrapped' :
+                  message.privacyLevel === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'}
               </span>
               {message.deliveryMethod === 'delayed' && (
                 <span className="text-xs text-orange-600">⏰ Delayed</span>
@@ -202,7 +246,7 @@ export function GiftwrappedMessaging({ familyMember }: GiftwrappedMessagingProps
             <span className="text-sm text-gray-700">Group</span>
           </label>
         </div>
-        
+
         <div className="flex space-x-2">
           <textarea
             placeholder="Type your private message..."

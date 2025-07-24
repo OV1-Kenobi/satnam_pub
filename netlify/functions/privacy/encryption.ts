@@ -1,4 +1,19 @@
 /**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ import.meta;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
+/**
  * @fileoverview Privacy-First Encryption and Data Protection
  * @description Implements strong encryption for sensitive family data including
  * Nostr keys, usernames, and other personal information with zero-knowledge principles
@@ -6,7 +21,7 @@
 
 import * as crypto from "crypto";
 import { randomBytes } from "crypto";
-import { deriveEncryptionKey } from "../security.js";
+import { deriveEncryptionKey } from "../security";
 
 /**
  * Encryption configuration
@@ -24,7 +39,7 @@ const ENCRYPTION_CONFIG = {
  * Environment-based master key (should be set in production)
  */
 const getMasterKey = (): string => {
-  const masterKey = process.env.PRIVACY_MASTER_KEY;
+  const masterKey = getEnvVar("PRIVACY_MASTER_KEY");
   if (!masterKey) {
     console.warn(
       "⚠️  PRIVACY_MASTER_KEY not set. Using default key for development only!"
@@ -305,7 +320,13 @@ export async function encryptNpub(npub: string): Promise<{
       throw new Error("Invalid npub format");
     }
 
-    return await encryptSensitiveData(npub);
+    const result = await encryptSensitiveData(npub);
+    return {
+      encryptedNpub: result.encrypted,
+      salt: result.salt,
+      iv: result.iv,
+      tag: result.tag,
+    };
   } catch (error) {
     throw new Error(
       `Npub encryption failed: ${

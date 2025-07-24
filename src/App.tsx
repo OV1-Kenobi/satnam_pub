@@ -2,37 +2,33 @@ import {
   Bitcoin,
   BookOpen,
   ExternalLink,
-  Menu,
   Network,
   Users,
-  X,
-  Zap,
+  Zap
 } from "lucide-react";
 import { useState } from "react";
+import { ContactsManagerModal } from './components/ContactsManagerModal';
+import DynasticSovereignty from "./components/DynasticSovereignty";
 import EducationPlatform from "./components/EducationPlatform";
+import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import FamilyCoordination from "./components/FamilyCoordination";
 import FamilyDashboard from "./components/FamilyDashboard";
-import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
-import FamilyOnboarding from "./components/FamilyOnboarding";
 import FamilyFoundryWizard from "./components/FamilyFoundryWizard";
+import FamilyPaymentAutomationModal from "./components/FamilyPaymentAutomationModal";
+import FeaturesOverview from "./components/FeaturesOverview";
 import IdentityForge from "./components/IdentityForge";
+import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
+import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
-import EmergencyRecoveryModal from './components/EmergencyRecoveryModal';
-import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
-import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
-import FeaturesOverview from "./components/FeaturesOverview";
-import DynasticSovereignty from "./components/DynasticSovereignty";
-import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
 import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
-import { useAuth } from "./hooks/useAuth";
-import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
+import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
+import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
-import { ErrorBoundary } from './components/ErrorBoundary';
-import FamilyPaymentAutomationModal from "./components/FamilyPaymentAutomationModal";
-import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
-import { ContactsManagerModal } from './components/ContactsManagerModal';
+import { useAuth } from "./hooks/useAuth";
+import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 
 function App() {
   const [currentView, setCurrentView] = useState<
@@ -68,12 +64,15 @@ function App() {
   const [showFamilyFoundryAuthModal, setShowFamilyFoundryAuthModal] = useState(false);
   const [showContactsModal, setShowContactsModal] = useState(false);
   const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'automated-payments' | 'contacts' | 'ln-node-management' | null>(null);
-  
+
   // Authentication hook
   const { authenticated, loading, familyId } = useAuth();
-  
-  // Initialize credential cleanup system
-  useCredentialCleanup();
+
+  // Initialize credential cleanup system (only after authentication)
+  useCredentialCleanup({
+    enabled: authenticated, // Only run when user is authenticated
+    autoRun: true // Auto-run cleanup when enabled
+  });
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
@@ -141,7 +140,7 @@ function App() {
 
     // Check if user is part of a family federation
     const isFamilyMember = familyId && familyId !== 'family-123'; // family-123 is the mock value
-    
+
     if (isFamilyMember) {
       // User is part of a family federation - show family payment modal
       setCurrentView('family-payment-automation');
@@ -241,14 +240,18 @@ function App() {
       >
         <FamilyFederationAuthProvider>
           <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <IndividualFinancesDashboard 
+            <IndividualFinancesDashboard
               memberId="current-user"
               memberData={{
+                id: "current-user",
                 username: "Current User",
+                auth_hash: "mock-auth-hash",
+                lightningAddress: "user@satnam.pub",
                 role: "adult",
-                lightningAddress: "user@satnam.pub"
+                is_discoverable: false,
+                created_at: Date.now()
               }}
-              onBack={() => setCurrentView("landing")} 
+              onBack={() => setCurrentView("landing")}
             />
           </FamilyFederationAuthWrapper>
         </FamilyFederationAuthProvider>
@@ -375,8 +378,8 @@ function App() {
 
   if (currentView === "dynastic-sovereignty") {
     return (
-      <DynasticSovereignty 
-        onBack={() => setCurrentView("landing")} 
+      <DynasticSovereignty
+        onBack={() => setCurrentView("landing")}
         onStartFoundry={() => handleProtectedRoute("family-foundry")}
         onAuthRequired={() => setShowFamilyFoundryAuthModal(true)}
       />
@@ -414,7 +417,7 @@ function App() {
                   lightningAddress: "guardian@satnam.pub"
                 },
                 {
-                  id: "member-2", 
+                  id: "member-2",
                   name: "Steward",
                   role: "steward",
                   avatar: "🛡️",
@@ -750,7 +753,7 @@ function App() {
       >
         <FamilyFederationAuthProvider>
           <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <GiftwrappedMessaging 
+            <GiftwrappedMessaging
               familyMember={{
                 id: "current-user",
                 npub: "npub1placeholder",
@@ -787,14 +790,14 @@ function App() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Hero Background Image with Overlay */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage: `url('/Bitcoin Citadel Valley.jpg')`,
         }}
       >
         {/* Gradient overlay for better text readability */}
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-purple-800/70 to-purple-600/60"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/70 via-purple-800/60 to-purple-600/50"></div>
         {/* Additional overlay for enhanced contrast */}
         <div className="absolute inset-0 bg-black/20"></div>
       </div>
@@ -906,17 +909,17 @@ function App() {
               <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
-                          <button
-                onClick={() => setCurrentView("dynastic-sovereignty")}
-                className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl border-2 border-black"
-              >
-                <img
-                  src="/Rebuilding_Camelot_logo__transparency_v3.png"
-                  alt="Rebuilding Camelot"
-                  className="h-5 w-5"
-                />
-                <span>Family Foundry</span>
-              </button>
+            <button
+              onClick={() => setCurrentView("dynastic-sovereignty")}
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl border-2 border-black"
+            >
+              <img
+                src="/Rebuilding_Camelot_logo__transparency_v3.png"
+                alt="Rebuilding Camelot"
+                className="h-5 w-5"
+              />
+              <span>Family Foundry</span>
+            </button>
           </div>
 
           {/* Secondary Navigation Buttons */}
@@ -1330,13 +1333,14 @@ function App() {
 
       {/* Communications Modal */}
       {showCommunications && (
-        <GiftwrappedMessaging 
+        <GiftwrappedMessaging
           familyMember={{
             id: "current-user",
             npub: "npub1placeholder",
             username: "Current User",
             role: "adult"
           }}
+          isModal={true}
         />
       )}
 

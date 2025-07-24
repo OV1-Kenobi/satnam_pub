@@ -4,7 +4,7 @@
  */
 
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { cashuAPI, healthAPI } from "../lib/api";
+import { cashuAPI, healthAPI } from '../lib/api.js';
 
 // Mock fetch for testing
 const mockFetch = vi.fn();

@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * Rate Limiting Configuration
  *
@@ -21,28 +37,28 @@ export interface RateLimitConfig {
 export const RATE_LIMITS = {
   /** Peer invitation generation */
   PEER_INVITES: {
-    limit: parseInt(process.env.INVITE_RATE_LIMIT || "5"),
+    limit: parseInt(getEnvVar("INVITE_RATE_LIMIT") || "5"),
     windowMs:
-      parseInt(process.env.INVITE_RATE_WINDOW_HOURS || "1") * 60 * 60 * 1000,
-    description: `${process.env.INVITE_RATE_LIMIT || "5"} invites per ${process.env.INVITE_RATE_WINDOW_HOURS || "1"} hour(s)`,
+      parseInt(getEnvVar("INVITE_RATE_WINDOW_HOURS") || "1") * 60 * 60 * 1000,
+    description: `${getEnvVar("INVITE_RATE_LIMIT") || "5"} invites per ${getEnvVar("INVITE_RATE_WINDOW_HOURS") || "1"} hour(s)`,
   } as RateLimitConfig,
 
   /** User registration */
   USER_REGISTRATION: {
-    limit: parseInt(process.env.REGISTRATION_RATE_LIMIT || "3"),
+    limit: parseInt(getEnvVar("REGISTRATION_RATE_LIMIT") || "3"),
     windowMs:
-      parseInt(process.env.REGISTRATION_RATE_WINDOW_HOURS || "24") *
+      parseInt(getEnvVar("REGISTRATION_RATE_WINDOW_HOURS") || "24") *
       60 *
       60 *
       1000,
-    description: `${process.env.REGISTRATION_RATE_LIMIT || "3"} registrations per ${process.env.REGISTRATION_RATE_WINDOW_HOURS || "24"} hour(s)`,
+    description: `${getEnvVar("REGISTRATION_RATE_LIMIT") || "3"} registrations per ${getEnvVar("REGISTRATION_RATE_WINDOW_HOURS") || "24"} hour(s)`,
   } as RateLimitConfig,
 
   /** API calls (general) */
   API_CALLS: {
-    limit: parseInt(process.env.API_RATE_LIMIT || "100"),
-    windowMs: parseInt(process.env.API_RATE_WINDOW_MINUTES || "15") * 60 * 1000,
-    description: `${process.env.API_RATE_LIMIT || "100"} API calls per ${process.env.API_RATE_WINDOW_MINUTES || "15"} minute(s)`,
+    limit: parseInt(getEnvVar("API_RATE_LIMIT") || "100"),
+    windowMs: parseInt(getEnvVar("API_RATE_WINDOW_MINUTES") || "15") * 60 * 1000,
+    description: `${getEnvVar("API_RATE_LIMIT") || "100"} API calls per ${getEnvVar("API_RATE_WINDOW_MINUTES") || "15"} minute(s)`,
   } as RateLimitConfig,
 } as const;
 

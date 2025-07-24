@@ -8,7 +8,7 @@ import {
   configureCryptoStrategy,
   getCryptoEnvironmentInfo,
   preloadCryptoModules,
-} from "../utils/crypto-factory";
+} from '../utils/crypto-factory.js';
 
 // Define crypto profiles for different app features
 export type CryptoProfile =

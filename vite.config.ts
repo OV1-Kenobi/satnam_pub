@@ -2,57 +2,63 @@ import react from "@vitejs/plugin-react";
 import fs from "fs";
 import path from "path";
 import { defineConfig } from "vite";
-import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+import wasm from "vite-plugin-wasm";
 
 // Plugin to copy .well-known directory
 function copyWellKnownPlugin() {
   return {
-    name: 'copy-well-known',
+    name: "copy-well-known",
     generateBundle() {
       // Copy .well-known directory to dist
-      const wellKnownPath = path.resolve(__dirname, 'public/.well-known');
-      const distWellKnownPath = path.resolve(__dirname, 'dist/.well-known');
-      
+      const wellKnownPath = path.resolve(__dirname, "public/.well-known");
+      const distWellKnownPath = path.resolve(__dirname, "dist/.well-known");
+
       if (fs.existsSync(wellKnownPath)) {
         // Ensure dist/.well-known directory exists
         if (!fs.existsSync(distWellKnownPath)) {
           fs.mkdirSync(distWellKnownPath, { recursive: true });
         }
-        
+
         // Copy nostr.json
-        const nostrJsonPath = path.join(wellKnownPath, 'nostr.json');
-        const distNostrJsonPath = path.join(distWellKnownPath, 'nostr.json');
-        
+        const nostrJsonPath = path.join(wellKnownPath, "nostr.json");
+        const distNostrJsonPath = path.join(distWellKnownPath, "nostr.json");
+
         if (fs.existsSync(nostrJsonPath)) {
           fs.copyFileSync(nostrJsonPath, distNostrJsonPath);
-          console.log('✅ Copied .well-known/nostr.json to dist');
+          console.log("✅ Copied .well-known/nostr.json to dist");
         }
       }
-    }
+    },
   };
 }
 
 // Plugin to copy argon2 WebAssembly file
 function copyArgon2WasmPlugin() {
   return {
-    name: 'copy-argon2-wasm',
+    name: "copy-argon2-wasm",
     generateBundle() {
-      const wasmSourcePath = path.resolve(__dirname, 'node_modules/argon2-browser/dist/argon2.wasm');
-      const wasmDestPath = path.resolve(__dirname, 'dist/assets/wasm/argon2.wasm');
-      
+      const wasmSourcePath = path.resolve(
+        __dirname,
+        "node_modules/argon2-browser/dist/argon2.wasm"
+      );
+      const wasmDestPath = path.resolve(
+        __dirname,
+        "dist/assets/wasm/argon2.wasm"
+      );
+
       if (fs.existsSync(wasmSourcePath)) {
         // Ensure wasm directory exists
         const wasmDir = path.dirname(wasmDestPath);
         if (!fs.existsSync(wasmDir)) {
           fs.mkdirSync(wasmDir, { recursive: true });
         }
-        
+
         // Copy the WebAssembly file
         fs.copyFileSync(wasmSourcePath, wasmDestPath);
-        console.log('✅ Copied argon2.wasm to dist/assets/wasm/');
+        console.log("✅ Copied argon2.wasm to dist/assets/wasm/");
       }
-    }
+    },
   };
 }
 
@@ -119,16 +125,16 @@ console.log(`Found ${Object.keys(libEntries).length} lib entries`);
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react(), 
+    react(),
     copyWellKnownPlugin(),
     copyArgon2WasmPlugin(),
     wasm(),
-    topLevelAwait()
+    topLevelAwait(),
   ],
-  
+
   // Temporarily disable type checking during build to allow deployment
   esbuild: {
-    logOverride: { 'this-is-undefined-in-esm': 'silent' }
+    logOverride: { "this-is-undefined-in-esm": "silent" },
   },
 
   resolve: {
@@ -145,11 +151,17 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3002, // Frontend runs on 3002
-    host: true, // Allow external connections
+    port: 8888, // Use Netlify Dev port for consistency
+    host: "127.0.0.1", // Only allow local connections (more secure)
     // Configure dev server to serve static files from public directory
     // This handles the serverless/static file approach
     middlewareMode: false,
+    // Additional security headers
+    headers: {
+      "Access-Control-Allow-Origin": "http://127.0.0.1:8888",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
   },
   build: {
     outDir: "dist",
@@ -175,10 +187,14 @@ export default defineConfig({
     // Optimize CSS
     cssCodeSplit: true,
     cssMinify: true,
-        rollupOptions: {
+    rollupOptions: {
       onwarn(warning, warn) {
         // Suppress TypeScript errors during build
-        if (warning.code === 'TS2307' || warning.code === 'TS2339' || warning.code === 'TS2554') {
+        if (
+          warning.code === "TS2307" ||
+          warning.code === "TS2339" ||
+          warning.code === "TS2554"
+        ) {
           return;
         }
         warn(warning);
@@ -191,8 +207,8 @@ export default defineConfig({
       },
       external: [
         // Externalize WebAssembly modules to prevent bundling issues
-        'argon2-browser/dist/argon2.wasm',
-        'argon2-browser'
+        "argon2-browser/dist/argon2.wasm",
+        "argon2-browser",
       ],
       output: {
         // Simplified manual chunking to avoid empty chunks
@@ -288,5 +304,5 @@ export default defineConfig({
   },
 
   // Handle assets properly
-  assetsInclude: ['**/*.wasm'],
+  assetsInclude: ["**/*.wasm"],
 });

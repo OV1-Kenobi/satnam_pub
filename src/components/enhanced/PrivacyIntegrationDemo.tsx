@@ -6,7 +6,7 @@
 import { Send, Settings, Shield } from 'lucide-react';
 import React, { useState } from 'react';
 import { PrivacyLevel } from '../../types/privacy';
-import { SatnamFamilyMember } from '../../types/shared';
+import { FamilyMember } from '../../types/shared';
 import { PrivacyControls } from '../PrivacyControls';
 import PrivacyDashboardIndicators from './PrivacyDashboardIndicators.tsx';
 import PrivacyEnhancedPaymentModal from './PrivacyEnhancedPaymentModal.tsx';
@@ -19,7 +19,7 @@ const PrivacyIntegrationDemo: React.FC = () => {
   const [selectedMember, setSelectedMember] = useState<string>('');
 
   // Mock family members
-  const mockFamilyMembers: SatnamFamilyMember[] = [
+  const mockFamilyMembers: FamilyMember[] = [
     {
       id: 'parent1',
       username: 'alice',
@@ -32,7 +32,7 @@ const PrivacyIntegrationDemo: React.FC = () => {
     {
       id: 'child1',
       username: 'bob',
-      role: 'child',
+      role: 'offspring',
       balance: 50000,
       nip05Verified: true,
       lightningAddress: 'bob@satnam.pub',
@@ -69,7 +69,7 @@ const PrivacyIntegrationDemo: React.FC = () => {
             <h1 className="text-3xl font-bold text-white">Privacy Integration Demo</h1>
           </div>
           <p className="text-purple-200 max-w-2xl mx-auto">
-            Experience the complete privacy-enhanced Bitcoin family banking system with standardized privacy levels, 
+            Experience the complete privacy-enhanced Bitcoin family banking system with standardized privacy levels,
             intelligent routing, and guardian approval workflows.
           </p>
         </div>
@@ -132,7 +132,7 @@ const PrivacyIntegrationDemo: React.FC = () => {
                   <div key={member.id} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                        {member.username.charAt(0).toUpperCase()}
+                        {member.username?.charAt(0)?.toUpperCase() || 'U'}
                       </div>
                       <div>
                         <div className="text-white font-medium">{member.username}</div>

@@ -1,21 +1,25 @@
 /**
- * @fileoverview Group Messaging Test Component
- * @description Tests NIP-28/29/59 group messaging with gift-wrapping and guardian approval
+ * @fileoverview Unified Messaging Test Component
+ * @description Tests NIP-28/29/59 group messaging with gift-wrapping and guardian approval using unified service
  */
 
-import React, { useState, useEffect } from 'react';
-import { GroupMessagingService, NostrGroup, GroupMessage, GuardianApprovalRequest } from '../src/lib/group-messaging';
+import { useEffect, useState } from 'react';
+import {
+  GuardianApprovalRequest,
+  PrivacyGroup,
+  UnifiedMessagingService
+} from '../lib/unified-messaging-service';
 
-interface GroupMessagingTestProps {
+interface UnifiedMessagingTestProps {
   userNsec: string;
   guardianNsec: string;
   testContacts: string[]; // npub array
 }
 
-export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: GroupMessagingTestProps) {
-  const [groupMessaging, setGroupMessaging] = useState<GroupMessagingService | null>(null);
-  const [guardianMessaging, setGuardianMessaging] = useState<GroupMessagingService | null>(null);
-  const [groups, setGroups] = useState<NostrGroup[]>([]);
+export function UnifiedMessagingTest({ userNsec, guardianNsec, testContacts }: UnifiedMessagingTestProps) {
+  const [userMessaging, setUserMessaging] = useState<UnifiedMessagingService | null>(null);
+  const [guardianMessaging, setGuardianMessaging] = useState<UnifiedMessagingService | null>(null);
+  const [groups, setGroups] = useState<PrivacyGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [messageType, setMessageType] = useState<'text' | 'file' | 'payment' | 'credential' | 'sensitive'>('text');
@@ -25,33 +29,34 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
 
   // Initialize messaging services
   useEffect(() => {
-    const config = {
-      relays: ['wss://relay.damus.io', 'wss://nos.lol'],
-      giftWrapEnabled: true,
-      guardianApprovalRequired: true,
-      guardianPubkeys: [guardianNsec ? getPublicKey(guardianNsec) : ''],
-      maxGroupSize: 50,
-      messageRetentionDays: 30,
-      privacyDelayMs: 5000,
+    const initializeServices = async () => {
+      try {
+        if (userNsec) {
+          const userService = new UnifiedMessagingService(DEFAULT_UNIFIED_CONFIG);
+          await userService.initializeSession(userNsec);
+          setUserMessaging(userService);
+        }
+
+        if (guardianNsec) {
+          const guardianService = new UnifiedMessagingService(DEFAULT_UNIFIED_CONFIG);
+          await guardianService.initializeSession(guardianNsec);
+          setGuardianMessaging(guardianService);
+        }
+      } catch (error) {
+        console.error('Failed to initialize messaging services:', error);
+        setTestResults(prev => [...prev, `❌ Failed to initialize services: ${error}`]);
+      }
     };
 
-    if (userNsec) {
-      const userService = new GroupMessagingService(config, userNsec);
-      setGroupMessaging(userService);
-    }
-
-    if (guardianNsec) {
-      const guardianService = new GroupMessagingService(config, guardianNsec);
-      setGuardianMessaging(guardianService);
-    }
+    initializeServices();
   }, [userNsec, guardianNsec]);
 
   // Load user groups
   useEffect(() => {
-    if (groupMessaging) {
+    if (userMessaging) {
       loadUserGroups();
     }
-  }, [groupMessaging]);
+  }, [userMessaging]);
 
   // Load pending approvals
   useEffect(() => {
@@ -62,7 +67,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
 
   const loadUserGroups = async () => {
     if (!groupMessaging) return;
-    
+
     try {
       const userGroups = await groupMessaging.getUserGroups();
       setGroups(userGroups);
@@ -77,7 +82,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
 
   const loadPendingApprovals = async () => {
     if (!groupMessaging) return;
-    
+
     try {
       const approvals = await groupMessaging.getPendingApprovals();
       setPendingApprovals(approvals);
@@ -93,10 +98,10 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   // Test 1: Create a new group
   const testCreateGroup = async () => {
     if (!groupMessaging) return;
-    
+
     setIsLoading(true);
     addTestResult('🧪 Test 1: Creating new group...');
-    
+
     try {
       const groupId = await groupMessaging.createGroup({
         name: 'Test Family Group',
@@ -105,7 +110,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
         encryptionType: 'gift-wrap',
         initialMembers: testContacts.slice(0, 2), // Add first 2 contacts
       });
-      
+
       addTestResult(`✅ Group created successfully: ${groupId}`);
       await loadUserGroups(); // Refresh groups list
     } catch (error) {
@@ -119,17 +124,17 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   // Test 2: Send a regular message
   const testSendRegularMessage = async () => {
     if (!groupMessaging || !selectedGroup) return;
-    
+
     setIsLoading(true);
     addTestResult('🧪 Test 2: Sending regular message...');
-    
+
     try {
       const messageId = await groupMessaging.sendGroupMessage(
         selectedGroup,
         'This is a test regular message',
         'text'
       );
-      
+
       addTestResult(`✅ Regular message sent successfully: ${messageId}`);
     } catch (error) {
       console.error('Regular message failed:', error);
@@ -142,17 +147,17 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   // Test 3: Send a sensitive message (requires guardian approval)
   const testSendSensitiveMessage = async () => {
     if (!groupMessaging || !selectedGroup) return;
-    
+
     setIsLoading(true);
     addTestResult('🧪 Test 3: Sending sensitive message (requires guardian approval)...');
-    
+
     try {
       const approvalId = await groupMessaging.sendGroupMessage(
         selectedGroup,
         'This is a sensitive message that requires guardian approval',
         'sensitive'
       );
-      
+
       addTestResult(`✅ Sensitive message approval requested: ${approvalId}`);
       await loadPendingApprovals(); // Refresh approvals list
     } catch (error) {
@@ -166,10 +171,10 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   // Test 4: Guardian approves a message
   const testGuardianApproval = async (approvalId: string, approved: boolean) => {
     if (!guardianMessaging) return;
-    
+
     setIsLoading(true);
     addTestResult(`🧪 Test 4: Guardian ${approved ? 'approving' : 'rejecting'} message...`);
-    
+
     try {
       const success = await guardianMessaging.processGuardianApproval(
         approvalId,
@@ -177,13 +182,13 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
         approved,
         approved ? 'Message approved by guardian' : 'Message rejected by guardian'
       );
-      
+
       if (success) {
         addTestResult(`✅ Guardian ${approved ? 'approved' : 'rejected'} message successfully`);
       } else {
         addTestResult(`❌ Guardian approval process failed`);
       }
-      
+
       await loadPendingApprovals(); // Refresh approvals list
     } catch (error) {
       console.error('Guardian approval failed:', error);
@@ -196,17 +201,17 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   // Test 5: Send a custom message
   const testSendCustomMessage = async () => {
     if (!groupMessaging || !selectedGroup || !newMessage.trim()) return;
-    
+
     setIsLoading(true);
     addTestResult(`🧪 Test 5: Sending custom ${messageType} message...`);
-    
+
     try {
       const messageId = await groupMessaging.sendGroupMessage(
         selectedGroup,
         newMessage,
         messageType
       );
-      
+
       addTestResult(`✅ Custom ${messageType} message sent successfully: ${messageId}`);
       setNewMessage(''); // Clear input
     } catch (error) {
@@ -220,10 +225,10 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   // Test 6: Invite a new member
   const testInviteMember = async () => {
     if (!groupMessaging || !selectedGroup || testContacts.length === 0) return;
-    
+
     setIsLoading(true);
     addTestResult('🧪 Test 6: Inviting new member...');
-    
+
     try {
       const newMemberNpub = testContacts[testContacts.length - 1]; // Use last contact
       const invitationId = await groupMessaging.inviteMember(
@@ -232,7 +237,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
         'member',
         'You are invited to join our test group!'
       );
-      
+
       addTestResult(`✅ Member invitation sent successfully: ${invitationId}`);
     } catch (error) {
       console.error('Member invitation failed:', error);
@@ -246,31 +251,31 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
   const runComprehensiveTest = async () => {
     setIsLoading(true);
     addTestResult('🚀 Starting comprehensive group messaging test suite...');
-    
+
     try {
       // Test 1: Create group
       await testCreateGroup();
       await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for group creation
-      
+
       // Test 2: Send regular message
       await testSendRegularMessage();
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Test 3: Send sensitive message
       await testSendSensitiveMessage();
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       // Test 4: Guardian approval (if there are pending approvals)
       const approvals = await groupMessaging?.getPendingApprovals();
       if (approvals && approvals.length > 0) {
         await testGuardianApproval(approvals[0].id, true);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
-      
+
       // Test 5: Invite member
       await testInviteMember();
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       addTestResult('🎉 Comprehensive test suite completed successfully!');
     } catch (error) {
       console.error('Comprehensive test failed:', error);
@@ -338,7 +343,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
           >
             🏗️ Create Group
           </button>
-          
+
           <button
             onClick={testSendRegularMessage}
             disabled={isLoading || !groupMessaging || !selectedGroup}
@@ -346,7 +351,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
           >
             💬 Send Regular Message
           </button>
-          
+
           <button
             onClick={testSendSensitiveMessage}
             disabled={isLoading || !groupMessaging || !selectedGroup}
@@ -354,7 +359,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
           >
             🔒 Send Sensitive Message
           </button>
-          
+
           <button
             onClick={testInviteMember}
             disabled={isLoading || !groupMessaging || !selectedGroup}
@@ -362,7 +367,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
           >
             👥 Invite Member
           </button>
-          
+
           <button
             onClick={runComprehensiveTest}
             disabled={isLoading || !groupMessaging}
@@ -370,7 +375,7 @@ export function GroupMessagingTest({ userNsec, guardianNsec, testContacts }: Gro
           >
             🚀 Run All Tests
           </button>
-          
+
           <button
             onClick={clearTestResults}
             className="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"

@@ -1,7 +1,7 @@
+import { DollarSign, Users, Zap } from 'lucide-react';
 import React, { useState } from 'react';
-import { Zap, Users, DollarSign } from 'lucide-react';
-import PaymentCascadeModal from './PaymentCascadeModal';
-import { PaymentCascadeNode } from '../lib/payment-automation';
+import PaymentCascadeModal from '../../components/PaymentCascadeModal';
+import { PaymentCascadeNode } from '../../lib/payment-automation';
 
 interface FamilyMember {
   id: string;
@@ -98,7 +98,7 @@ const PaymentCascadeTest: React.FC = () => {
               <Zap className="h-5 w-5" />
               <span>Open Cascade Modal</span>
             </button>
-            
+
             <div className="text-sm text-gray-600">
               <p><strong>Total Amount:</strong> 100,000 sats</p>
               <p><strong>Family Members:</strong> {sampleFamilyMembers.length}</p>

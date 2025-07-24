@@ -36,14 +36,54 @@ const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> 
     return privacyAuth.authenticated;
   };
 
+  // OTP operations for compatibility with AuthContextType
+  const sendOTP = async (npub: string, nip05?: string) => {
+    // For privacy-first auth, we simulate OTP sending
+    // In a real implementation, this would trigger OTP delivery via Nostr DM
+    try {
+      // Use the identifier (npub or nip05) for OTP generation
+      const identifier = nip05 || npub;
+      if (!identifier) {
+        throw new Error("No identifier provided for OTP");
+      }
+
+      // The actual OTP sending would be handled by the backend
+      // For now, we just prepare the identifier for later verification
+      console.log(`OTP would be sent to: ${identifier}`);
+    } catch (error) {
+      throw new Error(`Failed to send OTP: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const verifyOTP = async (otpKey: string, otp: string) => {
+    // Use the privacy-first auth OTP authentication
+    try {
+      const success = await privacyAuth.authenticateOTP(otpKey, otp);
+      if (!success) {
+        throw new Error("OTP verification failed");
+      }
+    } catch (error) {
+      throw new Error(`OTP verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const clearError = () => {
+    // Delegate to privacy-first auth implementation
+    privacyAuth.clearError();
+  };
+
   const contextValue: AuthContextType = {
     isAuthenticated,
     isLoading,
     userAuth,
+    user: userAuth, // Alias for userAuth
     error,
     login,
     logout,
     checkSession,
+    sendOTP,
+    verifyOTP,
+    clearError,
   };
 
   // Don't show loading screen for the entire app - let components handle their own loading states

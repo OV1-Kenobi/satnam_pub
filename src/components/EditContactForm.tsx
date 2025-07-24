@@ -10,7 +10,15 @@ import { AlertTriangle, Edit3, Save, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Contact, UpdateContactInput } from '../types/contacts';
 
-import { supabase } from '../lib/supabase';
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import('../lib/supabase');
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 /**
  * CRITICAL SECURITY: Privacy-first operation logging for user transparency
  * All contact editing operations logged to user's localStorage with zero external leakage
@@ -92,7 +100,8 @@ export const EditContactForm: React.FC<EditContactFormProps> = ({
   useEffect(() => {
     const validateSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const client = await getSupabaseClient();
+        const { data: { session } } = await client.auth.getSession();
         if (session?.access_token) {
           setIsAuthenticated(true);
           setAuthError(null);

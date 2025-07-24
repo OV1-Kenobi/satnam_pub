@@ -5,33 +5,39 @@
  * @integration Existing SignInModal, PaymentModal, CommunicationModal patterns
  */
 
-import React, { useState, useEffect } from "react";
 import {
-  Shield,
-  Smartphone,
-  CreditCard,
-  Users,
-  Zap,
-  CheckCircle,
-  XCircle,
   AlertTriangle,
-  Loader2,
-  RefreshCw,
-  Key,
+  ArrowRight,
+  CheckCircle,
+  Crown,
   Eye,
   EyeOff,
-  ArrowRight,
-  X,
   Info,
+  Key,
+  Loader2,
   Lock,
-  Unlock,
   QrCode,
-  Settings
+  RefreshCw,
+  Shield,
+  Smartphone,
+  Users,
+  X,
+  XCircle,
+  Zap
 } from "lucide-react";
+import React, { useEffect, useState } from "react";
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
-import { supabase } from '../lib/supabase';
-import { LightningClient } from '../lib/lightning-client';
 import { FederationRole } from '../types/auth';
+
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import('../lib/supabase');
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 interface NTAG424AuthModalProps {
   isOpen: boolean;
@@ -186,11 +192,11 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         className="bg-purple-900 rounded-2xl p-8 max-w-md w-full border border-yellow-400/20 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -355,7 +361,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                 {operationType === 'auth' ? 'Tap Your NFC Tag' : 'Register Your NFC Tag'}
               </h3>
               <p className="text-purple-200">
-                {operationType === 'auth' 
+                {operationType === 'auth'
                   ? 'Hold your registered NFC tag near your device to authenticate'
                   : 'Hold your new NFC tag near your device to register it'
                 }
@@ -394,7 +400,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                 {operationType === 'auth' ? 'Authentication Successful!' : 'Registration Successful!'}
               </h3>
               <p className="text-purple-200">
-                {operationType === 'auth' 
+                {operationType === 'auth'
                   ? 'Welcome back! Redirecting to your dashboard...'
                   : 'Your NFC tag has been registered successfully!'
                 }

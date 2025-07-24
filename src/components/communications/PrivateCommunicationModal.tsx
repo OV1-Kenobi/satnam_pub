@@ -23,12 +23,12 @@ import {
   Zap
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service'
+import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service.js'
 import { Contact } from '../../types/contacts'
-import { calculatePrivacyMetrics } from '../../types/privacy'
+import { PrivacyLevel, calculatePrivacyMetrics, getDefaultPrivacyLevel } from '../../types/privacy'
 import { ContactsManagerModal } from '../ContactsManagerModal'
 import SignInModal from '../SignInModal'
-import { PrivacyLevel, PrivacyLevelSelector, getDefaultPrivacyLevel } from './PrivacyLevelSelector'
+import { PrivacyLevelSelector } from './PrivacyLevelSelector'
 
 interface PrivateCommunicationModalProps {
   isOpen: boolean

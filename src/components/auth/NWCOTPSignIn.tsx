@@ -16,7 +16,7 @@ import {
 import React, { useState } from "react";
 import { useFamilyFederationAuth } from "../../hooks/useFamilyFederationAuth";
 import type { NWCAuthResponse, VerificationResponse } from "../../types/auth";
-import { handleAuthenticationSuccess, isSuccessfulAuthResponse } from "../../utils/authSuccessHandler";
+import { handleAuthenticationSuccess, isSuccessfulAuthResponse } from '../../utils/authSuccessHandler.js';
 
 interface NWCOTPSignInProps {
   isOpen: boolean;

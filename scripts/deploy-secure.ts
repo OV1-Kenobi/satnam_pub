@@ -1,4 +1,20 @@
 #!/usr/bin/env ts-node
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ import.meta;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * Secure deployment script for Citadel Identity Forge
  * Handles encrypted credential management and atomic deployments
@@ -32,7 +48,7 @@ class SecureDeployment {
    */
   async backupCredentials(
     passphrase: string,
-    outputPath: string,
+    outputPath: string
   ): Promise<void> {
     console.log("🔒 Creating encrypted credential backup...");
 
@@ -48,7 +64,7 @@ class SecureDeployment {
    */
   async restoreCredentials(
     backupPath: string,
-    passphrase: string,
+    passphrase: string
   ): Promise<void> {
     console.log("🔓 Restoring credentials from encrypted backup...");
 
@@ -59,7 +75,7 @@ class SecureDeployment {
     const encryptedData = readFileSync(backupPath, "utf-8");
     const credentials = await restoreCredentialsFromBackup(
       encryptedData,
-      passphrase,
+      passphrase
     );
 
     // Apply credentials to environment
@@ -131,7 +147,7 @@ class SecureDeployment {
    */
   async atomicDeploy(): Promise<void> {
     console.log(
-      `🚀 Starting atomic deployment for ${this.config.environment}...`,
+      `🚀 Starting atomic deployment for ${this.config.environment}...`
     );
 
     let rollbackFunction: (() => void) | undefined;
@@ -206,7 +222,7 @@ class SecureDeployment {
     for (const file of sensitiveFiles) {
       if (existsSync(file)) {
         warnings.push(
-          `Sensitive file detected: ${file} - ensure proper permissions`,
+          `Sensitive file detected: ${file} - ensure proper permissions`
         );
       }
     }
@@ -215,7 +231,7 @@ class SecureDeployment {
     try {
       const sourceCheck = execSync(
         'git grep -n "eyJ" -- "*.ts" "*.js" || true',
-        { encoding: "utf-8" },
+        { encoding: "utf-8" }
       );
       if (sourceCheck.trim()) {
         issues.push("Potential JWT tokens found in source code");
@@ -251,7 +267,7 @@ async function main() {
   const command = args[0];
 
   const deployment = new SecureDeployment({
-    environment: (process.env.NODE_ENV as any) || "development",
+    environment: (getEnvVar("NODE_ENV") as any) || "development",
   });
 
   try {

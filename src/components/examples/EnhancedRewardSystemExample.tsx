@@ -5,8 +5,8 @@
  */
 
 import React, { useState } from 'react';
-import EnhancedRewardSystem from '../citadel/EnhancedRewardSystem';
-import { RewardRedemption } from '../../lib/citadel/reward-system';
+import { RewardRedemption } from '../../lib/citadel/reward-system.js';
+import RewardSystem from '../citadel/RewardSystem';
 
 const EnhancedRewardSystemExample: React.FC = () => {
   const [studentPubkey, setStudentPubkey] = useState('npub1example123456789abcdefghijklmnopqrstuvwxyz');
@@ -29,7 +29,7 @@ const EnhancedRewardSystemExample: React.FC = () => {
             This demonstrates the enhanced reward system with comprehensive anti-gaming protection,
             course credit support, and privacy-first design.
           </p>
-          
+
           {/* Configuration Panel */}
           <div className="grid md:grid-cols-3 gap-4">
             <div>
@@ -42,7 +42,7 @@ const EnhancedRewardSystemExample: React.FC = () => {
                 placeholder="npub1..."
               />
             </div>
-            
+
             <div>
               <label className="text-purple-200 text-sm font-medium">Family ID (Optional)</label>
               <input
@@ -53,7 +53,7 @@ const EnhancedRewardSystemExample: React.FC = () => {
                 placeholder="family_123"
               />
             </div>
-            
+
             <div className="flex items-center">
               <label className="flex items-center space-x-2 text-purple-200">
                 <input
@@ -104,7 +104,7 @@ const EnhancedRewardSystemExample: React.FC = () => {
         {/* Feature Highlights */}
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 mb-8 border border-white/20">
           <h2 className="text-2xl font-bold text-white mb-6">Enhanced Features</h2>
-          
+
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="bg-white/10 rounded-xl p-4 border border-white/20">
               <div className="flex items-center space-x-3 mb-3">
@@ -199,7 +199,7 @@ const EnhancedRewardSystemExample: React.FC = () => {
         </div>
 
         {/* Enhanced Reward System Component */}
-        <EnhancedRewardSystem
+        <RewardSystem
           studentPubkey={studentPubkey}
           familyId={familyId}
           isAdmin={isAdmin}
@@ -210,4 +210,4 @@ const EnhancedRewardSystemExample: React.FC = () => {
   );
 };
 
-export default EnhancedRewardSystemExample; 
+export default EnhancedRewardSystemExample;

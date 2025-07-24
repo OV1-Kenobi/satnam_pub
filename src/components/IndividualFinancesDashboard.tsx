@@ -39,7 +39,7 @@ import { IndividualApiService, handleApiError } from '../services/individualApi'
 import NWCWalletSetupModal from './NWCWalletSetupModal';
 
 // Import Cross-Mint Manager
-import { CrossMintSettings, MultiNutPayment, NutSwapTransaction, SatnamCrossMintCashuManager } from '../lib/cross-mint-cashu-manager';
+import { CrossMintSettings, MultiNutPayment, NutSwapTransaction, SatnamCrossMintCashuManager } from '../lib/cross-mint-cashu-manager.js';
 
 // Import Payment Cascade Modal
 import { PaymentCascadeNode } from '../lib/payment-automation';

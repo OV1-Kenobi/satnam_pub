@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 // lib/fedimint/__tests__/federation-discovery-integration.test.ts
 import { FederationDiscovery } from "../discovery";
 import { FederationManager } from "../federation-manager";

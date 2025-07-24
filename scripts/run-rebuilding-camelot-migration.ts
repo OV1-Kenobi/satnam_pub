@@ -3,7 +3,7 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
-import { supabase } from "../lib/supabase";
+import { supabase } from '../lib/supabase.js';
 
 /**
  * Splits SQL text into individual statements, properly handling semicolons

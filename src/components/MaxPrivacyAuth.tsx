@@ -9,15 +9,13 @@
  */
 
 import {
-    AlertTriangle,
-    CheckCircle,
-    Key,
-    RefreshCw,
-    Shield,
-    Smartphone,
-    Wallet,
-    X,
-    Zap
+  AlertTriangle,
+  CheckCircle,
+  Key,
+  RefreshCw,
+  Shield,
+  Smartphone,
+  X
 } from "lucide-react";
 import { useState } from "react";
 import { usePrivacyFirstAuth } from "../hooks/usePrivacyFirstAuth";
@@ -31,7 +29,7 @@ interface MaxPrivacyAuthProps {
   purpose?: string;
 }
 
-type AuthMethod = 'nwc' | 'otp' | 'nip07' | null;
+type AuthMethod = 'nsec' | 'otp' | 'nip07' | null;
 
 export function MaxPrivacyAuth({
   isOpen,
@@ -50,10 +48,11 @@ export function MaxPrivacyAuth({
   const [success, setSuccess] = useState<string | null>(null);
 
   // Form states
-  const [nwcUrl, setNwcUrl] = useState("");
+  const [nsecKey, setNsecKey] = useState("");
   const [nipOrNpub, setNipOrNpub] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [showNsec, setShowNsec] = useState(false);
 
   const handleClose = () => {
     setAuthMethod(null);
@@ -65,17 +64,22 @@ export function MaxPrivacyAuth({
 
   const handleAuthSuccess = (method: string) => {
     setSuccess(`${method.toUpperCase()} authentication successful! Maximum privacy protection active.`);
-    
+
     setTimeout(() => {
       onAuthSuccess(destination);
       handleClose();
     }, 1500);
   };
 
-  // NWC Authentication (Maximum Privacy)
-  const handleNWCAuth = async () => {
-    if (!nwcUrl.trim()) {
-      setError('Please enter a valid NWC connection string');
+  // Nsec Authentication (Maximum Privacy with Zero-Knowledge Protocol)
+  const handleNsecAuth = async () => {
+    if (!nsecKey.trim()) {
+      setError('Please enter your Nsec private key');
+      return;
+    }
+
+    if (!nsecKey.startsWith('nsec1')) {
+      setError('Invalid Nsec format. Must start with "nsec1"');
       return;
     }
 
@@ -83,14 +87,21 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      const success = await privacyAuth.authenticateNWC(nwcUrl);
+      // Zero-knowledge protocol: process in memory only, immediate cleanup
+      const success = await privacyAuth.authenticateNsec(nsecKey);
+
+      // Clear Nsec from memory immediately after use
+      setNsecKey('');
+
       if (success) {
-        handleAuthSuccess('NWC');
+        handleAuthSuccess('Nsec');
       } else {
-        setError(privacyAuth.error || 'NWC authentication failed');
+        setError(privacyAuth.error || 'Nsec authentication failed');
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'NWC authentication failed');
+      // Clear Nsec from memory on error
+      setNsecKey('');
+      setError(error instanceof Error ? error.message : 'Nsec authentication failed');
     } finally {
       setIsLoading(false);
     }
@@ -155,7 +166,7 @@ export function MaxPrivacyAuth({
     try {
       const pubkey = await window.nostr.getPublicKey();
       const challenge = `auth-challenge-${Date.now()}-${Math.random()}`;
-      
+
       const event = {
         kind: 22242,
         created_at: Math.floor(Date.now() / 1000),
@@ -165,9 +176,9 @@ export function MaxPrivacyAuth({
       };
 
       const signedEvent = await window.nostr.signEvent(event);
-      
+
       const success = await privacyAuth.authenticateNIP07(challenge, signedEvent.sig, pubkey);
-      
+
       if (success) {
         handleAuthSuccess('NIP-07');
       } else {
@@ -183,10 +194,8 @@ export function MaxPrivacyAuth({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
-      
-      <div className="relative w-full max-w-lg max-h-[90vh] bg-gradient-to-br from-purple-900 via-purple-800 to-purple-900 rounded-2xl shadow-2xl overflow-hidden">
+    <div className="modal-overlay-bitcoin-citadel">
+      <div className="modal-content-bitcoin-citadel max-w-lg">
         {/* Header */}
         <div className="bg-white/10 backdrop-blur-sm border-b border-white/20 p-6">
           <div className="flex items-center justify-between">
@@ -240,17 +249,17 @@ export function MaxPrivacyAuth({
                   <span>95% Maximum Privacy • Hashed UUIDs Only</span>
                 </div>
               </div>
-              
-              {/* NWC Method */}
+
+              {/* Nsec Method */}
               <button
-                onClick={() => setAuthMethod('nwc')}
-                className="w-full p-4 bg-gradient-to-r from-yellow-600/20 to-yellow-500/20 border border-yellow-500/30 rounded-xl hover:from-yellow-600/30 hover:to-yellow-500/30 transition-all duration-300 text-left"
+                onClick={() => setAuthMethod('nsec')}
+                className="w-full p-4 bg-gradient-to-r from-orange-600/20 to-orange-500/20 border border-orange-500/30 rounded-xl hover:from-orange-600/30 hover:to-orange-500/30 transition-all duration-300 text-left"
               >
                 <div className="flex items-center space-x-4">
-                  <Wallet className="h-6 w-6 text-yellow-400" />
+                  <Key className="h-6 w-6 text-orange-400" />
                   <div>
-                    <h4 className="font-semibold text-white">Nostr Wallet Connect</h4>
-                    <p className="text-yellow-200 text-sm">Lightning wallet authentication</p>
+                    <h4 className="font-semibold text-white">Sign in with Nsec</h4>
+                    <p className="text-orange-200 text-sm">Direct private key authentication</p>
                   </div>
                 </div>
               </button>
@@ -285,36 +294,61 @@ export function MaxPrivacyAuth({
             </div>
           )}
 
-          {/* NWC Form */}
-          {authMethod === 'nwc' && (
+          {/* Nsec Form */}
+          {authMethod === 'nsec' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">NWC Authentication</h3>
+                <h3 className="text-lg font-semibold text-white">Nsec Authentication</h3>
                 <button onClick={() => setAuthMethod(null)} className="text-purple-300 hover:text-white text-sm">← Back</button>
               </div>
-              
-              <input
-                type="password"
-                value={nwcUrl}
-                onChange={(e) => setNwcUrl(e.target.value)}
-                placeholder="nostr+walletconnect://..."
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              />
+
+              {/* Security Warning */}
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <AlertTriangle className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-orange-200 font-semibold text-sm mb-2">Security Notice</h4>
+                    <ul className="text-orange-200/80 text-xs space-y-1">
+                      <li>• Your Nsec is processed in local memory only</li>
+                      <li>• Never stored unencrypted in databases</li>
+                      <li>• Immediately cleared after authentication</li>
+                      <li>• Only enter on trusted devices and websites</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showNsec ? "text" : "password"}
+                  value={nsecKey}
+                  onChange={(e) => setNsecKey(e.target.value)}
+                  placeholder="nsec1..."
+                  className="w-full px-4 py-3 pr-12 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNsec(!showNsec)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-300 hover:text-white"
+                >
+                  {showNsec ? "👁️‍🗨️" : "👁️"}
+                </button>
+              </div>
 
               <button
-                onClick={handleNWCAuth}
-                disabled={isLoading || !nwcUrl.trim()}
-                className="w-full bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-700 hover:to-yellow-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                onClick={handleNsecAuth}
+                disabled={isLoading || !nsecKey.trim()}
+                className="w-full bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
               >
                 {isLoading ? (
                   <>
                     <RefreshCw className="h-5 w-5 animate-spin" />
-                    <span>Connecting...</span>
+                    <span>Authenticating...</span>
                   </>
                 ) : (
                   <>
-                    <Zap className="h-5 w-5" />
-                    <span>Connect with Maximum Privacy</span>
+                    <Key className="h-5 w-5" />
+                    <span>Sign In with Nsec</span>
                   </>
                 )}
               </button>
@@ -328,7 +362,7 @@ export function MaxPrivacyAuth({
                 <h3 className="text-lg font-semibold text-white">OTP Authentication</h3>
                 <button onClick={() => setAuthMethod(null)} className="text-purple-300 hover:text-white text-sm">← Back</button>
               </div>
-              
+
               <input
                 type="text"
                 value={nipOrNpub}
@@ -364,7 +398,7 @@ export function MaxPrivacyAuth({
                     placeholder="Enter OTP code"
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  
+
                   <button
                     onClick={handleVerifyOTP}
                     disabled={isLoading || !otpCode.trim()}
@@ -394,7 +428,7 @@ export function MaxPrivacyAuth({
                 <h3 className="text-lg font-semibold text-white">Browser Extension</h3>
                 <button onClick={() => setAuthMethod(null)} className="text-purple-300 hover:text-white text-sm">← Back</button>
               </div>
-              
+
               <div className="p-4 bg-green-500/20 border border-green-500/30 rounded-lg">
                 <p className="text-green-300 text-sm">This will request a signature from your Nostr browser extension.</p>
               </div>
@@ -441,12 +475,3 @@ export function MaxPrivacyAuth({
   );
 }
 
-// Add NIP-07 type declaration
-declare global {
-  interface Window {
-    nostr?: {
-      getPublicKey(): Promise<string>;
-      signEvent(event: any): Promise<any>;
-    };
-  }
-}

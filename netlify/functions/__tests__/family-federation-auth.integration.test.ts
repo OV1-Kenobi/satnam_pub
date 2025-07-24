@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { decryptCredentials, encryptCredentials } from "../security";
 import { generateSecureToken } from "../../../utils/crypto-factory";
-import { checkFederationWhitelist } from "../auth/federation-whitelist";
+import { checkFederationWhitelist } from "../auth/federation-whitelist.js";
 import { nwcSignIn, verifyNWCConnection } from "../auth/nwc-signin";
 import { initiateOTP, validateSession } from "../auth/otp-signin";
+import { decryptCredentials, encryptCredentials } from "../security";
 
 // Import real Supabase for production-ready tests
 import { supabase } from "../../../src/lib/supabase";
@@ -21,7 +21,11 @@ interface MockResponse {
   headers?: Record<string, string>;
 }
 
-function createMockRequest(options: { method: string; body?: any; headers?: Record<string, string> }): MockRequest {
+function createMockRequest(options: {
+  method: string;
+  body?: any;
+  headers?: Record<string, string>;
+}): MockRequest {
   return {
     method: options.method,
     body: options.body,
@@ -177,4 +181,4 @@ describe("Family Federation Authentication Integration", () => {
       }
     });
   });
-}); 
+});

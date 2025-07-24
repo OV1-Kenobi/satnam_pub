@@ -5,8 +5,8 @@
  */
 
 import { getPublicKey, nip19 } from "../src/lib/nostr-browser";
-import { EventSigner } from "./crypto/event-signer";
-import { createDatabase } from "./db";
+// import { EventSigner } from "./crypto/event-signer"; // Temporarily disabled
+import createDatabase from "./db";
 import { FederationManager } from "./fedimint/federation-manager";
 
 export interface GuardianShard {
@@ -65,7 +65,7 @@ export interface NotificationResult {
  * Provides secure nsec key sharding and recovery using Fedimint federation
  */
 export class FamilyNostrProtection {
-  private static db = createDatabase();
+  private static db = (createDatabase as any)();
   private static federationManager = new FederationManager();
   private static eventSigner = new EventSigner();
 
@@ -76,7 +76,7 @@ export class FamilyNostrProtection {
     nsec: string,
     guardians: string[],
     threshold: number,
-    federationId: string,
+    federationId: string
   ): Promise<ShardingResult> {
     try {
       // Validate inputs
@@ -98,7 +98,7 @@ export class FamilyNostrProtection {
           if (decoded.type !== "nsec") {
             throw new Error("Invalid nsec format");
           }
-          privateKeyBytes = decoded.data;
+          privateKeyBytes = decoded.data as any;
         } else {
           privateKeyBytes = new Uint8Array(Buffer.from(nsec, "hex"));
         }
@@ -113,8 +113,9 @@ export class FamilyNostrProtection {
       }
 
       // Get federation client
-      const federationClient =
-        await this.federationManager.getClient(federationId);
+      const federationClient = await this.federationManager.getClient(
+        federationId
+      );
       if (!federationClient) {
         return {
           success: false,
@@ -129,7 +130,7 @@ export class FamilyNostrProtection {
       const shards = await this.splitSecret(
         privateKeyBytes,
         guardians.length,
-        threshold,
+        threshold
       );
 
       if (shards.length !== guardians.length) {
@@ -150,13 +151,13 @@ export class FamilyNostrProtection {
             shards[index],
             federationId,
             index,
-            threshold,
+            threshold
           );
           return { guardianId, success: true };
         } catch (error) {
           console.error(
             `Failed to store shard with guardian ${guardianId}:`,
-            error,
+            error
           );
           return {
             guardianId,
@@ -168,7 +169,7 @@ export class FamilyNostrProtection {
 
       const distributionResults = await Promise.all(distributionPromises);
       const successfulDistributions = distributionResults.filter(
-        (r) => r.success,
+        (r) => r.success
       );
 
       if (successfulDistributions.length < threshold) {
@@ -204,7 +205,7 @@ export class FamilyNostrProtection {
   static async reconstructNsecFromShards(
     protectionId: string,
     guardianSignatures: GuardianSignature[],
-    federationId: string,
+    federationId: string
   ): Promise<RecoveryResult> {
     try {
       // Validate signatures and extract shard data
@@ -215,12 +216,12 @@ export class FamilyNostrProtection {
         const isValidSignature = await this.verifyGuardianSignature(
           signature,
           protectionId,
-          federationId,
+          federationId
         );
 
         if (!isValidSignature) {
           console.warn(
-            `Invalid signature from guardian ${signature.guardianId}`,
+            `Invalid signature from guardian ${signature.guardianId}`
           );
           continue;
         }
@@ -237,7 +238,7 @@ export class FamilyNostrProtection {
         } catch (error) {
           console.warn(
             `Failed to process shard from guardian ${signature.guardianId}:`,
-            error,
+            error
           );
         }
       }
@@ -260,8 +261,8 @@ export class FamilyNostrProtection {
       }
 
       // Convert to nsec format
-      const nsec = nip19.nsecEncode(reconstructedSecret);
-      const publicKey = getPublicKey(reconstructedSecret);
+      const nsec = nip19.nsecEncode(reconstructedSecret as any);
+      const publicKey = (getPublicKey as any)(reconstructedSecret as any);
 
       return {
         success: true,
@@ -282,7 +283,7 @@ export class FamilyNostrProtection {
   static async notifyGuardiansOfProtection(
     guardians: string[],
     familyMemberId: string,
-    protectionId: string,
+    protectionId: string
   ): Promise<NotificationResult> {
     try {
       const notificationPromises = guardians.map(async (guardianId) => {
@@ -348,7 +349,7 @@ export class FamilyNostrProtection {
   private static async splitSecret(
     secret: Uint8Array,
     totalShares: number,
-    threshold: number,
+    threshold: number
   ): Promise<Uint8Array[]> {
     // This is a simplified implementation
     // In production, use a proper Shamir's Secret Sharing library
@@ -361,7 +362,7 @@ export class FamilyNostrProtection {
       shardData.set(new Uint8Array([i, threshold]), secret.length);
       shardData.set(
         new Uint8Array(Buffer.from(Date.now().toString())),
-        secret.length + 2,
+        secret.length + 2
       );
 
       shards.push(shardData);
@@ -374,7 +375,7 @@ export class FamilyNostrProtection {
    * Reconstruct secret from shards
    */
   private static async reconstructSecret(
-    shards: { index: number; shard: Uint8Array }[],
+    shards: { index: number; shard: Uint8Array }[]
   ): Promise<Uint8Array | null> {
     if (shards.length === 0) return null;
 
@@ -394,7 +395,7 @@ export class FamilyNostrProtection {
     shard: Uint8Array,
     federationId: string,
     shardIndex: number,
-    threshold: number,
+    threshold: number
   ): Promise<void> {
     try {
       // Encode shard for storage
@@ -415,18 +416,21 @@ export class FamilyNostrProtection {
       }
 
       // Optionally, also store in Fedimint federation for redundancy
-      const federationClient =
-        await this.federationManager.getClient(federationId);
+      const federationClient = await this.federationManager.getClient(
+        federationId
+      );
       if (federationClient) {
         // Store encrypted shard data in federation
-        await federationClient.storeEncryptedData(
+        await (federationClient as any).storeEncryptedData(
           `guardian_shard_${guardianId}_${shardIndex}`,
-          shardData,
+          shardData
         );
       }
     } catch (error) {
       throw new Error(
-        `Failed to store shard with guardian ${guardianId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to store shard with guardian ${guardianId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -437,7 +441,7 @@ export class FamilyNostrProtection {
   private static async verifyGuardianSignature(
     signature: GuardianSignature,
     protectionId: string,
-    federationId: string,
+    federationId: string
   ): Promise<boolean> {
     try {
       // Get guardian's public key
@@ -452,12 +456,14 @@ export class FamilyNostrProtection {
       }
 
       // Verify signature using the event signer
-      const messageToVerify = `${protectionId}:${federationId}:${signature.shardData}:${signature.timestamp.toISOString()}`;
+      const messageToVerify = `${protectionId}:${federationId}:${
+        signature.shardData
+      }:${signature.timestamp.toISOString()}`;
 
       return await this.eventSigner.verifySignature(
         messageToVerify,
         signature.signature,
-        guardian.public_key,
+        guardian.public_key
       );
     } catch (error) {
       console.error("Failed to verify guardian signature:", error);
@@ -483,7 +489,7 @@ export class FamilyNostrProtection {
    */
   private static async sendGuardianNotification(
     guardianId: string,
-    notificationEvent: any,
+    notificationEvent: any
   ): Promise<void> {
     try {
       // Get guardian contact information
@@ -503,7 +509,7 @@ export class FamilyNostrProtection {
       // Nostr DM
       if (guardian.nostr_pubkey) {
         notifications.push(
-          this.sendNostrDM(guardian.nostr_pubkey, notificationEvent),
+          this.sendNostrDM(guardian.nostr_pubkey, notificationEvent)
         );
       }
 
@@ -516,7 +522,9 @@ export class FamilyNostrProtection {
       await Promise.any(notifications);
     } catch (error) {
       throw new Error(
-        `Failed to send notification to guardian ${guardianId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to send notification to guardian ${guardianId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -526,7 +534,7 @@ export class FamilyNostrProtection {
    */
   private static async sendNostrDM(
     guardianPubkey: string,
-    notificationEvent: any,
+    notificationEvent: any
   ): Promise<void> {
     try {
       // Implementation would use Nostr DM functionality
@@ -534,7 +542,9 @@ export class FamilyNostrProtection {
       console.log(`Sending Nostr DM to ${guardianPubkey}:`, notificationEvent);
     } catch (error) {
       throw new Error(
-        `Failed to send Nostr DM: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to send Nostr DM: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -544,7 +554,7 @@ export class FamilyNostrProtection {
    */
   private static async sendEmail(
     guardianEmail: string,
-    notificationEvent: any,
+    notificationEvent: any
   ): Promise<void> {
     try {
       // Implementation would use email service
@@ -552,7 +562,9 @@ export class FamilyNostrProtection {
       console.log(`Sending email to ${guardianEmail}:`, notificationEvent);
     } catch (error) {
       throw new Error(
-        `Failed to send email: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to send email: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -562,7 +574,7 @@ export class FamilyNostrProtection {
  * Guardian management utilities
  */
 export class GuardianManager {
-  private static db = createDatabase();
+  private static db = (createDatabase as any)();
 
   /**
    * Add a guardian to the family

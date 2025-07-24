@@ -10,7 +10,6 @@
  * @fileoverview PhoenixD system health checker
  */
 
-import { FamilyPhoenixdManager } from "../src/lib/family-phoenixd-manager";
 import { PhoenixdClient } from "../src/lib/phoenixd-client";
 
 interface HealthCheckResult {
@@ -96,7 +95,9 @@ async function runHealthCheck(verbose: boolean = false): Promise<void> {
     });
 
     console.log(
-      `   ${hasLiquidity ? "✅" : "⚠️"} Balance: ${totalBalance} sats (${nodeStatus.activeChannels} channels)`
+      `   ${hasLiquidity ? "✅" : "⚠️"} Balance: ${totalBalance} sats (${
+        nodeStatus.activeChannels
+      } channels)`
     );
     if (!hasLiquidity) overallHealthy = false;
   } catch (error) {
@@ -131,7 +132,9 @@ async function runHealthCheck(verbose: boolean = false): Promise<void> {
     });
 
     console.log(
-      `   ${serviceHealth.familyBankingReady ? "✅" : "⚠️"} Family banking: ${status}`
+      `   ${
+        serviceHealth.familyBankingReady ? "✅" : "⚠️"
+      } Family banking: ${status}`
     );
     if (!serviceHealth.familyBankingReady) overallHealthy = false;
   } catch (error) {
@@ -161,7 +164,9 @@ async function runHealthCheck(verbose: boolean = false): Promise<void> {
     });
 
     console.log(
-      `   ${privacyHealthy ? "✅" : "⚠️"} Privacy service: ${privacyHealthy ? "operational" : "degraded"}`
+      `   ${privacyHealthy ? "✅" : "⚠️"} Privacy service: ${
+        privacyHealthy ? "operational" : "degraded"
+      }`
     );
     if (!privacyHealthy) {
       console.log(
@@ -199,15 +204,17 @@ async function runHealthCheck(verbose: boolean = false): Promise<void> {
         ? "Configuration valid"
         : "Configuration issues detected",
       details: verbose
-        ? config
+        ? (config as any)
         : {
-            familyEnabled: config.familyEnabled,
-            minChannelSize: config.minChannelSize,
+            familyEnabled: (config as any).familyEnabled,
+            minChannelSize: (config as any).minChannelSize,
           },
     });
 
     console.log(
-      `   ${configValid ? "✅" : "❌"} Configuration: ${configValid ? "valid" : "invalid"}`
+      `   ${configValid ? "✅" : "❌"} Configuration: ${
+        configValid ? "valid" : "invalid"
+      }`
     );
     if (!configValid) overallHealthy = false;
   } catch (error) {
@@ -264,8 +271,8 @@ async function runHealthCheck(verbose: boolean = false): Promise<void> {
       result.status === "healthy"
         ? "✅"
         : result.status === "degraded"
-          ? "⚠️"
-          : "❌";
+        ? "⚠️"
+        : "❌";
     console.log(`${icon} ${result.service}: ${result.message}`);
 
     if (verbose && result.details) {
@@ -283,7 +290,9 @@ async function runHealthCheck(verbose: boolean = false): Promise<void> {
   console.log(`   Unhealthy: ${unhealthyCount}`);
 
   console.log(
-    `\n🏥 Overall Status: ${overallHealthy ? "✅ HEALTHY" : "❌ NEEDS ATTENTION"}`
+    `\n🏥 Overall Status: ${
+      overallHealthy ? "✅ HEALTHY" : "❌ NEEDS ATTENTION"
+    }`
   );
 
   if (!overallHealthy) {

@@ -26,7 +26,7 @@ import {
   AlertCircle,
   Info
 } from 'lucide-react';
-import { EmergencyRecoverySystem, EmergencyRecoveryRequest, GuardianApproval } from '../lib/emergency-recovery';
+import { EmergencyRecoverySystem, EmergencyRecoveryRequest, GuardianApproval } from '../lib/emergency-recovery.js';
 import { FederationRole } from '../types/auth';
 
 interface TestScenario {

@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Database Migration Runner for Federated Signing Tables
  * @description Executes SQL migration for federated family nostr signing functionality
@@ -23,13 +39,13 @@ try {
 
 const supabaseUrl =
   config?.supabase?.url ||
-  process.env.SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
+  getEnvVar("SUPABASE_URL") ||
+  getEnvVar("NEXT_PUBLIC_SUPABASE_URL");
 
 const supabaseServiceKey =
   config?.supabase?.serviceRoleKey ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY;
+  getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
+  getEnvVar("SUPABASE_SERVICE_KEY");
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error("❌ Missing Supabase configuration!");
@@ -176,7 +192,7 @@ async function main() {
     console.log("");
 
     // Ask for confirmation in production
-    if (process.env.NODE_ENV === "production") {
+    if (getEnvVar("NODE_ENV") === "production") {
       console.log("⚠️  Production environment detected!");
       console.log("   Please review the migration SQL before proceeding.");
       console.log("   Use --force flag to skip this confirmation.");

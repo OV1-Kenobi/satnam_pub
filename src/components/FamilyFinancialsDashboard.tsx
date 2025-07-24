@@ -39,7 +39,7 @@ import { CreditsBalance } from './CreditsBalance';
 // Import NWC Wallet Integration
 
 // Import Payment Automation System
-import { PaymentSchedule } from '../lib/payment-automation';
+import { PaymentSchedule } from '../lib/payment-automation.js';
 
 // Import NWC Wallet Integration
 

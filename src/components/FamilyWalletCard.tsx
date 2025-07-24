@@ -1,5 +1,4 @@
 import {
-  Activity,
   CheckCircle,
   Clock,
   Copy,
@@ -7,28 +6,27 @@ import {
   QrCode,
   Send,
   Shield,
-  TrendingUp,
   Zap
 } from "lucide-react";
 import React, { useState } from "react";
 
 // Import the shared type
-import { SatnamFamilyMember } from "../types/shared";
+import { FamilyMember } from "../types/shared";
 
 interface FamilyWalletCardProps {
-  member: SatnamFamilyMember;
+  member: FamilyMember;
   onCopyAddress: () => void;
   onSend?: (memberId: string) => void;
   onReceive?: (memberId: string) => void;
   onShowQR?: (memberId: string, address: string) => void;
 }
 
-const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({ 
-  member, 
+const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
+  member,
   onCopyAddress,
-  onSend, 
-  onReceive, 
-  onShowQR 
+  onSend,
+  onReceive,
+  onShowQR
 }) => {
   const [copiedAddress, setCopiedAddress] = useState(false);
 
@@ -38,7 +36,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(member.lightningAddress);
+      await navigator.clipboard.writeText(member.lightningAddress || "");
       setCopiedAddress(true);
       onCopyAddress(); // Call the callback
       setTimeout(() => setCopiedAddress(false), 2000);
@@ -60,8 +58,8 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
   };
 
   const getRoleColor = (role: string): string => {
-    return (role === "adult" || role === "guardian") 
-      ? "from-orange-500 to-amber-500" 
+    return (role === "adult" || role === "guardian")
+      ? "from-orange-500 to-amber-500"
       : "from-amber-400 to-orange-400";
   };
 
@@ -81,7 +79,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold bg-gradient-to-br ${getRoleColor(member.role)}`}>
-            {member.username.charAt(0).toUpperCase()}
+            {member.username?.charAt(0)?.toUpperCase() || 'U'}
           </div>
           <div>
             <h3 className="text-white font-bold text-lg">{member.username}</h3>
@@ -96,7 +94,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
             </div>
           </div>
         </div>
-        
+
         {/* Balance Display */}
         {member.balance !== undefined && (
           <div className="text-right">
@@ -113,7 +111,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
             <Zap className="h-4 w-4 text-orange-400" />
             <span className="text-orange-200 text-sm font-medium">Lightning Address</span>
           </div>
-          <button 
+          <button
             onClick={copyToClipboard}
             className="text-orange-200 hover:text-white transition-colors duration-200 p-1 hover:bg-white/10 rounded"
             title="Copy Lightning Address"
@@ -178,7 +176,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
       {/* Action Buttons */}
       <div className="flex space-x-2">
         {onSend && (
-          <button 
+          <button
             onClick={() => onSend(member.id)}
             className="flex-1 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold py-2 px-3 rounded-lg transition-all duration-300 text-sm flex items-center justify-center space-x-1 shadow-lg hover:shadow-orange-500/25"
           >
@@ -187,7 +185,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
           </button>
         )}
         {onReceive && (
-          <button 
+          <button
             onClick={() => onReceive(member.id)}
             className="flex-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold py-2 px-3 rounded-lg transition-all duration-300 text-sm flex items-center justify-center space-x-1 shadow-lg hover:shadow-amber-500/25"
           >
@@ -196,8 +194,8 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
           </button>
         )}
         {onShowQR && (
-          <button 
-            onClick={() => onShowQR(member.id, member.lightningAddress)}
+          <button
+            onClick={() => onShowQR(member.id, member.lightningAddress || "")}
             className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold py-2 px-3 rounded-lg transition-all duration-300 text-sm flex items-center justify-center shadow-lg hover:shadow-orange-500/25"
             title="Show QR Code"
           >
@@ -210,7 +208,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
 };
 
 // Mock data for demonstration
-export const mockFamilyMembers: SatnamFamilyMember[] = [
+export const mockFamilyMembers: FamilyMember[] = [
   {
     id: "1",
     username: "satnam_dad",

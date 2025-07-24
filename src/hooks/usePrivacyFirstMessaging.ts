@@ -8,7 +8,7 @@ import {
   PrivacyWarningContent,
   SatnamPrivacyFirstCommunications,
   SessionInitializationOptions,
-} from "../lib/gift-wrapped-messaging/privacy-first-service";
+} from '../lib/gift-wrapped-messaging/privacy-first-service.js';
 
 export interface PrivacyMessagingState {
   communications: SatnamPrivacyFirstCommunications | null;

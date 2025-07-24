@@ -4,7 +4,7 @@
  * Test Supabase connection
  */
 
-import { supabase } from "../lib/supabase";
+import { supabase } from '../lib/supabase.js';
 
 async function testConnection() {
   try {

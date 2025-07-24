@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { authAPI, getAuthStatus } from "../lib/api";
+import { authAPI, getAuthStatus } from '../lib/api.js';
 
 export interface User {
   id: string;

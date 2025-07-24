@@ -6,11 +6,26 @@
  */
 
 /**
+ * CRITICAL SECURITY: Master Context environment variable access pattern
+ * Ensures browser compatibility with import.meta.env while maintaining serverless support
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = import.meta as any;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
+/**
  * NIP-05 configuration
  */
 export const nip05Config = {
-  domain:
-    import.meta.env?.NIP05_DOMAIN || process.env?.NIP05_DOMAIN || "satnam.pub",
+  domain: getEnvVar("NIP05_DOMAIN") || "satnam.pub",
 };
 
 /**
@@ -19,16 +34,11 @@ export const nip05Config = {
 export const authConfig = {
   tokenStorageKey: "satnam_auth_token",
   jwtSecret:
-    import.meta.env?.JWT_SECRET ||
-    process.env?.JWT_SECRET ||
-    "development-secret-key-change-in-production",
-  jwtExpiresIn:
-    import.meta.env?.JWT_EXPIRES_IN || process.env?.JWT_EXPIRES_IN || "7d",
+    getEnvVar("JWT_SECRET") || "development-secret-key-change-in-production",
+  jwtExpiresIn: getEnvVar("JWT_EXPIRES_IN") || "7d",
   nostrAuthKind: 27235, // Custom event kind for authentication
   nostrAuthChallenge:
-    import.meta.env?.NOSTR_AUTH_CHALLENGE ||
-    process.env?.NOSTR_AUTH_CHALLENGE ||
-    "satnam_auth_challenge",
+    getEnvVar("NOSTR_AUTH_CHALLENGE") || "satnam_auth_challenge",
   otpExpiryMinutes: 10,
   maxOtpAttempts: 3,
 };

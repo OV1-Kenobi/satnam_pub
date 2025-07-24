@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Gold Standard Crypto Configuration Validator
  * @description Ensures all encryption protocols meet the highest security standards
@@ -141,7 +157,7 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
       usesAuthenticatedEncryption: true,
     },
     environment: {
-      nodeEnv: process.env.NODE_ENV || "development",
+      nodeEnv: getEnvVar("NODE_ENV") || "development",
       hasProperSecrets: validateEnvironmentSecrets(),
       configurationComplete: validateConfigurationCompleteness(),
     },
@@ -278,7 +294,7 @@ function validateEnvironmentConfiguration(): {
   });
 
   // Check NODE_ENV
-  const nodeEnv = process.env.NODE_ENV;
+  const nodeEnv = getEnvVar("NODE_ENV");
   if (nodeEnv === "production") {
     recommendations.push({
       priority: "HIGH",

@@ -88,8 +88,8 @@ describe("OTP Authentication Integration", () => {
     supabase = getTestSupabaseClient();
 
     // Import handlers after mocks are set up
-    const { default: otpInitiate } = await import("../auth/otp-initiate");
-    const { default: otpVerify } = await import("../auth/otp-verify");
+    const { default: otpInitiate } = await import("../../auth/otp-initiate.js");
+    const { default: otpVerify } = await import("../../auth/otp-verify.js");
 
     otpInitiateHandler = otpInitiate;
     otpVerifyHandler = otpVerify;

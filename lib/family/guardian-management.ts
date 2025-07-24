@@ -79,19 +79,20 @@ export type GuardianRole =
  */
 function mapFederationRoleToGuardianRole(
   federationRole: FederationRole
-): GuardianRole {
+): "private" | "offspring" | "adult" | "steward" | "guardian" {
   switch (federationRole) {
     case "guardian":
+      return "guardian";
     case "steward":
-      return "adult"; // CRITICAL FIX: Guardians and stewards are adults, not parents
+      return "steward";
     case "adult":
-      return "trusted_adult";
+      return "adult";
     case "offspring":
-      return "family_member";
+      return "offspring";
     case "private":
-      return "recovery_contact";
+      return "private";
     default:
-      return "family_member";
+      return "offspring";
   }
 }
 

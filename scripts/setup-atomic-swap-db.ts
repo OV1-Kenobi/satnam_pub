@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Atomic Swap Database Setup Script
  * @description Sets up database tables and indexes for atomic swap functionality
@@ -16,8 +32,8 @@ async function setupAtomicSwapDatabase() {
 
   // Initialize Supabase client
   const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    getEnvVar("SUPABASE_URL")!,
+    getEnvVar("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
   try {

@@ -8,7 +8,7 @@
 import {
   displayValidationResults,
   validateGoldStandardCrypto,
-} from "../lib/crypto-validator.js";
+} from '../lib/crypto-validator.js.js';
 import {
   decryptSensitiveData,
   encryptSensitiveData,

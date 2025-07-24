@@ -3,8 +3,10 @@
  * Uses fetch API to communicate with backend API endpoints
  */
 
-// SECURITY FIX: Encrypted family member interface
-export interface FamilyMember {
+import { FamilyMember } from "../types/shared";
+
+// SECURITY FIX: Encrypted family member interface (legacy - replaced by unified interface)
+export interface EncryptedFamilyMember {
   id: string;
   encrypted_name: string; // PRIVACY: Name stored encrypted
   encrypted_role: string; // PRIVACY: Role stored encrypted
@@ -118,7 +120,9 @@ export class FamilyAPI {
 
   async getFamilyWallets(familyId: string): Promise<FamilyWallet[]> {
     try {
-      const response = await fetch(`${this.apiBaseUrl}/family/wallets?familyId=${familyId}`);
+      const response = await fetch(
+        `${this.apiBaseUrl}/family/wallets?familyId=${familyId}`
+      );
       if (response.ok) {
         return await response.json();
       }
@@ -153,7 +157,9 @@ export async function getFamilyMember(
   username: string
 ): Promise<FamilyMember | null> {
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_URL || "/api"}/family/members/${username}`);
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL || "/api"}/family/members/${username}`
+    );
     if (response.ok) {
       return await response.json();
     }
@@ -170,4 +176,4 @@ export async function getFamilyMember(
 // Helper function to get all family members
 export async function getFamilyMembers(): Promise<FamilyMember[]> {
   return await familyAPI.getFamilyMembers();
-} 
+}

@@ -3,7 +3,7 @@
  * @description Centralized API client for communicating with the backend server
  */
 
-import { authManager } from "../utils/authManager";
+import { authManager } from '../utils/authManager.js';
 
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -318,7 +318,7 @@ export const healthAPI = {
 // ===========================================
 
 // Re-export atomic swap API
-export { atomicSwapAPI } from "./api/atomic-swap";
+export type { atomicSwapAPI } from "./api/atomic-swap";
 
 // ===========================================
 // UTILITY FUNCTIONS

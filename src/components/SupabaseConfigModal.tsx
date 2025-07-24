@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { setSupabaseConfig } from '../lib/supabase';
+
+// Lazy import to prevent client creation on page load
+const setSupabaseConfig = async (url: string, key: string) => {
+  const { setSupabaseConfig: setConfigFn } = await import('../lib/supabase');
+  return setConfigFn(url, key);
+};
 
 interface SupabaseConfigModalProps {
   isOpen: boolean;
@@ -14,9 +19,9 @@ export function SupabaseConfigModal({ isOpen, onClose }: SupabaseConfigModalProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
-      setSupabaseConfig(url, key);
+      await setSupabaseConfig(url, key);
       // The page will reload automatically after setting the config
     } catch (error) {
       console.error('Failed to set Supabase config:', error);

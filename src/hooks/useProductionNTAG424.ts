@@ -5,10 +5,22 @@
  * @integration Supabase, LightningClient, NFC Web API
  */
 
-import { useState, useCallback } from "react";
-import { NTAG424ProductionManager, NTAG424AuthResponse } from "../lib/ntag424-production";
-import { supabase } from '../lib/supabase';
-import { LightningClient } from '../lib/lightning-client';
+import { useCallback, useState } from "react";
+import { LightningClient } from '../lib/lightning-client.js';
+import {
+  NTAG424AuthResponse,
+  NTAG424ProductionManager,
+} from "../lib/ntag424-production";
+
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../lib/supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 export interface ProductionNTAG424AuthState {
   isAuthenticated: boolean;
@@ -48,7 +60,7 @@ export const useProductionNTAG424 = (
       setIsProcessing(true);
       setAuthState((prev) => ({ ...prev, error: null }));
       try {
-        if (typeof window !== 'undefined' && 'NDEFReader' in window) {
+        if (typeof window !== "undefined" && "NDEFReader" in window) {
           const ndef = new (window as any).NDEFReader();
           await ndef.scan();
           return new Promise<NTAG424AuthResponse>((resolve, reject) => {
@@ -57,12 +69,23 @@ export const useProductionNTAG424 = (
                 const uid = event.serialNumber;
                 // TODO: Extract SUN message from event.message.records (future NTAG424 DNA integration)
                 let sunMessage = "";
-                if (event.message && event.message.records && event.message.records.length > 0) {
+                if (
+                  event.message &&
+                  event.message.records &&
+                  event.message.records.length > 0
+                ) {
                   // Placeholder: implement SUN extraction logic as per NTAG424 DNA spec
                   sunMessage = ""; // e.g., parseTextRecord(event.message.records[0])
                 }
-                const ntagManager = new NTAG424ProductionManager(supabaseClient, lightningClient);
-                const result = await ntagManager.authenticateProductionTag(uid, pin, sunMessage);
+                const ntagManager = new NTAG424ProductionManager(
+                  supabaseClient,
+                  lightningClient
+                );
+                const result = await ntagManager.authenticateProductionTag(
+                  uid,
+                  pin,
+                  sunMessage
+                );
                 if (result.success) {
                   setAuthState({
                     isAuthenticated: true,
@@ -74,11 +97,17 @@ export const useProductionNTAG424 = (
                   });
                   resolve(result);
                 } else {
-                  setAuthState((prev) => ({ ...prev, error: result.error || 'Authentication failed' }));
+                  setAuthState((prev) => ({
+                    ...prev,
+                    error: result.error || "Authentication failed",
+                  }));
                   reject(new Error(result.error));
                 }
               } catch (error: any) {
-                setAuthState((prev) => ({ ...prev, error: error.message || 'NFC authentication error' }));
+                setAuthState((prev) => ({
+                  ...prev,
+                  error: error.message || "NFC authentication error",
+                }));
                 reject(error);
               } finally {
                 setIsProcessing(false);
@@ -86,7 +115,7 @@ export const useProductionNTAG424 = (
             });
             setTimeout(() => {
               setIsProcessing(false);
-              setAuthState((prev) => ({ ...prev, error: 'NFC read timeout' }));
+              setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
               reject(new Error("NFC read timeout"));
             }, 30000);
           });
@@ -95,7 +124,10 @@ export const useProductionNTAG424 = (
         }
       } catch (error: any) {
         setIsProcessing(false);
-        setAuthState((prev) => ({ ...prev, error: error.message || 'NFC authentication error' }));
+        setAuthState((prev) => ({
+          ...prev,
+          error: error.message || "NFC authentication error",
+        }));
         throw error;
       }
     },
@@ -120,14 +152,17 @@ export const useProductionNTAG424 = (
       setIsProcessing(true);
       setAuthState((prev) => ({ ...prev, error: null }));
       try {
-        if (typeof window !== 'undefined' && 'NDEFReader' in window) {
+        if (typeof window !== "undefined" && "NDEFReader" in window) {
           const ndef = new (window as any).NDEFReader();
           await ndef.scan();
           return new Promise<boolean>((resolve, reject) => {
             ndef.addEventListener("reading", async (event: any) => {
               try {
                 const uid = event.serialNumber;
-                const ntagManager = new NTAG424ProductionManager(supabaseClient, lightningClient);
+                const ntagManager = new NTAG424ProductionManager(
+                  supabaseClient,
+                  lightningClient
+                );
                 const success = await ntagManager.registerProductionTag(
                   uid,
                   pin,
@@ -139,13 +174,16 @@ export const useProductionNTAG424 = (
                 resolve(success);
               } catch (error: any) {
                 setIsProcessing(false);
-                setAuthState((prev) => ({ ...prev, error: error.message || 'NFC registration error' }));
+                setAuthState((prev) => ({
+                  ...prev,
+                  error: error.message || "NFC registration error",
+                }));
                 reject(error);
               }
             });
             setTimeout(() => {
               setIsProcessing(false);
-              setAuthState((prev) => ({ ...prev, error: 'NFC read timeout' }));
+              setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
               reject(new Error("NFC read timeout"));
             }, 30000);
           });
@@ -154,7 +192,10 @@ export const useProductionNTAG424 = (
         }
       } catch (error: any) {
         setIsProcessing(false);
-        setAuthState((prev) => ({ ...prev, error: error.message || 'NFC registration error' }));
+        setAuthState((prev) => ({
+          ...prev,
+          error: error.message || "NFC registration error",
+        }));
         throw error;
       }
     },
@@ -182,4 +223,4 @@ export const useProductionNTAG424 = (
     registerNewTag,
     resetAuthState,
   };
-}; 
+};

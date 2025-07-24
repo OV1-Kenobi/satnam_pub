@@ -19,20 +19,20 @@ interface PrivacyFirstAuthDemoProps {
   onAuthSuccess?: (method: string) => void;
 }
 
-export function PrivacyFirstAuthDemo({ 
-  isOpen, 
-  onClose, 
-  onAuthSuccess 
+export function PrivacyFirstAuthDemo({
+  isOpen,
+  onClose,
+  onAuthSuccess
 }: PrivacyFirstAuthDemoProps) {
   const [authMethod, setAuthMethod] = useState<'nwc' | 'otp' | 'nip07' | null>(null);
   const [privacyLevel, setPrivacyLevel] = useState<'standard' | 'enhanced' | 'maximum'>('enhanced');
-  
+
   // Form states
   const [nwcString, setNwcString] = useState('');
   const [otpIdentifier, setOtpIdentifier] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [nip07Challenge, setNip07Challenge] = useState('');
-  
+
   // UI state
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export function PrivacyFirstAuthDemo({
 
     try {
       const success = await privacyAuth.authenticateNWC(nwcString, privacyLevel);
-      
+
       if (success) {
         setSuccess('NWC authentication successful! Your identity is now protected with hashed UUIDs.');
         onAuthSuccess?.('nwc');
@@ -104,7 +104,7 @@ export function PrivacyFirstAuthDemo({
 
     try {
       const success = await privacyAuth.authenticateOTP(otpIdentifier, otpCode, privacyLevel);
-      
+
       if (success) {
         setSuccess('OTP authentication successful! Your identity is secured with privacy-first protocols.');
         onAuthSuccess?.('otp');
@@ -132,10 +132,10 @@ export function PrivacyFirstAuthDemo({
     try {
       // Get public key from extension
       const pubkey = await window.nostr.getPublicKey();
-      
+
       // Generate challenge
       const challenge = `auth-challenge-${Date.now()}-${Math.random()}`;
-      
+
       // Create event to sign
       const event = {
         kind: 22242,
@@ -147,14 +147,14 @@ export function PrivacyFirstAuthDemo({
 
       // Sign the event
       const signedEvent = await window.nostr.signEvent(event);
-      
+
       const success = await privacyAuth.authenticateNIP07(
-        challenge, 
-        signedEvent.sig, 
-        pubkey, 
+        challenge,
+        signedEvent.sig,
+        pubkey,
         privacyLevel
       );
-      
+
       if (success) {
         setSuccess('NIP-07 authentication successful! Your browser extension identity is now privacy-protected.');
         onAuthSuccess?.('nip07');
@@ -174,7 +174,7 @@ export function PrivacyFirstAuthDemo({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      
+
       <div className="relative w-full max-w-4xl max-h-[90vh] bg-gradient-to-br from-purple-900 via-purple-800 to-purple-900 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="bg-white/10 backdrop-blur-sm border-b border-white/20 p-6">
@@ -208,11 +208,10 @@ export function PrivacyFirstAuthDemo({
                 <button
                   key={level.level}
                   onClick={() => setPrivacyLevel(level.level)}
-                  className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${
-                    privacyLevel === level.level
+                  className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${privacyLevel === level.level
                       ? 'border-purple-400 bg-purple-500/20'
                       : 'border-white/20 bg-white/5 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-semibold text-white">{level.name}</h4>
@@ -238,7 +237,7 @@ export function PrivacyFirstAuthDemo({
           {!authMethod && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-white mb-4">Select Authentication Method</h3>
-              
+
               {/* NWC Method */}
               <button
                 onClick={() => setAuthMethod('nwc')}
@@ -323,7 +322,7 @@ export function PrivacyFirstAuthDemo({
                   ← Back
                 </button>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-purple-200 mb-2">
                   NWC Connection String
@@ -369,7 +368,7 @@ export function PrivacyFirstAuthDemo({
                   ← Back
                 </button>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-purple-200 mb-2">
                   Identifier (npub or nip05)
@@ -428,7 +427,7 @@ export function PrivacyFirstAuthDemo({
                   ← Back
                 </button>
               </div>
-              
+
               <div className="p-4 bg-green-500/20 border border-green-500/30 rounded-lg">
                 <div className="flex items-start space-x-3">
                   <Key className="h-5 w-5 text-green-400 mt-0.5" />
@@ -483,17 +482,3 @@ export function PrivacyFirstAuthDemo({
   );
 }
 
-// Add NIP-07 type declaration
-declare global {
-  interface Window {
-    nostr?: {
-      getPublicKey(): Promise<string>;
-      signEvent(event: any): Promise<any>;
-      getRelays?(): Promise<Record<string, { read: boolean; write: boolean }>>;
-      nip04?: {
-        encrypt(pubkey: string, plaintext: string): Promise<string>;
-        decrypt(pubkey: string, ciphertext: string): Promise<string>;
-      };
-    };
-  }
-}

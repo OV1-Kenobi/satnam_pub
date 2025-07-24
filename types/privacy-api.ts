@@ -183,7 +183,7 @@ export interface FamilyMember {
   };
 }
 
-export interface SatnamFamilyMember {
+export interface FamilyMember {
   id: string;
   username: string;
   role: "offspring" | "adult" | "steward" | "guardian";

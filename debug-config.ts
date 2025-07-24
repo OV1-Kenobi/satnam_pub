@@ -1,12 +1,24 @@
 // Debug script to check config resolution
-import dotenv from "dotenv";
 
-// Load environment variables
-dotenv.config({ path: ".env.local" });
+/**
+ * CRITICAL SECURITY: Master Context environment variable access pattern
+ * Ensures browser compatibility with import.meta.env while maintaining serverless support
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = import.meta as { env?: Record<string, string> };
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
 
 console.log("=== Environment Variables ===");
-console.log("DATABASE_URL:", process.env.DATABASE_URL ? "SET" : "NOT SET");
-console.log("DATABASE_URL value:", process.env.DATABASE_URL);
+console.log("DATABASE_URL:", getEnvVar("DATABASE_URL") ? "SET" : "NOT SET");
+console.log("DATABASE_URL value:", getEnvVar("DATABASE_URL"));
 
 // Test URL parsing
 if (process.env.DATABASE_URL) {

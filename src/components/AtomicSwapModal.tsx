@@ -15,7 +15,7 @@ import {
     Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import type { AtomicSwapRequest, AtomicSwapResult, SwapQuote, SwapQuoteRequest } from '../lib/api/atomic-swap';
+import type { AtomicSwapRequest, AtomicSwapResult, SwapQuote, SwapQuoteRequest } from '../lib/api/atomic-swap.js';
 import { atomicSwapAPI } from '../lib/api/atomic-swap';
 
 interface AtomicSwapModalProps {

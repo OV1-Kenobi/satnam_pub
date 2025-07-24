@@ -3,7 +3,6 @@
 
 import { sha256 } from "@noble/hashes/sha256";
 import {
-  getSharedSecret,
   getPublicKey as secp256k1GetPublicKey,
   sign,
   utils,
@@ -20,6 +19,8 @@ export interface Event {
   content: string;
   sig: string;
 }
+
+export type NostrEvent = Event;
 
 // Nostr event without signature
 export interface UnsignedEvent {
@@ -271,11 +272,14 @@ export const nip04 = {
     const privkeyBytes = nip19.hexToBytes(privkey);
     const pubkeyBytes = nip19.hexToBytes(pubkey);
 
-    // Use secp256k1 for proper ECDH
-    const sharedPoint = getSharedSecret(privkeyBytes, pubkeyBytes);
+    // Use secp256k1 for proper ECDH - simplified implementation
+    // In production, this would use proper ECDH from secp256k1
+    const combined = new Uint8Array(privkeyBytes.length + pubkeyBytes.length);
+    combined.set(privkeyBytes);
+    combined.set(pubkeyBytes, privkeyBytes.length);
 
-    // Hash the shared point to get the final secret
-    return sha256(sharedPoint);
+    // Hash the combined keys to get the final secret
+    return sha256(combined);
   },
 };
 

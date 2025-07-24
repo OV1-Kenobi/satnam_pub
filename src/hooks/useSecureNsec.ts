@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { EnhancedNostrManager } from '../../lib/enhanced-nostr-manager';
+import { EnhancedNostrManager } from '../../lib/enhanced-nostr-manager.js';
 
 interface SecureNsecState {
   isStored: boolean;

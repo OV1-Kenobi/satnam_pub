@@ -27,7 +27,7 @@ import {
   TapToSpendRequest,
   TapToSignRequest,
   NTAG424DNAConfig
-} from '../lib/nfc-auth';
+} from '../lib/nfc-auth.js';
 import QRCode from 'react-qr-code';
 
 // Use native Web Crypto API - no polyfills per master context

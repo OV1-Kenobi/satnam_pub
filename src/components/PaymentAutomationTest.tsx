@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, Clock, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
-import PaymentAutomationService, { PaymentSchedule, PaymentNotification } from '../lib/payment-automation';
+import PaymentAutomationService, { PaymentSchedule, PaymentNotification } from '../lib/payment-automation.js';
 
 const PaymentAutomationTest: React.FC = () => {
   const [schedules, setSchedules] = useState<PaymentSchedule[]>([]);
@@ -34,7 +34,7 @@ const PaymentAutomationTest: React.FC = () => {
   const createTestSchedule = async () => {
     setIsLoading(true);
     try {
-      const testSchedule: Omit<PaymentSchedule, 'id' | 'createdAt' | 'updatedAt'> = {
+      const testSchedule: any = {
         familyId: testFamilyId,
         recipientId: 'test-recipient-1',
         recipientNpub: 'npub1test123456789abcdefghijklmnopqrstuvwxyz',

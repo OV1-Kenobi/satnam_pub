@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * User Service for Database Operations
  *
@@ -7,7 +23,7 @@
 
 import { createHash } from "crypto";
 import { FamilyFederationUser } from "../../src/types/auth";
-import { defaultLogger as logger } from "../../utils/logger";
+import { defaultLogger as logger } from '../../utils/logger.js';
 import db from "../db";
 
 export interface UserProfile {
@@ -32,7 +48,7 @@ export class UserService {
    */
   private static hashIdentifier(identifier: string): string {
     const salt =
-      process.env.IDENTIFIER_HASH_SALT || "default-salt-change-in-production";
+      getEnvVar("IDENTIFIER_HASH_SALT") || "default-salt-change-in-production";
     return createHash("sha256")
       .update(identifier + salt)
       .digest("hex");

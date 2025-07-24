@@ -1,0 +1,41 @@
+# Git attributes for line ending configuration
+# This file configures Git to handle line endings properly for Windows development
+
+# JavaScript files should use CRLF line endings for Windows compatibility
+*.js text eol=crlf
+
+# TypeScript files should use CRLF line endings for Windows compatibility
+*.ts text eol=crlf
+
+# JSON files should use CRLF line endings for Windows compatibility
+*.json text eol=crlf
+
+# Markdown files should use CRLF line endings for Windows compatibility
+*.md text eol=crlf
+
+# Configuration files should use CRLF line endings for Windows compatibility
+*.yml text eol=crlf
+*.yaml text eol=crlf
+*.toml text eol=crlf
+
+# Text files should use CRLF line endings for Windows compatibility
+*.txt text eol=crlf
+
+# HTML/CSS files should use CRLF line endings for Windows compatibility
+*.html text eol=crlf
+*.css text eol=crlf
+*.scss text eol=crlf
+
+# Binary files should not be processed
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.js text eol=crlf
+*.js text eol=crlf
+*.js text eol=crlf

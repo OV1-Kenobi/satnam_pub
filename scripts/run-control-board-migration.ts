@@ -5,7 +5,7 @@
 
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { supabase } from "../lib/supabase";
+import { supabase } from '../lib/supabase.js';
 
 interface MigrationResult {
   success: boolean;

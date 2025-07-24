@@ -45,7 +45,7 @@ import {
   VerificationLevel,
   badgeSystem,
   BadgeAwardRequest
-} from '../../lib/citadel/badge-system';
+} from '../../lib/citadel/badge-system.js';
 
 interface BadgeSystemProps {
   studentPubkey: string;

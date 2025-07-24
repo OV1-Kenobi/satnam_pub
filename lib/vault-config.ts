@@ -313,8 +313,11 @@ export class VaultConfigManager {
       return globalVaultConfigManager;
     }
 
-    console.log("🔐 Initializing browser-only VaultConfigManager");
-    this.initializeBrowserVault();
+    console.log(
+      "🔐 Creating VaultConfigManager instance (lazy initialization)"
+    );
+    // Don't initialize immediately - wait for first use
+    // this.initializeBrowserVault();
 
     // Store the instance globally
     globalVaultConfigManager = this;
@@ -333,21 +336,20 @@ export class VaultConfigManager {
   /**
    * Initialize Vault for browser environment with local credential storage
    */
-  private initializeBrowserVault(): void {
+  private async initializeBrowserVault(): Promise<void> {
+    if (this.supabase) {
+      return; // Already initialized
+    }
+
     // Try to import and use the main Supabase client to prevent multiple instances
     try {
       // Dynamic import to avoid circular dependencies
-      import("../src/lib/supabase")
-        .then(({ supabase }) => {
-          this.supabase = supabase;
-          console.log("✅ Using main Supabase client for vault operations");
-        })
-        .catch(() => {
-          // Fallback to creating a new client if import fails
-          this.createFallbackClient();
-        });
+      const { supabase } = await import("../src/lib/supabase");
+      this.supabase = supabase;
+      console.log("✅ Using main Supabase client for vault operations");
     } catch (error) {
       // Fallback to creating a new client if import fails
+      console.log("⚠️ Main client import failed, using fallback");
       this.createFallbackClient();
     }
   }
@@ -385,7 +387,11 @@ export class VaultConfigManager {
       return cached;
     }
 
-    // Try Vault first
+    // Try Vault first (with lazy initialization)
+    if (!this.supabase) {
+      await this.initializeBrowserVault();
+    }
+
     if (this.supabase) {
       try {
         const vaultValue = await this.getFromVault(secretName);
@@ -730,14 +736,20 @@ export class VaultConfigManager {
   }
 }
 
-// Global instance - use singleton pattern
-export const vaultConfig = VaultConfigManager.getInstance();
+// Lazy global instance - only create when accessed
+let globalVaultConfig: VaultConfigManager | null = null;
+export const getVaultConfig = (): VaultConfigManager => {
+  if (!globalVaultConfig) {
+    globalVaultConfig = VaultConfigManager.getInstance();
+  }
+  return globalVaultConfig;
+};
 
 /**
  * Convenience functions for common secrets
  */
 export async function getJwtSecret(): Promise<string> {
-  const secret = await vaultConfig.getSecret("jwt_secret");
+  const secret = await getVaultConfig().getSecret("jwt_secret");
   if (!secret) {
     throw new Error("JWT secret not configured");
   }
@@ -745,7 +757,7 @@ export async function getJwtSecret(): Promise<string> {
 }
 
 export async function getPrivacyMasterKey(): Promise<string> {
-  const secret = await vaultConfig.getSecret("privacy_master_key");
+  const secret = await getVaultConfig().getSecret("privacy_master_key");
   if (!secret) {
     throw new Error("Privacy master key not configured");
   }
@@ -753,7 +765,7 @@ export async function getPrivacyMasterKey(): Promise<string> {
 }
 
 export async function getCsrfSecret(): Promise<string> {
-  const secret = await vaultConfig.getSecret("csrf_secret");
+  const secret = await getVaultConfig().getSecret("csrf_secret");
   if (!secret) {
     throw new Error("CSRF secret not configured");
   }
@@ -761,7 +773,7 @@ export async function getCsrfSecret(): Promise<string> {
 }
 
 export async function getMasterEncryptionKey(): Promise<string> {
-  const secret = await vaultConfig.getSecret("master_encryption_key");
+  const secret = await getVaultConfig().getSecret("master_encryption_key");
   if (!secret) {
     throw new Error("Master encryption key not configured");
   }

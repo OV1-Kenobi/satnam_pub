@@ -3,15 +3,11 @@
 // Provides easy integration with the authentication system
 
 import { useCallback, useState } from "react";
-import {
-  AuthResponse,
-  FamilyFederationUser,
-  VerificationResponse,
-} from "../types/auth";
-import { ApiClient } from "../utils/api-client";
+import { FamilyFederationUser } from "../types/auth";
+import { ApiClient } from "../utils/api-client.js";
 
 // Re-export the main auth hook for convenience
-export { useFamilyFederationAuth as useFamilyAuth } from "./useFamilyFederationAuth";
+export type { useFamilyFederationAuth as useFamilyAuth } from "./useFamilyFederationAuth";
 
 interface UseFamilyAuthReturn {
   // State
@@ -43,8 +39,8 @@ interface UseFamilyAuthReturn {
 
 export const useFamilyAuthOTP = (): UseFamilyAuthReturn => {
   // Mock login function for now - would be replaced with actual auth context
-  const login = (userData: any) => {
-    console.log('Login called with:', userData);
+  const login = (userData: FamilyFederationUser) => {
+    console.log("Login called with:", userData);
   };
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,13 +55,14 @@ export const useFamilyAuthOTP = (): UseFamilyAuthReturn => {
 
     try {
       const apiClient = new ApiClient();
-      const result: AuthResponse = await apiClient.authenticateUser({
+      const result = await apiClient.authenticateUser({
         type: "otp-initiate",
         npub: npub.trim(),
         nip05: nip05?.trim() || undefined,
       });
 
-      if (result.success && result.data) {
+      // Type guard to ensure we have AuthResponse
+      if (result.success && result.data && "otpKey" in result.data) {
         return {
           success: true,
           otpKey: result.data.otpKey,
@@ -97,27 +94,54 @@ export const useFamilyAuthOTP = (): UseFamilyAuthReturn => {
       setIsLoading(true);
       setError(null);
 
-          try {
-      const apiClient = new ApiClient();
-      const result: VerificationResponse = await apiClient.authenticateUser({
+      try {
+        const apiClient = new ApiClient();
+        const result = await apiClient.authenticateUser({
           type: "otp-verify",
           otpKey,
           otp: otp.trim(),
         });
 
-        if (result.success && result.data?.authenticated) {
+        // Type guard to ensure we have VerificationResponse
+        if (
+          result.success &&
+          result.data &&
+          "authenticated" in result.data &&
+          result.data.authenticated
+        ) {
+          // Cast to VerificationResponse for proper type access
+          const verificationData = result.data as {
+            authenticated: boolean;
+            sessionToken: string;
+            userAuth: {
+              npub: string;
+              nip05?: string;
+              federationRole: string | null;
+              authMethod: string;
+              isWhitelisted: boolean;
+              votingPower: number;
+              stewardApproved: boolean;
+              guardianApproved: boolean;
+            };
+            message: string;
+            verificationMethod: string;
+            otpSender: string;
+          };
+
           const userData: FamilyFederationUser = {
-            npub: result.data.userAuth.npub,
-            nip05: result.data.userAuth.nip05,
-            federationRole: result.data.userAuth.federationRole as
-              | "parent"
-              | "child"
+            npub: verificationData.userAuth.npub,
+            nip05: verificationData.userAuth.nip05,
+            federationRole: verificationData.userAuth.federationRole as
+              | "adult"
+              | "offspring"
+              | "steward"
               | "guardian",
             authMethod: "otp",
-            isWhitelisted: result.data.userAuth.isWhitelisted,
-            votingPower: result.data.userAuth.votingPower,
-            guardianApproved: result.data.userAuth.guardianApproved,
-            sessionToken: result.data.sessionToken,
+            isWhitelisted: verificationData.userAuth.isWhitelisted,
+            votingPower: verificationData.userAuth.votingPower,
+            stewardApproved: verificationData.userAuth.stewardApproved,
+            guardianApproved: verificationData.userAuth.guardianApproved,
+            sessionToken: verificationData.sessionToken,
           };
 
           // Update auth context

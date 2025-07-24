@@ -1,4 +1,20 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Vault Credential Testing Script
  * @description Tests credential storage, retrieval, and rotation in Supabase Vault
@@ -6,7 +22,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
-import { VaultConfigManager } from "../lib/vault-config";
+import { VaultConfigManager } from '../lib/vault-config.js';
 
 // Load environment variables
 config({ path: ".env" });
@@ -19,8 +35,8 @@ class VaultCredentialTester {
   constructor() {
     this.vaultManager = new VaultConfigManager();
     
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = getEnvVar("SUPABASE_URL");
+    const serviceRoleKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
     
     if (supabaseUrl && serviceRoleKey) {
       this.supabase = createClient(supabaseUrl, serviceRoleKey);

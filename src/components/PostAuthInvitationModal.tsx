@@ -3,7 +3,7 @@
 
 import { X } from 'lucide-react';
 import React, { useState } from 'react';
-import { SessionInfo } from '../utils/secureSession';
+import { SessionInfo } from '../utils/secureSession.js';
 
 interface PostAuthInvitationModalProps {
   isOpen: boolean;
@@ -12,11 +12,11 @@ interface PostAuthInvitationModalProps {
   sessionInfo: SessionInfo;
 }
 
-export function PostAuthInvitationModal({ 
-  isOpen, 
-  onClose, 
+export function PostAuthInvitationModal({
+  isOpen,
+  onClose,
   onSkip,
-  sessionInfo 
+  sessionInfo
 }: PostAuthInvitationModalProps) {
   const [inviteConfig, setInviteConfig] = useState({
     personalMessage: '',
@@ -79,12 +79,12 @@ export function PostAuthInvitationModal({
   if (!isOpen || !sessionInfo.isAuthenticated) return null;
 
   return (
-    <div 
-      className="modal-overlay transition-opacity duration-300"
+    <div
+      className="modal-overlay-bitcoin-citadel transition-opacity duration-300"
       onClick={handleBackdropClick}
     >
-      <div 
-        className="modal-content transform transition-all duration-300"
+      <div
+        className="modal-content-bitcoin-citadel transform transition-all duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -170,7 +170,7 @@ export function PostAuthInvitationModal({
                   🎁 Send as Gift Wrapped Nostr DM
                 </label>
               </div>
-              
+
               {inviteConfig.sendAsGiftWrappedDM && (
                 <div>
                   <label className="block text-xs text-purple-300 mb-1">
@@ -255,7 +255,7 @@ export function PostAuthInvitationModal({
             )}
           </div>
         ) : (
-          <InvitationResultDisplay 
+          <InvitationResultDisplay
             generatedInvite={generatedInvite}
             inviteConfig={inviteConfig}
             onGenerateNew={() => setGeneratedInvite(null)}
@@ -286,11 +286,11 @@ interface InvitationResultDisplayProps {
   onClose: () => void;
 }
 
-function InvitationResultDisplay({ 
-  generatedInvite, 
-  inviteConfig, 
-  onGenerateNew, 
-  onClose 
+function InvitationResultDisplay({
+  generatedInvite,
+  inviteConfig,
+  onGenerateNew,
+  onClose
 }: InvitationResultDisplayProps) {
   const handleCopyUrl = async () => {
     try {
@@ -305,7 +305,7 @@ function InvitationResultDisplay({
       <h4 className="font-medium text-white mb-3">
         🎉 Invitation Ready!
       </h4>
-      
+
       {!inviteConfig.sendAsGiftWrappedDM ? (
         <>
           {/* QR Code Display */}

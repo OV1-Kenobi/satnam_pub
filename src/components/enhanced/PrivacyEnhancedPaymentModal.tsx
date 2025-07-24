@@ -5,7 +5,7 @@
 
 import { AlertTriangle, Check, Eye, EyeOff, RefreshCw, Send, Shield, XCircle } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { formatSats } from "../../lib/utils";
+import { formatSats } from '../../lib/utils.js';
 import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
 import { PrivacyLevel } from "../../types/privacy";
 import { FamilyMember } from "../../types/shared";

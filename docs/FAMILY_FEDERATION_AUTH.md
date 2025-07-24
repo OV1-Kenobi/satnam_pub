@@ -2,7 +2,9 @@
 
 ## Overview
 
-The Family Federation Authentication system provides secure, Nostr-native authentication for family financial management. It combines **Nostr Wallet Connect (NWC)** and **One-Time Password (OTP)** authentication methods with a **Family Federation Whitelist** to ensure only authorized family members can access sensitive financial data.
+The Family Federation Authentication system provides secure, Nostr-native authentication for family financial management. It supports **NIP-05/Password**, **One-Time Password (OTP)**, **NIP-07**, and **Nsec** authentication methods with a **Family Federation Whitelist** to ensure only authorized family members can access sensitive financial data.
+
+**Note**: Nostr Wallet Connect (NWC) is now a wallet connection feature for Lightning payments, not an authentication method. Users authenticate first, then optionally connect NWC wallets for payment operations.
 
 ## 🔐 Security Features
 
@@ -16,19 +18,40 @@ The Family Federation Authentication system provides secure, Nostr-native authen
 
 ### Authentication Methods
 
-#### 1. Nostr Wallet Connect (NWC)
+#### 1. NIP-05/Password Authentication (Primary)
 
-- **Fast & Secure**: Direct wallet-based authentication
-- **Compatible**: Works with Alby, Mutiny, and other NWC-enabled wallets
-- **Verification**: Validates NWC connection and extracts user identity
-- **Whitelist Check**: Automatically verifies Family Federation membership
+- **User-Friendly**: Standard username@domain.com + password format
+- **Domain Restricted**: Only satnam.pub and citadel.academy domains allowed
+- **Secure**: SHA-256 password hashing with unique salts
+- **Privacy-First**: All identifiers hashed, no plaintext storage
 
 #### 2. One-Time Password (OTP)
 
 - **Accessible**: Works with any Nostr client supporting DMs
-- **Secure**: 6-digit codes with expiration and attempt limits
-- **Fallback**: Alternative when NWC isn't available
-- **Demo Mode**: Includes demo OTP for testing (removed in production)
+- **Secure**: RFC 6238 TOTP with HMAC-SHA256
+- **Mobile-Friendly**: 6-digit codes with 120-second time windows
+- **Rate Limited**: Account lockout protection
+
+#### 3. NIP-07 Browser Extension
+
+- **Advanced Users**: For users with Nostr browser extensions
+- **Cryptographic**: Signature-based authentication
+- **Zero-Knowledge**: No private key exposure
+
+#### 4. Nsec Private Key
+
+- **Expert Users**: Direct private key authentication
+- **Zero-Knowledge**: Immediate memory cleanup
+- **High Security**: Cryptographic signature verification
+
+### Wallet Connection (Post-Authentication)
+
+#### Nostr Wallet Connect (NWC) - Now Wallet Feature
+
+- **Post-Auth Only**: Connect after authentication for payments
+- **Lightning Integration**: Supports multiple wallet providers
+- **Family Spending**: Configurable spending limits and approvals
+- **Multi-Wallet**: Support for multiple connected wallets
 
 ## 🏠 Family Federation Whitelist
 

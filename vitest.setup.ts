@@ -4,13 +4,13 @@
  * Global configuration and setup for all Vitest tests
  */
 
-import dotenv from "dotenv";
 import { afterAll, beforeAll, vi } from "vitest";
 import { globalTestCleanup } from "./lib/__tests__/test-setup";
 
-// Load environment variables for testing
-dotenv.config({ path: ".env.test" });
-dotenv.config({ path: ".env" });
+/**
+ * CRITICAL SECURITY: Master Context environment variable access pattern
+ * Test environment variables are automatically available in Vitest
+ */
 
 // Global test setup
 beforeAll(async () => {

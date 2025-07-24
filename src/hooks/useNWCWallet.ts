@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * NWC (Nostr Wallet Connect) React Hook - Master Context Compliant
  *
@@ -130,7 +146,7 @@ export function useNWCWallet(): UseNWCWalletReturn {
   });
 
   // API base URL
-  const API_BASE = process.env.REACT_APP_API_BASE_URL || "/.netlify/functions";
+  const API_BASE = getEnvVar("REACT_APP_API_BASE_URL") || "/.netlify/functions";
 
   /**
    * Make API request to NWC wallet endpoint

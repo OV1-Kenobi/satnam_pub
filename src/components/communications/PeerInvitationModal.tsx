@@ -1,7 +1,30 @@
 import { useState } from 'react';
-import { PrivacyLevel, getDefaultPrivacyLevel } from './PrivacyLevelSelector.tsx';
+import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 
-export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderProfile }) {
+interface SenderProfile {
+  username?: string;
+  npub?: string;
+  lightningAddress?: string;
+}
+
+interface PeerInvitationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSendInvitation: (invitation: {
+    recipientNpub: string;
+    invitationType: string;
+    personalMessage: string;
+    privacyLevel: PrivacyLevel;
+  }) => void;
+  senderProfile: SenderProfile;
+}
+
+export function PeerInvitationModal({
+  isOpen,
+  onClose,
+  onSendInvitation,
+  senderProfile
+}: PeerInvitationModalProps) {
   const [recipientNpub, setRecipientNpub] = useState('');
   const [invitationType, setInvitationType] = useState('friend');
   const [personalMessage, setPersonalMessage] = useState('');
@@ -13,30 +36,30 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
       case PrivacyLevel.GIFTWRAPPED:
         // Use Gift Wrapped implementation for complete privacy
         return await sendGiftWrappedMessage(content, recipient);
-      
+
       case PrivacyLevel.ENCRYPTED:
         // Use encrypted DM implementation
         return await sendEncryptedDM(content, recipient);
-      
+
       case PrivacyLevel.MINIMAL:
         // Use standard message implementation
         return await sendStandardMessage(content, recipient);
     }
   };
 
-  const sendGiftWrappedMessage = async (content: string, recipient: string) => {
+  const sendGiftWrappedMessage = async (_content: string, _recipient: string) => {
     // Gift Wrapped implementation - complete metadata protection
     console.log('Sending gift wrapped message with maximum privacy');
     return { success: true, method: 'giftwrapped' };
   };
 
-  const sendEncryptedDM = async (content: string, recipient: string) => {
+  const sendEncryptedDM = async (_content: string, _recipient: string) => {
     // Encrypted DM implementation
     console.log('Sending encrypted DM with selective privacy');
     return { success: true, method: 'encrypted' };
   };
 
-  const sendStandardMessage = async (content: string, recipient: string) => {
+  const sendStandardMessage = async (_content: string, _recipient: string) => {
     // Standard message implementation
     console.log('Sending standard message with minimal encryption');
     return { success: true, method: 'minimal' };
@@ -47,7 +70,12 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
     try {
       // Use the enhanced privacy-aware message sending
       await sendMessage(personalMessage, recipientNpub, privacyLevel);
-      await onSendInvitation(recipientNpub, invitationType, personalMessage, privacyLevel);
+      onSendInvitation({
+        recipientNpub,
+        invitationType,
+        personalMessage,
+        privacyLevel
+      });
       setRecipientNpub('');
       setPersonalMessage('');
       onClose();
@@ -60,7 +88,7 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
 
   return (
     <div className="modal-overlay transition-opacity duration-300">
-      <div 
+      <div
         className="modal-content transform transition-all duration-300"
         onClick={(e) => e.stopPropagation()}
       >
@@ -97,7 +125,7 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
               className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:bg-white/20 focus:border-purple-400 transition-all duration-300"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-white mb-2">
               Relationship Type
@@ -112,7 +140,7 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
               <option value="family-associate" className="bg-purple-900 text-white">Family Associate (Extended family/trusted contacts)</option>
             </select>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-white mb-2">
               Personal Message (Optional)
@@ -125,7 +153,7 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
               rows={3}
             />
           </div>
-          
+
           {/* Privacy Level Selector */}
           <div className="bg-white/10 p-4 rounded-lg border border-white/20">
             <h4 className="font-semibold text-white mb-3">Privacy Level</h4>
@@ -187,11 +215,11 @@ export function PeerInvitationModal({ isOpen, onClose, onSendInvitation, senderP
             <div className="text-xs text-purple-200 space-y-1">
               <div>Username: {senderProfile?.username || 'Unknown User'}</div>
               <div>Lightning Address: {senderProfile?.username || 'user'}@satnam.pub</div>
-              <div>Secure Communications: {privacyLevel === PrivacyLevel.MAXIMUM ? 'Giftwrapped' : privacyLevel === PrivacyLevel.SELECTIVE ? 'Encrypted' : 'Standard'} Nostr DMs</div>
+              <div>Secure Communications: {privacyLevel === PrivacyLevel.GIFTWRAPPED ? 'Giftwrapped' : privacyLevel === PrivacyLevel.ENCRYPTED ? 'Encrypted' : 'Standard'} Nostr DMs</div>
             </div>
           </div>
         </div>
-        
+
         <div className="flex space-x-3 mt-8">
           <button
             onClick={onClose}

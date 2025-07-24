@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getTestSupabaseClient } from "../../lib/__tests__/test-setup";
+import { getTestSupabaseClient } from '../../lib/__tests__/test-setup.js';
 
 // Use real crypto for authentic testing - no mocking
 // This ensures proper OTP hashing and verification

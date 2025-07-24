@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * Security Monitoring and Rate Limiting Dashboard
  *
@@ -11,7 +27,7 @@
  * - SECURITY_TARGETED_ATTACK_THRESHOLD: Targeted attack attempts threshold (default: 20)
  */
 
-import { monitorFailOpenScenarios } from "../lib/security/rate-limiter";
+import { monitorFailOpenScenarios } from '../lib/security/rate-limiter.js';
 import { supabase } from "../lib/supabase";
 
 interface SecurityMetrics {
@@ -39,15 +55,15 @@ interface AttackThresholds {
 }
 
 const DEFAULT_THRESHOLDS: AttackThresholds = {
-  otpFailures: parseInt(process.env.SECURITY_OTP_FAILURE_THRESHOLD || "50"),
+  otpFailures: parseInt(getEnvVar("SECURITY_OTP_FAILURE_THRESHOLD") || "50"),
   rateLimitViolations: parseInt(
-    process.env.SECURITY_RATE_LIMIT_VIOLATION_THRESHOLD || "100"
+    getEnvVar("SECURITY_RATE_LIMIT_VIOLATION_THRESHOLD") || "100"
   ),
   suspiciousIpCount: parseInt(
-    process.env.SECURITY_SUSPICIOUS_IP_THRESHOLD || "5"
+    getEnvVar("SECURITY_SUSPICIOUS_IP_THRESHOLD") || "5"
   ),
   targetedAttackAttempts: parseInt(
-    process.env.SECURITY_TARGETED_ATTACK_THRESHOLD || "20"
+    getEnvVar("SECURITY_TARGETED_ATTACK_THRESHOLD") || "20"
   ),
 };
 

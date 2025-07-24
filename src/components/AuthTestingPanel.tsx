@@ -1,12 +1,12 @@
 // src/components/AuthTestingPanel.tsx
+import React, { useState } from "react";
+import { ApiClient } from '../../utils/api-client.js';
 import {
   finalizeEvent as finishEvent,
   generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
-} from "../lib/nostr-browser";
-import React, { useState } from "react";
-import { ApiClient } from "../../utils/api-client";
+} from '../lib/nostr-browser.js';
 
 interface TestResult {
   test: string;
@@ -155,11 +155,11 @@ const AuthTestingPanel: React.FC = () => {
 
     try {
       // Generate test keypair
-      const privkey = generatePrivateKey();
-      const pubkey = getPublicKey(privkey);
+      const privkey = (generatePrivateKey as any)();
+      const pubkey = (getPublicKey as any)(privkey);
 
       // Create signed event
-      const authEvent = finishEvent(
+      const authEvent = (finishEvent as any)(
         {
           kind: 1,
           created_at: Math.floor(Date.now() / 1000),
@@ -327,13 +327,12 @@ const AuthTestingPanel: React.FC = () => {
           testResults.map((result, index) => (
             <div
               key={index}
-              className={`p-3 rounded border-l-4 ${
-                result.status === "success"
+              className={`p-3 rounded border-l-4 ${result.status === "success"
                   ? "bg-green-900/30 border-green-400"
                   : result.status === "error"
                     ? "bg-red-900/30 border-red-400"
                     : "bg-yellow-900/30 border-yellow-400"
-              }`}
+                }`}
             >
               <div className="flex items-center space-x-2">
                 <span className="font-medium">{result.test}:</span>

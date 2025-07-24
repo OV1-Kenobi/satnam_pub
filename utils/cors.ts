@@ -1,5 +1,21 @@
-import { ApiRequest, ApiResponse } from "../types/api";
+import { NetlifyRequest, NetlifyResponse } from "../types/netlify-functions";
 import { getCorsHeaders, validateOrigin } from "./auth-crypto";
+
+/**
+ * CRITICAL SECURITY: Master Context environment variable access pattern
+ * Ensures browser compatibility with import.meta.env while maintaining serverless support
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = import.meta as any;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
 
 /**
  * Standard allowed origins configuration
@@ -18,9 +34,11 @@ export const ALLOWED_ORIGINS = [
  * Environment-aware CORS configuration
  */
 export function getAllowedOrigins(): string[] {
-  if (process.env.NODE_ENV === "production") {
+  const nodeEnv = getEnvVar("NODE_ENV");
+  if (nodeEnv === "production") {
+    const frontendUrl = getEnvVar("FRONTEND_URL");
     return [
-      process.env.FRONTEND_URL || "https://satnam.pub",
+      frontendUrl || "https://satnam.pub",
       "https://satnam.pub",
       "https://www.satnam.pub",
       "https://app.satnam.pub",
@@ -38,8 +56,8 @@ export function getAllowedOrigins(): string[] {
  * @param options - CORS options
  */
 export function setCorsHeaders(
-  req: ApiRequest,
-  res: ApiResponse,
+  req: NetlifyRequest,
+  res: NetlifyResponse,
   options: {
     methods?: string;
     credentials?: boolean;
@@ -81,8 +99,8 @@ export function setCorsHeaders(
  * @param options - CORS options
  */
 export function setCorsHeadersFromShared(
-  req: ApiRequest,
-  res: ApiResponse,
+  req: NetlifyRequest,
+  res: NetlifyResponse,
   options: {
     methods?: string;
     credentials?: boolean;
@@ -106,8 +124,8 @@ export function setCorsHeadersFromShared(
  * @param options - CORS options
  */
 export function setCorsHeadersForCustomAPI(
-  req: ApiRequest,
-  res: ApiResponse,
+  req: NetlifyRequest,
+  res: NetlifyResponse,
   options: {
     methods?: string;
     credentials?: boolean;

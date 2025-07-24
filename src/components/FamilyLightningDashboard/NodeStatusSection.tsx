@@ -1,12 +1,12 @@
 import { Shield } from "lucide-react";
 import React from "react";
-import { getStatusColor } from "../../lib/utils";
-import { SatnamFamilyMember } from "../../types/shared";
+import { getStatusColor } from '../../lib/utils.js';
+import { FamilyMember } from "../../types/shared";
 import { NodeStatus } from "./types";
 
 interface NodeStatusSectionProps {
   nodeStatus: NodeStatus;
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
 }
 
 const NodeStatusSection: React.FC<NodeStatusSectionProps> = ({ nodeStatus, familyMembers }) => {

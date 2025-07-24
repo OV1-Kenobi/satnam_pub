@@ -136,9 +136,13 @@ export function stopConnectionMonitoring() {
   }
 }
 
-// Secure connection initialization
-if (typeof window !== "undefined") {
-  // Client-side initialization
+// Lazy connection monitoring - only start when explicitly needed
+let monitoringInitialized = false;
+
+export function initializeConnectionMonitoring() {
+  if (monitoringInitialized || typeof window === "undefined") return;
+
+  monitoringInitialized = true;
   startConnectionMonitoring();
 
   // Cleanup on page unload
@@ -149,6 +153,17 @@ if (typeof window !== "undefined") {
 
 // Database service layer
 export class CitadelDatabase {
+  // Static methods for database operations
+
+  static async query(sql: string, params?: any[]): Promise<any> {
+    // Implementation for raw SQL queries
+    return supabase.rpc("execute_sql", { query: sql, params });
+  }
+
+  static async from(table: string) {
+    return supabase.from(table);
+  }
+
   // Create privacy-first user profile
   static async createUserProfile(userData: {
     id: string; // UUID from Supabase auth.users

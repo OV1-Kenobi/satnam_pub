@@ -22,7 +22,7 @@ import {
   X
 } from "lucide-react";
 import React, { useState } from "react";
-import { FamilyFoundryService, CharterDefinition, RBACDefinition } from "../lib/api/family-foundry";
+import { FamilyFoundryService, CharterDefinition, RBACDefinition } from '../lib/api/family-foundry.js';
 import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
 import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";

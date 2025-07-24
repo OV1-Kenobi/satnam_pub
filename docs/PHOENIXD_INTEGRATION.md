@@ -43,7 +43,7 @@ const nodeInfo = await phoenixdClient.getNodeInfo();
 const invoice = await phoenixdClient.createFamilyInvoice(
   "alice",
   50000,
-  "Weekly allowance",
+  "Weekly allowance"
 );
 
 // Pay Lightning invoice
@@ -424,7 +424,7 @@ See individual API endpoint files for detailed documentation:
 - `api/phoenixd/status.ts` - Node status and health
 - `api/phoenixd/family-channels.ts` - Channel management
 - `api/phoenixd/liquidity.ts` - Liquidity operations
-- `api/phoenixd/payments.ts` - Payment processing
+- `api/phoenixd/payments.js` - Payment processing
 
 ## Support
 

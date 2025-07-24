@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Test setup utilities for integration tests
  * @description Provides test database client, cleanup functions, and test utilities
@@ -6,8 +22,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Test Supabase client configuration
-const TEST_SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://your-test-project.supabase.co';
-const TEST_SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'your-test-anon-key';
+const TEST_SUPABASE_URL = getEnvVar("VITE_SUPABASE_URL") || 'https://your-test-project.supabase.co';
+const TEST_SUPABASE_ANON_KEY = getEnvVar("VITE_SUPABASE_ANON_KEY") || 'your-test-anon-key';
 
 export const getTestSupabaseClient = () => {
   return createClient(TEST_SUPABASE_URL, TEST_SUPABASE_ANON_KEY);

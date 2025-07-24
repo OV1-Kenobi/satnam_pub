@@ -57,7 +57,7 @@ export class ApiClient {
 
   // User data management
   async storeUserData(userData: any): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/endpoints/user`, {
+    const response = await fetch(`${this.baseUrl}/register-identity`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(userData),

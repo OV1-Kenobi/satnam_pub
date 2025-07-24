@@ -9,9 +9,9 @@
  * ✅ Integration with unified messaging service and session management
  */
 
-import { getFamilyMembers } from "../lib/family-api";
 import { LightningAddressService } from "../lib/lightning-address";
 import { LightningClient } from "../lib/lightning-client";
+import { getFamilyMembers } from "../src/lib/family-api";
 // MASTER CONTEXT COMPLIANCE: Use user-controlled local logging instead of external privacy service
 // import { logPrivacyOperation } from "../lib/privacy"; // Replaced with local payment history
 // import { SatnamPrivacyLayer } from "../lib/privacy/lnproxy-privacy"; // Replaced with unified service
@@ -1986,7 +1986,9 @@ export class ControlBoardService {
           isCustom: !isDefaultLightning,
           isSelfCustodial: !!user.nwcConnection,
           nwcConnection: user.nwcConnection,
-          lastVerified: new Date(user.updated_at || user.created_at),
+          lastVerified: new Date(
+            user.updated_at || user.created_at || Date.now()
+          ),
           status: "active",
         },
         nip05: {
@@ -1994,7 +1996,9 @@ export class ControlBoardService {
           domain: nip05Domain,
           isWhitelisted,
           platformAccessEnabled: isWhitelisted,
-          lastVerified: new Date(user.updated_at || user.created_at),
+          lastVerified: new Date(
+            user.updated_at || user.created_at || Date.now()
+          ),
           status: "active",
         },
         sovereigntyLevel,
@@ -2511,10 +2515,10 @@ export class ControlBoardService {
 
       if (!user) return false;
 
-      // Check if user has admin role or is Satnam staff
-      return (
-        user.role === "admin" || user.email?.endsWith("@satnam.pub") || false
-      );
+      // MASTER CONTEXT COMPLIANCE: No admin role in standardized hierarchy
+      // Admin privileges are handled through "guardian" role (highest in hierarchy)
+      // Privacy-first - no email addresses stored or checked
+      return user.role === "guardian";
     } catch (error) {
       console.error("Error checking admin status:", error);
       return false;

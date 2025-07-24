@@ -6,8 +6,8 @@
  * to maintain database performance and storage efficiency.
  */
 
-import { supabase } from "../lib/supabase";
-import { defaultLogger as logger } from "../utils/logger";
+import { supabase } from "../lib/supabase.js";
+import { defaultLogger as logger } from "../utils/logger.js";
 
 /**
  * Clean up expired rate limit records
@@ -28,7 +28,7 @@ async function cleanupExpiredRateLimits(): Promise<void> {
       `Rate limit cleanup completed. Deleted ${deletedCount} expired records.`
     );
   } catch (error) {
-    logger.error("Failed to cleanup expired rate limits:", error);
+    logger.error("Failed to cleanup expired rate limits:", error as any);
     throw error;
   }
 }
@@ -71,7 +71,7 @@ async function getRateLimitStats(): Promise<void> {
       cleanupRecommended: (expiredRecords || 0) > 100,
     });
   } catch (error) {
-    logger.error("Failed to fetch rate limit statistics:", error);
+    logger.error("Failed to fetch rate limit statistics:", error as any);
   }
 }
 
@@ -101,7 +101,7 @@ async function main() {
         process.exit(1);
     }
   } catch (error) {
-    logger.error("Script execution failed:", error);
+    logger.error("Script execution failed:", error as any);
     process.exit(1);
   }
 }

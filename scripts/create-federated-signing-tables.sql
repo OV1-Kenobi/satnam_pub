@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS family_guardians (
     public_key TEXT NOT NULL,
     email TEXT,
     nostr_pubkey TEXT,
-    role TEXT NOT NULL CHECK (role IN ('parent', 'trusted_contact', 'family_friend')),
+    role TEXT NOT NULL CHECK (role IN ('adult', 'trusted_contact', 'family_friend')),
     active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     

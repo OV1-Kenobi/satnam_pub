@@ -1,5 +1,5 @@
 // scripts/test-fedimint.ts
-import { FederationManager } from "../lib/fedimint/federation-manager";
+import { FederationManager } from '../lib/fedimint/federation-manager.js';
 
 async function testFedimintIntegration() {
   console.log("🧪 Testing Fedimint Integration...\n");

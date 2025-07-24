@@ -1,6 +1,6 @@
 // lib/__tests__/secure-storage.integration.test.ts
 
-import { SecureStorage } from "../secure-storage";
+import { SecureStorage } from '../secure-storage.js';
 import { decryptCredentials, encryptCredentials } from "../security";
 import { TestDbHelper } from "./test-db-helper";
 

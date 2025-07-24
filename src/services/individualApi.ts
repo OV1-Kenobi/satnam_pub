@@ -12,9 +12,9 @@ export interface IndividualWalletData {
   lightningBalance: number;
   ecashBalance: number;
   spendingLimits: {
-    daily: number;
-    weekly: number;
-    requiresApproval: number;
+    daily: number; // SOVEREIGNTY: -1 = unlimited (Adults/Stewards/Guardians), positive = limit (Offspring only)
+    weekly: number; // SOVEREIGNTY: -1 = unlimited (Adults/Stewards/Guardians), positive = limit (Offspring only)
+    requiresApproval: number; // SOVEREIGNTY: -1 = no approval (Adults/Stewards/Guardians), positive = threshold (Offspring only)
   };
   recentTransactions: Array<{
     id: string;
@@ -120,13 +120,14 @@ export interface BearerResponse {
   };
 }
 
-// Cross-Mint API Types
+// Cross-Mint API Types - SOVEREIGNTY COMPLIANT
 export interface MultiNutPaymentRequest {
   memberId: string;
   amount: number;
   recipient: string;
   memo?: string;
   mintPreference?: "satnam-first" | "external-first" | "balanced";
+  userRole?: "private" | "offspring" | "adult" | "steward" | "guardian"; // SOVEREIGNTY: Role for cross-mint authorization
 }
 
 export interface MultiNutPaymentResponse {
@@ -143,6 +144,9 @@ export interface NutSwapRequest {
   fromMint: string;
   toMint: string;
   amount: number;
+  fromProtocol?: "fedimint" | "cashu" | "satnam"; // ECASH BRIDGE: Source protocol
+  toProtocol?: "fedimint" | "cashu" | "satnam"; // ECASH BRIDGE: Destination protocol
+  userRole?: "private" | "offspring" | "adult" | "steward" | "guardian"; // SOVEREIGNTY: Role for cross-mint authorization
 }
 
 export interface NutSwapResponse {
@@ -159,6 +163,7 @@ export interface ExternalNutsRequest {
   memberId: string;
   externalToken: string;
   storagePreference?: "satnam-mint" | "keep-external" | "auto";
+  userRole?: "private" | "offspring" | "adult" | "steward" | "guardian"; // SOVEREIGNTY: Role for cross-mint authorization
 }
 
 export interface ExternalNutsResponse {
@@ -198,10 +203,34 @@ export class IndividualApiService {
     return response.json();
   }
 
-  // Get main wallet data
+  // Get main wallet data (now privacy-enhanced)
   static async getWalletData(memberId: string): Promise<IndividualWalletData> {
     return this.makeRequest<IndividualWalletData>(
       `/individual/wallet?memberId=${encodeURIComponent(memberId)}`
+    );
+  }
+
+  // Get privacy-enhanced wallet data
+  static async getPrivacyWalletData(memberId: string): Promise<any> {
+    return this.makeRequest<any>(
+      `/individual/wallet?memberId=${encodeURIComponent(memberId)}`
+    );
+  }
+
+  // Update privacy settings
+  static async updatePrivacySettings(
+    memberId: string,
+    settings: any
+  ): Promise<any> {
+    return this.makeRequest<any>(
+      `/individual/wallet?memberId=${encodeURIComponent(memberId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify(settings),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 

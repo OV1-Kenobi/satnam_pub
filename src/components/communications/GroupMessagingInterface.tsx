@@ -124,6 +124,8 @@ export function UnifiedMessagingInterface({
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showInviteMember, setShowInviteMember] = useState(false);
+  const [showJoinGroup, setShowJoinGroup] = useState(false);
+  const [showLeaveGroup, setShowLeaveGroup] = useState(false);
 
   // Form states
   const [newGroupData, setNewGroupData] = useState<{
@@ -153,6 +155,17 @@ export function UnifiedMessagingInterface({
     message: '',
   });
 
+  const [joinGroupData, setJoinGroupData] = useState({
+    groupId: '',
+    inviteCode: '',
+  });
+
+  const [leaveGroupData, setLeaveGroupData] = useState({
+    groupId: '',
+    reason: '',
+    transferOwnership: '',
+  });
+
   useEffect(() => {
     initializeSession();
   }, []);
@@ -163,7 +176,7 @@ export function UnifiedMessagingInterface({
   const initializeSession = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/.netlify/functions/group-messaging', {
+      const response = await fetch('/api/authenticated/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -189,7 +202,7 @@ export function UnifiedMessagingInterface({
    */
   const loadSessionStatus = async () => {
     try {
-      const response = await fetch('/.netlify/functions/group-messaging', {
+      const response = await fetch('/api/authenticated/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -219,7 +232,7 @@ export function UnifiedMessagingInterface({
   const createGroup = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/.netlify/functions/group-messaging', {
+      const response = await fetch('/api/authenticated/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -258,7 +271,7 @@ export function UnifiedMessagingInterface({
   const addContact = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/.netlify/functions/group-messaging', {
+      const response = await fetch('/api/authenticated/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -301,7 +314,7 @@ export function UnifiedMessagingInterface({
 
     try {
       setIsLoading(true);
-      const response = await fetch('/.netlify/functions/group-messaging', {
+      const response = await fetch('/api/authenticated/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -390,7 +403,7 @@ export function UnifiedMessagingInterface({
     setError(null);
 
     try {
-      const response = await fetch('/.netlify/functions/group-messaging', {
+      const response = await fetch('/api/authenticated/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -413,6 +426,95 @@ export function UnifiedMessagingInterface({
     } catch (error) {
       console.error('Failed to invite member:', error);
       setError('Failed to invite member');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * MASTER CONTEXT COMPLIANCE: Join existing group with invite code
+   */
+  const joinGroup = async () => {
+    if (!joinGroupData.groupId.trim()) {
+      setError('Please enter a group ID');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/authenticated/group-messaging', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userNsec}`,
+        },
+        body: JSON.stringify({
+          action: 'join_group',
+          groupId: joinGroupData.groupId,
+          inviteCode: joinGroupData.inviteCode || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const { data } = await response.json();
+        setShowJoinGroup(false);
+        setJoinGroupData({ groupId: '', inviteCode: '' });
+        await loadSessionStatus(); // Refresh groups list
+        setError(null);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to join group');
+      }
+    } catch (error) {
+      console.error('Failed to join group:', error);
+      setError('Failed to join group');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * MASTER CONTEXT COMPLIANCE: Leave group with optional reason
+   */
+  const leaveGroup = async () => {
+    if (!leaveGroupData.groupId.trim()) {
+      setError('Please enter a group ID');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/authenticated/group-messaging', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userNsec}`,
+        },
+        body: JSON.stringify({
+          action: 'leave_group',
+          groupId: leaveGroupData.groupId,
+          reason: leaveGroupData.reason || undefined,
+          transferOwnership: leaveGroupData.transferOwnership || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const { data } = await response.json();
+        setShowLeaveGroup(false);
+        setLeaveGroupData({ groupId: '', reason: '', transferOwnership: '' });
+        await loadSessionStatus(); // Refresh groups list
+        setError(null);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to leave group');
+      }
+    } catch (error) {
+      console.error('Failed to leave group:', error);
+      setError('Failed to leave group');
     } finally {
       setIsLoading(false);
     }
@@ -475,6 +577,20 @@ export function UnifiedMessagingInterface({
             >
               <Plus className="h-4 w-4" />
               <span>Create Group</span>
+            </button>
+            <button
+              onClick={() => setShowJoinGroup(true)}
+              className="flex items-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Join Group</span>
+            </button>
+            <button
+              onClick={() => setShowLeaveGroup(true)}
+              disabled={!selectedGroup}
+              className="flex items-center space-x-2 bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>Leave Group</span>
             </button>
             <button
               onClick={() => setShowInviteMember(true)}
@@ -715,6 +831,99 @@ export function UnifiedMessagingInterface({
               </button>
               <button
                 onClick={() => setShowCreateGroup(false)}
+                className="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join Group Modal */}
+      {showJoinGroup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Join Existing Group</h3>
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={joinGroupData.groupId}
+                onChange={(e) => setJoinGroupData(prev => ({ ...prev, groupId: e.target.value }))}
+                placeholder="Group ID (required)"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              />
+              <input
+                type="text"
+                value={joinGroupData.inviteCode}
+                onChange={(e) => setJoinGroupData(prev => ({ ...prev, inviteCode: e.target.value }))}
+                placeholder="Invite code (optional)"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              />
+              <p className="text-sm text-gray-600">
+                Enter the group ID to join. An invite code may be required for private groups.
+              </p>
+            </div>
+            <div className="flex space-x-2 mt-6">
+              <button
+                onClick={joinGroup}
+                disabled={isLoading || !joinGroupData.groupId.trim()}
+                className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Join Group
+              </button>
+              <button
+                onClick={() => setShowJoinGroup(false)}
+                className="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Group Modal */}
+      {showLeaveGroup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave Group</h3>
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={leaveGroupData.groupId}
+                onChange={(e) => setLeaveGroupData(prev => ({ ...prev, groupId: e.target.value }))}
+                placeholder="Group ID (required)"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              />
+              <textarea
+                value={leaveGroupData.reason}
+                onChange={(e) => setLeaveGroupData(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="Reason for leaving (optional)"
+                rows={3}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              />
+              <input
+                type="text"
+                value={leaveGroupData.transferOwnership}
+                onChange={(e) => setLeaveGroupData(prev => ({ ...prev, transferOwnership: e.target.value }))}
+                placeholder="Transfer ownership to (npub, if you're owner)"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              />
+              <p className="text-sm text-gray-600">
+                If you're the group owner, you must transfer ownership to another member before leaving.
+              </p>
+            </div>
+            <div className="flex space-x-2 mt-6">
+              <button
+                onClick={leaveGroup}
+                disabled={isLoading || !leaveGroupData.groupId.trim()}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Leave Group
+              </button>
+              <button
+                onClick={() => setShowLeaveGroup(false)}
                 className="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
               >
                 Cancel

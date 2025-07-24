@@ -1,8 +1,6 @@
 // Family API Service (Privacy-Enhanced)
 // File: src/services/familyApi.ts
 
-import { PaymentRequest, PaymentResponse } from "../../types/privacy-api";
-
 // Use relative paths for Bolt.new compatibility
 const API_BASE = "";
 
@@ -26,7 +24,7 @@ export interface FamilyMember {
 }
 
 // New privacy-enhanced interface (preferred)
-export { FamilyMemberWithPrivacy } from "../../types/privacy-api";
+export type { FamilyMemberWithPrivacy } from "../../types/privacy-api";
 
 export interface FamilyMembersResponse {
   members: FamilyMember[];
@@ -129,7 +127,7 @@ export interface PhoenixdStatus {
   };
 }
 
-export interface PaymentRequest {
+export interface FamilyPaymentRequest {
   memberId: string;
   amount: number;
   recipient: string;
@@ -137,7 +135,7 @@ export interface PaymentRequest {
   paymentType?: string;
 }
 
-export interface PaymentResponse {
+export interface FamilyPaymentResponse {
   paymentId: string;
   status: string;
   amount: number;
@@ -217,9 +215,9 @@ export class FamilyApiService {
 
   // Payment Processing
   static async sendPayment(
-    paymentRequest: PaymentRequest
-  ): Promise<PaymentResponse> {
-    return this.makeRequest<PaymentResponse>("/payments/send", {
+    paymentRequest: FamilyPaymentRequest
+  ): Promise<FamilyPaymentResponse> {
+    return this.makeRequest<FamilyPaymentResponse>("/payments/send", {
       method: "POST",
       body: JSON.stringify(paymentRequest),
     });

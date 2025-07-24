@@ -28,7 +28,7 @@ import {
   encryptData,
   generateRandomHex,
   sha256,
-} from "../utils/crypto-factory";
+} from "../utils/crypto-factory.js";
 
 /**
  * MASTER CONTEXT COMPLIANCE: Consolidated messaging configuration
@@ -559,8 +559,11 @@ export class UnifiedMessagingService {
             ["created", now.toString()],
           ],
           created_at: now,
-        },
-        hexToBytes(recipientNpub),
+          pubkey: "", // Will be set by wrapEvent
+          id: "", // Will be set by wrapEvent
+          sig: "", // Will be set by wrapEvent
+        } as any,
+        recipientNpub,
         this.userNsec
       );
 
@@ -746,6 +749,183 @@ export class UnifiedMessagingService {
    */
   private calculatePrivacyDelay(): number {
     return Math.floor(Math.random() * this.config.privacyDelayMs) / 1000;
+  }
+
+  /**
+   * MASTER CONTEXT COMPLIANCE: Join existing group with invite code
+   */
+  async joinGroup(groupData: {
+    groupId: string;
+    inviteCode?: string;
+    approvalRequired?: boolean;
+  }): Promise<string> {
+    if (!this.userSession) {
+      throw new Error("No active session");
+    }
+
+    try {
+      const { groupId, inviteCode, approvalRequired = false } = groupData;
+
+      // Check if group exists and user has permission to join
+      const { data: existingGroup, error: groupError } = await supabase
+        .from("privacy_groups")
+        .select("*")
+        .eq("session_id", groupId)
+        .single();
+
+      if (groupError || !existingGroup) {
+        throw new Error("Group not found or access denied");
+      }
+
+      // Check if user is already a member
+      const { data: existingMembership } = await supabase
+        .from("group_memberships")
+        .select("*")
+        .eq("group_session_id", groupId)
+        .eq("member_hash", this.userSession.userHash)
+        .single();
+
+      if (existingMembership) {
+        throw new Error("Already a member of this group");
+      }
+
+      // If guardian approval is required, create approval request
+      if (approvalRequired && this.config.guardianApprovalRequired) {
+        const approvalId = await PrivacyUtils.generateEncryptedUUID();
+        const approvalRequest: GuardianApprovalRequest = {
+          id: approvalId,
+          groupId: groupId,
+          messageId: approvalId, // Using same ID for simplicity
+          requesterPubkey: this.userNpub,
+          guardianPubkey: this.config.guardianPubkeys[0] || "", // Use first guardian
+          messageContent: `Join group request: ${groupId}`,
+          messageType: "sensitive",
+          created_at: Date.now(),
+          expires_at: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+          status: "pending",
+        };
+
+        this.pendingApprovals.set(approvalId, approvalRequest);
+
+        // Store approval request in database
+        await supabase.from("guardian_approvals").insert({
+          id: approvalId,
+          group_id: groupId,
+          message_id: approvalId,
+          requester_pubkey: this.userNpub,
+          guardian_pubkey: this.config.guardianPubkeys[0] || "",
+          message_content: `Join group request: ${groupId}`,
+          message_type: "sensitive",
+          created_at: approvalRequest.created_at,
+          expires_at: approvalRequest.expires_at,
+          status: "pending",
+        });
+
+        return approvalId; // Return approval request ID
+      }
+
+      // Add user to group directly
+      const membershipId = await PrivacyUtils.generateEncryptedUUID();
+
+      await supabase.from("group_memberships").insert({
+        id: membershipId,
+        group_session_id: groupId,
+        member_hash: this.userSession.userHash,
+        role: "member",
+        joined_at: new Date().toISOString(),
+        invite_code_used: inviteCode || null,
+      });
+
+      return membershipId;
+    } catch (error) {
+      throw new Error(
+        `Failed to join group: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }
+
+  /**
+   * MASTER CONTEXT COMPLIANCE: Leave group with optional reason
+   */
+  async leaveGroup(groupData: {
+    groupId: string;
+    reason?: string;
+    transferOwnership?: string; // npub of new owner if current user is owner
+  }): Promise<boolean> {
+    if (!this.userSession) {
+      throw new Error("No active session");
+    }
+
+    try {
+      const { groupId, reason, transferOwnership } = groupData;
+
+      // Check if user is a member of the group
+      const { data: membership, error: membershipError } = await supabase
+        .from("group_memberships")
+        .select("*")
+        .eq("group_session_id", groupId)
+        .eq("member_hash", this.userSession.userHash)
+        .single();
+
+      if (membershipError || !membership) {
+        throw new Error("Not a member of this group");
+      }
+
+      // If user is the owner and transferOwnership is specified
+      if (membership.role === "owner" && transferOwnership) {
+        // Find the new owner's membership
+        const newOwnerHash = await PrivacyUtils.hashIdentifier(
+          transferOwnership
+        );
+
+        const { error: transferError } = await supabase
+          .from("group_memberships")
+          .update({ role: "owner" })
+          .eq("group_session_id", groupId)
+          .eq("member_hash", newOwnerHash);
+
+        if (transferError) {
+          throw new Error("Failed to transfer ownership");
+        }
+      } else if (membership.role === "owner" && !transferOwnership) {
+        throw new Error("Group owner must transfer ownership before leaving");
+      }
+
+      // Remove user from group
+      const { error: leaveError } = await supabase
+        .from("group_memberships")
+        .delete()
+        .eq("group_session_id", groupId)
+        .eq("member_hash", this.userSession.userHash);
+
+      if (leaveError) {
+        throw new Error("Failed to leave group");
+      }
+
+      // Log the leave action if reason provided
+      if (reason) {
+        await supabase.from("group_activity_log").insert({
+          group_session_id: groupId,
+          member_hash: this.userSession.userHash,
+          activity_type: "member_left",
+          activity_data: JSON.stringify({ reason }),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Remove group from local session
+      this.groupSessions.delete(groupId);
+
+      return true;
+    } catch (error) {
+      throw new Error(
+        `Failed to leave group: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
   }
 
   /**

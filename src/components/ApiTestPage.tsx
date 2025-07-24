@@ -6,6 +6,7 @@ interface ApiTestResult {
   name: string;
   success: boolean;
   duration: number;
+  responseTime: number;
   result?: unknown;
   error?: string;
 }
@@ -55,20 +56,21 @@ export default function ApiTestPage() {
         const startTime = Date.now();
         const result = await test();
         const endTime = Date.now();
-        
+
         testResults.push({
           name,
           success: true,
-          result,
+          duration: endTime - startTime,
           responseTime: endTime - startTime,
-          error: null,
+          result,
         });
       } catch (error) {
         testResults.push({
           name,
           success: false,
-          result: null,
+          duration: 0,
           responseTime: 0,
+          result: null,
           error: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -83,7 +85,7 @@ export default function ApiTestPage() {
       <div className="max-w-6xl mx-auto">
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20">
           <h1 className="text-3xl font-bold text-white mb-6">API Test Dashboard</h1>
-          
+
           <button
             onClick={runApiTests}
             disabled={isLoading}
@@ -95,25 +97,23 @@ export default function ApiTestPage() {
           {results.length > 0 && (
             <div className="space-y-4">
               <h2 className="text-xl font-semibold text-white mb-4">Test Results</h2>
-              
+
               {results.map((result, index) => (
                 <div
                   key={index}
-                  className={`p-4 rounded-lg border ${
-                    result.success
-                      ? 'bg-green-900/20 border-green-500/30'
-                      : 'bg-red-900/20 border-red-500/30'
-                  }`}
+                  className={`p-4 rounded-lg border ${result.success
+                    ? 'bg-green-900/20 border-green-500/30'
+                    : 'bg-red-900/20 border-red-500/30'
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-lg font-medium text-white">{result.name}</h3>
                     <div className="flex items-center space-x-2">
                       <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${
-                          result.success
-                            ? 'bg-green-500 text-white'
-                            : 'bg-red-500 text-white'
-                        }`}
+                        className={`px-2 py-1 rounded text-xs font-medium ${result.success
+                          ? 'bg-green-500 text-white'
+                          : 'bg-red-500 text-white'
+                          }`}
                       >
                         {result.success ? 'SUCCESS' : 'FAILED'}
                       </span>
@@ -131,13 +131,13 @@ export default function ApiTestPage() {
                     </div>
                   )}
 
-                  {result.result && (
+                  {result.result != null && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-white/80 text-sm">
                         View Response Data
                       </summary>
                       <pre className="mt-2 text-xs bg-black/20 p-3 rounded overflow-x-auto text-white/90">
-                        {JSON.stringify(result.result, null, 2)}
+                        {JSON.stringify(result.result as any, null, 2)}
                       </pre>
                     </details>
                   )}

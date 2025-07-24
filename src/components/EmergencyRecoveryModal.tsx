@@ -84,7 +84,7 @@ export function EmergencyRecoveryModal({
     reason: 'lost_key',
     urgency: 'medium',
     description: '',
-    recoveryMethod: 'guardian_consensus'
+    recoveryMethod: userRole === 'private' ? 'password' : 'guardian_consensus' // CRITICAL FIX: Default to password for private users
   });
   const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus | null>(null);
   const [guardians, setGuardians] = useState<GuardianInfo[]>([]);
@@ -106,6 +106,24 @@ export function EmergencyRecoveryModal({
     userRole,
     familyId
   });
+
+  // CRITICAL FIX: Get available recovery methods based on user role
+  const getAvailableRecoveryMethods = (): Array<{ value: RecoveryRequest['recoveryMethod'], label: string, description: string }> => {
+    if (userRole === 'private') {
+      return [
+        { value: 'password', label: 'Password Recovery', description: 'Use your recovery password to restore access' },
+        { value: 'shamir', label: 'Shamir Secret Sharing', description: 'Use your secret shares to reconstruct keys' },
+        { value: 'multisig', label: 'Multi-Signature', description: 'Use multiple signatures for recovery' }
+      ];
+    } else {
+      return [
+        { value: 'guardian_consensus', label: 'Guardian Consensus', description: 'Require approval from family guardians' },
+        { value: 'password', label: 'Password Recovery', description: 'Use your recovery password to restore access' },
+        { value: 'shamir', label: 'Shamir Secret Sharing', description: 'Use your secret shares to reconstruct keys' },
+        { value: 'multisig', label: 'Multi-Signature', description: 'Use multiple signatures for recovery' }
+      ];
+    }
+  };
 
   // Load guardians when modal opens
   useEffect(() => {
@@ -167,11 +185,11 @@ export function EmergencyRecoveryModal({
         setRecoveryStatus({
           requestId: request.id,
           status: request.status,
-          currentApprovals: request.current_approvals,
-          requiredApprovals: request.required_approvals,
-          guardianApprovals: request.guardian_approvals || [],
-          createdAt: request.created_at,
-          expiresAt: request.expires_at
+          currentApprovals: request.currentApprovals,
+          requiredApprovals: request.requiredApprovals,
+          guardianApprovals: [], // For private users, no guardian approvals needed
+          createdAt: request.createdAt.toISOString(),
+          expiresAt: request.expiresAt.toISOString()
         });
 
         if (request.status === 'approved') {
@@ -201,7 +219,7 @@ export function EmergencyRecoveryModal({
       reason: 'lost_key',
       urgency: 'medium',
       description: '',
-      recoveryMethod: 'guardian_consensus'
+      recoveryMethod: userRole === 'private' ? 'password' : 'guardian_consensus' // CRITICAL FIX: Default to password for private users
     });
     setRecoveryStatus(null);
     clearMessages();
@@ -253,14 +271,14 @@ export function EmergencyRecoveryModal({
               return (
                 <div key={step.key} className="flex items-center">
                   <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${isActive ? 'bg-red-500 border-red-500 text-white' :
-                      isCompleted ? 'bg-green-500 border-green-500 text-white' :
-                        'bg-gray-100 border-gray-300 text-gray-400'
+                    isCompleted ? 'bg-green-500 border-green-500 text-white' :
+                      'bg-gray-100 border-gray-300 text-gray-400'
                     }`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <span className={`ml-2 text-sm font-medium ${isActive ? 'text-red-600' :
-                      isCompleted ? 'text-green-600' :
-                        'text-gray-400'
+                    isCompleted ? 'text-green-600' :
+                      'text-gray-400'
                     }`}>
                     {step.label}
                   </span>
@@ -497,8 +515,8 @@ export function EmergencyRecoveryModal({
                           <div className="text-right">
                             {approval ? (
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${approval.approval === 'approved' ? 'bg-green-100 text-green-800' :
-                                  approval.approval === 'rejected' ? 'bg-red-100 text-red-800' :
-                                    'bg-gray-100 text-gray-800'
+                                approval.approval === 'rejected' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
                                 }`}>
                                 {approval.approval}
                               </span>

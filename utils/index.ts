@@ -1,6 +1,6 @@
 import * as validation from "./validation";
 
-export { createLogger, defaultLogger, Logger } from "./logger";
+export type { createLogger, defaultLogger, Logger } from "./logger";
 export type { LogContext, LogEntry, LoggerConfig, LogLevel } from "./logger";
 
 // Export browser-compatible crypto functions from crypto-factory

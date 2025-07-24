@@ -10,7 +10,9 @@ const parseInvoice = (invoice: string) => {
     return bolt11.decode(invoice);
   } catch (error) {
     throw new Error(
-      `Invalid Lightning invoice: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Invalid Lightning invoice: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
   }
 };
@@ -30,10 +32,13 @@ const generateLightningAddress = (username: string): string => {
   if (!username || typeof username !== "string") {
     throw new Error("Username parameter is required and must be a string");
   }
-  if (!config?.nip05?.domain) {
+  if (
+    !config?.nip05?.allowedDomains ||
+    config.nip05.allowedDomains.length === 0
+  ) {
     throw new Error("NIP-05 domain configuration is missing");
   }
-  return `${username}@${config.nip05.domain}`;
+  return `${username}@${config.nip05.allowedDomains[0]}`;
 };
 
-export { parseInvoice, validateLightningAddress, generateLightningAddress };
+export { generateLightningAddress, parseInvoice, validateLightningAddress };

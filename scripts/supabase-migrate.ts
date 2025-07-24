@@ -5,7 +5,7 @@
  * This runs the SQL migration directly on your Supabase database
  */
 
-import { supabase } from "../lib/supabase";
+import { supabase } from '../lib/supabase.js';
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";

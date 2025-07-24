@@ -1,3 +1,19 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * Session Database Integration Tests
  *
@@ -20,11 +36,11 @@ config({ path: resolve(process.cwd(), ".env.local") });
 
 // Set test-specific environment variables that don't exist in .env.local
 // Using the actual JWT_SECRET from .env.local but creating a separate refresh secret for testing
-if (!process.env.JWT_REFRESH_SECRET) {
-  process.env.JWT_REFRESH_SECRET = "test-refresh-secret-key-for-testing-only";
+if (!getEnvVar("JWT_REFRESH_SECRET")) {
+  getEnvVar("JWT_REFRESH_SECRET") = "test-refresh-secret-key-for-testing-only";
 }
-if (!process.env.IDENTIFIER_HASH_SALT) {
-  process.env.IDENTIFIER_HASH_SALT = "test-salt-for-hashing";
+if (!getEnvVar("IDENTIFIER_HASH_SALT")) {
+  getEnvVar("IDENTIFIER_HASH_SALT") = "test-salt-for-hashing";
 }
 
 // Now import the modules that depend on environment variables
@@ -72,7 +88,7 @@ describe("Session Database Integration - Privacy First", () => {
   // Helper function to create hash (matches UserService implementation)
   const hashIdentifier = (identifier: string): string => {
     const salt =
-      process.env.IDENTIFIER_HASH_SALT || "default-salt-change-in-production";
+      getEnvVar("IDENTIFIER_HASH_SALT") || "default-salt-change-in-production";
     return createHash("sha256")
       .update(identifier + salt)
       .digest("hex");
@@ -262,7 +278,7 @@ describe("Session Database Integration - Privacy First", () => {
       };
       const originalSessionToken = jwt.sign(
         originalSessionData,
-        process.env.JWT_SECRET!,
+        getEnvVar("JWT_SECRET")!,
         { expiresIn: "15m" }
       );
 
@@ -273,7 +289,7 @@ describe("Session Database Integration - Privacy First", () => {
       };
       const refreshToken = jwt.sign(
         refreshTokenPayload,
-        process.env.JWT_REFRESH_SECRET!,
+        getEnvVar("JWT_REFRESH_SECRET")!,
         { expiresIn: "7d" }
       );
 
@@ -332,7 +348,7 @@ describe("Session Database Integration - Privacy First", () => {
       };
       const refreshToken = jwt.sign(
         refreshTokenPayload,
-        process.env.JWT_REFRESH_SECRET!,
+        getEnvVar("JWT_REFRESH_SECRET")!,
         { expiresIn: "7d" }
       );
 
@@ -398,7 +414,7 @@ describe("Session Database Integration - Privacy First", () => {
       const sessionToken = cookieStore.family_session;
       expect(sessionToken).toBeDefined();
 
-      const decoded = jwt.verify(sessionToken, process.env.JWT_SECRET!) as any;
+      const decoded = jwt.verify(sessionToken, getEnvVar("JWT_SECRET")!) as any;
 
       // Verify session contains all required federation data
       expect(decoded).toHaveProperty("userId");
@@ -417,7 +433,7 @@ describe("Session Database Integration - Privacy First", () => {
       SecureSessionManager.createSession(mockRes as Response, mockUserData);
 
       const sessionToken = cookieStore.family_session;
-      const decoded = jwt.verify(sessionToken, process.env.JWT_SECRET!) as any;
+      const decoded = jwt.verify(sessionToken, getEnvVar("JWT_SECRET")!) as any;
 
       // Session should contain original values, not hashes
       expect(decoded.npub).toBe("npub1test123456789abcdef");
@@ -470,7 +486,7 @@ describe("Session Database Integration - Privacy First", () => {
       };
       const refreshToken = jwt.sign(
         refreshTokenPayload,
-        process.env.JWT_REFRESH_SECRET!,
+        getEnvVar("JWT_REFRESH_SECRET")!,
         { expiresIn: "7d" }
       );
 
@@ -507,19 +523,19 @@ describe("Session Database Integration - Privacy First", () => {
   describe("Security Verification", () => {
     it("should use production-grade JWT secret from environment", () => {
       // Verify we're using a JWT secret (either from .env.local or fallback)
-      expect(process.env.JWT_SECRET).toBeDefined();
-      expect(process.env.JWT_SECRET).not.toBe("");
+      expect(getEnvVar("JWT_SECRET")).toBeDefined();
+      expect(getEnvVar("JWT_SECRET")).not.toBe("");
 
       // Verify it's a reasonable length for security
-      expect(process.env.JWT_SECRET!.length).toBeGreaterThan(32);
+      expect(getEnvVar("JWT_SECRET")!.length).toBeGreaterThan(32);
 
       // If it's the base64 secret from .env.local, verify format
       if (
-        process.env.JWT_SECRET!.includes("+") ||
-        process.env.JWT_SECRET!.includes("/") ||
-        process.env.JWT_SECRET!.includes("=")
+        getEnvVar("JWT_SECRET")!.includes("+") ||
+        getEnvVar("JWT_SECRET")!.includes("/") ||
+        getEnvVar("JWT_SECRET")!.includes("=")
       ) {
-        expect(process.env.JWT_SECRET).toMatch(/^[A-Za-z0-9+/]+=*$/);
+        expect(getEnvVar("JWT_SECRET")).toMatch(/^[A-Za-z0-9+/]+=*$/);
       }
     });
 

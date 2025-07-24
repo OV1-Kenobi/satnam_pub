@@ -288,8 +288,8 @@ describe("Privacy Frontend Integration", () => {
         );
       }
 
-      if (userRole === "child" && !prefs.require_guardian_approval) {
-        errors.push("Children must have guardian approval enabled");
+      if (userRole === "offspring" && !prefs.require_adult_approval) {
+        errors.push("Offspring must have adult approval enabled");
       }
 
       return errors;
@@ -321,16 +321,16 @@ describe("Privacy Frontend Integration", () => {
       );
     });
 
-    it("should enforce child guardian requirements", () => {
-      const childPrefs: PrivacyPreferences = {
+    it("should enforce offspring adult approval requirements", () => {
+      const offspringPrefs: PrivacyPreferences = {
         default_privacy_level: PrivacyLevel.GIFTWRAPPED,
         auto_upgrade_threshold: 10000,
-        require_guardian_approval: false,
-        guardian_approval_threshold: 50000,
+        require_adult_approval: false,
+        adult_approval_threshold: 50000,
       };
 
-      const errors = validatePreferences(childPrefs, "child");
-      expect(errors).toContain("Children must have guardian approval enabled");
+      const errors = validatePreferences(offspringPrefs, "offspring");
+      expect(errors).toContain("Offspring must have adult approval enabled");
     });
   });
 });

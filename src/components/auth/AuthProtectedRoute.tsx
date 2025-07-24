@@ -7,7 +7,7 @@ import NWCOTPSignIn from "./NWCOTPSignIn";
 interface AuthProtectedRouteProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  allowedRoles?: ('adult' | 'child' | 'guardian')[];
+  allowedRoles?: ('adult' | 'offspring' | 'guardian')[];
   title?: string;
   description?: string;
 }
@@ -15,7 +15,7 @@ interface AuthProtectedRouteProps {
 const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
   children,
   requireAuth = true,
-  allowedRoles = ['adult', 'child', 'guardian'],
+  allowedRoles = ['adult', 'offspring', 'guardian'],
   title = "Family Financials",
   description = "Access your family's Bitcoin treasury and Lightning channels",
 }) => {
@@ -54,7 +54,7 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
         <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6">
           <Shield className="h-10 w-10 text-white" />
         </div>
-        
+
         <h1 className="text-3xl font-bold text-white mb-4">{title}</h1>
         <p className="text-purple-200 mb-8">{description}</p>
 
@@ -64,12 +64,12 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
             <Users className="h-5 w-5" />
             <span>Family Federation Access</span>
           </h3>
-          
+
           <div className="space-y-3">
             <p className="text-purple-200 text-sm">
               This area is protected by Family Federation whitelist. Only authorized family members can access financial data.
             </p>
-            
+
             <div className="flex flex-wrap justify-center gap-2">
               {allowedRoles.map((role) => (
                 <div
@@ -87,7 +87,7 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
         {/* Authentication Methods */}
         <div className="space-y-4">
           <h4 className="text-white font-semibold">Choose your authentication method:</h4>
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-lg p-4 border border-orange-400/30">
               <div className="flex items-center justify-center space-x-2 mb-2">
@@ -100,7 +100,7 @@ const AuthProtectedRoute: React.FC<AuthProtectedRouteProps> = ({
                 Fast wallet-based authentication
               </p>
             </div>
-            
+
             <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg p-4 border border-blue-400/30">
               <div className="flex items-center justify-center space-x-2 mb-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">

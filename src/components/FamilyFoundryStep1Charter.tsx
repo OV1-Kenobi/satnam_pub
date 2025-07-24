@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Crown, Plus, X, ArrowRight, ArrowLeft } from 'lucide-react';
-import { CharterDefinition } from '../lib/api/family-foundry';
+import { CharterDefinition } from '../lib/api/family-foundry.js';
 
 interface FamilyFoundryStep1CharterProps {
   charter: CharterDefinition;

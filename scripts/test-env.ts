@@ -1,4 +1,20 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Test Environment Variables
  * @description Tests if environment variables are being loaded correctly
@@ -24,17 +40,17 @@ if (localResult.error) {
 }
 
 console.log("\n🔍 Environment Variables:");
-console.log("SUPABASE_URL:", process.env.SUPABASE_URL || "NOT SET");
+console.log("SUPABASE_URL:", getEnvVar("SUPABASE_URL") || "NOT SET");
 console.log(
   "SUPABASE_SERVICE_ROLE_KEY:",
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 20)}...`
+  getEnvVar("SUPABASE_SERVICE_ROLE_KEY")
+    ? `${getEnvVar("SUPABASE_SERVICE_ROLE_KEY").substring(0, 20)}...`
     : "NOT SET"
 );
 console.log(
   "SUPABASE_ANON_KEY:",
-  process.env.SUPABASE_ANON_KEY
-    ? `${process.env.SUPABASE_ANON_KEY.substring(0, 20)}...`
+  getEnvVar("SUPABASE_ANON_KEY")
+    ? `${getEnvVar("SUPABASE_ANON_KEY").substring(0, 20)}...`
     : "NOT SET"
 );
 

@@ -1,10 +1,10 @@
 import { Bitcoin, Download, Send, Users, Zap } from "lucide-react";
 import React, { useState } from "react";
-import { SatnamFamilyMember } from "../types/shared";
+import { FamilyMember } from "../types/shared";
 import SmartPaymentModal from "./SmartPaymentModal";
 
 // Mock family members data
-const mockFamilyMembers: SatnamFamilyMember[] = [
+const mockFamilyMembers: FamilyMember[] = [
   {
     id: "1",
     username: "satnam_dad",
@@ -119,12 +119,11 @@ const SmartPaymentModalDemo: React.FC = () => {
               className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-orange-500/20 hover:border-orange-500/40 transition-all duration-300"
             >
               <div className="flex items-center space-x-3 mb-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
-                  (member.role === "adult" || member.role === "guardian") 
-                    ? "bg-gradient-to-br from-orange-500 to-amber-500" 
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${(member.role === "adult" || member.role === "guardian")
+                    ? "bg-gradient-to-br from-orange-500 to-amber-500"
                     : "bg-gradient-to-br from-amber-400 to-orange-400"
-                }`}>
-                  {member.username.charAt(0).toUpperCase()}
+                  }`}>
+                  {member.username?.charAt(0)?.toUpperCase() || 'U'}
                 </div>
                 <div>
                   <h3 className="text-white font-semibold">{member.username}</h3>

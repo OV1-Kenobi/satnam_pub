@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { PhoenixDFamilyChannel } from '../../types/family';
-import { LiquidityForecast, LiquidityIntelligenceSystem, LiquidityMetrics, OptimizationStrategy } from '../lib/liquidity-intelligence';
+import { LiquidityForecast, LiquidityIntelligenceSystem, LiquidityMetrics, OptimizationStrategy } from '../lib/liquidity-intelligence.js';
 
 interface EnhancedLiquidityDashboardProps {
   familyId: string;

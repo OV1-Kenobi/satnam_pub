@@ -1,23 +1,39 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 // scripts/test-rebuilding-camelot-otp.ts
 
 // CRITICAL: Load environment variables FIRST, before any other imports
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 
-import { RebuildingCamelotOTPService } from "../lib/nostr-otp-service";
+import { RebuildingCamelotOTPService } from '../lib/nostr-otp-service.js';
 
 // Debug: Check if environment variables are loaded
 console.log("🔍 Environment check:");
 console.log(
   "   SUPABASE_URL:",
-  process.env.SUPABASE_URL ? "✅ Loaded" : "❌ Missing"
+  getEnvVar("SUPABASE_URL") ? "✅ Loaded" : "❌ Missing"
 );
 console.log(
   "   SUPABASE_ANON_KEY:",
-  process.env.SUPABASE_ANON_KEY ? "✅ Loaded" : "❌ Missing"
+  getEnvVar("SUPABASE_ANON_KEY") ? "✅ Loaded" : "❌ Missing"
 );
-console.log("   OTP_SALT:", process.env.OTP_SALT ? "✅ Loaded" : "❌ Missing");
+console.log("   OTP_SALT:", getEnvVar("OTP_SALT") ? "✅ Loaded" : "❌ Missing");
 
 async function testRebuildingCamelotOTP() {
   console.log("🧪 Testing Rebuilding Camelot OTP System...");
@@ -41,7 +57,7 @@ async function testRebuildingCamelotOTP() {
         console.log("   Expires at:", otpResult.expiresAt);
         console.log(
           "   OTP (for testing):",
-          process.env.NODE_ENV === "development"
+          getEnvVar("NODE_ENV") === "development"
             ? otpResult.otp
             : "***hidden***"
         );

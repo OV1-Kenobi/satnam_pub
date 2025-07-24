@@ -1,4 +1,20 @@
 #!/usr/bin/env tsx
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ import.meta;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 /**
  * @fileoverview Debug Environment Loading
  * @description Debug what's actually in the environment files
@@ -44,7 +60,7 @@ delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 console.log(
   "Before loading - SUPABASE_URL:",
-  process.env.SUPABASE_URL || "NOT SET"
+  getEnvVar("SUPABASE_URL") || "NOT SET"
 );
 
 // Load .env.local with override
@@ -53,11 +69,11 @@ console.log("Dotenv result:", result.error ? result.error.message : "SUCCESS");
 
 console.log(
   "After loading - SUPABASE_URL:",
-  process.env.SUPABASE_URL || "NOT SET"
+  getEnvVar("SUPABASE_URL") || "NOT SET"
 );
 console.log(
   "After loading - SERVICE_KEY:",
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 20) + "..."
+  getEnvVar("SUPABASE_SERVICE_ROLE_KEY")
+    ? getEnvVar("SUPABASE_SERVICE_ROLE_KEY")?.substring(0, 20) + "..."
     : "NOT SET"
 );

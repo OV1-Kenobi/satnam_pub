@@ -1,6 +1,6 @@
 // scripts/generate-family-federation-config.ts
 import { randomBytes } from "crypto";
-import { FederationManager } from "../lib/fedimint/federation-manager";
+import { FederationManager } from '../lib/fedimint/federation-manager.js';
 
 /**
  * Generate Family Federation Configuration

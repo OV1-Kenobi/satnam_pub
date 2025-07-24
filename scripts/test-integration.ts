@@ -1,5 +1,21 @@
+
+/**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
 // scripts/test-integration.ts
-import { FederationDiscovery } from "../lib/fedimint/discovery";
+import { FederationDiscovery } from '../lib/fedimint/discovery.js';
 import { FederationManager } from "../lib/fedimint/federation-manager";
 import { FedimintWalletIntegration } from "../lib/fedimint/wallet-integration";
 
@@ -97,7 +113,7 @@ async function testAPIIntegration() {
     console.log("1️⃣ Testing API endpoints...");
 
     // These would normally make real HTTP requests, but in test mode we'll mock them
-    if (process.env.NODE_ENV === "test") {
+    if (getEnvVar("NODE_ENV") === "test") {
       console.log("✅ API integration test skipped in test environment");
       return true;
     }

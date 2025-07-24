@@ -11,7 +11,7 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabase.js";
 
 /**
  * Safely splits SQL into statements, handling:
@@ -222,8 +222,8 @@ async function runPhoenixdMigration() {
 
         // For critical errors, we might want to stop
         if (
-          error.message?.includes("syntax error") ||
-          error.message?.includes("does not exist")
+          (error as Error).message?.includes("syntax error") ||
+          (error as Error).message?.includes("does not exist")
         ) {
           console.error(
             "🚨 Critical error detected. Stopping migration to prevent corruption."

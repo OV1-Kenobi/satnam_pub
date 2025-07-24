@@ -1,11 +1,11 @@
 import { Download, Shield, XCircle } from "lucide-react";
 import React from "react";
-import { SatnamFamilyMember } from "../../types/shared";
+import { FamilyMember } from "../../types/shared";
 
 interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
   selectedMember: string | null;
   onSelectedMemberChange: (memberId: string) => void;
   satAmount?: number;

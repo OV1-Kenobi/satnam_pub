@@ -18,14 +18,14 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 
 // Import the standardized interface
-import { copyText, formatSats } from "../lib/utils";
-import { PaymentRequest, PaymentRoute, SatnamFamilyMember, ValidationErrors } from "../types/shared";
+import { copyText, formatSats } from '../lib/utils.js';
+import { PaymentRequest, PaymentRoute, FamilyMember, ValidationErrors } from "../types/shared";
 
 interface SmartPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   type: "send" | "receive";
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
   selectedMemberId?: string;
   satsToDollars: number;
   onPaymentSuccess?: (payment: PaymentRequest) => void;
@@ -76,8 +76,8 @@ const SmartPaymentModal: React.FC<SmartPaymentModalProps> = ({
 
   // Filter family members based on search term
   const filteredMembers = familyMembers.filter(member =>
-    member.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    member.lightningAddress.toLowerCase().includes(searchTerm.toLowerCase())
+    (member.username || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (member.lightningAddress || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Reset form when modal opens/closes or type changes
@@ -452,7 +452,7 @@ const SmartPaymentModal: React.FC<SmartPaymentModalProps> = ({
                           className="w-full px-4 py-3 text-left hover:bg-orange-500/20 transition-colors duration-200 text-white"
                           onClick={() => {
                             setToMemberId(member.id);
-                            setSearchTerm(member.username);
+                            setSearchTerm(member.username || "");
                             setShowMemberDropdown(false);
                             setToAddress(""); // Clear external address
                           }}

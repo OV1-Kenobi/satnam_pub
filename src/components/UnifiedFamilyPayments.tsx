@@ -1,24 +1,20 @@
 import {
-    AlertCircle,
-    CheckCircle,
-    Info,
-    Loader2,
-    Router,
-    Send,
-    Shield,
-    Zap
+  AlertCircle,
+  CheckCircle,
+  Info,
+  Loader2,
+  Router,
+  Send,
+  Shield,
+  Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { FamilyPaymentRouting } from '../../types/family';
+import { FamilyMember } from '../../types/shared';
 
 interface UnifiedFamilyPaymentsProps {
   familyId: string;
-  familyMembers: Array<{
-    id: string;
-    username: string;
-    lightningAddress: string;
-    role: string;
-  }>;
+  familyMembers: FamilyMember[];
   onPaymentComplete?: (paymentResult: any) => void;
 }
 
@@ -130,7 +126,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
       if (result.success) {
         setSuccess(`Payment completed via ${result.data.protocolUsed}! Transaction: ${result.data.transactionHash}`);
         onPaymentComplete?.(result.data);
-        
+
         // Reset form
         setPaymentForm({
           fromMember: paymentForm.fromMember, // Keep sender
@@ -177,7 +173,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
     setPaymentForm(prev => ({ ...prev, [field]: value }));
     setError(null);
     setSuccess(null);
-    
+
     // Reset routing when key fields change
     if (['amount', 'fromMember', 'toMember', 'toAddress', 'paymentType'].includes(field)) {
       setRoutingRecommendations(null);
@@ -256,7 +252,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
             <option value="">Select sender...</option>
             {familyMembers.map((member) => (
               <option key={member.id} value={member.id}>
-                {member.username} ({member.role})
+                {member.username || member.id} ({member.role})
               </option>
             ))}
           </select>
@@ -277,12 +273,12 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
                 .filter(member => member.id !== paymentForm.fromMember)
                 .map((member) => (
                   <option key={member.id} value={member.id}>
-                    {member.username} ({member.role})
+                    {member.username || member.id} ({member.role})
                   </option>
                 ))}
             </select>
           </div>
-          
+
           <div>
             <label className="block text-orange-300 text-sm mb-2">Or External Address</label>
             <input
@@ -308,7 +304,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
               className="w-full px-3 py-2 bg-orange-800 text-white rounded-lg border border-orange-600 focus:border-orange-400 focus:outline-none"
             />
           </div>
-          
+
           <div>
             <label className="block text-orange-300 text-sm mb-2">Description</label>
             <input
@@ -336,7 +332,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
               <option value="allowance">Allowance Distribution</option>
             </select>
           </div>
-          
+
           <div>
             <label className="block text-orange-300 text-sm mb-2">Preferred Protocol</label>
             <select
@@ -375,7 +371,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Router className="h-4 w-4" />}
             <span>Get Routing</span>
           </button>
-          
+
           <button
             onClick={executePayment}
             disabled={processing || !validateForm()}
@@ -391,7 +387,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
       {showRouting && routingRecommendations && (
         <div className="mt-6 space-y-4">
           <h3 className="text-lg font-semibold text-white">Routing Recommendations</h3>
-          
+
           {/* Recommended Route */}
           <div className={`border rounded-lg p-4 ${getProtocolColor(routingRecommendations.recommendedRoute.recommendedProtocol)}`}>
             <div className="flex items-center justify-between mb-3">
@@ -409,15 +405,15 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
                 </div>
               </div>
             </div>
-            
+
             <div className="text-sm text-orange-200 mb-2">
               {getPaymentTypeDescription(routingRecommendations.recommendedRoute.paymentType)}
             </div>
-            
+
             <div className="text-sm text-orange-300">
               {routingRecommendations.recommendedRoute.reason}
             </div>
-            
+
             <div className="flex items-center space-x-4 mt-2">
               <div className="flex items-center space-x-1">
                 <Shield className="h-3 w-3" />
@@ -471,7 +467,7 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
               <div>
                 <div className="text-orange-300">Potential Savings</div>
                 <div className="text-white font-semibold">
-                  {routingRecommendations.routingAnalysis.estimatedSavings > 0 
+                  {routingRecommendations.routingAnalysis.estimatedSavings > 0
                     ? `${formatSats(routingRecommendations.routingAnalysis.estimatedSavings)} sats`
                     : 'N/A'
                   }
@@ -508,8 +504,8 @@ const UnifiedFamilyPayments: React.FC<UnifiedFamilyPaymentsProps> = ({
           <div className="text-blue-300 text-sm">
             <div className="font-semibold mb-1">Smart Routing</div>
             <div>
-              • <strong>Lightning:</strong> Best for external payments, Nostr zaps, and fast settlements<br/>
-              • <strong>Fedimint:</strong> Best for internal governance, allowances, and zero-fee transfers<br/>
+              • <strong>Lightning:</strong> Best for external payments, Nostr zaps, and fast settlements<br />
+              • <strong>Fedimint:</strong> Best for internal governance, allowances, and zero-fee transfers<br />
               • <strong>Auto:</strong> Automatically selects the optimal protocol based on payment context
             </div>
           </div>

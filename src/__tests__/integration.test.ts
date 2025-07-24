@@ -4,7 +4,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { authAPI, checkServerHealth, healthAPI } from "../lib/api";
+import { authAPI, checkServerHealth, healthAPI } from '../lib/api.js';
 
 // Mock fetch for testing
 global.fetch =

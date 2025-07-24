@@ -7,7 +7,7 @@
 
 import { Edit3, Gift, MessageCircle, MoreVertical, Zap } from 'lucide-react';
 import React, { useState } from 'react';
-import { nostrProfileService } from '../lib/nostr-profile-service';
+import { nostrProfileService } from '../lib/nostr-profile-service.js';
 import { Contact } from '../types/contacts';
 import ContextualAvatar from './ContextualAvatar';
 

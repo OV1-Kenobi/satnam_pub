@@ -1,12 +1,12 @@
 import { Copy, Download, XCircle } from "lucide-react";
 import QRCode from "qrcode";
 import React, { useEffect, useRef, useState } from "react";
-import { SatnamFamilyMember } from "../../types/shared";
+import { FamilyMember } from "../../types/shared";
 
 interface QRCodeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  familyMembers: SatnamFamilyMember[];
+  familyMembers: FamilyMember[];
   selectedMember: string | null;
   copiedAddress: string | null;
   onCopyAddress: (address: string) => void;
@@ -22,12 +22,12 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
 }) => {
   const [qrCodeDataURL, setQrCodeDataURL] = useState<string>("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
   const member = familyMembers.find(m => m.id === selectedMember);
 
   useEffect(() => {
     if (isOpen && member) {
-      generateQRCode(member.lightningAddress);
+      generateQRCode(member.lightningAddress || '');
     }
   }, [isOpen, member]);
 
@@ -52,7 +52,7 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
 
   const downloadQRCode = () => {
     if (!qrCodeDataURL || !member) return;
-    
+
     const link = document.createElement('a');
     link.download = `${member.username}-lightning-address-qr.png`;
     link.href = qrCodeDataURL;
@@ -83,8 +83,8 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
           {/* QR Code Display */}
           <div className="bg-white rounded-xl p-6 mb-6 inline-block">
             {qrCodeDataURL ? (
-              <img 
-                src={qrCodeDataURL} 
+              <img
+                src={qrCodeDataURL}
                 alt={`QR Code for ${member.username}'s Lightning Address`}
                 className="w-64 h-64 mx-auto"
               />
@@ -100,7 +100,7 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-purple-200 text-sm">Lightning Address</span>
               <button
-                onClick={() => onCopyAddress(member.lightningAddress)}
+                onClick={() => onCopyAddress(member.lightningAddress || '')}
                 className="text-purple-200 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-transparent rounded p-1"
                 aria-label={`Copy lightning address for ${member.username}`}
                 title={copiedAddress === member.lightningAddress ? "Copied!" : "Copy address"}

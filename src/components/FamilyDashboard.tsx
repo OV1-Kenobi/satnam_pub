@@ -1,36 +1,26 @@
-import React, { useState } from "react";
 import {
-  Users,
-  Zap,
-  Wifi,
-  BookOpen,
-  Settings,
-  Plus,
-  Send,
-  FileText,
-  UserPlus,
-  Download,
-  AlertTriangle,
-  Eye,
-  Play,
   ArrowLeft,
   Bitcoin,
+  BookOpen,
   CheckCircle,
-  XCircle,
   Clock,
-  TrendingUp,
+  Download,
   QrCode,
+  Settings,
   Shield,
+  Users,
+  XCircle
 } from "lucide-react";
-import PhoenixDNodeStatus from "./PhoenixDNodeStatus";
-import FamilyWalletCard from "./FamilyWalletCard";
-import SmartPaymentModal from "./SmartPaymentModal";
-import TransactionHistory from "./TransactionHistory";
-import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
+import React, { useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { FederationRole } from "../types/auth";
+import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
+import FamilyWalletCard from "./FamilyWalletCard";
+import PhoenixDNodeStatus from "./PhoenixDNodeStatus";
+import SmartPaymentModal from "./SmartPaymentModal";
+import TransactionHistory from "./TransactionHistory";
 
-import { SatnamFamilyMember } from "../types/shared";
+import { FamilyMember } from "../types/shared";
 
 import { Transaction } from "../types/shared";
 
@@ -41,7 +31,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     "connected",
   );
 
-  const [familyMembers] = useState<SatnamFamilyMember[]>([
+  const [familyMembers] = useState<FamilyMember[]>([
     {
       id: "1",
       username: "David",
@@ -221,7 +211,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-3">
               {/* Emergency Recovery Button */}
               <button
@@ -231,7 +221,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <Shield className="h-4 w-4" />
                 <span className="text-sm font-medium">Emergency Recovery</span>
               </button>
-              
+
               {/* Settings Button */}
               <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                 <Settings className="h-5 w-5" />
@@ -297,10 +287,10 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <FamilyWalletCard
               key={member.id}
               member={member}
-              onCopyAddress={() => {}}
+              onCopyAddress={() => { }}
               onSend={() => handleSendPayment(member.id)}
               onReceive={() => handleReceivePayment(member.id)}
-              onShowQR={() => handleShowQR(member.lightningAddress)}
+              onShowQR={() => handleShowQR(member.lightningAddress || '')}
             />
           ))}
         </div>

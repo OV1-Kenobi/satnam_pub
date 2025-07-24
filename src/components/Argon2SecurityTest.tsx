@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
+  decryptCredentials,
   deriveEncryptionKey,
   encryptCredentials,
-  decryptCredentials,
-  hashPassphrase,
-  verifyPassphrase,
   generateSecureToken,
-  validateArgon2ConfigOnStartup
-} from '../../api/lib/security';
+  hashPassphrase,
+  validateArgon2ConfigOnStartup,
+  verifyPassphrase
+} from '../../api/lib/security.js';
 
 export default function Argon2SecurityTest() {
   const [results, setResults] = useState<string[]>([]);
@@ -42,7 +42,7 @@ export default function Argon2SecurityTest() {
       const salt = new Uint8Array(32);
       window.crypto.getRandomValues(salt);
       const derivedKey = await deriveEncryptionKey(testPassword, salt);
-      log.push(`   Derived key length: ${derivedKey.length} bytes`);
+      log.push(`   Derived key algorithm: ${derivedKey.algorithm.name}`);
       log.push('✅ Key derivation passed');
 
       // Test 5: Encryption/Decryption

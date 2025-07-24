@@ -1,4 +1,19 @@
 /**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ import.meta;
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
+/**
  * Enhanced Pubky Client
  *
  * This module provides a complete implementation of the Pubky protocol for decentralized domain management.
@@ -103,13 +118,25 @@ export function createPubkyClient(): EnhancedPubkyClient {
   return new EnhancedPubkyClient({
     homeserver_url: config.pubky.homeserverUrl,
     pkarr_relays: config.pubky.pkarrRelays,
-    enable_migration: config.pubky.enableMigration,
-    sovereignty_tracking: config.pubky.sovereigntyTracking,
-    relay_timeout: config.pkarr.relayTimeout,
-    record_ttl: config.pkarr.recordTtl,
-    backup_relays: config.pkarr.backupRelays,
-    publish_retries: config.pkarr.publishRetries,
-    debug: process.env.NODE_ENV !== "production",
+    enable_migration: config.pubky.enableMigration === "true",
+    sovereignty_tracking: config.pubky.sovereigntyTracking === "true",
+    relay_timeout:
+      typeof config.pkarr.relayTimeout === "string"
+        ? parseInt(config.pkarr.relayTimeout)
+        : config.pkarr.relayTimeout,
+    record_ttl:
+      typeof config.pkarr.recordTtl === "string"
+        ? parseInt(config.pkarr.recordTtl)
+        : config.pkarr.recordTtl,
+    backup_relays:
+      typeof config.pkarr.backupRelays === "string"
+        ? parseInt(config.pkarr.backupRelays)
+        : config.pkarr.backupRelays,
+    publish_retries:
+      typeof config.pkarr.publishRetries === "string"
+        ? parseInt(config.pkarr.publishRetries)
+        : config.pkarr.publishRetries,
+    debug: getEnvVar("NODE_ENV") !== "production",
   });
 }
 
@@ -165,7 +192,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error generating Pubky keypair:", error);
       throw new Error(
-        `Failed to generate Pubky keypair: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to generate Pubky keypair: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -181,7 +210,7 @@ export class EnhancedPubkyClient {
       // Validate the private key
       if (privateKey.length !== 32) {
         throw new Error(
-          "Invalid private key length. Ed25519 private keys must be 32 bytes.",
+          "Invalid private key length. Ed25519 private keys must be 32 bytes."
         );
       }
 
@@ -201,7 +230,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error importing keypair:", error);
       throw new Error(
-        `Failed to import keypair: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to import keypair: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -211,7 +242,7 @@ export class EnhancedPubkyClient {
    */
   async registerPubkyDomain(
     keypair: PubkyKeypair,
-    domainRecords: PubkyDomainRecord[],
+    domainRecords: PubkyDomainRecord[]
   ): Promise<PubkyRegistrationResult> {
     try {
       // Create PKARR record packet
@@ -231,7 +262,7 @@ export class EnhancedPubkyClient {
       const recordBytes = this.serializePkarrRecord(pkarrRecord);
       const signature = await ed25519.sign(
         recordBytes,
-        Buffer.from(keypair.private_key, "hex"),
+        Buffer.from(keypair.private_key, "hex")
       );
 
       const signedRecord: PkarrSignedRecord = {
@@ -242,8 +273,8 @@ export class EnhancedPubkyClient {
       // Publish to PKARR relays
       const publishResults = await Promise.all(
         this.pkarrRelays.map((relay) =>
-          this.publishToPkarrRelay(relay, signedRecord),
-        ),
+          this.publishToPkarrRelay(relay, signedRecord)
+        )
       );
 
       // Store registration metadata
@@ -264,7 +295,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error registering Pubky domain:", error);
       throw new Error(
-        `Failed to register Pubky domain: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to register Pubky domain: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -276,7 +309,7 @@ export class EnhancedPubkyClient {
     keypair: PubkyKeypair,
     path: string,
     content: Record<string, unknown>,
-    contentType: string = "application/json",
+    contentType: string = "application/json"
   ): Promise<PubkyPublishResult> {
     try {
       // Normalize the path
@@ -330,7 +363,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error publishing content:", error);
       throw new Error(
-        `Failed to publish content: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to publish content: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -347,7 +382,7 @@ export class EnhancedPubkyClient {
       // Try homeserver first
       try {
         const homeserverResponse = await axios.get(
-          `${this.homeserverUrl}/resolve/${encodeURIComponent(pubkyUrl)}`,
+          `${this.homeserverUrl}/resolve/${encodeURIComponent(pubkyUrl)}`
         );
 
         if (homeserverResponse.status === 200) {
@@ -356,7 +391,7 @@ export class EnhancedPubkyClient {
       } catch (homeserverError) {
         this.logDebug(
           "Homeserver resolution failed, falling back to PKARR:",
-          homeserverError,
+          homeserverError
         );
       }
 
@@ -374,7 +409,7 @@ export class EnhancedPubkyClient {
   async migrateFamilyDomainToPubky(
     traditionalDomain: string,
     familyId: string,
-    guardianKeypairs: PubkyKeypair[],
+    guardianKeypairs: PubkyKeypair[]
   ): Promise<PubkyMigrationResult> {
     try {
       // Generate family Pubky domain keypair
@@ -403,12 +438,12 @@ export class EnhancedPubkyClient {
       // Register family Pubky domain
       const registration = await this.registerPubkyDomain(
         familyKeypair,
-        familyRecords,
+        familyRecords
       );
 
       // Create migration record in database
       if (this.storageProvider === "postgres") {
-        await db.query(
+        await (db as any).query(
           `INSERT INTO domain_migrations (
             id, family_id, traditional_domain, pubky_url, pubky_public_key,
             migration_status, sovereignty_upgrade, migrated_at, created_at, updated_at
@@ -422,7 +457,7 @@ export class EnhancedPubkyClient {
             "completed",
             true,
             new Date().toISOString(),
-          ],
+          ]
         );
       }
 
@@ -431,7 +466,7 @@ export class EnhancedPubkyClient {
         await this.setupGuardianBackup(
           guardianKeypair,
           familyId,
-          familyKeypair.pubky_url,
+          familyKeypair.pubky_url
         );
       }
 
@@ -445,7 +480,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error migrating family domain to Pubky:", error);
       throw new Error(
-        `Failed to migrate family domain: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to migrate family domain: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -455,7 +492,7 @@ export class EnhancedPubkyClient {
    */
   async verifyDomainOwnership(
     pubkyUrl: string,
-    privateKey: string,
+    privateKey: string
   ): Promise<boolean> {
     try {
       // Extract public key from URL
@@ -464,7 +501,7 @@ export class EnhancedPubkyClient {
 
       // Derive public key from private key
       const derivedPublicKey = await ed25519.getPublicKey(
-        Buffer.from(privateKey, "hex"),
+        Buffer.from(privateKey, "hex")
       );
       const derivedPublicKeyHex = Buffer.from(derivedPublicKey).toString("hex");
 
@@ -479,14 +516,14 @@ export class EnhancedPubkyClient {
       // Sign the message
       const signature = await ed25519.sign(
         Buffer.from(verificationMessage),
-        Buffer.from(privateKey, "hex"),
+        Buffer.from(privateKey, "hex")
       );
 
       // Verify the signature
       const isValid = await ed25519.verify(
         signature,
         Buffer.from(verificationMessage),
-        derivedPublicKey,
+        derivedPublicKey
       );
 
       return isValid;
@@ -501,7 +538,7 @@ export class EnhancedPubkyClient {
    */
   async rotateKeypair(
     oldKeypair: PubkyKeypair,
-    domainRecords: PubkyDomainRecord[],
+    domainRecords: PubkyDomainRecord[]
   ): Promise<PubkyKeypair> {
     try {
       // Generate new keypair
@@ -518,7 +555,7 @@ export class EnhancedPubkyClient {
             rotation_timestamp: Date.now(),
             signature: await this.signContent(
               { new_public_key: newKeypair.public_key, timestamp: Date.now() },
-              oldKeypair.private_key,
+              oldKeypair.private_key
             ),
           }),
           ttl: 86400, // 24 hours
@@ -530,7 +567,7 @@ export class EnhancedPubkyClient {
 
       // Update key rotation in database
       if (this.storageProvider === "postgres") {
-        await db.query(
+        await (db as any).query(
           `INSERT INTO pubky_key_rotations (
             id, previous_public_key, new_public_key, rotation_timestamp,
             signature, created_at
@@ -542,9 +579,9 @@ export class EnhancedPubkyClient {
             new Date().toISOString(),
             await this.signContent(
               { new_public_key: newKeypair.public_key, timestamp: Date.now() },
-              oldKeypair.private_key,
+              oldKeypair.private_key
             ),
-          ],
+          ]
         );
       }
 
@@ -552,7 +589,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error rotating keypair:", error);
       throw new Error(
-        `Failed to rotate keypair: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to rotate keypair: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -563,14 +602,14 @@ export class EnhancedPubkyClient {
   async createDomainBackup(
     keypair: PubkyKeypair,
     domainData: Record<string, unknown>,
-    guardianKeypairs: PubkyKeypair[],
+    guardianKeypairs: PubkyKeypair[]
   ): Promise<string[]> {
     try {
       // Encrypt domain data with a random key
       const encryptionKey = randomBytes(32).toString("hex");
       const encryptedData = this.encryptData(
         JSON.stringify(domainData),
-        encryptionKey,
+        encryptionKey
       );
 
       // Split the encryption key using Shamir's Secret Sharing
@@ -578,7 +617,7 @@ export class EnhancedPubkyClient {
       const keyShares = this.splitSecret(
         encryptionKey,
         threshold,
-        guardianKeypairs.length,
+        guardianKeypairs.length
       );
 
       // Publish encrypted data to Pubky
@@ -586,7 +625,7 @@ export class EnhancedPubkyClient {
         keypair,
         "/backup/domain-data",
         { encrypted_data: encryptedData },
-        "application/json",
+        "application/json"
       );
 
       // Distribute key shares to guardians
@@ -604,7 +643,7 @@ export class EnhancedPubkyClient {
           timestamp: Date.now(),
           signature: await this.signContent(
             { share_index: i + 1, key_share: keyShare, timestamp: Date.now() },
-            keypair.private_key,
+            keypair.private_key
           ),
         };
 
@@ -614,7 +653,7 @@ export class EnhancedPubkyClient {
           guardianKeypair,
           `/backup/${keypair.public_key}`,
           signedKeyShare,
-          "application/json",
+          "application/json"
         );
 
         backupUrls.push(backupUrl);
@@ -624,7 +663,9 @@ export class EnhancedPubkyClient {
     } catch (error) {
       this.logError("Error creating domain backup:", error);
       throw new Error(
-        `Failed to create domain backup: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to create domain backup: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -634,7 +675,7 @@ export class EnhancedPubkyClient {
    */
   async recoverDomainFromBackup(
     domainPubkyUrl: string,
-    guardianKeypairs: PubkyKeypair[],
+    guardianKeypairs: PubkyKeypair[]
   ): Promise<Record<string, unknown>> {
     try {
       // Extract domain public key
@@ -667,7 +708,7 @@ export class EnhancedPubkyClient {
         } catch (guardianError) {
           this.logDebug(
             `Failed to get backup from guardian ${i}:`,
-            guardianError,
+            guardianError
           );
           // Continue with next guardian
         }
@@ -682,8 +723,9 @@ export class EnhancedPubkyClient {
 
       // Get the encrypted domain data
       const encryptedDataUrl = `${domainPubkyUrl}/backup/domain-data`;
-      const encryptedDataResponse =
-        await this.resolvePubkyUrl(encryptedDataUrl);
+      const encryptedDataResponse = await this.resolvePubkyUrl(
+        encryptedDataUrl
+      );
 
       if (!encryptedDataResponse) {
         throw new Error("Could not retrieve encrypted domain data");
@@ -692,14 +734,16 @@ export class EnhancedPubkyClient {
       // Decrypt the domain data
       const decryptedData = this.decryptData(
         encryptedDataResponse.content.encrypted_data as string,
-        encryptionKey,
+        encryptionKey
       );
 
       return JSON.parse(decryptedData);
     } catch (error) {
       this.logError("Error recovering domain from backup:", error);
       throw new Error(
-        `Failed to recover domain from backup: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to recover domain from backup: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -727,12 +771,12 @@ export class EnhancedPubkyClient {
    */
   private async signContent(
     content: Record<string, unknown>,
-    privateKey: string,
+    privateKey: string
   ): Promise<string> {
     const contentBytes = Buffer.from(JSON.stringify(content));
     const signature = await ed25519.sign(
       contentBytes,
-      Buffer.from(privateKey, "hex"),
+      Buffer.from(privateKey, "hex")
     );
     return Buffer.from(signature).toString("hex");
   }
@@ -769,7 +813,7 @@ export class EnhancedPubkyClient {
    */
   private async publishToPkarrRelay(
     relayUrl: string,
-    signedRecord: PkarrSignedRecord,
+    signedRecord: PkarrSignedRecord
   ): Promise<{ success: boolean }> {
     try {
       const response = await axios.post(`${relayUrl}/publish`, signedRecord, {
@@ -789,7 +833,7 @@ export class EnhancedPubkyClient {
    * Resolve a Pubky URL through PKARR relays
    */
   private async resolveThroughPkarr(
-    pubkyUrl: string,
+    pubkyUrl: string
   ): Promise<PubkyContent | null> {
     try {
       // Extract public key from URL
@@ -814,7 +858,7 @@ export class EnhancedPubkyClient {
 
                 // For specific paths
                 return r.name === path || r.name === `/${path}`;
-              },
+              }
             );
 
             if (matchingRecord) {
@@ -836,7 +880,7 @@ export class EnhancedPubkyClient {
         } catch (relayError) {
           this.logDebug(
             `Failed to resolve through relay ${relay}:`,
-            relayError,
+            relayError
           );
           // Continue with next relay
         }
@@ -861,7 +905,7 @@ export class EnhancedPubkyClient {
   }): Promise<void> {
     if (this.storageProvider === "postgres") {
       try {
-        await db.query(
+        await (db as any).query(
           `INSERT INTO pubky_registrations (
             id, pubky_url, public_key, domain_records, pkarr_relays,
             registration_time, sovereignty_score, created_at
@@ -876,7 +920,7 @@ export class EnhancedPubkyClient {
               ? metadata.registration_time.toISOString()
               : metadata.registration_time,
             metadata.sovereignty_score,
-          ],
+          ]
         );
       } catch (dbError) {
         this.logError("Database error storing registration metadata:", dbError);
@@ -898,7 +942,7 @@ export class EnhancedPubkyClient {
   }): Promise<void> {
     if (this.storageProvider === "postgres") {
       try {
-        await db.query(
+        await (db as any).query(
           `INSERT INTO pubky_content (
             id, pubky_url, content_hash, content_type, timestamp,
             public_key, created_at
@@ -910,7 +954,7 @@ export class EnhancedPubkyClient {
             metadata.content_type,
             new Date(metadata.timestamp).toISOString(),
             metadata.public_key,
-          ],
+          ]
         );
       } catch (dbError) {
         this.logError("Database error storing content metadata:", dbError);
@@ -926,12 +970,12 @@ export class EnhancedPubkyClient {
   private async setupGuardianBackup(
     guardianKeypair: PubkyKeypair,
     familyId: string,
-    domainPubkyUrl: string,
+    domainPubkyUrl: string
   ): Promise<void> {
     if (this.storageProvider === "postgres") {
       try {
         // Create or update guardian record
-        await db.query(
+        await (db as any).query(
           `INSERT INTO federation_guardians (
             id, family_id, pubky_public_key, pubky_backup_status,
             pubky_backup_url, pubky_backup_last_updated, created_at, updated_at
@@ -947,8 +991,11 @@ export class EnhancedPubkyClient {
             familyId,
             guardianKeypair.public_key,
             "active",
-            `${guardianKeypair.pubky_url}/backup/${domainPubkyUrl.replace("pubky://", "")}`,
-          ],
+            `${guardianKeypair.pubky_url}/backup/${domainPubkyUrl.replace(
+              "pubky://",
+              ""
+            )}`,
+          ]
         );
       } catch (dbError) {
         this.logError("Database error setting up guardian backup:", dbError);
@@ -1004,7 +1051,7 @@ export class EnhancedPubkyClient {
   private splitSecret(
     secret: string,
     threshold: number,
-    shares: number,
+    shares: number
   ): string[] {
     const secretBuffer = Buffer.from(secret, "hex");
     const splitShares = sss.split({
