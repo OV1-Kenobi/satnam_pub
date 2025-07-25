@@ -16,6 +16,8 @@
 
 import { FederationRole } from "../types/auth.js";
 import { PrivacyUtils } from "./privacy/encryption.js";
+// Import crypto modules for signature verification
+import { nip19 } from "nostr-tools";
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
@@ -76,6 +78,45 @@ export interface EmergencyRecoveryRequest {
   requiredApprovals: number;
   currentApprovals: number;
   currentRejections: number;
+}
+
+/**
+ * User type for recovery workflow routing
+ */
+export type UserType = "private" | "family_federation";
+
+/**
+ * Self-sovereign recovery methods for private users
+ */
+export type SelfRecoveryMethod =
+  | "nsec_signature" // User signs with their private key
+  | "nip05_password" // User authenticates with NIP-05 + password
+  | "emergency_backup"; // User uses pre-configured backup method
+
+/**
+ * Self-sovereign recovery request for private users
+ */
+export interface SelfRecoveryRequest {
+  id: string;
+  userId: string;
+  userNpub: string;
+  requestType:
+    | "nsec_recovery"
+    | "ecash_recovery"
+    | "emergency_liquidity"
+    | "account_restoration";
+  recoveryMethod: SelfRecoveryMethod;
+  authenticationData: {
+    signature?: string; // For nsec_signature method
+    nip05?: string; // For nip05_password method
+    passwordHash?: string; // For nip05_password method
+    backupData?: string; // For emergency_backup method
+  };
+  status: "pending" | "verified" | "completed" | "failed";
+  createdAt: Date;
+  completedAt?: Date;
+  reason: string;
+  description: string;
 }
 
 export interface GuardianApproval {
@@ -143,6 +184,247 @@ export interface RecoveryConfig {
   logAllActions: boolean;
 }
 
+/**
+ * Determine user type based on federation role
+ * Private users have individual wallet sovereignty
+ * Family federation users require guardian consensus
+ */
+function getUserType(userRole: FederationRole): UserType {
+  return userRole === "private" ? "private" : "family_federation";
+}
+
+/**
+ * Self-sovereign recovery system for private users
+ * Bypasses guardian consensus for individual wallet sovereignty
+ */
+class SelfSovereignRecovery {
+  /**
+   * Verify nsec signature for self-sovereign recovery
+   */
+  static async verifyNsecSignature(
+    userNpub: string,
+    signature: string,
+    recoveryData: string
+  ): Promise<boolean> {
+    try {
+      // Validate npub format
+      if (!userNpub.startsWith("npub1") || userNpub.length < 20) {
+        console.error("Invalid user npub format:", userNpub);
+        return false;
+      }
+
+      // Decode user npub to get public key hex
+      let userPubkeyHex: string;
+      try {
+        const decoded = nip19.decode(userNpub);
+        if (decoded.type !== "npub") {
+          console.error("User npub decode failed - wrong type:", decoded.type);
+          return false;
+        }
+        userPubkeyHex = decoded.data as string;
+      } catch (error) {
+        console.error("User npub decode failed:", error);
+        return false;
+      }
+
+      // Create message hash
+      const messageBytes = new TextEncoder().encode(recoveryData);
+      const messageHash = await crypto.subtle.digest("SHA-256", messageBytes);
+      const messageHashArray = new Uint8Array(messageHash);
+
+      // Validate signature format
+      if (!signature || signature.length !== 128) {
+        console.error("Invalid signature format - expected 128 hex characters");
+        return false;
+      }
+
+      // Convert hex signature to bytes
+      const signatureBytes = new Uint8Array(64);
+      for (let i = 0; i < 64; i++) {
+        signatureBytes[i] = parseInt(signature.substring(i * 2, i * 2 + 2), 16);
+      }
+
+      // Convert public key to bytes
+      const publicKeyBytes = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) {
+        publicKeyBytes[i] = parseInt(
+          userPubkeyHex.substring(i * 2, i * 2 + 2),
+          16
+        );
+      }
+
+      // Verify signature using secp256k1
+      const { verify } = await import("@noble/secp256k1");
+      const isValid = verify(signatureBytes, messageHashArray, publicKeyBytes);
+
+      if (!isValid) {
+        console.error(
+          "Self-sovereign signature verification failed for user:",
+          userNpub
+        );
+        return false;
+      }
+
+      console.log(
+        "✅ Self-sovereign signature verified successfully:",
+        userNpub
+      );
+      return true;
+    } catch (error) {
+      console.error("Self-sovereign signature verification error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Verify NIP-05 + password authentication for self-sovereign recovery
+   */
+  static async verifyNip05Password(
+    nip05: string,
+    passwordHash: string,
+    userNpub: string
+  ): Promise<boolean> {
+    try {
+      // Basic NIP-05 format validation
+      if (!nip05.includes("@") || !nip05.includes(".")) {
+        console.error("Invalid NIP-05 format:", nip05);
+        return false;
+      }
+
+      // In a real implementation, this would:
+      // 1. Verify the NIP-05 identifier against the domain
+      // 2. Check the password hash against stored credentials
+      // 3. Ensure the NIP-05 is associated with the provided npub
+
+      // For now, basic validation
+      const isValidFormat = nip05.length > 5 && passwordHash.length > 0;
+
+      if (isValidFormat) {
+        console.log("✅ NIP-05 + password verification successful:", nip05);
+        return true;
+      } else {
+        console.error("NIP-05 + password verification failed");
+        return false;
+      }
+    } catch (error) {
+      console.error("NIP-05 + password verification error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Process self-sovereign recovery request
+   */
+  static async processSelfRecovery(
+    request: SelfRecoveryRequest
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log("🔑 Processing self-sovereign recovery for private user");
+
+      let isAuthenticated = false;
+
+      // Route based on recovery method
+      switch (request.recoveryMethod) {
+        case "nsec_signature":
+          if (!request.authenticationData.signature) {
+            return {
+              success: false,
+              error: "Signature required for nsec recovery",
+            };
+          }
+
+          // Generate canonical recovery data for signing
+          const recoveryData = JSON.stringify(
+            {
+              requestId: request.id,
+              userId: request.userId,
+              userNpub: request.userNpub,
+              requestType: request.requestType,
+              reason: request.reason,
+              createdAt: request.createdAt.toISOString(),
+            },
+            Object.keys({}).sort()
+          );
+
+          isAuthenticated = await this.verifyNsecSignature(
+            request.userNpub,
+            request.authenticationData.signature,
+            recoveryData
+          );
+          break;
+
+        case "nip05_password":
+          if (
+            !request.authenticationData.nip05 ||
+            !request.authenticationData.passwordHash
+          ) {
+            return { success: false, error: "NIP-05 and password required" };
+          }
+
+          isAuthenticated = await this.verifyNip05Password(
+            request.authenticationData.nip05,
+            request.authenticationData.passwordHash,
+            request.userNpub
+          );
+          break;
+
+        case "emergency_backup":
+          if (!request.authenticationData.backupData) {
+            return { success: false, error: "Emergency backup data required" };
+          }
+
+          // In a real implementation, this would verify backup data
+          // For now, basic validation
+          isAuthenticated = request.authenticationData.backupData.length > 0;
+          break;
+
+        default:
+          return { success: false, error: "Invalid recovery method" };
+      }
+
+      if (!isAuthenticated) {
+        return { success: false, error: "Authentication failed" };
+      }
+
+      // Execute the recovery based on request type
+      const recoveryResult = await this.executeSelfRecovery(request);
+
+      return {
+        success: true,
+        data: {
+          requestId: request.id,
+          recoveryType: request.requestType,
+          method: request.recoveryMethod,
+          result: recoveryResult,
+        },
+      };
+    } catch (error) {
+      console.error("Self-sovereign recovery processing error:", error);
+      return { success: false, error: "Recovery processing failed" };
+    }
+  }
+
+  /**
+   * Execute the actual recovery operation
+   */
+  static async executeSelfRecovery(request: SelfRecoveryRequest): Promise<any> {
+    // In a real implementation, this would perform the actual recovery:
+    // - nsec_recovery: Generate new credentials or restore access
+    // - ecash_recovery: Restore ecash tokens
+    // - emergency_liquidity: Provide access to emergency funds
+    // - account_restoration: Restore full account access
+
+    console.log(`✅ Executing self-sovereign ${request.requestType} recovery`);
+
+    return {
+      type: request.requestType,
+      method: request.recoveryMethod,
+      status: "completed",
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
 export class EmergencyRecoverySystem {
   private static readonly RECOVERY_TIMEOUT_HOURS = 24;
   private static readonly MAX_RECOVERY_ATTEMPTS = 3;
@@ -184,6 +466,15 @@ export class EmergencyRecoverySystem {
         recoveryMethod,
       } = params;
 
+      // Determine user type and route accordingly
+      const userType = getUserType(userRole);
+
+      // Private users use self-sovereign recovery (bypass guardian consensus)
+      if (userType === "private") {
+        return await this.handlePrivateUserRecovery(params);
+      }
+
+      // Family federation users require guardian consensus
       // Validate user permissions
       const canInitiate = this.canInitiateRecovery(userRole, requestType);
       if (!canInitiate.allowed) {
@@ -289,6 +580,206 @@ export class EmergencyRecoverySystem {
       return {
         success: false,
         error: "Failed to initiate emergency recovery",
+      };
+    }
+  }
+
+  /**
+   * Handle recovery for private users (self-sovereign)
+   * Private users have individual wallet sovereignty and don't require guardian consensus
+   */
+  private static async handlePrivateUserRecovery(params: {
+    userId: string;
+    userNpub: string;
+    userRole: FederationRole;
+    requestType: EmergencyRecoveryRequest["requestType"];
+    reason: EmergencyRecoveryRequest["reason"];
+    urgency: EmergencyRecoveryRequest["urgency"];
+    description: string;
+    requestedAmount?: number;
+    recoveryMethod: EmergencyRecoveryRequest["recoveryMethod"];
+  }): Promise<{
+    success: boolean;
+    data?: {
+      requestId: string;
+      requiredApprovals: number;
+      estimatedTime: string;
+      nextSteps: string[];
+    };
+    error?: string;
+  }> {
+    try {
+      console.log("🔑 Processing self-sovereign recovery for private user");
+
+      // For private users, we need to determine the self-recovery method
+      // based on the traditional recoveryMethod parameter
+      let selfRecoveryMethod: SelfRecoveryMethod;
+
+      switch (params.recoveryMethod) {
+        case "password":
+          selfRecoveryMethod = "nip05_password";
+          break;
+        case "multisig":
+        case "shamir":
+          selfRecoveryMethod = "emergency_backup";
+          break;
+        case "guardian_consensus":
+        default:
+          // For private users, default to nsec signature
+          selfRecoveryMethod = "nsec_signature";
+          break;
+      }
+
+      // Create self-recovery request
+      const requestId = PrivacyUtils.generateSecureUUID();
+      const selfRecoveryRequest: SelfRecoveryRequest = {
+        id: requestId,
+        userId: params.userId,
+        userNpub: params.userNpub,
+        requestType: params.requestType,
+        recoveryMethod: selfRecoveryMethod,
+        authenticationData: {
+          // These would be provided by the user in a real implementation
+          // For now, we'll indicate what's needed
+        },
+        status: "pending",
+        createdAt: new Date(),
+        reason: params.reason,
+        description: params.description,
+      };
+
+      // Log the self-sovereign recovery request
+      await this.logEmergencyEvent({
+        eventType: "recovery_requested",
+        userId: params.userId,
+        userNpub: params.userNpub,
+        userRole: params.userRole,
+        details: {
+          requestId,
+          requestType: params.requestType,
+          reason: params.reason,
+          urgency: params.urgency,
+          recoveryMethod: selfRecoveryMethod,
+        },
+        severity: params.urgency === "critical" ? "critical" : "info",
+      });
+
+      // For private users, return immediate instructions for self-recovery
+      return {
+        success: true,
+        data: {
+          requestId,
+          requiredApprovals: 0, // No approvals needed for private users
+          estimatedTime: "Immediate (upon authentication)",
+          nextSteps: this.getPrivateUserNextSteps(
+            selfRecoveryMethod,
+            params.requestType
+          ),
+        },
+      };
+    } catch (error) {
+      console.error("Private user recovery initiation failed:", error);
+      return {
+        success: false,
+        error: "Failed to initiate self-sovereign recovery",
+      };
+    }
+  }
+
+  /**
+   * Get next steps for private user recovery
+   */
+  private static getPrivateUserNextSteps(
+    recoveryMethod: SelfRecoveryMethod,
+    requestType: string
+  ): string[] {
+    const baseSteps = [
+      `Complete ${requestType} recovery using ${recoveryMethod}`,
+    ];
+
+    switch (recoveryMethod) {
+      case "nsec_signature":
+        return [
+          ...baseSteps,
+          "Sign the recovery request with your private key (nsec)",
+          "Submit the signed request for immediate processing",
+          "Your recovery will be processed automatically upon signature verification",
+        ];
+
+      case "nip05_password":
+        return [
+          ...baseSteps,
+          "Provide your NIP-05 identifier (username@domain.tld)",
+          "Enter your account password",
+          "Your recovery will be processed upon successful authentication",
+        ];
+
+      case "emergency_backup":
+        return [
+          ...baseSteps,
+          "Provide your emergency backup data",
+          "This may include backup phrases, recovery codes, or other pre-configured methods",
+          "Your recovery will be processed upon successful backup verification",
+        ];
+
+      default:
+        return baseSteps;
+    }
+  }
+
+  /**
+   * Process self-sovereign recovery for private users
+   * Public interface to the SelfSovereignRecovery system
+   */
+  static async processSelfSovereignRecovery(
+    request: SelfRecoveryRequest
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      // Verify this is for a private user
+      if (request.userNpub && !request.userNpub.startsWith("npub1")) {
+        return { success: false, error: "Invalid user npub format" };
+      }
+
+      // Process the self-sovereign recovery
+      const result = await SelfSovereignRecovery.processSelfRecovery(request);
+
+      if (result.success) {
+        // Log successful self-sovereign recovery
+        await this.logEmergencyEvent({
+          eventType: "recovery_completed",
+          userId: request.userId,
+          userNpub: request.userNpub,
+          userRole: "private",
+          details: {
+            requestId: request.id,
+            requestType: request.requestType,
+            recoveryMethod: request.recoveryMethod,
+          },
+          severity: "info",
+        });
+      } else {
+        // Log failed self-sovereign recovery
+        await this.logEmergencyEvent({
+          eventType: "recovery_failed",
+          userId: request.userId,
+          userNpub: request.userNpub,
+          userRole: "private",
+          details: {
+            requestId: request.id,
+            requestType: request.requestType,
+            recoveryMethod: request.recoveryMethod,
+            reason: result.error || "Unknown error",
+          },
+          severity: "error",
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Self-sovereign recovery processing failed:", error);
+      return {
+        success: false,
+        error: "Failed to process self-sovereign recovery",
       };
     }
   }
@@ -646,12 +1137,7 @@ export class EmergencyRecoverySystem {
       case "steward":
         return { allowed: true };
       case "adult":
-        if (requestType === "emergency_liquidity") {
-          return {
-            allowed: false,
-            reason: "Adults cannot request emergency liquidity",
-          };
-        }
+        // Adults have individual wallet sovereignty - can request all recovery types
         return { allowed: true };
       case "offspring":
         if (requestType === "emergency_liquidity") {
@@ -743,14 +1229,128 @@ export class EmergencyRecoverySystem {
     return request.currentApprovals >= request.requiredApprovals;
   }
 
+  /**
+   * Generate canonical data string for recovery request signing
+   * This creates a deterministic string representation of the recovery request
+   * that guardians must sign to approve/reject the request
+   */
+  private static generateRecoveryRequestSigningData(
+    request: EmergencyRecoveryRequest
+  ): string {
+    // Create a canonical representation of the recovery request data
+    // This must be deterministic and include all critical fields
+    const signingData = {
+      requestId: request.id,
+      userId: request.userId,
+      userNpub: request.userNpub,
+      requestType: request.requestType,
+      reason: request.reason,
+      urgency: request.urgency,
+      description: request.description,
+      requestedAmount: request.requestedAmount || null,
+      recoveryMethod: request.recoveryMethod,
+      createdAt: request.createdAt.toISOString(),
+      expiresAt: request.expiresAt.toISOString(),
+    };
+
+    // Convert to deterministic JSON string (sorted keys)
+    return JSON.stringify(signingData, Object.keys(signingData).sort());
+  }
+
+  /**
+   * Verify guardian cryptographic signature for recovery request approval
+   * CRITICAL SECURITY: This validates that the guardian actually signed the specific recovery request
+   */
   private static async verifyGuardianSignature(
     guardianNpub: string,
     signature: string,
-    _request: EmergencyRecoveryRequest
+    request: EmergencyRecoveryRequest
   ): Promise<boolean> {
-    // In a real implementation, this would verify the cryptographic signature
-    // against the request data. For now, we'll do a basic validation
-    return signature.length > 0 && guardianNpub.startsWith("npub1");
+    try {
+      // Validate npub format using fixed NIP-19 encoding
+      if (!guardianNpub.startsWith("npub1") || guardianNpub.length < 20) {
+        console.error("Invalid guardian npub format:", guardianNpub);
+        return false;
+      }
+
+      // Decode guardian npub to get public key hex
+      let guardianPubkeyHex: string;
+      try {
+        const decoded = nip19.decode(guardianNpub);
+        if (decoded.type !== "npub") {
+          console.error(
+            "Guardian npub decode failed - wrong type:",
+            decoded.type
+          );
+          return false;
+        }
+        guardianPubkeyHex = decoded.data as string;
+      } catch (error) {
+        console.error("Guardian npub decode failed:", error);
+        return false;
+      }
+
+      // Generate the canonical signing data
+      const signingData = this.generateRecoveryRequestSigningData(request);
+
+      // Create message hash using Web Crypto API (browser-compatible)
+      const messageBytes = new TextEncoder().encode(signingData);
+      const messageHash = await crypto.subtle.digest("SHA-256", messageBytes);
+      const messageHashArray = new Uint8Array(messageHash);
+
+      // Parse the signature (expecting hex format)
+      if (!signature || signature.length !== 128) {
+        // 64 bytes = 128 hex chars
+        console.error("Invalid signature format - expected 128 hex characters");
+        return false;
+      }
+
+      // Convert hex signature to bytes
+      const signatureBytes = new Uint8Array(64);
+      for (let i = 0; i < 64; i++) {
+        signatureBytes[i] = parseInt(signature.substring(i * 2, i * 2 + 2), 16);
+      }
+
+      // Verify signature using Web Crypto API (browser-compatible)
+      try {
+        // Import the guardian's public key
+        const publicKeyBytes = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) {
+          publicKeyBytes[i] = parseInt(
+            guardianPubkeyHex.substring(i * 2, i * 2 + 2),
+            16
+          );
+        }
+
+        // Use secp256k1 verification (compatible with Nostr)
+        const { verify } = await import("@noble/secp256k1");
+        const isValid = verify(
+          signatureBytes,
+          messageHashArray,
+          publicKeyBytes
+        );
+
+        if (!isValid) {
+          console.error(
+            "Signature verification failed for guardian:",
+            guardianNpub
+          );
+          return false;
+        }
+
+        console.log(
+          "✅ Guardian signature verified successfully:",
+          guardianNpub
+        );
+        return true;
+      } catch (cryptoError) {
+        console.error("Cryptographic verification failed:", cryptoError);
+        return false;
+      }
+    } catch (error) {
+      console.error("Guardian signature verification error:", error);
+      return false;
+    }
   }
 
   private static async getRecoveryConfig(

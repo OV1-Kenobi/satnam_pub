@@ -24,26 +24,42 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
   showCommunications,
   setShowCommunications,
 }) => {
-  // Views that should have the lightning background
-  const backgroundViews = ['contacts', 'nostr-ecosystem'];
-  const hasBackground = backgroundViews.includes(currentView);
+  // Views that should have specific backgrounds
+  const nostrViews = ['contacts', 'nostr-ecosystem', 'communications'];
+  const financialViews = ['dashboard', 'individual-finances', 'ln-node-management'];
+
+  const useNostrBackground = nostrViews.includes(currentView);
+  const useFinancialBackground = financialViews.includes(currentView);
+
+  // Determine which background image to use
+  const getBackgroundImage = () => {
+    if (useNostrBackground) {
+      console.log('Using Nostr background for view:', currentView);
+      return `url('/Nostr%20Zapstorm.jpg')`;
+    } else if (useFinancialBackground) {
+      console.log('Using Financial background for view:', currentView);
+      return `url('/Energized%20Bitcoin.jpg')`;
+    } else {
+      console.log('Using default background for view:', currentView);
+      return `url('/Bitcoin%20Citadel%20Valley.jpg')`;
+    }
+  };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Background Image for specific views */}
-      {hasBackground && (
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{
-            backgroundImage: `url('/Nostr Zapstorm.jpg')`,
-          }}
-        >
-          {/* Gradient overlay for better text readability */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/70 via-purple-800/60 to-purple-600/50"></div>
-          {/* Additional overlay for enhanced contrast */}
-          <div className="absolute inset-0 bg-black/20"></div>
-        </div>
-      )}
+    <div className="min-h-screen relative overflow-hidden bg-purple-900">
+      {/* Background Image - Different images for different page types */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0"
+        style={{
+          backgroundImage: getBackgroundImage(),
+          backgroundColor: '#581c87', // fallback purple color
+        }}
+      >
+        {/* Gradient overlay with 50% reduced opacity compared to landing page */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/35 via-purple-800/30 to-purple-600/25"></div>
+        {/* Additional overlay with 50% reduced opacity */}
+        <div className="absolute inset-0 bg-black/10"></div>
+      </div>
 
       {/* Navigation */}
       <Navigation
@@ -56,7 +72,7 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
       />
 
       {/* Page Content */}
-      <div className={`pt-16 ${hasBackground ? 'relative z-10' : ''}`}>
+      <div className="pt-16 relative z-10">
         {children}
       </div>
     </div>

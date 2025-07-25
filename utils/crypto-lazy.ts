@@ -1,6 +1,9 @@
 const CryptoJS = require("crypto-js");
-import { utils, getPublicKey } from "@noble/secp256k1";
 import { bytesToHex } from "@noble/hashes/utils";
+import { getPublicKey, utils } from "@noble/secp256k1";
+
+// Import proper NIP-19 encoding functions from nostr-tools
+import { nip19 } from "nostr-tools";
 
 export class CryptoLazy {
   private static instance: CryptoLazy;
@@ -19,9 +22,10 @@ export class CryptoLazy {
     const publicKey = getPublicKey(privateKeyBytes);
     const publicKeyHex = bytesToHex(publicKey);
 
+    // Use proper NIP-19 bech32 encoding
     return {
-      nsec: `nsec${privateKey}`,
-      npub: `npub${publicKeyHex}`,
+      nsec: nip19.nsecEncode(privateKey),
+      npub: nip19.npubEncode(publicKeyHex),
     };
   }
 
@@ -49,11 +53,15 @@ export class CryptoLazy {
 export async function generateRandomHex(length: number): Promise<string> {
   const array = new Uint8Array(length / 2);
   window.crypto.getRandomValues(array);
-  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
 }
 
 // Browser-compatible secure token generator
-export async function generateSecureToken(length: number = 64): Promise<string> {
+export async function generateSecureToken(
+  length: number = 64
+): Promise<string> {
   return generateRandomHex(length);
 }
 
@@ -62,27 +70,38 @@ export async function sha256(data: string): Promise<string> {
   const encoder = new TextEncoder();
   const dataBuffer = encoder.encode(data);
   const hashBuffer = await window.crypto.subtle.digest("SHA-256", dataBuffer);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-  // Browser-compatible Nostr key pair generator
-  export async function generateNostrKeyPair(): Promise<{ privateKey: string; publicKey: string; npub: string; nsec: string }> {
-    const privateKeyBytes = utils.randomPrivateKey();
-    const privateKey = bytesToHex(privateKeyBytes);
-    const publicKeyBytes = getPublicKey(privateKeyBytes);
-    const publicKeyHex = bytesToHex(publicKeyBytes);
-    return {
-      privateKey,
-      publicKey: publicKeyHex,
-      npub: `npub${publicKeyHex}`,
-      nsec: `nsec${privateKey}`,
-    };
-  }
+// Browser-compatible Nostr key pair generator
+export async function generateNostrKeyPair(): Promise<{
+  privateKey: string;
+  publicKey: string;
+  npub: string;
+  nsec: string;
+}> {
+  const privateKeyBytes = utils.randomPrivateKey();
+  const privateKey = bytesToHex(privateKeyBytes);
+  const publicKeyBytes = getPublicKey(privateKeyBytes);
+  const publicKeyHex = bytesToHex(publicKeyBytes);
+  // Use proper NIP-19 bech32 encoding
+  return {
+    privateKey,
+    publicKey: publicKeyHex,
+    npub: nip19.npubEncode(publicKeyHex),
+    nsec: nip19.nsecEncode(privateKey),
+  };
+}
 
 // Browser-compatible recovery phrase generator (mock, not BIP39)
 export async function generateRecoveryPhrase(): Promise<string> {
   // In production, use a BIP39 library
-  return Array(12).fill(0).map(() => Math.random().toString(36).slice(2, 8)).join(' ');
+  return Array(12)
+    .fill(0)
+    .map(() => Math.random().toString(36).slice(2, 8))
+    .join(" ");
 }
 
 // Browser-compatible private key from phrase (mock, not BIP39)
@@ -91,17 +110,35 @@ export async function privateKeyFromPhrase(phrase: string): Promise<string> {
   return await sha256(phrase);
 }
 
-export async function privateKeyFromPhraseWithAccount(phrase: string, account: number = 0): Promise<string> {
+export async function privateKeyFromPhraseWithAccount(
+  phrase: string,
+  account: number = 0
+): Promise<string> {
   // In production, use a BIP39 library and account derivation
-  return await sha256(phrase + ':' + account);
+  return await sha256(phrase + ":" + account);
 }
 
 // Browser-compatible PBKDF2 key derivation
-export async function deriveKey(password: string, salt: string | Uint8Array, iterations: number = 100000, keyLength: number = 32): Promise<Uint8Array> {
+export async function deriveKey(
+  password: string,
+  salt: string | Uint8Array,
+  iterations: number = 100000,
+  keyLength: number = 32
+): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const passwordBuffer = encoder.encode(password);
-  const saltBuffer = typeof salt === 'string' ? encoder.encode(salt) : salt;
-  const key = await window.crypto.subtle.importKey('raw', passwordBuffer, { name: 'PBKDF2' }, false, ['deriveBits']);
-  const derivedBits = await window.crypto.subtle.deriveBits({ name: 'PBKDF2', salt: saltBuffer, iterations, hash: 'SHA-256' }, key, keyLength * 8);
+  const saltBuffer = typeof salt === "string" ? encoder.encode(salt) : salt;
+  const key = await window.crypto.subtle.importKey(
+    "raw",
+    passwordBuffer,
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+  const derivedBits = await window.crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: saltBuffer, iterations, hash: "SHA-256" },
+    key,
+    keyLength * 8
+  );
   return new Uint8Array(derivedBits);
 }

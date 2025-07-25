@@ -110,10 +110,10 @@ export function GiftwrappedMessaging({ familyMember, isModal = false }: Giftwrap
             backgroundImage: `url('/Nostr Zapstorm.jpg')`,
           }}
         >
-          {/* Gradient overlay for better text readability */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-purple-800/70 to-purple-600/60"></div>
-          {/* Additional overlay for enhanced contrast */}
-          <div className="absolute inset-0 bg-black/30"></div>
+          {/* Gradient overlay with 50% reduced opacity */}
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/35 via-purple-800/30 to-purple-600/25"></div>
+          {/* Additional overlay with 50% reduced opacity */}
+          <div className="absolute inset-0 bg-black/10"></div>
         </div>
 
         {/* Modal Content */}

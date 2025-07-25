@@ -1,5 +1,8 @@
-import { utils, getPublicKey } from "@noble/secp256k1";
 import { bytesToHex } from "@noble/hashes/utils";
+import { getPublicKey, utils } from "@noble/secp256k1";
+
+// Import proper NIP-19 encoding functions from nostr-tools
+import { nip19 } from "nostr-tools";
 
 export class CryptoUnified {
   private static instance: CryptoUnified;
@@ -17,9 +20,10 @@ export class CryptoUnified {
     const publicKeyBytes = getPublicKey(privateKeyBytes);
     const publicKeyHex = bytesToHex(publicKeyBytes);
 
+    // Use proper NIP-19 bech32 encoding
     return {
-      nsec: `nsec${privateKey}`,
-      npub: `npub${publicKeyHex}`,
+      nsec: nip19.nsecEncode(privateKey),
+      npub: nip19.npubEncode(publicKeyHex),
     };
   }
 

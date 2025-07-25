@@ -796,10 +796,10 @@ function App() {
           backgroundImage: `url('/Bitcoin Citadel Valley.jpg')`,
         }}
       >
-        {/* Gradient overlay for better text readability */}
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/70 via-purple-800/60 to-purple-600/50"></div>
-        {/* Additional overlay for enhanced contrast */}
-        <div className="absolute inset-0 bg-black/20"></div>
+        {/* Gradient overlay with 50% reduced opacity */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/35 via-purple-800/30 to-purple-600/25"></div>
+        {/* Additional overlay with 50% reduced opacity */}
+        <div className="absolute inset-0 bg-black/10"></div>
       </div>
 
       {/* Bitcoin Network Background Animation */}
