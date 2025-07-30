@@ -236,10 +236,10 @@ export async function developmentStartupValidation(): Promise<void> {
 }
 
 /**
- * Validate crypto operations (Argon2 removed - using Web Crypto API PBKDF2)
+ * Validate crypto operations using Web Crypto API PBKDF2
  * Master Context compliance: Browser-compatible cryptography only
  */
-export async function validateArgon2Usage(): Promise<boolean> {
+export async function validatePBKDF2Usage(): Promise<boolean> {
   console.log("🔍 Validating Web Crypto API PBKDF2 Usage...");
 
   try {

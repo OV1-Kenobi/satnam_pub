@@ -11,28 +11,20 @@ import { getEnvVar } from "./utils/env.js";
  * for high-tech users who demand the absolute best in cryptographic protection
  */
 
-import {
-  getArgon2Config,
-  validateArgon2ConfigOnStartup,
-} from "../../api/lib/security.js";
+import { getPBKDF2Config } from "../../api/lib/security.js";
 
 /**
  * Gold Standard Encryption Configuration Requirements
  * These settings ensure maximum security for the most demanding users
  */
 export const GOLD_STANDARD_REQUIREMENTS = {
-  // Argon2 Memory Requirements (in MB)
-  MINIMUM_MEMORY_MB: 64, // Absolute minimum for production
-  RECOMMENDED_MEMORY_MB: 128, // Gold standard recommendation
-  MAXIMUM_SAFE_MEMORY_MB: 256, // Upper limit before OOM risk
-
-  // Argon2 Time Cost Requirements
-  MINIMUM_TIME_COST: 3, // Minimum secure iterations
-  RECOMMENDED_TIME_COST: 5, // Gold standard iterations
-  MAXIMUM_TIME_COST: 10, // Upper limit before performance issues
+  // PBKDF2 Iteration Requirements
+  MINIMUM_PBKDF2_ITERATIONS: 50000, // Absolute minimum for production
+  RECOMMENDED_PBKDF2_ITERATIONS: 100000, // Gold standard recommendation
+  MAXIMUM_SAFE_PBKDF2_ITERATIONS: 200000, // Upper limit before performance issues
 
   // Required Algorithms
-  REQUIRED_KEY_DERIVATION: "argon2id", // Winner of Password Hashing Competition
+  REQUIRED_KEY_DERIVATION: "pbkdf2", // Web Crypto API standard
   REQUIRED_SYMMETRIC_CIPHER: "aes-256-gcm", // Authenticated encryption
   REQUIRED_HASH_FUNCTION: "sha-256", // NIST recommended
   REQUIRED_RANDOM_SOURCE: "crypto.randomBytes", // CSPRNG
@@ -72,10 +64,8 @@ interface SecurityRecommendation {
 }
 
 interface ConfigSummary {
-  argon2: {
-    memoryMB: number;
-    timeCost: number;
-    parallelism: number;
+  pbkdf2: {
+    iterations: number;
     meetsGoldStandard: boolean;
   };
   encryption: {
@@ -133,17 +123,13 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
     criticalIssues === 0 && highIssues === 0 && issues.length <= 1;
 
   // Build configuration summary
-  const argon2Config = getArgon2Config();
+  const pbkdf2Config = getPBKDF2Config();
   const configSummary: ConfigSummary = {
-    argon2: {
-      memoryMB: argon2Config.memoryUsageMB,
-      timeCost: argon2Config.config.timeCost,
-      parallelism: argon2Config.config.parallelism,
+    pbkdf2: {
+      iterations: pbkdf2Config.iterations,
       meetsGoldStandard:
-        argon2Config.memoryUsageMB >=
-          GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_MEMORY_MB &&
-        argon2Config.config.timeCost >=
-          GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_TIME_COST,
+        pbkdf2Config.iterations >=
+        GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS,
     },
     encryption: {
       algorithm: "aes-256-gcm", // We enforce this in our security module
@@ -331,9 +317,9 @@ function validateEncryptionStandards(): {
     priority: "MEDIUM",
     category: "SECURITY",
     description:
-      "Ensure all encryption uses AES-256-GCM with Argon2id key derivation",
+      "Ensure all encryption uses AES-256-GCM with PBKDF2 key derivation",
     action:
-      "Audit codebase to replace any PBKDF2 or AES-CBC usage with Gold Standard methods",
+      "Audit codebase to ensure consistent PBKDF2 and AES-GCM usage throughout",
   });
 
   return { issues, recommendations };

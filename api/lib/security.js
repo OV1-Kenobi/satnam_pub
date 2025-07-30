@@ -27,7 +27,6 @@ function getEnvVar(key) {
 }
 
 // MASTER CONTEXT COMPLIANCE: Use Web Crypto API only (no Node.js dependencies)
-// Removed argon2-browser to maintain browser-only serverless architecture
 
 /**
  * Security configuration constants following Master Context requirements
@@ -49,11 +48,9 @@ function getEnvVar(key) {
  * @type {SecurityConfig}
  */
 const SECURITY_CONFIG = {
-  // Argon2 Configuration (Gold Standard)
-  ARGON2_MEMORY_COST: 16, // 2^16 = 64MB (production safe)
-  ARGON2_TIME_COST: 3, // 3 iterations (balanced security/performance)
-  ARGON2_PARALLELISM: 1, // Single thread for serverless compatibility
-  ARGON2_HASH_LENGTH: 32, // 256-bit output
+  // PBKDF2 Configuration (Web Crypto API standard)
+  PBKDF2_ITERATIONS: 100000, // High iteration count for security
+  PBKDF2_HASH_LENGTH: 32, // 256-bit output
   
   // AES-GCM Configuration (Master Context requirement)
   AES_KEY_LENGTH: 32, // 256-bit keys
@@ -61,8 +58,7 @@ const SECURITY_CONFIG = {
   SALT_LENGTH: 32, // 256-bit salt
   TAG_LENGTH: 16, // 128-bit authentication tag
   
-  // PBKDF2 Configuration (fallback)
-  PBKDF2_ITERATIONS: 100000, // High iteration count
+
   
   // Algorithms (Master Context compliant)
   HASH_ALGORITHM: "SHA-256",
@@ -78,10 +74,10 @@ const SECURITY_CONFIG = {
  */
 
 /**
- * Argon2 configuration report
- * @typedef {Object} Argon2ConfigReport
+ * PBKDF2 configuration report
+ * @typedef {Object} PBKDF2ConfigReport
  * @property {SecurityConfig} config - Security configuration
- * @property {number} memoryUsageMB - Memory usage in MB
+ * @property {number} iterations - PBKDF2 iterations
  * @property {string[]} recommendations - Configuration recommendations
  * @property {string[]} warnings - Configuration warnings
  */
@@ -224,9 +220,8 @@ function arrayToString(array) {
 }
 
 /**
- * Generate a cryptographically secure encryption key from a passphrase using Argon2id
- * Gold Standard: Uses Argon2id (winner of Password Hashing Competition)
- * Fallback: PBKDF2 with high iteration count if Argon2 fails to load
+ * Generate a cryptographically secure encryption key from a passphrase using PBKDF2
+ * Uses Web Crypto API PBKDF2 with high iteration count for browser compatibility
  * @param {string} passphrase - Passphrase to derive key from
  * @param {Uint8Array} salt - Salt for key derivation
  * @returns {Promise<Uint8Array>} Derived encryption key
@@ -234,7 +229,6 @@ function arrayToString(array) {
 export async function deriveEncryptionKey(passphrase, salt) {
   try {
     // MASTER CONTEXT COMPLIANCE: Use Web Crypto API PBKDF2 with high iteration count
-    // Removed argon2-browser dependency to maintain browser-only serverless architecture
     const encoder = new TextEncoder();
     const passphraseBuffer = encoder.encode(passphrase);
 
@@ -388,23 +382,23 @@ export async function decryptCredentials(encryptedData, passphrase) {
 }
 
 /**
- * Validates and reports current Argon2 configuration
- * Helps identify potentially problematic settings before they cause OOM errors
- * @returns {Argon2ConfigReport} Configuration report with recommendations and warnings
+ * Validates and reports current PBKDF2 configuration
+ * Helps identify potentially problematic settings for performance
+ * @returns {PBKDF2ConfigReport} Configuration report with recommendations and warnings
  */
-export function getArgon2Config() {
-  const memoryUsageMB = Math.pow(2, SECURITY_CONFIG.ARGON2_MEMORY_COST) / (1024 * 1024);
+export function getPBKDF2Config() {
+  const iterations = SECURITY_CONFIG.PBKDF2_ITERATIONS;
   const recommendations = [];
   const warnings = [];
 
   // Validate configuration
-  if (SECURITY_CONFIG.ARGON2_MEMORY_COST < 12) {
-    warnings.push("Memory cost too low (<4MB) - vulnerable to attacks");
-  } else if (SECURITY_CONFIG.ARGON2_MEMORY_COST > 18) {
-    warnings.push("Memory cost very high (>256MB) - may cause OOM errors");
-  } else if (SECURITY_CONFIG.ARGON2_MEMORY_COST > 17) {
+  if (iterations < 50000) {
+    warnings.push("Iteration count too low (<50,000) - vulnerable to attacks");
+  } else if (iterations > 200000) {
+    warnings.push("Iteration count very high (>200,000) - may cause performance issues");
+  } else if (iterations > 150000) {
     warnings.push(
-      "Memory cost high (>128MB) - monitor for OOM errors under load"
+      "Iteration count high (>150,000) - monitor for performance impact"
     );
   }
 
@@ -416,25 +410,25 @@ export function getArgon2Config() {
 
   // Environment-specific recommendations
   if (typeof window !== "undefined") {
-    recommendations.push("Browser environment: Argon2-browser provides optimal security");
+    recommendations.push("Browser environment: Web Crypto API PBKDF2 provides optimal compatibility");
   } else {
-    recommendations.push("Serverless environment: Argon2-browser ensures compatibility");
+    recommendations.push("Serverless environment: Web Crypto API PBKDF2 ensures compatibility");
   }
 
   return {
     config: { ...SECURITY_CONFIG },
-    memoryUsageMB,
+    iterations,
     recommendations,
     warnings,
   };
 }
 
 /**
- * Validates Argon2 configuration on startup
+ * Validates PBKDF2 configuration on startup
  * Call this during application initialization to catch configuration issues early
  */
-export function validateArgon2ConfigOnStartup() {
-  const { warnings } = getArgon2Config();
+export function validatePBKDF2ConfigOnStartup() {
+  const { warnings } = getPBKDF2Config();
 
   // PRIVACY: No sensitive configuration data logging
   if (warnings.length === 0) {
@@ -507,9 +501,9 @@ export async function restoreCredentialsFromBackup(encryptedBackup, passphrase) 
 }
 
 /**
- * Timing-safe password verification using Argon2id
+ * Timing-safe password verification using PBKDF2
  * Prevents timing attacks that could leak information about password correctness
- * Fallback: PBKDF2 verification if Argon2 fails to load
+ * Uses Web Crypto API PBKDF2 for browser compatibility
  * @param {string} passphrase - Passphrase to verify
  * @param {string} hash - Hash to verify against
  * @returns {Promise<boolean>} Whether passphrase matches hash
@@ -519,7 +513,7 @@ export async function verifyPassphrase(passphrase, hash) {
     // MASTER CONTEXT COMPLIANCE: Use Web Crypto API PBKDF2 verification
     // Parse the hash format: pbkdf2:iterations:salt:hash
     if (!hash.startsWith('pbkdf2:')) {
-      // Legacy hash format not supported without argon2-browser
+      // Legacy hash format not supported - only PBKDF2 format supported
       return false;
     }
 
@@ -822,11 +816,7 @@ export const securityConfig = {
   },
   hashing: {
     algorithm: SECURITY_CONFIG.HASH_ALGORITHM, // SHA-256
-    argon2: {
-      memoryCost: SECURITY_CONFIG.ARGON2_MEMORY_COST,
-      timeCost: SECURITY_CONFIG.ARGON2_TIME_COST,
-      parallelism: SECURITY_CONFIG.ARGON2_PARALLELISM,
-    },
+
     pbkdf2: {
       iterations: SECURITY_CONFIG.PBKDF2_ITERATIONS,
     },

@@ -8,7 +8,7 @@
 import {
   displayValidationResults,
   validateGoldStandardCrypto,
-} from '../lib/crypto-validator.js.js';
+} from "../lib/crypto-validator.js.js";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
@@ -16,9 +16,8 @@ import {
 import {
   decryptCredentials,
   encryptCredentials,
-  getArgon2Config,
+  getPBKDF2Config,
   hashPassphrase,
-  validateArgon2ConfigOnStartup,
   verifyPassphrase,
 } from "../lib/security.js";
 
@@ -80,26 +79,17 @@ class GoldStandardSecurityTester {
       );
 
       // Test configuration validation
-      const config = getArgon2Config();
+      const config = getPBKDF2Config();
 
-      const memoryMB = config.memoryUsageMB;
-      const timeCost = config.config.timeCost;
-      const parallelism = config.config.parallelism;
+      const iterations = config.iterations;
 
       // Check Gold Standard requirements
-      const meetsMemoryStandard = memoryMB >= 128; // 128MB minimum for Gold Standard
-      const meetsTimeStandard = timeCost >= 5; // 5 iterations minimum for Gold Standard
-      const validParallelism = parallelism >= 1 && parallelism <= 4;
+      const meetsIterationStandard = iterations >= 100000; // 100,000 iterations minimum for Gold Standard
 
       this.addResult(
-        "Argon2 Memory Standard",
-        meetsMemoryStandard,
-        `Memory: ${memoryMB}MB (Gold Standard: ≥128MB)`
-      );
-      this.addResult(
-        "Argon2 Time Standard",
-        meetsTimeStandard,
-        `Time Cost: ${timeCost} (Gold Standard: ≥5)`
+        "PBKDF2 Iteration Standard",
+        meetsIterationStandard,
+        `Iterations: ${iterations} (Gold Standard: ≥100,000)`
       );
       this.addResult(
         "Argon2 Parallelism Valid",
@@ -168,7 +158,7 @@ class GoldStandardSecurityTester {
 
       const startTime = Date.now();
 
-      // Test key derivation (this uses Argon2id internally)
+      // Test key derivation (this uses PBKDF2 internally)
       const { deriveEncryptionKey } = await import("../lib/security.js");
       const derivedKey = await deriveEncryptionKey(testPassword, testSalt);
 
@@ -180,13 +170,13 @@ class GoldStandardSecurityTester {
       const isCorrectLength = keyLength === 32; // 256 bits
 
       this.addResult(
-        "Argon2 Key Derivation",
+        "PBKDF2 Key Derivation",
         true,
         `Generated ${keyLength}-byte key`,
         duration
       );
       this.addResult(
-        "Argon2 Key Length",
+        "PBKDF2 Key Length",
         isCorrectLength,
         `Key length: ${keyLength} bytes (expected: 32)`
       );
@@ -274,13 +264,13 @@ class GoldStandardSecurityTester {
     try {
       const testPassword = "test-password-for-hashing";
 
-      // Test Argon2id password hashing
+      // Test PBKDF2 password hashing
       const startHash = Date.now();
       const hash = await hashPassphrase(testPassword);
       const hashTime = Date.now() - startHash;
 
       this.addResult(
-        "Argon2 Password Hashing",
+        "PBKDF2 Password Hashing",
         true,
         `Generated hash: ${hash.substring(0, 20)}...`,
         hashTime
