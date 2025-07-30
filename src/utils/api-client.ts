@@ -4,7 +4,7 @@
  */
 
 export interface AuthRequest {
-  type: 'otp-initiate' | 'otp-verify';
+  type: "otp-initiate" | "otp-verify";
   npub?: string;
   nip05?: string;
   otpKey?: string;
@@ -61,17 +61,24 @@ export class ApiClient {
 
   constructor() {
     this.apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
+    console.log("🔍 API CLIENT: Constructor", {
+      VITE_API_URL: import.meta.env.VITE_API_URL,
+      apiBaseUrl: this.apiBaseUrl,
+      allEnvVars: import.meta.env,
+    });
   }
 
   /**
    * Authenticate user with OTP flow
    */
-  async authenticateUser(request: AuthRequest): Promise<AuthResponse | VerificationResponse> {
+  async authenticateUser(
+    request: AuthRequest
+  ): Promise<AuthResponse | VerificationResponse> {
     try {
       const response = await fetch(`${this.apiBaseUrl}/auth/authenticate`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(request),
       });
@@ -87,8 +94,8 @@ export class ApiClient {
         success: false,
         error: error instanceof Error ? error.message : "Authentication failed",
         meta: {
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
     }
   }
@@ -106,7 +113,7 @@ export class ApiClient {
       }
 
       const response = await fetch(url.toString());
-      
+
       if (response.ok) {
         return await response.json();
       }
@@ -124,9 +131,9 @@ export class ApiClient {
   async post(endpoint: string, data?: any): Promise<any> {
     try {
       const response = await fetch(`${this.apiBaseUrl}${endpoint}`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: data ? JSON.stringify(data) : undefined,
       });
@@ -148,9 +155,9 @@ export class ApiClient {
   async put(endpoint: string, data?: any): Promise<any> {
     try {
       const response = await fetch(`${this.apiBaseUrl}${endpoint}`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: data ? JSON.stringify(data) : undefined,
       });
@@ -172,7 +179,7 @@ export class ApiClient {
   async delete(endpoint: string): Promise<any> {
     try {
       const response = await fetch(`${this.apiBaseUrl}${endpoint}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
@@ -182,6 +189,87 @@ export class ApiClient {
       throw new Error(`DELETE request failed: ${response.statusText}`);
     } catch (error) {
       console.error("DELETE request error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Store user data during identity registration
+   */
+  async storeUserData(userData: {
+    username: string;
+    password: string;
+    confirmPassword: string;
+    npub: string;
+    encryptedNsec: string;
+    nip05: string;
+    lightningAddress?: string;
+    generateInviteToken?: boolean;
+  }): Promise<any> {
+    try {
+      // Always use API endpoint - no development mode bypasses
+      const fullUrl = `${this.apiBaseUrl}/register-identity`;
+      console.log("🔍 API CLIENT: Calling register-identity endpoint", {
+        apiBaseUrl: this.apiBaseUrl,
+        fullUrl: fullUrl,
+        hasUsername: !!userData.username,
+        hasNpub: !!userData.npub,
+        hasEncryptedNsec: !!userData.encryptedNsec,
+        timestamp: new Date().toISOString(),
+      });
+
+      const requestBody = {
+        username: userData.username,
+        password: userData.password,
+        confirmPassword: userData.confirmPassword,
+        publicKey: userData.npub,
+        encryptedNsec: userData.encryptedNsec,
+        nip05: userData.nip05,
+        lightningAddress: userData.lightningAddress,
+        generateInviteToken: userData.generateInviteToken,
+      };
+
+      console.log("🔍 API CLIENT: Request body being sent", {
+        ...requestBody,
+        password: "[REDACTED]",
+        confirmPassword: "[REDACTED]",
+        encryptedNsec: "[REDACTED]",
+        requestBodyKeys: Object.keys(requestBody),
+        timestamp: new Date().toISOString(),
+      });
+
+      const response = await fetch(fullUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log("🔍 API CLIENT: Response received", {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("🔍 API CLIENT: Registration successful", result);
+        return result;
+      }
+
+      const errorText = await response.text();
+      console.error("🔍 API CLIENT: Registration failed", {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+      });
+
+      throw new Error(
+        `Registration failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    } catch (error) {
+      console.error("🔍 API CLIENT: storeUserData error:", error);
       throw error;
     }
   }

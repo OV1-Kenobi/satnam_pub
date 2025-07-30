@@ -3,6 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { getPublicKey, utils } from "@noble/secp256k1";
 
 // Import proper NIP-19 encoding functions from nostr-tools
+import { bech32 } from "@scure/base";
 import { nip19 } from "nostr-tools";
 
 export class CryptoLazy {
@@ -18,14 +19,16 @@ export class CryptoLazy {
   // Replace line 294 Node.js crypto import
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
     const privateKeyBytes = utils.randomPrivateKey();
-    const privateKey = bytesToHex(privateKeyBytes);
     const publicKey = getPublicKey(privateKeyBytes);
     const publicKeyHex = bytesToHex(publicKey);
 
     // Use proper NIP-19 bech32 encoding
+    // npubEncode expects 64-char hex (without compression prefix), nsecEncode expects Uint8Array
+    const publicKeyWithoutPrefix = publicKeyHex.slice(2); // Remove "02"/"03" compression prefix
+
     return {
-      nsec: nip19.nsecEncode(privateKey),
-      npub: nip19.npubEncode(publicKeyHex),
+      nsec: nip19.nsecEncode(privateKeyBytes as any),
+      npub: nip19.npubEncode(publicKeyWithoutPrefix),
     };
   }
 
@@ -82,16 +85,40 @@ export async function generateNostrKeyPair(): Promise<{
   npub: string;
   nsec: string;
 }> {
+  console.log(
+    "🔍 CRYPTO-LAZY generateNostrKeyPair called - USING DIRECT BECH32!"
+  );
+
   const privateKeyBytes = utils.randomPrivateKey();
   const privateKey = bytesToHex(privateKeyBytes);
-  const publicKeyBytes = getPublicKey(privateKeyBytes);
+  // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
+  const publicKeyBytes = (getPublicKey as any)(privateKeyBytes, true);
   const publicKeyHex = bytesToHex(publicKeyBytes);
-  // Use proper NIP-19 bech32 encoding
+
+  // Use direct bech32 encoding: extract x-coordinate (32 bytes)
+  const publicKeyXCoordinate = publicKeyBytes.slice(1); // Remove compression prefix byte
+
+  console.log("🔍 CRYPTO-LAZY direct bech32 encoding:", {
+    originalHex: publicKeyHex,
+    bytesLength: publicKeyBytes.length,
+    xCoordinateLength: publicKeyXCoordinate.length,
+    expectedXCoordinateLength: 32,
+  });
+
+  const npub = bech32.encodeFromBytes("npub", publicKeyXCoordinate);
+  const nsec = nip19.nsecEncode(privateKeyBytes as any);
+
+  console.log("🔍 CRYPTO-LAZY direct bech32 result:", {
+    npubLength: npub.length,
+    nsecLength: nsec.length,
+    npubValid: npub.length === 63 && npub.startsWith("npub1"),
+  });
+
   return {
     privateKey,
     publicKey: publicKeyHex,
-    npub: nip19.npubEncode(publicKeyHex),
-    nsec: nip19.nsecEncode(privateKey),
+    npub,
+    nsec,
   };
 }
 
@@ -140,5 +167,5 @@ export async function deriveKey(
     key,
     keyLength * 8
   );
-  return new Uint8Array(derivedBits);
+  return new Uint8Array(derivedBits as ArrayBuffer);
 }

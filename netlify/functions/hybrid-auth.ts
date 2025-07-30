@@ -1,5 +1,5 @@
 // lib/hybrid-auth.ts
-import type { NostrEvent } from "../../src/lib/nostr-browser";
+import type { Event as NostrEvent } from "nostr-tools";
 import {
   finalizeEvent as finishEvent,
   generateSecretKey as generatePrivateKey,
@@ -7,7 +7,7 @@ import {
   nip19,
   SimplePool,
   verifyEvent,
-} from "../../src/lib/nostr-browser";
+} from "nostr-tools";
 import {
   extractNWCComponents,
   sanitizeNWCData,

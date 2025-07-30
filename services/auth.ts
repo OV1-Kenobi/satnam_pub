@@ -5,8 +5,8 @@
  * Browser-compatible version without Node.js dependencies.
  */
 
-import { nip05Config, authConfig } from "../src/lib/browser-config";
 import { db } from "../lib";
+import { authConfig, nip05Config } from "../src/lib/browser-config";
 import {
   generateSecretKey as generatePrivateKey,
   getEventHash,
@@ -35,23 +35,25 @@ interface TokenPayload {
  * Browser-compatible JWT signing using Web Crypto API
  */
 async function signJWT(payload: TokenPayload, secret: string): Promise<string> {
-  const header = { alg: 'HS256', typ: 'JWT' };
+  const header = { alg: "HS256", typ: "JWT" };
   const encodedHeader = btoa(JSON.stringify(header));
   const encodedPayload = btoa(JSON.stringify(payload));
   const data = `${encodedHeader}.${encodedPayload}`;
-  
+
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
+    { name: "HMAC", hash: "SHA-256" },
     false,
-    ['sign']
+    ["sign"]
   );
-  
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
-  const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)));
-  
+
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
+  const encodedSignature = btoa(
+    String.fromCharCode(...new Uint8Array(signature))
+  );
+
   return `${data}.${encodedSignature}`;
 }
 
@@ -59,30 +61,37 @@ async function signJWT(payload: TokenPayload, secret: string): Promise<string> {
  * Browser-compatible JWT verification using Web Crypto API
  */
 async function verifyJWT(token: string, secret: string): Promise<TokenPayload> {
-  const parts = token.split('.');
+  const parts = token.split(".");
   if (parts.length !== 3) {
-    throw new Error('Invalid JWT format');
+    throw new Error("Invalid JWT format");
   }
-  
+
   const [encodedHeader, encodedPayload, encodedSignature] = parts;
   const data = `${encodedHeader}.${encodedPayload}`;
-  
+
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
+    { name: "HMAC", hash: "SHA-256" },
     false,
-    ['verify']
+    ["verify"]
   );
-  
-  const signature = Uint8Array.from(atob(encodedSignature), c => c.charCodeAt(0));
-  const isValid = await crypto.subtle.verify('HMAC', key, signature, encoder.encode(data));
-  
+
+  const signature = Uint8Array.from(atob(encodedSignature), (c) =>
+    c.charCodeAt(0)
+  );
+  const isValid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    signature,
+    encoder.encode(data)
+  );
+
   if (!isValid) {
-    throw new Error('Invalid JWT signature');
+    throw new Error("Invalid JWT signature");
   }
-  
+
   return JSON.parse(atob(encodedPayload));
 }
 
@@ -112,9 +121,17 @@ export async function createNostrIdentity(
 
   // Generate Nostr keypair
   const privateKeyBytes = generatePrivateKey();
-  const privateKey = Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  const publicKey = getPublicKey(privateKeyBytes);
-  const npub = nip19.npubEncode(publicKey);
+  const privateKey = Array.from(privateKeyBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const publicKeyBytes = getPublicKey(privateKeyBytes);
+  const publicKey = Array.from(publicKeyBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  // Use correct npub encoding: remove compression prefix
+  const publicKeyWithoutPrefix = publicKey.slice(2);
+  const npub = nip19.npubEncode(publicKeyWithoutPrefix);
 
   // Create NIP-05 identifier and lightning address
   const nip05 = `${username}@${nip05Config.domain}`;
@@ -127,7 +144,9 @@ export async function createNostrIdentity(
   const iv = crypto.getRandomValues(new Uint8Array(16));
   const keyMaterial = await sha256(recovery_password + recovery_code);
   // Convert hex string to bytes
-  const keyBytes = new Uint8Array(keyMaterial.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+  const keyBytes = new Uint8Array(
+    keyMaterial.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+  );
   const cipher = await crypto.subtle.importKey(
     "raw",
     keyBytes,
@@ -140,8 +159,14 @@ export async function createNostrIdentity(
     cipher,
     new TextEncoder().encode(privateKey)
   );
-  const encrypted_backup = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('') + ":" + 
-                          Array.from(new Uint8Array(encrypted)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const encrypted_backup =
+    Array.from(iv)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("") +
+    ":" +
+    Array.from(new Uint8Array(encrypted))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
 
   // Insert new user
   const result = await db.query(
@@ -256,7 +281,10 @@ export async function authenticateWithNWC(
 
   if (
     expected.rows.length === 0 ||
-    !(await constantTimeEquals(expected.rows[0].challenge, signed_event.content)) ||
+    !(await constantTimeEquals(
+      expected.rows[0].challenge,
+      signed_event.content
+    )) ||
     expected.rows[0].used ||
     new Date(expected.rows[0].expires_at) < new Date()
   ) {
@@ -264,22 +292,20 @@ export async function authenticateWithNWC(
   }
 
   // Mark challenge as used
-  await db.query(
-    "UPDATE auth_challenges SET used = TRUE WHERE id = $1",
-    [challengeId]
-  );
+  await db.query("UPDATE auth_challenges SET used = TRUE WHERE id = $1", [
+    challengeId,
+  ]);
 
   // Find or create user
-  let user = await db.query(
-    "SELECT * FROM users WHERE npub = $1",
-    [expected.rows[0].npub]
-  );
+  let user = await db.query("SELECT * FROM users WHERE npub = $1", [
+    expected.rows[0].npub,
+  ]);
 
   if (user.rows.length === 0) {
     // Create new user with default values
     const username = `user_${Math.random().toString(36).substr(2, 9)}`;
     const nip05 = `${username}@${nip05Config.domain}`;
-    
+
     const result = await db.query(
       `INSERT INTO users (
         username, 
@@ -303,11 +329,14 @@ export async function authenticateWithNWC(
   }
 
   // Generate JWT token
-  const token = await signJWT({
-    id: user.rows[0].id,
-    npub: user.rows[0].npub,
-    role: user.rows[0].role,
-  }, authConfig.jwtSecret);
+  const token = await signJWT(
+    {
+      id: user.rows[0].id,
+      npub: user.rows[0].npub,
+      role: user.rows[0].role,
+    },
+    authConfig.jwtSecret
+  );
 
   return {
     user: user.rows[0],
@@ -384,16 +413,13 @@ export async function authenticateWithOTP(
   );
 
   // Find or create user
-  let user = await db.query(
-    "SELECT * FROM users WHERE npub = $1",
-    [npub]
-  );
+  let user = await db.query("SELECT * FROM users WHERE npub = $1", [npub]);
 
   if (user.rows.length === 0) {
     // Create new user with default values
     const username = `user_${Math.random().toString(36).substr(2, 9)}`;
     const nip05 = `${username}@${nip05Config.domain}`;
-    
+
     const result = await db.query(
       `INSERT INTO users (
         username, 
@@ -404,24 +430,20 @@ export async function authenticateWithOTP(
         created_at
       ) VALUES ($1, $2, $3, $4, $5, $6) 
       RETURNING id, username, npub, nip05, lightning_address, role, created_at`,
-      [
-        username,
-        npub,
-        nip05,
-        nip05,
-        "user",
-        Math.floor(Date.now() / 1000),
-      ]
+      [username, npub, nip05, nip05, "user", Math.floor(Date.now() / 1000)]
     );
     user = result;
   }
 
   // Generate JWT token
-  const token = await signJWT({
-    id: user.rows[0].id,
-    npub: user.rows[0].npub,
-    role: user.rows[0].role,
-  }, authConfig.jwtSecret);
+  const token = await signJWT(
+    {
+      id: user.rows[0].id,
+      npub: user.rows[0].npub,
+      role: user.rows[0].role,
+    },
+    authConfig.jwtSecret
+  );
 
   return {
     user: user.rows[0],

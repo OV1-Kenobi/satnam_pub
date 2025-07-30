@@ -14,8 +14,8 @@ import {
   User,
   X
 } from 'lucide-react';
+import { nip19 } from 'nostr-tools';
 import React, { useEffect, useState } from 'react';
-import { nip19 } from '../lib/nostr-browser.js';
 import { NIP07AuthChallenge } from '../types/auth';
 
 // Lazy import to prevent client creation on page load

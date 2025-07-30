@@ -47,6 +47,28 @@ export default defineConfig({
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
+    // Configure MIME types for ES modules
+    middlewareMode: false,
+    fs: {
+      strict: false,
+    },
+    // Add custom middleware to handle MIME types properly
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        // Handle .mjs files specifically
+        if (req.url && req.url.includes('.mjs')) {
+          res.setHeader('Content-Type', 'application/javascript');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+        // Handle @vite internal modules
+        if (req.url && req.url.startsWith('/@vite/')) {
+          res.setHeader('Content-Type', 'application/javascript');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+        }
+        next();
+      });
+    },
   },
 
   build: {

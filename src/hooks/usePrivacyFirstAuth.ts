@@ -11,6 +11,7 @@
  * not an authentication method. It's used for Lightning payments after authentication.
  */
 
+import { nip19 } from "nostr-tools";
 import { useCallback, useEffect, useState } from "react";
 import {
   AuthCredentials,
@@ -18,8 +19,7 @@ import {
   createPrivacyFirstAuth,
   PrivacyUser,
   SecureSession,
-} from '../lib/auth/privacy-first-auth.js';
-import { nip19 } from "../lib/nostr-browser";
+} from "../lib/auth/privacy-first-auth.js";
 import { FamilyFederationUser } from "../types/auth";
 
 // Helper function to extract pubkey from nsec (zero-knowledge protocol)

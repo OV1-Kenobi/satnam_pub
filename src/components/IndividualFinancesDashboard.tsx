@@ -42,7 +42,7 @@ import NWCWalletSetupModal from './NWCWalletSetupModal';
 import { CrossMintSettings, MultiNutPayment, NutSwapTransaction, SatnamCrossMintCashuManager } from '../lib/cross-mint-cashu-manager.js';
 
 // Import Payment Cascade Modal
-import { PaymentCascadeNode } from '../lib/payment-automation';
+import { PaymentCascadeNode } from '../lib/payment-automation.js';
 import PaymentCascadeModal from './PaymentCascadeModal';
 
 // Import Emergency Recovery Modal
@@ -57,7 +57,7 @@ import SimplePaymentModal from './SimplePaymentModal';
 
 // Import Privacy Components
 import { PrivacyLevel } from '../types/privacy';
-import Argon2SecurityTest from './Argon2SecurityTest';
+
 import PrivacyEnhancedPaymentModal from './enhanced/PrivacyEnhancedPaymentModal';
 import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
 
@@ -1941,23 +1941,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         }}
       />
 
-      {/* Argon2 Security Test Modal */}
-      {securityTestOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Security Test</h2>
-              <button
-                onClick={() => setSecurityTestOpen(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-            <Argon2SecurityTest />
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

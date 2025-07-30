@@ -1,14 +1,32 @@
-// JavaScript wrapper for nostr-browser TypeScript module
-// This file provides JavaScript-compatible exports for the TypeScript nostr-browser module
+/**
+ * Browser-compatible Nostr utilities
+ * MASTER CONTEXT COMPLIANCE: Direct JavaScript implementation for browser-only serverless architecture
+ *
+ * This file provides the actual implementations instead of re-exporting from TypeScript
+ * to avoid circular dependencies and MIME type issues in development.
+ */
 
-// Re-export everything from the TypeScript module
-// The build system will handle the TypeScript compilation
-export * from './nostr-browser.ts';
+// Import from nostr-tools directly
+import {
+    nip04,
+    nip19,
+    nip59,
+    finalizeEvent as nostrFinalizeEvent,
+    generateSecretKey as nostrGenerateSecretKey,
+    getPublicKey as nostrGetPublicKey,
+    verifyEvent as nostrVerifyEvent,
+    SimplePool
+} from 'nostr-tools';
 
-// Specific named exports for better IDE support
-export { nip19 } from './nostr-browser.ts';
-export { nip04 } from './nostr-browser.ts';
-export { nip59 } from './nostr-browser.ts';
-export { finalizeEvent } from './nostr-browser.ts';
-export { getPublicKey } from './nostr-browser.ts';
-export { SimplePool } from './nostr-browser.ts';
+// Re-export all the functions with consistent naming
+export { nip04, nip19, nip59, SimplePool };
+
+// Export with consistent function names
+export const finalizeEvent = nostrFinalizeEvent;
+export const generateSecretKey = nostrGenerateSecretKey;
+export const getPublicKey = nostrGetPublicKey;
+export const verifyEvent = nostrVerifyEvent;
+
+// Export everything for wildcard imports
+export * from 'nostr-tools';
+

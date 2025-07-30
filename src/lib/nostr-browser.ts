@@ -32,141 +32,20 @@ export interface UnsignedEvent {
   content: string;
 }
 
-// NIP-19 utilities
-export const nip19 = {
-  /**
-   * Encode npub from public key
-   */
-  npubEncode(pubkey: string): string {
-    const bytes = this.hexToBytes(pubkey);
-    return "npub" + this.base58Encode(bytes);
-  },
+// Import official NIP-19 utilities from nostr-tools (uses proper bech32 encoding)
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { nip19 } from "nostr-tools";
 
-  /**
-   * Decode npub to get public key
-   */
-  npubDecode(npub: string): string {
-    if (!npub.startsWith("npub")) {
-      throw new Error("Invalid npub format");
-    }
-    const bytes = this.base58Decode(npub.slice(4));
-    return this.bytesToHex(bytes);
-  },
+// Re-export for compatibility
+export { nip19 };
 
-  /**
-   * Encode nsec from private key
-   */
-  nsecEncode(seckey: string): string {
-    const bytes = this.hexToBytes(seckey);
-    return "nsec" + this.base58Encode(bytes);
-  },
+// Utility functions for hex/bytes conversion
+const hexToBytesUtil = (hex: string): Uint8Array => {
+  return hexToBytes(hex);
+};
 
-  /**
-   * Decode nsec to get private key
-   */
-  nsecDecode(nsec: string): string {
-    if (!nsec.startsWith("nsec")) {
-      throw new Error("Invalid nsec format");
-    }
-    const bytes = this.base58Decode(nsec.slice(4));
-    return this.bytesToHex(bytes);
-  },
-
-  /**
-   * Decode any NIP-19 string
-   */
-  decode(str: string): { type: string; data: string } {
-    if (str.startsWith("npub")) {
-      return { type: "npub", data: this.npubDecode(str) };
-    } else if (str.startsWith("nsec")) {
-      return { type: "nsec", data: this.nsecDecode(str) };
-    } else {
-      throw new Error("Unsupported NIP-19 format");
-    }
-  },
-
-  /**
-   * Convert hex string to bytes
-   */
-  hexToBytes(hex: string): Uint8Array {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }
-    return bytes;
-  },
-
-  /**
-   * Convert bytes to hex string
-   */
-  bytesToHex(bytes: Uint8Array): string {
-    return Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  },
-
-  /**
-   * Simple base58 encoding
-   */
-  base58Encode(bytes: Uint8Array): string {
-    const alphabet =
-      "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    let num = BigInt(0);
-    for (let i = 0; i < bytes.length; i++) {
-      num = num * BigInt(256) + BigInt(bytes[i]);
-    }
-
-    let str = "";
-    while (num > 0) {
-      str = alphabet[Number(num % BigInt(58))] + str;
-      num = num / BigInt(58);
-    }
-
-    // Add leading zeros
-    for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
-      str = "1" + str;
-    }
-
-    return str;
-  },
-
-  /**
-   * Simple base58 decoding
-   */
-  base58Decode(str: string): Uint8Array {
-    const alphabet =
-      "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    let num = BigInt(0);
-    let leadingZeros = 0;
-
-    for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-      const index = alphabet.indexOf(char);
-      if (index === -1) {
-        throw new Error("Invalid base58 character");
-      }
-      num = num * BigInt(58) + BigInt(index);
-    }
-
-    // Count leading zeros
-    for (let i = 0; i < str.length && str[i] === "1"; i++) {
-      leadingZeros++;
-    }
-
-    // Convert to bytes
-    const bytes: number[] = [];
-    while (num > 0) {
-      bytes.unshift(Number(num % BigInt(256)));
-      num = num / BigInt(256);
-    }
-
-    // Add leading zeros
-    for (let i = 0; i < leadingZeros; i++) {
-      bytes.unshift(0);
-    }
-
-    return new Uint8Array(bytes);
-  },
+const bytesToHexUtil = (bytes: Uint8Array): string => {
+  return bytesToHex(bytes);
 };
 
 // NIP-04 encryption utilities
@@ -269,8 +148,8 @@ export const nip04 = {
    * Generate shared secret using secp256k1 ECDH
    */
   async getSharedSecret(privkey: string, pubkey: string): Promise<Uint8Array> {
-    const privkeyBytes = nip19.hexToBytes(privkey);
-    const pubkeyBytes = nip19.hexToBytes(pubkey);
+    const privkeyBytes = hexToBytesUtil(privkey);
+    const pubkeyBytes = hexToBytesUtil(pubkey);
 
     // Use secp256k1 for proper ECDH - simplified implementation
     // In production, this would use proper ECDH from secp256k1
@@ -346,20 +225,20 @@ export const finalizeEvent = {
     ]);
 
     const hash = sha256(new TextEncoder().encode(eventString));
-    return nip19.bytesToHex(hash);
+    return bytesToHexUtil(hash);
   },
 
   /**
    * Sign event ID using secp256k1
    */
   async signEvent(eventId: string, privateKey: string): Promise<string> {
-    const privkeyBytes = nip19.hexToBytes(privateKey);
+    const privkeyBytes = hexToBytesUtil(privateKey);
     const messageBytes = new TextEncoder().encode(eventId);
 
     // Sign using secp256k1
     const signature = await sign(sha256(messageBytes), privkeyBytes);
 
-    return nip19.bytesToHex(signature);
+    return bytesToHexUtil(signature);
   },
 };
 

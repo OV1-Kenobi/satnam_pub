@@ -1,12 +1,13 @@
-import { vault } from "../../lib/vault.js";
+import { bytesToHex } from "@noble/hashes/utils";
 import {
-  finalizeEvent,
-  getPublicKey,
-  nip04,
-  nip19,
-  nip59,
-  SimplePool,
-} from "../../src/lib/nostr-browser.js";
+    finalizeEvent,
+    getPublicKey,
+    nip04,
+    nip19,
+    nip59,
+    SimplePool,
+} from "nostr-tools";
+import { vault } from "../../lib/vault.js";
 import { supabase } from "./supabase.js";
 
 function getEnvVar(key) {
@@ -53,17 +54,17 @@ class RebuildingCamelotOTPService {
     try {
       const vaultRelays = await vault.getCredentials("nostr_relays");
       const vaultOtpConfig = await vault.getCredentials("otp_config");
-      
+
       let relays = [
         "wss://relay.damus.io",
         "wss://relay.satnam.pub",
         "wss://nos.lol",
       ];
-      
+
       let otpLength = 6;
       let expiryMinutes = 10;
       let preferGiftWrap = true;
-      
+
       if (vaultRelays) {
         try {
           relays = JSON.parse(vaultRelays);
@@ -71,7 +72,7 @@ class RebuildingCamelotOTPService {
           // Use default relays if parsing fails
         }
       }
-      
+
       if (vaultOtpConfig) {
         try {
           const config = JSON.parse(vaultOtpConfig);
@@ -117,10 +118,10 @@ class RebuildingCamelotOTPService {
   async sendOTPDM(recipientNpub, userNip05) {
     try {
       const config = await this.getConfig();
-      
+
       // Retrieve Rebuilding Camelot credentials from Vault
       let nsecData, nip05Data;
-      
+
       try {
         nsecData = await vault.getCredentials("rebuilding_camelot_nsec");
         nip05Data = await vault.getCredentials("rebuilding_camelot_nip05");
@@ -136,7 +137,7 @@ class RebuildingCamelotOTPService {
         if (nsecError || nip05Error || !nsecResult || !nip05Result) {
           throw new Error("Failed to retrieve Rebuilding Camelot credentials");
         }
-        
+
         nsecData = nsecResult;
         nip05Data = nip05Result;
       }
@@ -168,7 +169,7 @@ class RebuildingCamelotOTPService {
             expiresAt,
             "gift-wrap"
           );
-          
+
           dmEvent = await this.createGiftWrappedOTPEvent(
             privateKeyBytes,
             recipientPubkey,
@@ -183,8 +184,8 @@ class RebuildingCamelotOTPService {
             expiresAt,
             "nip04"
           );
-          
-          const privateKeyHex = nip19.bytesToHex(privateKeyBytes);
+
+          const privateKeyHex = bytesToHex(privateKeyBytes);
           const encryptedContent = await nip04.encrypt(
             dmContent,
             recipientPubkey,
@@ -206,8 +207,8 @@ class RebuildingCamelotOTPService {
           expiresAt,
           "nip04"
         );
-        
-        const privateKeyHex = nip19.bytesToHex(privateKeyBytes);
+
+        const privateKeyHex = bytesToHex(privateKeyBytes);
         const encryptedContent = await nip04.encrypt(
           dmContent,
           recipientPubkey,
@@ -260,7 +261,7 @@ class RebuildingCamelotOTPService {
   }
 
   createOTPMessage(otp, userIdentifier, expiresAt, messageType = "nip04") {
-    const encryptionNotice = messageType === "gift-wrap" 
+    const encryptionNotice = messageType === "gift-wrap"
       ? "🎁 This message is gift-wrapped for enhanced privacy"
       : "🔒 This message is encrypted with standard Nostr encryption";
 
@@ -286,11 +287,11 @@ If you didn't request this code, please ignore this message.
 
   npubToHex(npub) {
     try {
-      const { type, data } = nip19.decode(npub);
-      if (type !== "npub") {
+      const decoded = nip19.decode(npub);
+      if (decoded.type !== "npub") {
         throw new Error("Invalid npub format");
       }
-      return data;
+      return decoded.data;
     } catch (error) {
       throw new Error(
         `Failed to decode npub: ${error instanceof Error ? error.message : String(error)}`
@@ -300,12 +301,17 @@ If you didn't request this code, please ignore this message.
 
   nsecToBytes(nsec) {
     try {
-      const { type, data } = nip19.decode(nsec);
-      if (type !== "nsec") {
+      const decoded = nip19.decode(nsec);
+      if (decoded.type !== "nsec") {
         throw new Error("Invalid nsec format");
       }
-      const hex = data;
-      return new Uint8Array(hex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+      // For nsec, data should already be Uint8Array
+      if (decoded.data instanceof Uint8Array) {
+        return decoded.data;
+      }
+      // Fallback: if it's a hex string, convert it
+      const hexString = String(decoded.data);
+      return new Uint8Array(hexString.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
     } catch (error) {
       throw new Error(
         `Failed to decode nsec: ${error instanceof Error ? error.message : String(error)}`
@@ -314,7 +320,7 @@ If you didn't request this code, please ignore this message.
   }
 
   async createGiftWrappedOTPEvent(privateKeyBytes, recipientPubkey, content) {
-    const privateKeyHex = nip19.bytesToHex(privateKeyBytes);
+    const privateKeyHex = bytesToHex(privateKeyBytes);
     const senderPubkey = await getPublicKey.fromPrivateKey(privateKeyHex);
 
     const baseEvent = {
@@ -341,7 +347,7 @@ If you didn't request this code, please ignore this message.
   }
 
   async createSignedDMEvent(privateKeyBytes, recipientPubkey, encryptedContent) {
-    const privateKeyHex = nip19.bytesToHex(privateKeyBytes);
+    const privateKeyHex = bytesToHex(privateKeyBytes);
     const senderPubkey = await getPublicKey.fromPrivateKey(privateKeyHex);
 
     const eventWithoutId = {

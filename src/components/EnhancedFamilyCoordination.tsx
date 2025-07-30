@@ -19,9 +19,9 @@ import {
   Sparkles,
   Users
 } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { EnhancedPhoenixdManager } from '../lib/enhanced-phoenixd-manager.js';
-import { LiquidityIntelligenceSystem, LiquidityMetrics } from '../lib/liquidity-intelligence';
+import { LiquidityIntelligenceSystem, LiquidityMetrics } from '../lib/liquidity-intelligence.js';
 import EnhancedLiquidityDashboard from './EnhancedLiquidityDashboard';
 
 interface EnhancedFamilyCoordinationProps {
@@ -126,14 +126,14 @@ interface FamilyTreasury {
   };
 }
 
-export default function EnhancedFamilyCoordination({ 
-  familyId, 
-  onBack 
+export default function EnhancedFamilyCoordination({
+  familyId,
+  onBack
 }: EnhancedFamilyCoordinationProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'payments' | 'treasury' | 'governance' | 'liquidity'>('overview');
   const [loading, setLoading] = useState(true);
   const [familyName] = useState('Nakamoto Family');
-  
+
   // Enhanced state management
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [paymentRules, setPaymentRules] = useState<FamilyPaymentRule[]>([]);
@@ -141,7 +141,7 @@ export default function EnhancedFamilyCoordination({
   const [governanceProposals, setGovernanceProposals] = useState<FamilyGovernanceProposal[]>([]);
   const [familyTreasury, setFamilyTreasury] = useState<FamilyTreasury | null>(null);
   const [liquidityMetrics, setLiquidityMetrics] = useState<LiquidityMetrics | null>(null);
-  
+
   // Systems integration
   const [liquiditySystem] = useState(() => new LiquidityIntelligenceSystem());
   const [phoenixdManager] = useState(() => new EnhancedPhoenixdManager(liquiditySystem));
@@ -149,7 +149,7 @@ export default function EnhancedFamilyCoordination({
   const loadFamilyCoordinationData = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       // Load all family coordination data concurrently
       const [members, payments, tasks, proposals, treasury, metrics] = await Promise.all([
         loadFamilyMembers(),
@@ -427,7 +427,7 @@ export default function EnhancedFamilyCoordination({
             <Bitcoin className="h-6 w-6 text-orange-400" />
             <span>Family Treasury</span>
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-gray-700/30 rounded-lg p-4">
               <div className="text-gray-300 text-sm">Total Balance</div>
@@ -541,9 +541,8 @@ export default function EnhancedFamilyCoordination({
                   Balance: {formatSats(member.stats.paymentBalance)}
                 </div>
               </div>
-              <div className={`w-2 h-2 rounded-full ${
-                member.status === 'active' ? 'bg-green-400' : 'bg-gray-400'
-              }`} />
+              <div className={`w-2 h-2 rounded-full ${member.status === 'active' ? 'bg-green-400' : 'bg-gray-400'
+                }`} />
             </div>
           ))}
         </div>
@@ -575,9 +574,8 @@ export default function EnhancedFamilyCoordination({
                   <div className="text-gray-400 capitalize">{member.role}</div>
                 </div>
               </div>
-              <div className={`px-2 py-1 rounded text-xs ${
-                member.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
-              }`}>
+              <div className={`px-2 py-1 rounded text-xs ${member.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
+                }`}>
                 {member.status}
               </div>
             </div>
@@ -608,9 +606,8 @@ export default function EnhancedFamilyCoordination({
               <div className="flex flex-wrap gap-2">
                 {Object.entries(member.permissions).map(([key, value]) => (
                   typeof value === 'boolean' && (
-                    <div key={key} className={`px-2 py-1 rounded text-xs ${
-                      value ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                    }`}>
+                    <div key={key} className={`px-2 py-1 rounded text-xs ${value ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                      }`}>
                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
                     </div>
                   )
@@ -644,9 +641,8 @@ export default function EnhancedFamilyCoordination({
                 </div>
                 <div className="text-gray-400">{formatSats(rule.amount)} every {rule.frequency}</div>
               </div>
-              <div className={`px-2 py-1 rounded text-xs ${
-                rule.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
-              }`}>
+              <div className={`px-2 py-1 rounded text-xs ${rule.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
+                }`}>
                 {rule.enabled ? 'Active' : 'Paused'}
               </div>
             </div>
@@ -704,8 +700,8 @@ export default function EnhancedFamilyCoordination({
           Powered by Bolt AI
         </div>
       </div>
-      
-      <EnhancedLiquidityDashboard 
+
+      <EnhancedLiquidityDashboard
         familyId={familyId}
         onChannelAction={(action, channelId) => {
           console.log(`Channel action: ${action} on ${channelId}`);
@@ -774,11 +770,10 @@ export default function EnhancedFamilyCoordination({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center space-x-2 px-4 py-2 border-b-2 transition-colors ${
-                activeTab === tab.id
+              className={`flex items-center space-x-2 px-4 py-2 border-b-2 transition-colors ${activeTab === tab.id
                   ? 'border-blue-400 text-blue-400'
                   : 'border-transparent text-gray-400 hover:text-gray-300'
-              }`}
+                }`}
             >
               <tab.icon className="h-4 w-4" />
               <span>{tab.label}</span>

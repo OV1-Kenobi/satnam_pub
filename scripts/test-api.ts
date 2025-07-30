@@ -7,9 +7,9 @@
 
 import axios from "axios";
 import {
+  finalizeEvent as finishEvent,
   generateSecretKey as generatePrivateKey,
   getPublicKey,
-  finalizeEvent as finishEvent,
   nip19,
 } from "../src/lib/nostr-browser";
 
@@ -17,8 +17,13 @@ const API_BASE = "http://localhost:3000/api";
 
 // Test data
 const testPrivkey = generatePrivateKey();
-const testPubkey = getPublicKey(testPrivkey);
-const testNpub = nip19.npubEncode(testPubkey);
+const testPubkeyBytes = getPublicKey(testPrivkey);
+const testPubkey = Array.from(testPubkeyBytes)
+  .map((b) => b.toString(16).padStart(2, "0"))
+  .join("");
+// Use correct npub encoding: remove compression prefix
+const testPubkeyWithoutPrefix = testPubkey.slice(2);
+const testNpub = nip19.npubEncode(testPubkeyWithoutPrefix);
 
 console.log("🧪 API Testing Suite");
 console.log("=".repeat(50));
@@ -35,7 +40,7 @@ async function testHealthEndpoint() {
   } catch (error) {
     console.log(
       "❌ Health check failed:",
-      error instanceof Error ? error.message : String(error),
+      error instanceof Error ? error.message : String(error)
     );
     return false;
   }
@@ -53,7 +58,7 @@ async function testNostrAuth() {
         tags: [],
         content: "Identity Forge Authentication",
       },
-      testPrivkey,
+      testPrivkey
     );
 
     const response = await axios.post(`${API_BASE}/auth/nostr`, {
@@ -73,7 +78,7 @@ async function testNostrAuth() {
     const axiosError = error as any;
     console.log(
       "❌ Nostr auth error:",
-      axiosError.response?.data?.error || errorMessage,
+      axiosError.response?.data?.error || errorMessage
     );
     return null;
   }
@@ -118,7 +123,7 @@ async function testOTPFlow() {
     const axiosError = error as any;
     console.log(
       "❌ OTP flow error:",
-      axiosError.response?.data?.error || errorMessage,
+      axiosError.response?.data?.error || errorMessage
     );
     return null;
   }
@@ -135,14 +140,14 @@ async function testSessionEndpoint(session: any) {
     // This will likely fail without proper session management, but that's expected
     console.log(
       "📋 Session endpoint response:",
-      response.data.success ? "Success" : "Failed (expected)",
+      response.data.success ? "Success" : "Failed (expected)"
     );
     return true;
   } catch (error) {
     const axiosError = error as any;
     console.log(
       "📋 Session endpoint failed (expected without proper session):",
-      axiosError.response?.status,
+      axiosError.response?.status
     );
     return true;
   }
@@ -157,13 +162,13 @@ async function testProfileEndpoints() {
       const response = await axios.get(`${API_BASE}/identity/profile`);
       console.log(
         "📋 Profile get:",
-        response.data.success ? "Success" : "Failed (expected)",
+        response.data.success ? "Success" : "Failed (expected)"
       );
     } catch (error) {
       const axiosError = error as any;
       console.log(
         "📋 Profile get failed (expected without auth):",
-        axiosError.response?.status,
+        axiosError.response?.status
       );
     }
 
@@ -171,7 +176,7 @@ async function testProfileEndpoints() {
   } catch (error) {
     console.log(
       "❌ Profile endpoint error:",
-      error instanceof Error ? error.message : String(error),
+      error instanceof Error ? error.message : String(error)
     );
     return false;
   }
@@ -195,7 +200,7 @@ async function testRegistrationEndpoints() {
       console.log("📋 Profile created:", response.data.profile?.username);
       console.log(
         "🔑 Nostr identity:",
-        response.data.nostr_identity?.npub.slice(0, 20) + "...",
+        response.data.nostr_identity?.npub.slice(0, 20) + "..."
       );
       console.log("📡 Relay backup:", response.data.nostr_backup);
       return response.data;
@@ -208,7 +213,7 @@ async function testRegistrationEndpoints() {
     const axiosError = error as any;
     console.log(
       "❌ Registration error:",
-      axiosError.response?.data?.error || errorMessage,
+      axiosError.response?.data?.error || errorMessage
     );
     return null;
   }
@@ -230,7 +235,7 @@ async function testFamilyRegistration() {
 
     const response = await axios.post(
       `${API_BASE}/register/family`,
-      familyData,
+      familyData
     );
 
     if (response.data.success) {
@@ -247,7 +252,7 @@ async function testFamilyRegistration() {
     const axiosError = error as any;
     console.log(
       "❌ Family registration error:",
-      axiosError.response?.data?.error || errorMessage,
+      axiosError.response?.data?.error || errorMessage
     );
     return null;
   }
@@ -298,7 +303,7 @@ async function runAllTests() {
   console.log("📋 Summary:");
   console.log(`  ✅ Health Check: ${healthOk ? "PASS" : "FAIL"}`);
   console.log(
-    `  🎯 Identity Registration: ${registrationResult ? "PASS" : "FAIL"}`,
+    `  🎯 Identity Registration: ${registrationResult ? "PASS" : "FAIL"}`
   );
   console.log(`  👥 Family Registration: ${familyResult ? "PASS" : "FAIL"}`);
   console.log(`  🔐 Nostr Auth: ${nostrSession ? "PASS" : "FAIL"}`);
@@ -327,7 +332,7 @@ function showInstructions() {
   console.log("   📝 POST /api/register - Complete identity registration");
   console.log("   👥 POST /api/register/family - Register entire family");
   console.log(
-    "   🔄 POST /api/migrate/:userId - Export to sovereign infrastructure",
+    "   🔄 POST /api/migrate/:userId - Export to sovereign infrastructure"
   );
   console.log("");
   console.log("   🔐 AUTHENTICATION ENDPOINTS:");

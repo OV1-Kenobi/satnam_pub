@@ -1,10 +1,9 @@
-import { SimplePool } from "nostr-tools";
+import { nip19, SimplePool } from "nostr-tools";
 import { z } from "zod";
 import { vault } from "../../lib/vault.js";
 import { RebuildingCamelotOTPService } from "../../netlify/functions/nostr-otp-service.js";
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
-import { nip19 } from "../../src/lib/nostr-browser.js";
 import { generateSecureToken } from "../../utils/crypto.js";
 
 function getEnvVar(key) {

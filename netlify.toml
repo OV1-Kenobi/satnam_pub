@@ -10,13 +10,34 @@
 # Development server configuration
 [dev]
   targetPort = 8888  # Tell Netlify Dev to look for Vite on port 8888
+  # Ensure proper MIME types for module scripts
+  autoLaunch = false  # Prevent auto-opening browser to avoid conflicts
+  # Force proper MIME type handling
+  framework = "#custom"
+  command = "npm run dev"
 
-# Redirects for SPA and API endpoints
+# Redirects for SPA and API endpoints - API only
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
   force = true
+
+# Ensure frontend assets are served by Vite with correct MIME types
+[[redirects]]
+  from = "/src/*"
+  to = "/src/:splat"
+  status = 200
+  force = false  # Let Vite handle these
+
+# CRITICAL: Let Vite handle its internal modules directly - bypass Netlify proxy
+[[redirects]]
+  from = "/@vite/*"
+  to = "/@vite/:splat"
+  status = 200
+  force = false  # Let Vite handle these completely
+
+
 
 # NIP-05 verification - serve .well-known directory
 [[redirects]]
@@ -68,6 +89,31 @@
     Access-Control-Max-Age = "86400"
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
+
+# ES Module files (.mjs) MIME type - for Vite internal files
+[[headers]]
+  for = "/@vite/*"
+  [headers.values]
+    Content-Type = "application/javascript"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/@vite/client/env.mjs"
+  [headers.values]
+    Content-Type = "application/javascript"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "**/*.mjs"
+  [headers.values]
+    Content-Type = "application/javascript"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "*.mjs"
+  [headers.values]
+    Content-Type = "application/javascript"
+    X-Content-Type-Options = "nosniff"
 
 # Static assets caching
 [[headers]]

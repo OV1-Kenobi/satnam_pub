@@ -16,14 +16,17 @@ export class CryptoUnified {
 
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
     const privateKeyBytes = utils.randomPrivateKey();
-    const privateKey = bytesToHex(privateKeyBytes);
-    const publicKeyBytes = getPublicKey(privateKeyBytes);
+    // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
+    const publicKeyBytes = (getPublicKey as any)(privateKeyBytes, true);
     const publicKeyHex = bytesToHex(publicKeyBytes);
 
     // Use proper NIP-19 bech32 encoding
+    // npubEncode expects 64-char hex (without compression prefix), nsecEncode expects Uint8Array
+    const publicKeyWithoutPrefix = publicKeyHex.slice(2); // Remove "02"/"03" compression prefix
+
     return {
-      nsec: nip19.nsecEncode(privateKey),
-      npub: nip19.npubEncode(publicKeyHex),
+      nsec: nip19.nsecEncode(privateKeyBytes as any),
+      npub: nip19.npubEncode(publicKeyWithoutPrefix),
     };
   }
 

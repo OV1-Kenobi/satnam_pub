@@ -228,15 +228,24 @@ export interface InviteToken {
 
 export interface IdentityRegistrationResult {
   success: boolean;
-  profile: UserProfile;
-  npub: string;
+  user: {
+    id: string;
+    username: string;
+    npub: string;
+    nip05: string;
+    lightningAddress?: string;
+    registeredAt: string;
+    role: string;
+    privacyLevel: string;
+    zeroKnowledgeEnabled: boolean;
+  };
   inviteToken?: InviteToken;
-  sessionToken: string;
   message: string;
   error?: string;
   meta: {
     timestamp: string;
-    demo?: boolean;
+    architecture: string;
+    tablesUpdated: string[];
   };
 }
 

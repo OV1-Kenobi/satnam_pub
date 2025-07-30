@@ -90,10 +90,18 @@ export function useCrypto(options: UseCryptoOptions = {}): UseCryptoReturn {
 
   const loadCrypto = useCallback(async () => {
     // Prevent multiple simultaneous loads
-    if (loadingRef.current || state.isLoaded) {
+    if (loadingRef.current) {
+      console.log("🔄 Load already in progress, skipping...");
       return;
     }
 
+    // Check current state without dependency issues
+    if (state.isLoaded) {
+      console.log("✅ Crypto already loaded, skipping...");
+      return;
+    }
+
+    console.log("🔄 Starting crypto loading...");
     loadingRef.current = true;
 
     if (mountedRef.current) {
@@ -104,9 +112,12 @@ export function useCrypto(options: UseCryptoOptions = {}): UseCryptoReturn {
       const { preloadCryptoModules } = await import(
         "../../utils/crypto-factory"
       );
+      console.log("🔄 Calling preloadCryptoModules...");
       await preloadCryptoModules();
+      console.log("✅ preloadCryptoModules completed successfully");
 
       if (mountedRef.current) {
+        console.log("✅ Setting crypto state to loaded");
         setState({
           isLoading: false,
           isLoaded: true,
@@ -114,6 +125,7 @@ export function useCrypto(options: UseCryptoOptions = {}): UseCryptoReturn {
         });
       }
     } catch (error) {
+      console.error("❌ Crypto loading failed:", error);
       if (mountedRef.current) {
         setState({
           isLoading: false,
@@ -123,8 +135,9 @@ export function useCrypto(options: UseCryptoOptions = {}): UseCryptoReturn {
       }
     } finally {
       loadingRef.current = false;
+      console.log("🔄 Crypto loading process completed");
     }
-  }, [state.isLoaded]);
+  }, []); // Remove state.isLoaded dependency to fix stale closure
 
   const retry = useCallback(async () => {
     setState((prev) => ({ ...prev, error: null }));
@@ -179,45 +192,33 @@ export function useCryptoOperations() {
 
   const executeWithLoading = useCallback(
     async <T>(operation: () => Promise<T>): Promise<T> => {
+      console.log("🔄 executeWithLoading called, current state:", {
+        isLoaded: cryptoState.isLoaded,
+        isLoading: cryptoState.isLoading,
+        hasError: !!cryptoState.error,
+      });
+
+      // Simplified approach - just ensure loading is attempted
       if (!cryptoState.isLoaded && !cryptoState.isLoading) {
+        console.log("🔄 Triggering crypto load...");
         await cryptoState.loadCrypto();
       }
 
-      // Wait for loading to complete if in progress
-      if (cryptoState.isLoading) {
-        return new Promise((resolve, reject) => {
-          let attempts = 0;
-          const maxAttempts = 100; // 10 seconds max wait
-
-          const checkLoaded = () => {
-            if (attempts >= maxAttempts) {
-              reject(new Error("Crypto loading timeout"));
-              return;
-            }
-
-            if (cryptoState.error) {
-              reject(cryptoState.error);
-            } else if (cryptoState.isLoaded) {
-              operation().then(resolve).catch(reject);
-            } else if (cryptoState.isLoading) {
-              attempts++;
-              // Check again after a short delay
-              setTimeout(checkLoaded, 100);
-            } else {
-              reject(new Error("Crypto loading failed"));
-            }
-          };
-          checkLoaded();
-        });
-      }
-
+      // Skip complex polling - just execute the operation
       if (cryptoState.error) {
+        console.error("❌ Crypto error detected:", cryptoState.error);
         throw cryptoState.error;
       }
 
+      console.log("✅ Executing operation directly");
       return operation();
     },
-    [cryptoState]
+    [
+      cryptoState.isLoaded,
+      cryptoState.isLoading,
+      cryptoState.error,
+      cryptoState.loadCrypto,
+    ]
   );
 
   return {
@@ -225,22 +226,32 @@ export function useCryptoOperations() {
 
     // Wrapped crypto operations that handle loading automatically
     async generateNostrKeyPair(recoveryPhrase?: string, account?: number) {
-      // For essential functions, try direct loading if preloading fails
+      console.log("🔑 generateNostrKeyPair called");
+
+      // Use direct import approach (same as working debug test)
       try {
-        return await executeWithLoading(async () => {
-          const cryptoFactory = await import("../../utils/crypto-factory");
-          return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
-        });
+        console.log("🔄 Using direct crypto factory import...");
+        const cryptoFactory = await import("../../utils/crypto-factory");
+        const result = await cryptoFactory.generateNostrKeyPair(
+          recoveryPhrase,
+          account
+        );
+        console.log("✅ Direct crypto factory import successful");
+        return result;
       } catch (error) {
-        if (error instanceof Error && error.message.includes("timeout")) {
-          // If timeout, try direct import without waiting for preloading
-          console.warn(
-            "⚠️ Crypto preloading timed out, trying direct import..."
-          );
-          const cryptoFactory = await import("../../utils/crypto-factory");
-          return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
+        console.error("❌ Direct crypto factory import failed:", error);
+
+        // Fallback to executeWithLoading approach
+        try {
+          console.log("🔄 Falling back to executeWithLoading...");
+          return await executeWithLoading(async () => {
+            const cryptoFactory = await import("../../utils/crypto-factory");
+            return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
+          });
+        } catch (fallbackError) {
+          console.error("❌ Fallback also failed:", fallbackError);
+          throw fallbackError;
         }
-        throw error;
       }
     },
 

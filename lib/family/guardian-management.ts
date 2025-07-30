@@ -13,6 +13,7 @@
  * ✅ Security-sensitive guardian approval workflows
  */
 
+import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import {
   FamilyGuardian,
   FamilySSLConfig,
@@ -20,11 +21,6 @@ import {
   SecretShare,
 } from "../../netlify/functions/crypto/shamir-secret-sharing";
 import db from "../../netlify/functions/db";
-import {
-  generateSecretKey,
-  getPublicKey,
-  nip19,
-} from "../../src/lib/nostr-browser";
 import { PrivacyUtils } from "../../src/lib/privacy/encryption";
 
 /**

@@ -4,8 +4,8 @@
 // All crypto imports are lazy loaded for better performance
 // All crypto operations are now lazy loaded
 
-import { utils, getPublicKey } from "@noble/secp256k1";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { getPublicKey } from "@noble/secp256k1";
 import { finalizeEvent } from "nostr-tools";
 
 /**
@@ -67,10 +67,13 @@ export async function generateNostrKeyPair(
   recoveryPhrase?: string,
   account: number = 0
 ) {
-  const { generateNostrKeyPair: lazyGenerateNostrKeyPair } = await import(
-    "./crypto-lazy"
+  console.log(
+    "🔍 UTILS/CRYPTO.TS generateNostrKeyPair called - REDIRECTING TO CRYPTO-FACTORY"
   );
-  return lazyGenerateNostrKeyPair();
+  const { generateNostrKeyPair: factoryGenerateNostrKeyPair } = await import(
+    "./crypto-factory"
+  );
+  return factoryGenerateNostrKeyPair(recoveryPhrase, account);
 }
 
 /**
@@ -241,16 +244,24 @@ export async function generateHOTP(
   }
 
   const secretBytes = decodeBase32(secret);
-  const hash = await sha256(Array.from(secretBytes).map(b => b.toString(16).padStart(2, '0')).join('') + Array.from(counterBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
-  
+  const hash = await sha256(
+    Array.from(secretBytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("") +
+      Array.from(counterBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+  );
+
   // Extract 4 bytes from the hash
   const offset = parseInt(hash.slice(-1), 16) & 0xf;
-  const code = ((parseInt(hash.slice(offset * 2, offset * 2 + 2), 16) & 0x7f) << 24) |
-               ((parseInt(hash.slice(offset * 2 + 2, offset * 2 + 4), 16) & 0xff) << 16) |
-               ((parseInt(hash.slice(offset * 2 + 4, offset * 2 + 6), 16) & 0xff) << 8) |
-               (parseInt(hash.slice(offset * 2 + 6, offset * 2 + 8), 16) & 0xff);
-  
-  return (code % 1000000).toString().padStart(6, '0');
+  const code =
+    ((parseInt(hash.slice(offset * 2, offset * 2 + 2), 16) & 0x7f) << 24) |
+    ((parseInt(hash.slice(offset * 2 + 2, offset * 2 + 4), 16) & 0xff) << 16) |
+    ((parseInt(hash.slice(offset * 2 + 4, offset * 2 + 6), 16) & 0xff) << 8) |
+    (parseInt(hash.slice(offset * 2 + 6, offset * 2 + 8), 16) & 0xff);
+
+  return (code % 1000000).toString().padStart(6, "0");
 }
 
 /**
