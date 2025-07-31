@@ -19,4 +19,5 @@
 # Functionality: ✅ All preserved (PBKDF2-based)
 # Rollup fix: ✅ Added @rollup/rollup-linux-x64-gnu and @rollup/rollup-linux-x64-musl
 # Terser fix: ✅ Added terser v5.43.1 for Vite v5.4.19 production minification
-# Netlify compatibility: ✅ Linux x64 platform binaries + Terser minification
+# Import fix: ✅ Fixed all remaining Argon2 import references to PBKDF2
+# Netlify compatibility: ✅ Linux x64 platform binaries + Terser minification + Clean imports

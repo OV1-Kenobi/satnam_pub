@@ -3,10 +3,10 @@ import { getEnvVar } from "./utils/env.js";
 /**
  * @fileoverview Application Startup Security Validator
  * @description Ensures all security protocols are properly configured before application starts
- * This addresses the critical issue where Argon2 parameters were not validated during startup
+ * This addresses the critical issue where PBKDF2 parameters were not validated during startup
  */
 
-import { validateArgon2ConfigOnStartup } from "../../api/lib/security.js";
+import { validatePBKDF2ConfigOnStartup } from "../../api/lib/security.js";
 import { enforceGoldStandardOnStartup } from "./crypto-validator";
 
 /**
@@ -37,10 +37,10 @@ export async function validateSecurityOnStartup(
   console.log("🔐 Starting Application Security Validation...\n");
 
   try {
-    // 1. Validate Argon2 Configuration (the original issue)
-    console.log("1️⃣  Validating Argon2 Configuration...");
-    validateArgon2ConfigOnStartup();
-    console.log("✅ Argon2 configuration validated\n");
+    // 1. Validate PBKDF2 Configuration (updated from Argon2)
+    console.log("1️⃣  Validating PBKDF2 Configuration...");
+    validatePBKDF2ConfigOnStartup();
+    console.log("✅ PBKDF2 configuration validated\n");
 
     // 2. Run Gold Standard validation if required
     if (finalConfig.enforceGoldStandard) {
@@ -122,13 +122,9 @@ function validateEnvironmentSafety(): boolean {
     }
   });
 
-  // Check Argon2 environment variables exist
-  const argon2Vars = [
-    "ARGON2_MEMORY_COST",
-    "ARGON2_TIME_COST",
-    "ARGON2_PARALLELISM",
-  ];
-  argon2Vars.forEach((varName) => {
+  // Check PBKDF2 environment variables exist
+  const pbkdf2Vars = ["PBKDF2_ITERATIONS"];
+  pbkdf2Vars.forEach((varName) => {
     const value = process.env[varName];
     if (!value) {
       warnings.push(`${varName} not set - using default value`);
@@ -172,8 +168,8 @@ export function quickSecurityCheck(): boolean {
   console.log("🔍 Quick Security Check...");
 
   try {
-    // Just validate basic Argon2 config
-    validateArgon2ConfigOnStartup();
+    // Just validate basic PBKDF2 config
+    validatePBKDF2ConfigOnStartup();
 
     // Check for critical missing vars
     const critical = ["PRIVACY_MASTER_KEY", "JWT_SECRET"];

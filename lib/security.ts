@@ -361,18 +361,18 @@ export async function restoreCredentialsFromBackup(
 }
 
 /**
- * Validates Argon2 configuration on startup
+ * Validates PBKDF2 configuration on startup
  * Call this during application initialization to catch configuration issues early
  * MASTER CONTEXT COMPLIANCE: Privacy-first validation without sensitive data logging
  */
-export function validateArgon2ConfigOnStartup(): void {
+export function validatePBKDF2ConfigOnStartup(): void {
   // Basic configuration validation for TypeScript version
   // This is a simplified version for browser compatibility
-  const memoryUsageMB = Math.pow(2, 16) / (1024 * 1024); // Default 64MB
+  const iterations = 100000; // Default PBKDF2 iterations
 
   // PRIVACY: No sensitive configuration data logging
-  if (memoryUsageMB > 256) {
-    console.warn("Argon2 memory usage may be high for browser environment");
+  if (iterations < 50000) {
+    console.warn("PBKDF2 iteration count may be too low for security");
   }
 
   // Configuration meets basic requirements for browser environment

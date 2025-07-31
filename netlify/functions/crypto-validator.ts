@@ -89,10 +89,10 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
   const issues: SecurityIssue[] = [];
   const recommendations: SecurityRecommendation[] = [];
 
-  // 1. Validate Argon2 Configuration
-  const argon2Validation = validateArgon2Configuration();
-  issues.push(...argon2Validation.issues);
-  recommendations.push(...argon2Validation.recommendations);
+  // 1. Validate PBKDF2 Configuration
+  const pbkdf2Validation = validatePBKDF2Configuration();
+  issues.push(...pbkdf2Validation.issues);
+  recommendations.push(...pbkdf2Validation.recommendations);
 
   // 2. Validate Environment Configuration
   const envValidation = validateEnvironmentConfiguration();
@@ -153,9 +153,9 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
 }
 
 /**
- * Validate Argon2 configuration against Gold Standard requirements
+ * Validate PBKDF2 configuration against Gold Standard requirements
  */
-function validateArgon2Configuration(): {
+function validatePBKDF2Configuration(): {
   issues: SecurityIssue[];
   recommendations: SecurityRecommendation[];
 } {
@@ -163,71 +163,46 @@ function validateArgon2Configuration(): {
   const recommendations: SecurityRecommendation[] = [];
 
   try {
-    const argon2Config = getArgon2Config();
-    const { config, memoryUsageMB, warnings } = argon2Config;
+    const pbkdf2Config = getPBKDF2Config();
+    const { iterations, warnings } = pbkdf2Config;
 
-    // Check memory cost
-    if (memoryUsageMB < GOLD_STANDARD_REQUIREMENTS.MINIMUM_MEMORY_MB) {
+    // Check iteration count
+    if (iterations < GOLD_STANDARD_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS) {
       issues.push({
         severity: "CRITICAL",
         category: "KEY_DERIVATION",
-        description: "Argon2 memory cost below secure minimum",
-        currentValue: `${memoryUsageMB}MB`,
-        requiredValue: `${GOLD_STANDARD_REQUIREMENTS.MINIMUM_MEMORY_MB}MB`,
-        fix: `Set ARGON2_MEMORY_COST=${Math.log2(
-          GOLD_STANDARD_REQUIREMENTS.MINIMUM_MEMORY_MB * 1024 * 1024
-        )} in .env.local`,
+        description: "PBKDF2 iteration count below secure minimum",
+        currentValue: iterations,
+        requiredValue: GOLD_STANDARD_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS,
+        fix: `Set PBKDF2_ITERATIONS=${GOLD_STANDARD_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS} in .env.local`,
       });
     } else if (
-      memoryUsageMB < GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_MEMORY_MB
-    ) {
-      issues.push({
-        severity: "HIGH",
-        category: "KEY_DERIVATION",
-        description: "Argon2 memory cost below Gold Standard recommendation",
-        currentValue: `${memoryUsageMB}MB`,
-        requiredValue: `${GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_MEMORY_MB}MB`,
-        fix: `Set ARGON2_MEMORY_COST=17 for ${GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_MEMORY_MB}MB in .env.local`,
-      });
-    }
-
-    // Check time cost
-    if (config.timeCost < GOLD_STANDARD_REQUIREMENTS.MINIMUM_TIME_COST) {
-      issues.push({
-        severity: "CRITICAL",
-        category: "KEY_DERIVATION",
-        description: "Argon2 time cost below secure minimum",
-        currentValue: config.timeCost,
-        requiredValue: GOLD_STANDARD_REQUIREMENTS.MINIMUM_TIME_COST,
-        fix: `Set ARGON2_TIME_COST=${GOLD_STANDARD_REQUIREMENTS.MINIMUM_TIME_COST} in .env.local`,
-      });
-    } else if (
-      config.timeCost < GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_TIME_COST
+      iterations < GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS
     ) {
       recommendations.push({
         priority: "HIGH",
         category: "SECURITY",
         description:
-          "Consider increasing Argon2 time cost for Gold Standard security",
-        action: `Set ARGON2_TIME_COST=${GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_TIME_COST} in .env.local`,
+          "Consider increasing PBKDF2 iteration count for Gold Standard security",
+        action: `Set PBKDF2_ITERATIONS=${GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS} in .env.local`,
       });
     }
 
     // Check for configuration warnings
     warnings.forEach((warning) => {
       issues.push({
-        severity: warning.includes("OOM") ? "HIGH" : "MEDIUM",
+        severity: warning.includes("performance") ? "HIGH" : "MEDIUM",
         category: "CONFIGURATION",
-        description: `Argon2 configuration warning: ${warning}`,
-        fix: "Review Argon2 parameters based on your server capacity",
+        description: `PBKDF2 configuration warning: ${warning}`,
+        fix: "Review PBKDF2 parameters based on your server capacity",
       });
     });
   } catch (error) {
     issues.push({
       severity: "CRITICAL",
       category: "CONFIGURATION",
-      description: "Failed to validate Argon2 configuration",
-      fix: "Ensure Argon2 environment variables are properly set",
+      description: "Failed to validate PBKDF2 configuration",
+      fix: "Ensure PBKDF2 environment variables are properly set",
     });
   }
 

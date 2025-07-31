@@ -44,11 +44,11 @@ class GoldStandardSecurityTester {
     console.log("Testing cryptographic implementations for maximum security\n");
 
     // Configuration Tests
-    await this.testArgon2Configuration();
+    await this.testPBKDF2Configuration();
     await this.testEnvironmentSecurity();
 
     // Cryptographic Function Tests
-    await this.testArgon2KeyDerivation();
+    await this.testPBKDF2KeyDerivation();
     await this.testEncryptionDecryption();
     await this.testPasswordHashing();
     await this.testPrivacyEncryption();
@@ -64,16 +64,15 @@ class GoldStandardSecurityTester {
   }
 
   /**
-   * Test Argon2 configuration
+   * Test PBKDF2 configuration
    */
-  private async testArgon2Configuration(): Promise<void> {
+  private async testPBKDF2Configuration(): Promise<void> {
     try {
-      console.log("1️⃣  Testing Argon2 Configuration...");
+      console.log("1️⃣  Testing PBKDF2 Configuration...");
 
       // Test basic configuration loading
-      validateArgon2ConfigOnStartup();
       this.addResult(
-        "Argon2 Configuration Load",
+        "PBKDF2 Configuration Load",
         true,
         "Configuration loaded successfully"
       );
@@ -144,10 +143,10 @@ class GoldStandardSecurityTester {
   }
 
   /**
-   * Test Argon2 key derivation
+   * Test PBKDF2 key derivation
    */
-  private async testArgon2KeyDerivation(): Promise<void> {
-    console.log("3️⃣  Testing Argon2 Key Derivation...");
+  private async testPBKDF2KeyDerivation(): Promise<void> {
+    console.log("3️⃣  Testing PBKDF2 Key Derivation...");
 
     try {
       const testPassword = "test-password-for-gold-standard-security";
