@@ -6,8 +6,8 @@
   NODE_VERSION = "22.16.0"
   NPM_VERSION = "10.8.2"
   CI = "true"
-  # Cache bust after Argon2 removal + Rollup Linux fix - 2025-07-30
-  NETLIFY_CACHE_BUST = "rollup-linux-fix-20250730"
+  # Cache bust after Argon2 removal + Rollup + Terser fixes - 2025-07-30
+  NETLIFY_CACHE_BUST = "terser-minification-fix-20250730"
 
 # Development server configuration
 [dev]

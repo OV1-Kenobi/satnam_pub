@@ -13,9 +13,10 @@
 # - Zero security vulnerabilities (npm audit clean)
 # - Browser-only serverless architecture preserved
 #
-# Package count: 756 packages (down from 791, +22 for Rollup Linux binaries)
-# Build status: ✅ Local builds successful (5.03s)
+# Package count: 759 packages (down from 791, +22 Rollup + 3 Terser)
+# Build status: ✅ Local builds successful (5.00s with Terser minification)
 # Security status: ✅ 0 vulnerabilities
 # Functionality: ✅ All preserved (PBKDF2-based)
 # Rollup fix: ✅ Added @rollup/rollup-linux-x64-gnu and @rollup/rollup-linux-x64-musl
-# Netlify compatibility: ✅ Linux x64 platform binaries included
+# Terser fix: ✅ Added terser v5.43.1 for Vite v5.4.19 production minification
+# Netlify compatibility: ✅ Linux x64 platform binaries + Terser minification
