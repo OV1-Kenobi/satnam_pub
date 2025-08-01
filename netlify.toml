@@ -145,16 +145,24 @@
     NODE_ENV = "development"
     VITE_API_BASE_URL = "/.netlify/functions"
 
-# Functions configuration
+# Functions configuration - Optimized for storage efficiency
 [functions]
   # Node.js version for functions
   node_bundler = "esbuild"
-  external_node_modules = ["pg", "redis", "jsonwebtoken"]
+  external_node_modules = ["pg", "redis", "jsonwebtoken", "@supabase/supabase-js"]
+  # Exclude test files and development utilities
+  included_files = ["!**/__tests__/**", "!**/*.test.*", "!**/*.spec.*", "!**/examples/**"]
 
-# Force ESM format for all functions
-[functions."*"]
+# Essential functions only - reduce storage usage
+[functions."register-identity"]
   node_bundler = "esbuild"
 
-  # Scheduled functions for cleanup tasks
-  [functions.scheduled]
-    cleanup-expired-credentials = "0 */6 * * *"  # Run every 6 hours
+[functions."nostr"]
+  node_bundler = "esbuild"
+
+[functions."nostr-otp-service"]
+  node_bundler = "esbuild"
+
+# Scheduled functions for cleanup tasks (only essential ones)
+[functions."cleanup-expired-credentials"]
+  schedule = "0 */6 * * *"  # Run every 6 hours

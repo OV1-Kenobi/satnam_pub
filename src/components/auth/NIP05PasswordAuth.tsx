@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { usePrivacyFirstAuth } from "../../hooks/usePrivacyFirstAuth";
+import { userIdentitiesAuth } from "../../lib/auth/user-identities-auth";
 
 interface NIP05PasswordAuthProps {
   isOpen: boolean;
@@ -112,14 +113,34 @@ export function NIP05PasswordAuth({
     setError(null);
 
     try {
-      const success = await privacyAuth.authenticateNIP05Password(nip05.trim(), password);
+      // Use the new user_identities authentication system directly
+      const result = await userIdentitiesAuth.authenticateNIP05Password({
+        nip05: nip05.trim(),
+        password: password
+      });
 
-      if (success) {
+      if (result.success && result.user) {
+        console.log('✅ Authentication successful:', result.user.username);
+
+        // Store session information for the app
+        if (result.sessionToken) {
+          // You might want to store this in localStorage or a global state
+          localStorage.setItem('auth_session', result.sessionToken);
+          localStorage.setItem('user_data', JSON.stringify({
+            id: result.user.id,
+            username: result.user.username,
+            nip05: result.user.nip05,
+            npub: result.user.npub,
+            role: result.user.role
+          }));
+        }
+
         handleAuthSuccess();
       } else {
-        setError(privacyAuth.error || 'Authentication failed. Please check your credentials.');
+        setError(result.error || 'Authentication failed. Please check your credentials.');
       }
     } catch (error) {
+      console.error('Authentication error:', error);
       setError(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
       setIsLoading(false);
