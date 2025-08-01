@@ -318,8 +318,32 @@ export class UserIdentitiesAuth {
     nip05: string
   ): Promise<void> {
     try {
-      // Increment failed attempts using database function
-      await supabase.rpc("increment_failed_attempts", { user_nip05: nip05 });
+      // Get current user data
+      const { data: user } = await supabase
+        .from("user_identities")
+        .select("failed_attempts")
+        .eq("nip05", nip05)
+        .single();
+
+      if (user) {
+        const newFailedAttempts = (user.failed_attempts || 0) + 1;
+        const shouldLock =
+          newFailedAttempts >= UserIdentitiesAuth.MAX_FAILED_ATTEMPTS;
+
+        // Update failed attempts and potentially lock account
+        await supabase
+          .from("user_identities")
+          .update({
+            failed_attempts: newFailedAttempts,
+            last_attempt_at: new Date().toISOString(),
+            locked_until: shouldLock
+              ? new Date(
+                  Date.now() + UserIdentitiesAuth.LOCKOUT_MINUTES * 60 * 1000
+                ).toISOString()
+              : null,
+          })
+          .eq("nip05", nip05);
+      }
 
       // Log the attempt
       await this.logAuthAttempt({
@@ -340,8 +364,15 @@ export class UserIdentitiesAuth {
     nip05: string
   ): Promise<void> {
     try {
-      // Reset failed attempts using database function
-      await supabase.rpc("reset_failed_attempts", { user_nip05: nip05 });
+      // Reset failed attempts and update last successful auth
+      await supabase
+        .from("user_identities")
+        .update({
+          failed_attempts: 0,
+          locked_until: null,
+          last_successful_auth: new Date().toISOString(),
+        })
+        .eq("nip05", nip05);
 
       // Log successful attempt
       await this.logAuthAttempt({

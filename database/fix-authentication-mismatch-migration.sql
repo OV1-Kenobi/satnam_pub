@@ -16,8 +16,18 @@ ADD COLUMN IF NOT EXISTS last_successful_auth TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS requires_password_change BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Step 2: Add unique constraints for security
-ALTER TABLE public.user_identities 
-ADD CONSTRAINT IF NOT EXISTS user_identities_password_salt_unique UNIQUE(password_salt);
+DO $$
+BEGIN
+    -- Check if constraint already exists before adding it
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'user_identities_password_salt_unique'
+        AND table_name = 'user_identities'
+    ) THEN
+        ALTER TABLE public.user_identities
+        ADD CONSTRAINT user_identities_password_salt_unique UNIQUE(password_salt);
+    END IF;
+END $$;
 
 -- Step 3: Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_user_identities_nip05 ON user_identities(nip05);
@@ -61,26 +71,56 @@ ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_auth_attempts ENABLE ROW LEVEL SECURITY;
 
 -- Step 7: Create RLS Policies for user_identities
--- Users can only access their own identity data
-CREATE POLICY user_identities_own_data ON user_identities
-    FOR ALL
-    USING (auth.uid()::text = id::text);
+DO $$
+BEGIN
+    -- Users can only access their own identity data
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'user_identities_own_data'
+        AND tablename = 'user_identities'
+    ) THEN
+        CREATE POLICY user_identities_own_data ON user_identities
+            FOR ALL
+            USING (auth.uid()::text = id::text);
+    END IF;
 
--- Allow anonymous INSERT for registration
-CREATE POLICY user_identities_registration ON user_identities
-    FOR INSERT
-    WITH CHECK (true);
+    -- Allow anonymous INSERT for registration
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'user_identities_registration'
+        AND tablename = 'user_identities'
+    ) THEN
+        CREATE POLICY user_identities_registration ON user_identities
+            FOR INSERT
+            WITH CHECK (true);
+    END IF;
+END $$;
 
 -- Step 8: Create RLS Policies for auth attempts
--- Users can only see their own auth attempts
-CREATE POLICY user_auth_attempts_own_data ON user_auth_attempts
-    FOR ALL
-    USING (auth.uid()::text = user_id::text);
+DO $$
+BEGIN
+    -- Users can only see their own auth attempts
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'user_auth_attempts_own_data'
+        AND tablename = 'user_auth_attempts'
+    ) THEN
+        CREATE POLICY user_auth_attempts_own_data ON user_auth_attempts
+            FOR ALL
+            USING (auth.uid()::text = user_id::text);
+    END IF;
 
--- Allow anonymous INSERT for logging attempts
-CREATE POLICY user_auth_attempts_logging ON user_auth_attempts
-    FOR INSERT
-    WITH CHECK (true);
+    -- Allow anonymous INSERT for logging attempts
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'user_auth_attempts_logging'
+        AND tablename = 'user_auth_attempts'
+    ) THEN
+        CREATE POLICY user_auth_attempts_logging ON user_auth_attempts
+            FOR INSERT
+            WITH CHECK (true);
+    END IF;
+END $$;
 
 -- Step 9: Create function to clean up expired lockouts and old logs
 CREATE OR REPLACE FUNCTION cleanup_user_security_data()
@@ -120,10 +160,20 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER user_identities_password_updated
-    BEFORE UPDATE ON user_identities
-    FOR EACH ROW
-    EXECUTE FUNCTION update_user_password_timestamp();
+-- Create trigger with conditional check
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.triggers
+        WHERE trigger_name = 'user_identities_password_updated'
+        AND event_object_table = 'user_identities'
+    ) THEN
+        CREATE TRIGGER user_identities_password_updated
+            BEFORE UPDATE ON user_identities
+            FOR EACH ROW
+            EXECUTE FUNCTION update_user_password_timestamp();
+    END IF;
+END $$;
 
 -- Step 11: Create function to safely increment failed attempts
 CREATE OR REPLACE FUNCTION increment_failed_attempts(user_nip05 TEXT)
@@ -173,10 +223,18 @@ COMMENT ON TABLE user_auth_attempts IS 'Security log for user authentication att
 
 -- Step 14: Grant necessary permissions
 GRANT SELECT, INSERT, UPDATE ON user_identities TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON user_identities TO anon; -- Allow anonymous registration
 GRANT SELECT, INSERT ON user_auth_attempts TO authenticated;
+GRANT SELECT, INSERT ON user_auth_attempts TO anon; -- Allow anonymous auth attempts
 GRANT EXECUTE ON FUNCTION cleanup_user_security_data() TO authenticated;
 GRANT EXECUTE ON FUNCTION increment_failed_attempts(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION increment_failed_attempts(TEXT) TO anon; -- Allow anonymous access
 GRANT EXECUTE ON FUNCTION reset_failed_attempts(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION reset_failed_attempts(TEXT) TO anon; -- Allow anonymous access
+
+-- Additional permissions for Supabase RPC access
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT USAGE ON SCHEMA public TO authenticated;
 
 -- Step 15: Create scheduled cleanup job (if pg_cron is available)
 -- This is optional and depends on your PostgreSQL setup
