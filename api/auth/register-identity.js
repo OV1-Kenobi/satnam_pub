@@ -15,6 +15,7 @@
  * ✅ Real database operations with Supabase integration
  */
 
+import crypto from 'crypto';
 import { vault } from '../../lib/vault.js';
 import { SecureSessionManager } from '../../netlify/functions/security/session-manager.js';
 import { supabase } from '../../src/lib/supabase.js';
@@ -34,6 +35,57 @@ function getEnvVar(key) {
     }
   }
   return process.env[key];
+}
+
+/**
+ * SECURITY: Password hashing utilities with PBKDF2/SHA-512
+ * Implements secure password storage with unique salts per user
+ */
+
+/**
+ * Generate cryptographically secure salt for password hashing
+ * @returns {string} Base64-encoded salt
+ */
+function generatePasswordSalt() {
+  return crypto.randomBytes(24).toString('base64');
+}
+
+/**
+ * Hash password using PBKDF2 with SHA-512
+ * @param {string} password - Plain text password
+ * @param {string} salt - Base64-encoded salt
+ * @returns {Promise<string>} Base64-encoded password hash
+ */
+async function hashPassword(password, salt) {
+  const iterations = 100000; // PBKDF2 iterations (minimum recommended)
+  const keyLength = 64; // SHA-512 output length
+  const algorithm = 'sha512';
+
+  const pbkdf2 = promisify(crypto.pbkdf2);
+  const hash = await pbkdf2(password, salt, iterations, keyLength, algorithm);
+  return hash.toString('base64');
+}
+
+/**
+ * Verify password against stored hash using timing-safe comparison
+ * @param {string} password - Plain text password to verify
+ * @param {string} storedHash - Stored password hash
+ * @param {string} salt - Password salt
+ * @returns {Promise<boolean>} True if password matches
+ */
+async function verifyPassword(password, storedHash, salt) {
+  try {
+    const computedHash = await hashPassword(password, salt);
+
+    // Timing-safe comparison to prevent timing attacks
+    return crypto.timingSafeEqual(
+      Buffer.from(computedHash, 'base64'),
+      Buffer.from(storedHash, 'base64')
+    );
+  } catch (error) {
+    console.error('Password verification failed:', error);
+    return false;
+  }
 }
 
 // Rate limiting configuration
@@ -266,7 +318,11 @@ async function checkUsernameAvailability(username) {
  */
 async function createUserProfile(userData, hashedIdentifier, spendingLimits) {
   try {
-    // Create profile data with new Identity Forge fields
+    // Generate secure password salt and hash
+    const passwordSalt = generatePasswordSalt();
+    const passwordHash = await hashPassword(userData.password, passwordSalt);
+
+    // Create profile data with new Identity Forge fields including secure password storage
     const profileData = {
       id: hashedIdentifier, // Use hashed identifier as primary key
       username: userData.username,
@@ -282,6 +338,13 @@ async function createUserProfile(userData, hashedIdentifier, spendingLimits) {
         is_imported_account: userData.isImportedAccount || false,
         detected_profile_data: userData.detectedProfile || null
       },
+      // Secure password storage
+      password_hash: passwordHash,
+      password_salt: passwordSalt,
+      password_created_at: new Date().toISOString(),
+      password_updated_at: new Date().toISOString(),
+      failed_attempts: 0,
+      requires_password_change: false,
       is_active: true, // New users are active by default
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()

@@ -16,6 +16,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AuthCredentials,
   AuthResult,
+  userIdentitiesAuth,
+} from "../lib/auth/user-identities-auth";
+// Legacy imports for backward compatibility
+import {
   createPrivacyFirstAuth,
   PrivacyUser,
   SecureSession,
@@ -306,7 +310,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     [handleAuthResult]
   );
 
-  // NIP-05/Password Authentication (ALWAYS MAXIMUM PRIVACY)
+  // NIP-05/Password Authentication (NEW USER_IDENTITIES SYSTEM)
   const authenticateNIP05Password = useCallback(
     async (nip05: string, password: string): Promise<boolean> => {
       try {
@@ -317,8 +321,65 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
           password,
         };
 
-        const result = await auth.authenticateNIP05Password(credentials);
-        return handleAuthResult(result);
+        // Use new user_identities authentication system
+        const result = await userIdentitiesAuth.authenticateNIP05Password(
+          credentials
+        );
+
+        if (result.success && result.user) {
+          // Convert UserIdentity to PrivacyUser format for compatibility
+          const compatibleUser: PrivacyUser = {
+            hashedUUID: result.user.id,
+            userSalt: result.user.password_salt || "",
+            federationRole:
+              (result.user.role as
+                | "private"
+                | "offspring"
+                | "adult"
+                | "steward"
+                | "guardian") || "private",
+            authMethod: "nip05-password" as const,
+            isWhitelisted: true,
+            votingPower: 1,
+            guardianApproved: true,
+            stewardApproved: true,
+            sessionHash: result.sessionToken || "",
+            lastAuthAt: Date.now(),
+            createdAt: Date.now(),
+          };
+
+          // Create compatible SecureSession
+          const compatibleSession: SecureSession = {
+            sessionId: result.sessionToken || "",
+            userHash: result.user.id,
+            encryptionKey: "", // Not needed for this auth method
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+            keyVersion: 1,
+            privacySettings: {
+              anonymityLevel: 95, // Maximum anonymity
+              metadataProtection: true,
+              forwardSecrecy: true,
+            },
+          };
+
+          setState((prev) => ({
+            ...prev,
+            user: compatibleUser,
+            session: compatibleSession,
+            authenticated: true,
+            loading: false,
+            error: null,
+            requiresOnboarding: false,
+          }));
+          return true;
+        } else {
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: result.error || "Authentication failed",
+          }));
+          return false;
+        }
       } catch (error) {
         setState((prev) => ({
           ...prev,
@@ -331,7 +392,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
         return false;
       }
     },
-    [handleAuthResult]
+    []
   );
 
   // Session management
@@ -394,7 +455,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
 
   // Privacy controls
   const updatePrivacyLevel = useCallback(
-    async (level: "standard" | "enhanced" | "maximum"): Promise<boolean> => {
+    async (_level: "standard" | "enhanced" | "maximum"): Promise<boolean> => {
       // Privacy-first auth always uses maximum privacy - no changes needed
       // ✅ NO LOGGING - Following Master Context privacy-first principles
       return true;
