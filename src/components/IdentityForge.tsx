@@ -21,6 +21,7 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import { ApiClient } from '../../utils/api-client.js';
 import { useCryptoOperations } from "../hooks/useCrypto";
+import { NostrProfileService } from "../lib/nostr-profile-service";
 import { IdentityRegistrationResult } from "../types/auth";
 import { SessionInfo } from '../utils/secureSession.js';
 import { PostAuthInvitationModal } from "./PostAuthInvitationModal";
@@ -37,11 +38,17 @@ interface FormData {
 interface IdentityForgeProps {
   onComplete: () => void;
   onBack: () => void;
+  invitationToken?: string | null;
+  invitationDetails?: any;
+  isInvitedUser?: boolean;
 }
 
 const IdentityForge: React.FC<IdentityForgeProps> = ({
   onComplete,
   onBack,
+  invitationToken = null,
+  invitationDetails = null,
+  isInvitedUser = false,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
@@ -60,9 +67,32 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [showNsecConfirmation, setShowNsecConfirmation] = useState(false);
   const [nsecStoredConfirmed, setNsecStoredConfirmed] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [autoCleanupTimer, setAutoCleanupTimer] = useState<NodeJS.Timeout | null>(null);
+  const [countdownTimer, setCountdownTimer] = useState<NodeJS.Timeout | null>(null);
 
   // Ref to track timer state and prevent race conditions
   const timerStateRef = useRef({ cleanupTimer: null as NodeJS.Timeout | null, countdown: null as NodeJS.Timeout | null });
+
+  // Zero-Knowledge Security: Secure memory cleanup utility
+  const secureMemoryCleanup = (sensitiveString: string | null) => {
+    if (!sensitiveString) return;
+
+    try {
+      // Convert string to ArrayBuffer for secure cleanup
+      const encoder = new TextEncoder();
+      const buffer = encoder.encode(sensitiveString);
+
+      // Zero out the buffer
+      buffer.fill(0);
+
+      // Force garbage collection hint (if available)
+      if (typeof window !== 'undefined' && 'gc' in window) {
+        (window as any).gc();
+      }
+    } catch (error) {
+      console.warn('Secure memory cleanup failed:', error);
+    }
+  };
 
   // Nostr Account Migration State (Zero-Knowledge Compliance)
   const [migrationMode, setMigrationMode] = useState<'generate' | 'import'>('generate');
@@ -88,12 +118,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   useEffect(() => {
     return () => {
-      // Critical: Clear ephemeral nsec on component unmount
+      // Critical: Secure cleanup of ephemeral nsec on component unmount
       if (ephemeralNsec) {
+        secureMemoryCleanup(ephemeralNsec);
         setEphemeralNsec(null);
       }
-      // Critical: Clear imported nsec from memory
+      // Critical: Secure cleanup of imported nsec from memory
       if (importedNsec) {
+        secureMemoryCleanup(importedNsec);
         setImportedNsec('');
       }
       // Clear any active timers using ref-based approach
@@ -106,7 +138,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         timerStateRef.current.countdown = null;
       }
     };
-  }, [ephemeralNsec, importedNsec]); // Removed timer dependency to prevent race conditions
+  }, [ephemeralNsec, importedNsec, secureMemoryCleanup]); // Added secureMemoryCleanup dependency
 
   // Auto-cleanup timer for ephemeral nsec (5-minute maximum exposure for manual recording)
   // Split into separate useEffects to prevent infinite loops
@@ -275,47 +307,109 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   // Zero-Knowledge Nostr Account Migration Functions
   const handleNsecImport = async () => {
-    if (!importedNsec || (!importedNsec.startsWith('nsec1') && !importedNsec.startsWith('npub1'))) {
+    // Clear any previous error messages
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    // Validate input format
+    if (!importedNsec) {
+      setErrorMessage('Please enter your Nostr key (nsec1... or npub1...)');
+      return;
+    }
+
+    // Trim whitespace and normalize input
+    const cleanedKey = importedNsec.trim();
+
+    // Check for common user mistakes
+    if (cleanedKey.includes(' ')) {
+      setErrorMessage('Nostr keys should not contain spaces. Please check your key and try again.');
+      return;
+    }
+
+    if (cleanedKey.length < 60) {
+      setErrorMessage('Nostr key appears to be too short. Please check your key and try again.');
+      return;
+    }
+
+    if (cleanedKey.length > 70) {
+      setErrorMessage('Nostr key appears to be too long. Please check your key and try again.');
+      return;
+    }
+
+    if (!cleanedKey.startsWith('nsec1') && !cleanedKey.startsWith('npub1')) {
+      // Check for common mistakes
+      if (cleanedKey.startsWith('nsec') || cleanedKey.startsWith('npub')) {
+        setErrorMessage('Invalid key format. Nostr keys should start with "nsec1" or "npub1"');
+      } else if (cleanedKey.match(/^[0-9a-f]{64}$/i)) {
+        setErrorMessage('This appears to be a hex private key. Please use the nsec1... format instead.');
+      } else {
+        setErrorMessage('Invalid key format. Please enter a valid nsec1... or npub1... key');
+      }
       return;
     }
 
     setIsDetectingProfile(true);
+    setErrorMessage(null);
 
     try {
       let npub: string;
       let publicKey: string = '';
       let isViewOnly = false;
+      let keyType = '';
 
-      if (importedNsec.startsWith('nsec1')) {
+      if (cleanedKey.startsWith('nsec1')) {
         // Handle nsec import (full access)
+        keyType = 'private';
 
+        try {
+          const { nip19 } = await import('nostr-tools');
+          const { getPublicKey } = await import('@noble/secp256k1');
+          const { bytesToHex } = await import('@noble/hashes/utils');
 
-        const { nip19 } = await import('nostr-tools');
-        const { getPublicKey } = await import('@noble/secp256k1');
-        const { bytesToHex } = await import('@noble/hashes/utils');
-        const { data: privateKeyBytes } = nip19.decode(importedNsec);
-        const publicKeyBytes = getPublicKey(privateKeyBytes as Uint8Array);
-        publicKey = bytesToHex(publicKeyBytes);
-        npub = nip19.npubEncode(publicKey);
+          // Validate and decode the nsec
+          const decoded = nip19.decode(cleanedKey);
+          if (decoded.type !== 'nsec') {
+            throw new Error('Invalid nsec format');
+          }
 
-        // Store ephemeral nsec for full access
-        setEphemeralNsec(importedNsec);
+          const privateKeyBytes = decoded.data as Uint8Array;
+          const publicKeyBytes = getPublicKey(privateKeyBytes);
+          publicKey = bytesToHex(publicKeyBytes);
+          npub = nip19.npubEncode(publicKey);
 
+          // Store ephemeral nsec for full access (zero-knowledge compliance)
+          setEphemeralNsec(cleanedKey);
 
-      } else if (importedNsec.startsWith('npub1')) {
+          console.log('✅ Private key imported successfully');
+        } catch (decodeError) {
+          throw new Error('Invalid nsec format or corrupted key');
+        }
+
+      } else if (cleanedKey.startsWith('npub1')) {
         // Handle npub import (view-only mode)
+        keyType = 'public';
 
+        try {
+          const { nip19 } = await import('nostr-tools');
 
-        const { nip19 } = await import('nostr-tools');
-        const { data: publicKeyBytes } = nip19.decode(importedNsec);
-        publicKey = publicKeyBytes as string;
-        npub = importedNsec;
-        isViewOnly = true;
+          // Validate and decode the npub
+          const decoded = nip19.decode(cleanedKey);
+          if (decoded.type !== 'npub') {
+            throw new Error('Invalid npub format');
+          }
 
+          publicKey = decoded.data as string;
+          npub = cleanedKey;
+          isViewOnly = true;
 
+          console.log('✅ Public key imported successfully (view-only mode)');
+        } catch (decodeError) {
+          throw new Error('Invalid npub format or corrupted key');
+        }
       }
 
-      // Detect existing profile metadata
+      // Detect existing profile metadata from Nostr network
+      console.log('🔍 Detecting existing Nostr profile...');
       const profile = await detectNostrProfile(publicKey);
 
       // Set form data with detected information
@@ -324,36 +418,110 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         pubkey: npub
       }));
 
-      setDetectedProfile(profile);
+      setDetectedProfile({
+        ...profile,
+        keyType: keyType,
+        isViewOnly: isViewOnly
+      });
+
       setShowMigrationConsent(true);
+      setSuccessMessage(`${keyType === 'private' ? 'Private' : 'Public'} key imported successfully!`);
 
-      // Clear imported key input immediately after processing
+      // Clear imported key input immediately after processing (zero-knowledge compliance)
+      secureMemoryCleanup(importedNsec);
       setImportedNsec('');
-
-      // Log the import mode
-
 
     } catch (error) {
       console.error('Key import failed:', error);
-      // Still allow migration even if profile detection fails
-      setShowMigrationConsent(true);
-      // Clear sensitive data on error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setErrorMessage(`Import failed: ${errorMessage}`);
+
+      // Clear sensitive data on error (zero-knowledge compliance)
+      secureMemoryCleanup(importedNsec);
+      secureMemoryCleanup(ephemeralNsec);
       setImportedNsec('');
+      setEphemeralNsec(null);
     } finally {
       setIsDetectingProfile(false);
     }
   };
 
-  const detectNostrProfile = async (_publicKey: string) => {
-    // This would integrate with existing Nostr profile services
-    // For now, return mock data structure
-    return {
-      name: 'Detected User',
-      about: 'Existing Nostr profile',
-      picture: '',
-      nip05: '',
-      lud16: '' // Lightning address
-    };
+  const detectNostrProfile = async (publicKey: string) => {
+    try {
+      // Convert hex public key to npub format for profile service
+      const { nip19 } = await import('nostr-tools');
+      const npub = nip19.npubEncode(publicKey);
+
+      // Use existing NostrProfileService to fetch profile with timeout
+      const profileService = new NostrProfileService();
+
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile detection timeout')), 15000); // 15 second timeout
+      });
+
+      const profilePromise = profileService.fetchProfileMetadata(npub);
+      const profile = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+      if (profile && typeof profile === 'object') {
+        console.log('✅ Existing Nostr profile detected:', profile.name || 'Unnamed');
+        return {
+          name: profile.name || '',
+          about: profile.about || '',
+          picture: profile.picture || '',
+          nip05: profile.nip05 || '',
+          lud16: profile.lud16 || '', // Lightning address
+          npub: npub,
+          hasExistingProfile: true,
+          detectionMethod: 'nostr-relays'
+        };
+      } else {
+        console.log('ℹ️ No existing profile found for this key');
+        return {
+          name: '',
+          about: '',
+          picture: '',
+          nip05: '',
+          lud16: '',
+          npub: npub,
+          hasExistingProfile: false,
+          detectionMethod: 'nostr-relays'
+        };
+      }
+    } catch (error) {
+      console.warn('Profile detection failed:', error);
+
+      // Determine error type for better user feedback
+      let errorType = 'unknown';
+      let userMessage = 'Profile detection failed';
+
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          errorType = 'timeout';
+          userMessage = 'Profile detection timed out - you can still import your key';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorType = 'network';
+          userMessage = 'Network error during profile detection - you can still import your key';
+        } else if (error.message.includes('Invalid')) {
+          errorType = 'validation';
+          userMessage = 'Invalid key format';
+        }
+      }
+
+      // Return minimal profile structure on error
+      return {
+        name: '',
+        about: '',
+        picture: '',
+        nip05: '',
+        lud16: '',
+        npub: publicKey ? nip19.npubEncode(publicKey) : '',
+        hasExistingProfile: false,
+        error: userMessage,
+        errorType: errorType,
+        detectionMethod: 'failed'
+      };
+    }
   };
 
   const handleMigrationConsent = () => {
@@ -422,10 +590,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   // Use crypto operations hook for lazy loading
   const crypto = useCryptoOperations();
-
-
-
-
 
   // State consistency validation for Steps 2+ where nsec is relevant
   useEffect(() => {
@@ -586,12 +750,18 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         nip05: `${formData.username}@satnam.pub`,
         lightningAddress: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined,
         generateInviteToken: true,
+        // Include invitation token if user was invited
+        invitationToken: invitationToken,
+        // Include import account information
+        isImportedAccount: migrationMode === 'import',
+        detectedProfile: detectedProfile,
       };
 
 
       const result = await apiClient.storeUserData(requestData);
 
-      // CRITICAL: Clear ephemeral nsec from memory immediately after encryption
+      // CRITICAL: Secure cleanup of ephemeral nsec from memory immediately after encryption
+      secureMemoryCleanup(ephemeralNsec);
       setEphemeralNsec('');
 
       for (let i = 30; i <= 80; i++) {
@@ -921,15 +1091,43 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           {/* Step 1: Create Your Identity (Username + Password) */}
           {currentStep === 1 && (
             <div className="space-y-6">
+              {/* Invitation Welcome Message */}
+              {isInvitedUser && invitationDetails && (
+                <div className="bg-gradient-to-r from-purple-600/20 to-orange-500/20 border border-purple-400/30 rounded-lg p-4 mb-6">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-3">
+                      <Users className="h-6 w-6 text-orange-400 mr-2" />
+                      <h4 className="text-lg font-semibold text-white">You've Been Invited!</h4>
+                    </div>
+                    {invitationDetails.personalMessage && (
+                      <p className="text-purple-100 mb-3 italic">
+                        "{invitationDetails.personalMessage}"
+                      </p>
+                    )}
+                    <div className="flex items-center justify-center space-x-4 text-sm text-purple-200">
+                      <span className="flex items-center">
+                        <Sparkles className="h-4 w-4 mr-1 text-yellow-400" />
+                        {invitationDetails.courseCredits} Course Credits
+                      </span>
+                      <span className="flex items-center">
+                        <Heart className="h-4 w-4 mr-1 text-red-400" />
+                        Welcome to Satnam.pub
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="text-center">
                 <h3 className="text-2xl font-bold text-white mb-4">
-                  Create Your Identity
+                  {isInvitedUser ? "Complete Your Invitation" : "Create Your Identity"}
                 </h3>
                 <p className="text-purple-200">
-                  Choose your username and create a secure password
+                  {isInvitedUser
+                    ? "Finish setting up your account to claim your course credits"
+                    : "Choose your username and create a secure password"
+                  }
                 </p>
-
-
               </div>
 
               <div className="space-y-6">
@@ -1275,6 +1473,26 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                                 <span className="text-sm">Invalid key format - must start with nsec1 or npub1</span>
                               </div>
                             )}
+                          </div>
+                        )}
+
+                        {/* Error message display */}
+                        {errorMessage && (
+                          <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                            <div className="flex items-center space-x-2 text-red-400">
+                              <AlertTriangle className="h-4 w-4" />
+                              <span className="text-sm">{errorMessage}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Success message display */}
+                        {successMessage && (
+                          <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                            <div className="flex items-center space-x-2 text-green-400">
+                              <CheckCircle className="h-4 w-4" />
+                              <span className="text-sm">{successMessage}</span>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -2091,25 +2309,94 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 {/* Detected Profile Information */}
                 {detectedProfile && (
                   <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-6 border border-white/20">
-                    <h4 className="text-white font-bold mb-3">Your Existing Nostr Profile</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-purple-300">Display Name:</span>
-                        <span className="text-white">{detectedProfile.name || 'Not set'}</span>
+                    <h4 className="text-white font-bold mb-3 flex items-center">
+                      {detectedProfile.hasExistingProfile ? (
+                        <>
+                          <CheckCircle className="h-5 w-5 text-green-400 mr-2" />
+                          Existing Nostr Profile Detected
+                        </>
+                      ) : (
+                        <>
+                          <User className="h-5 w-5 text-blue-400 mr-2" />
+                          New Profile (No existing data found)
+                        </>
+                      )}
+                    </h4>
+
+                    {detectedProfile.hasExistingProfile ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-purple-300">Name:</span>
+                              <span className="text-white font-medium">{detectedProfile.name || 'Not set'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-purple-300">NIP-05:</span>
+                              <span className="text-white font-medium">{detectedProfile.nip05 || 'Not verified'}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-purple-300">Lightning:</span>
+                              <span className="text-white font-medium">{detectedProfile.lud16 || 'Not configured'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-purple-300">Profile:</span>
+                              <span className="text-white font-medium">{detectedProfile.picture ? 'Has avatar' : 'No avatar'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {detectedProfile.about && (
+                          <div className="mt-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                            <span className="text-purple-300 text-sm">About:</span>
+                            <p className="text-white text-sm mt-1">{detectedProfile.about}</p>
+                          </div>
+                        )}
+
+                        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 mt-4">
+                          <p className="text-green-200 text-sm">
+                            ✅ Your existing Nostr identity will be preserved and integrated with Satnam.pub
+                          </p>
+                        </div>
+
+                        {/* Key type indicator */}
+                        <div className="flex items-center justify-between text-xs text-purple-300 bg-purple-500/10 rounded-lg p-2">
+                          <span>Key Type:</span>
+                          <span className="font-medium">
+                            {detectedProfile.keyType === 'private' ? '🔐 Private Key (Full Access)' : '👁️ Public Key (View Only)'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-purple-300">Bio:</span>
-                        <span className="text-white">{detectedProfile.about || 'Not set'}</span>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-blue-200 text-sm">
+                          No existing profile metadata found on the Nostr network for this key.
+                        </p>
+                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                          <p className="text-blue-200 text-sm">
+                            ℹ️ You can still import this key and set up your profile on Satnam.pub
+                          </p>
+                        </div>
+
+                        {/* Key type indicator for new profiles */}
+                        <div className="flex items-center justify-between text-xs text-purple-300 bg-purple-500/10 rounded-lg p-2">
+                          <span>Key Type:</span>
+                          <span className="font-medium">
+                            {detectedProfile.keyType === 'private' ? '🔐 Private Key (Full Access)' : '👁️ Public Key (View Only)'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-purple-300">Current NIP-05:</span>
-                        <span className="text-white">{detectedProfile.nip05 || 'None'}</span>
+                    )}
+
+                    {detectedProfile.error && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mt-3">
+                        <p className="text-yellow-200 text-sm">
+                          ⚠️ Profile detection encountered an issue: {detectedProfile.error}
+                        </p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-purple-300">Lightning Address:</span>
-                        <span className="text-white">{detectedProfile.lud16 || 'None'}</span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 )}
 

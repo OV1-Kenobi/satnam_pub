@@ -23,6 +23,21 @@ import { SecureSessionManager } from "../../netlify/functions/security/session-m
 import { supabase } from "../../netlify/functions/supabase.js";
 
 /**
+ * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined} Environment variable value
+ */
+function getEnvVar(key) {
+  if (typeof import.meta !== "undefined") {
+    const metaWithEnv = /** @type {Object} */ (import.meta);
+    if (metaWithEnv.env) {
+      return metaWithEnv.env[key];
+    }
+  }
+  return process.env[key];
+}
+
+/**
  * @typedef {Object} InvitationResult
  * @property {boolean} success
  * @property {string} [error]
@@ -249,6 +264,76 @@ async function getUserCourseCredits(sessionToken) {
 }
 
 /**
+ * Add inviter to new user's contact list
+ * @param {string} inviteToken - Invitation token
+ * @param {string} accepterSessionToken - Accepter's session token
+ * @returns {Promise<void>}
+ */
+async function addInviterToContacts(inviteToken, accepterSessionToken) {
+  try {
+    // Get invitation details to find inviter information
+    const { data: invitation, error: inviteError } = await supabase
+      .from('authenticated_peer_invitations')
+      .select('hashed_inviter_id, invitation_data')
+      .eq('invite_token', inviteToken)
+      .single();
+
+    if (inviteError || !invitation) {
+      throw new Error('Invitation not found');
+    }
+
+    // Get inviter's profile information (privacy-preserving)
+    const { data: inviterProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('username, npub, nip05')
+      .eq('hashed_user_id', invitation.hashed_inviter_id)
+      .single();
+
+    if (profileError || !inviterProfile) {
+      console.warn('Inviter profile not found, skipping contact addition');
+      return;
+    }
+
+    // Use the group messaging API to add the contact
+    const contactData = {
+      action: 'add_contact',
+      npub: inviterProfile.npub,
+      displayName: inviterProfile.username || 'Satnam User',
+      nip05: inviterProfile.nip05,
+      familyRole: 'private', // Default role for peer invitations
+      trustLevel: 'known', // They invited us, so they're known
+      preferredEncryption: 'gift-wrap',
+      tags: ['peer-invitation', 'inviter'],
+      notes: `Added automatically from peer invitation: ${invitation.invitation_data?.personalMessage || 'Welcome to Satnam.pub!'}`
+    };
+
+    // Call the group messaging API to add the contact
+    const response = await fetch(`${getEnvVar('FRONTEND_URL') || 'https://satnam.pub'}/api/authenticated/group-messaging`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accepterSessionToken}`
+      },
+      body: JSON.stringify(contactData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to add contact: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(`Contact addition failed: ${result.error}`);
+    }
+
+    console.log('Successfully added inviter to new user\'s contact list');
+  } catch (error) {
+    console.error('Error adding inviter to contacts:', error);
+    throw error;
+  }
+}
+
+/**
  * Track invitation processing event (privacy-preserving)
  * @param {string} inviteToken - Invitation token
  * @param {string} eventType - Event type
@@ -372,6 +457,14 @@ export default async function handler(req, res) {
 
     const currentCredits = await getUserCourseCredits(sessionData.sessionToken);
 
+    // Add inviter to new user's contact list
+    try {
+      await addInviterToContacts(inviteToken, sessionData.sessionToken);
+    } catch (contactError) {
+      console.warn('Failed to add inviter to contacts:', contactError);
+      // Don't fail the invitation processing if contact addition fails
+    }
+
     // Privacy-first: No logging of user data (Master Context compliance)
     // Success metrics can be tracked through database analytics without exposing user data
 
@@ -381,6 +474,7 @@ export default async function handler(req, res) {
       currentCredits,
       welcomeMessage: result.welcomeMessage,
       personalMessage: result.personalMessage,
+      contactAdded: true, // Indicate that inviter was added to contacts
     });
   } catch (error) {
     // Privacy-first logging: no sensitive data exposure (Master Context compliance)

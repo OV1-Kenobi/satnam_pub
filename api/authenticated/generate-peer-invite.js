@@ -235,17 +235,141 @@ This invitation is privacy-first and secure. Click the link to get started!`;
 }
 
 /**
- * Send gift-wrapped DM via Nostr (placeholder implementation)
+ * Send gift-wrapped DM via Nostr with NIP-04 fallback
  * @param {string} giftWrappedContent - Message content
  * @param {string} recipientPubkey - Recipient's public key
  * @param {string} inviterNip05 - Inviter's NIP-05 identifier
- * @returns {Promise<boolean>} Success status
+ * @returns {Promise<{success: boolean, method: string, error?: string}>} Delivery result
  */
 async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip05) {
   try {
-    return true;
+    // Import required modules
+    const { SimplePool, nip04, nip59, finalizeEvent, getPublicKey } = await import('nostr-tools');
+    const { bytesToHex } = await import('@noble/hashes/utils');
+
+    // Generate ephemeral key for invitation sending
+    const ephemeralPrivateKey = crypto.getRandomValues(new Uint8Array(32));
+    const ephemeralPrivateKeyHex = bytesToHex(ephemeralPrivateKey);
+    const ephemeralPublicKey = getPublicKey(ephemeralPrivateKeyHex);
+
+    // Configure relays
+    const relays = [
+      'wss://relay.satnam.pub',
+      'wss://relay.damus.io',
+      'wss://nos.lol',
+      'wss://relay.nostr.band'
+    ];
+
+    const pool = new SimplePool();
+    let deliveryResult = { success: false, method: 'none', error: 'Unknown error' };
+
+    try {
+      // First attempt: NIP-59 Gift-Wrapped messaging
+      const baseEvent = {
+        kind: 4, // Direct message
+        pubkey: ephemeralPublicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['p', recipientPubkey],
+          ['message-type', 'invitation'],
+          ['encryption', 'gift-wrap'],
+          ['sender-nip05', inviterNip05]
+        ],
+        content: giftWrappedContent,
+      };
+
+      // Create gift-wrapped event using NIP-59
+      const giftWrappedEvent = await nip59.wrapEvent(
+        baseEvent,
+        recipientPubkey,
+        ephemeralPrivateKeyHex
+      );
+
+      // Publish gift-wrapped event to relays
+      const publishPromises = relays.map(async (relay) => {
+        try {
+          await pool.publish([relay], giftWrappedEvent);
+          return true;
+        } catch (error) {
+          console.warn(`Failed to publish gift-wrapped message to ${relay}:`, error);
+          return false;
+        }
+      });
+
+      const results = await Promise.all(publishPromises);
+      const successCount = results.filter(Boolean).length;
+
+      if (successCount > 0) {
+        deliveryResult = { success: true, method: 'gift-wrap' };
+        console.log(`Gift-wrapped invitation sent successfully to ${successCount}/${relays.length} relays`);
+      } else {
+        throw new Error('All gift-wrap relay publishes failed');
+      }
+
+    } catch (giftWrapError) {
+      console.warn('Gift-wrapped messaging failed, falling back to NIP-04:', giftWrapError);
+
+      try {
+        // Fallback: NIP-04 Encrypted DM
+        const encryptedContent = await nip04.encrypt(
+          giftWrappedContent,
+          recipientPubkey,
+          ephemeralPrivateKeyHex
+        );
+
+        const dmEvent = {
+          kind: 4, // Direct message
+          pubkey: ephemeralPublicKey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ['p', recipientPubkey],
+            ['message-type', 'invitation'],
+            ['encryption', 'nip04'],
+            ['sender-nip05', inviterNip05]
+          ],
+          content: encryptedContent,
+        };
+
+        const signedDMEvent = finalizeEvent(dmEvent, ephemeralPrivateKey);
+
+        // Publish NIP-04 encrypted DM to relays
+        const fallbackPromises = relays.map(async (relay) => {
+          try {
+            await pool.publish([relay], signedDMEvent);
+            return true;
+          } catch (error) {
+            console.warn(`Failed to publish NIP-04 message to ${relay}:`, error);
+            return false;
+          }
+        });
+
+        const fallbackResults = await Promise.all(fallbackPromises);
+        const fallbackSuccessCount = fallbackResults.filter(Boolean).length;
+
+        if (fallbackSuccessCount > 0) {
+          deliveryResult = { success: true, method: 'nip04' };
+          console.log(`NIP-04 invitation sent successfully to ${fallbackSuccessCount}/${relays.length} relays`);
+        } else {
+          deliveryResult = { success: false, method: 'failed', error: 'All relay publishes failed' };
+        }
+
+      } catch (nip04Error) {
+        console.error('Both gift-wrap and NIP-04 messaging failed:', nip04Error);
+        deliveryResult = { success: false, method: 'failed', error: 'All messaging methods failed' };
+      }
+    }
+
+    // Clean up pool connections
+    pool.close(relays);
+
+    // Zero out ephemeral key for security
+    ephemeralPrivateKey.fill(0);
+
+    return deliveryResult;
+
   } catch (error) {
-    return false;
+    console.error('Critical error in sendGiftWrappedDM:', error);
+    return { success: false, method: 'error', error: error.message };
   }
 }
 
@@ -489,15 +613,20 @@ export default async function handler(req, res) {
           inviteRequest.recipientNostrPubkey
         );
 
-        const dmSent = await sendGiftWrappedDM(
+        const dmResult = await sendGiftWrappedDM(
           giftWrappedMessage,
           inviteRequest.recipientNostrPubkey,
           inviteRequest.inviterNip05
         );
 
-        if (!dmSent) {
+        if (!dmResult.success) {
+          console.warn('Direct message sending failed:', dmResult.error);
           qrCodeImage = await generateQRCode(inviteUrl);
           giftWrappedMessage = null;
+        } else {
+          console.log(`Invitation sent successfully via ${dmResult.method}`);
+          // For successful DM sending, we still generate QR as backup
+          qrCodeImage = await generateQRCode(inviteUrl);
         }
       } else {
         qrCodeImage = await generateQRCode(inviteUrl);

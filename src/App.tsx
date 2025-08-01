@@ -6,7 +6,7 @@ import {
   Users,
   Zap
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ContactsManagerModal } from './components/ContactsManagerModal';
 import DynasticSovereignty from "./components/DynasticSovereignty";
 import EducationPlatform from "./components/EducationPlatform";
@@ -29,6 +29,7 @@ import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { useAuth } from "./hooks/useAuth";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
+import { validateInvitation } from "./lib/invitation-validator";
 
 function App() {
   const [currentView, setCurrentView] = useState<
@@ -65,6 +66,11 @@ function App() {
   const [showContactsModal, setShowContactsModal] = useState(false);
   const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'automated-payments' | 'contacts' | 'ln-node-management' | null>(null);
 
+  // Invitation handling state
+  const [invitationToken, setInvitationToken] = useState<string | null>(null);
+  const [invitationDetails, setInvitationDetails] = useState<any>(null);
+  const [isInvitedUser, setIsInvitedUser] = useState(false);
+
   // Authentication hook
   const { authenticated, loading, familyId } = useAuth();
 
@@ -73,6 +79,47 @@ function App() {
     enabled: authenticated, // Only run when user is authenticated
     autoRun: true // Auto-run cleanup when enabled
   });
+
+  // Check for invitation token in URL on component mount
+  useEffect(() => {
+    const checkForInvitationToken = async () => {
+      try {
+        // Check URL parameters for invitation token
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token') || urlParams.get('invite');
+
+        // Also check for /invite/[token] path pattern
+        const pathMatch = window.location.pathname.match(/\/invite\/([^\/]+)/);
+        const pathToken = pathMatch ? pathMatch[1] : null;
+
+        const inviteToken = token || pathToken;
+
+        if (inviteToken) {
+          console.log('Invitation token detected:', inviteToken);
+          setInvitationToken(inviteToken);
+
+          // Validate the invitation token
+          const details = await validateInvitation(inviteToken);
+          if (details.isValid) {
+            setInvitationDetails(details);
+            setIsInvitedUser(true);
+            // Automatically navigate to Identity Forge for invited users
+            setCurrentView('forge');
+            console.log('Valid invitation detected, redirecting to Identity Forge');
+          } else {
+            console.warn('Invalid invitation token:', details.error);
+            // Clear invalid token from URL
+            const newUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+          }
+        }
+      } catch (error) {
+        console.error('Error processing invitation token:', error);
+      }
+    };
+
+    checkForInvitationToken();
+  }, []); // Run only once on mount
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
@@ -200,6 +247,9 @@ function App() {
         <IdentityForge
           onComplete={() => setCurrentView("nostr-ecosystem")}
           onBack={() => setCurrentView("landing")}
+          invitationToken={invitationToken}
+          invitationDetails={invitationDetails}
+          isInvitedUser={isInvitedUser}
         />
       </PageWrapper>
     );

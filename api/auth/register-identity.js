@@ -121,38 +121,66 @@ function extractClientInfo(event) {
  */
 function validateRegistrationData(userData) {
   const errors = [];
-  
+
   if (!userData || typeof userData !== 'object') {
     errors.push({ field: 'body', message: 'Request body must be an object' });
     return { success: false, errors };
   }
-  
+
   // Required fields validation
   if (!userData.username || typeof userData.username !== 'string' || userData.username.trim().length < 3) {
     errors.push({ field: 'username', message: 'Username must be at least 3 characters long' });
   }
-  
-  if (!userData.publicKey || typeof userData.publicKey !== 'string' || userData.publicKey.length < 60) {
-    errors.push({ field: 'publicKey', message: 'Valid public key is required' });
+
+  if (!userData.password || typeof userData.password !== 'string' || userData.password.length < 8) {
+    errors.push({ field: 'password', message: 'Password must be at least 8 characters long' });
   }
-  
+
+  if (userData.password !== userData.confirmPassword) {
+    errors.push({ field: 'confirmPassword', message: 'Passwords do not match' });
+  }
+
+  // Validate npub (new format from Identity Forge)
+  if (!userData.npub || typeof userData.npub !== 'string' || !userData.npub.startsWith('npub1')) {
+    errors.push({ field: 'npub', message: 'Valid npub is required' });
+  }
+
+  // Validate encrypted nsec (should be present for both generated and imported accounts)
+  if (!userData.encryptedNsec || typeof userData.encryptedNsec !== 'string') {
+    errors.push({ field: 'encryptedNsec', message: 'Encrypted private key is required' });
+  }
+
   // Username format validation
   if (userData.username && !/^[a-zA-Z0-9_-]+$/.test(userData.username)) {
     errors.push({ field: 'username', message: 'Username can only contain letters, numbers, underscores, and hyphens' });
   }
-  
+
+  // NIP-05 validation (should match username@satnam.pub)
+  if (userData.nip05 && userData.nip05 !== `${userData.username}@satnam.pub`) {
+    errors.push({ field: 'nip05', message: 'NIP-05 must match username@satnam.pub format' });
+  }
+
   if (errors.length > 0) {
     return { success: false, errors };
   }
-  
+
   return {
     success: true,
     data: {
       username: userData.username.trim().toLowerCase(),
-      publicKey: userData.publicKey.trim(),
+      password: userData.password,
+      npub: userData.npub.trim(),
+      encryptedNsec: userData.encryptedNsec,
+      nip05: userData.nip05 || `${userData.username.trim().toLowerCase()}@satnam.pub`,
+      lightningAddress: userData.lightningAddress,
       role: userData.role || 'private',
       displayName: userData.displayName?.trim(),
-      bio: userData.bio?.trim()
+      bio: userData.bio?.trim(),
+      generateInviteToken: userData.generateInviteToken || false,
+      invitationToken: userData.invitationToken || null,
+      // Support for imported accounts
+      isImportedAccount: userData.isImportedAccount || false,
+      detectedProfile: userData.detectedProfile || null
     }
   };
 }
@@ -238,30 +266,58 @@ async function checkUsernameAvailability(username) {
  */
 async function createUserProfile(userData, hashedIdentifier, spendingLimits) {
   try {
+    // Create profile data with new Identity Forge fields
     const profileData = {
-      id: hashedIdentifier,
+      id: hashedIdentifier, // Use hashed identifier as primary key
       username: userData.username,
-      display_name: userData.displayName || userData.username,
-      bio: userData.bio || null,
+      npub: userData.npub,
+      encrypted_nsec: userData.encryptedNsec,
+      nip05: userData.nip05,
+      lightning_address: userData.lightningAddress || null,
       role: userData.role,
       spending_limits: spendingLimits,
-      public_key_hash: await generatePrivacyPreservingHash(userData.publicKey),
-      is_discoverable: userData.makeDiscoverable || false,
+      privacy_settings: {
+        privacy_level: 'enhanced',
+        zero_knowledge_enabled: true,
+        is_imported_account: userData.isImportedAccount || false,
+        detected_profile_data: userData.detectedProfile || null
+      },
+      is_active: true, // New users are active by default
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
-    
+
+    // Insert into user_identities table (the correct table for Identity Forge)
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('user_identities')
       .insert([profileData])
       .select()
       .single();
-    
+
     if (error) {
-      console.error('User profile creation failed:', error);
-      return { success: false, error: 'Failed to create user profile' };
+      console.error('User identity creation failed:', error);
+      return { success: false, error: 'Failed to create user identity' };
     }
-    
+
+    // Also create a profile entry for compatibility with existing systems
+    const profileEntry = {
+      id: hashedIdentifier,
+      username: userData.username,
+      npub: userData.npub,
+      nip05: userData.nip05,
+      lightning_address: userData.lightningAddress || null,
+      is_active: true
+    };
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert([profileEntry]);
+
+    if (profileError) {
+      console.warn('Profile table insertion failed (non-critical):', profileError);
+      // Don't fail registration if profile table insertion fails
+    }
+
     return { success: true, data };
   } catch (error) {
     console.error('User profile creation error:', error);
@@ -464,6 +520,38 @@ export default async function handler(event, context) {
         environment: getEnvVar('NODE_ENV') || 'production'
       }
     };
+
+    // Process peer invitation if provided
+    if (userData.invitationToken) {
+      try {
+        // Process the invitation and award credits
+        const invitationResponse = await fetch(`${getEnvVar('FRONTEND_URL') || 'https://satnam.pub'}/api/authenticated/process-invitation`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwtToken}`
+          },
+          body: JSON.stringify({
+            inviteToken: userData.invitationToken
+          })
+        });
+
+        if (invitationResponse.ok) {
+          const invitationResult = await invitationResponse.json();
+          if (invitationResult.success) {
+            responseData.invitationProcessed = {
+              creditsAwarded: invitationResult.creditsAwarded,
+              welcomeMessage: invitationResult.welcomeMessage,
+              personalMessage: invitationResult.personalMessage
+            };
+            console.log('Invitation processed successfully during registration');
+          }
+        }
+      } catch (invitationError) {
+        console.warn('Failed to process invitation during registration:', invitationError);
+        // Don't fail registration if invitation processing fails
+      }
+    }
 
     // Family federation invitation handling
     if (validatedData.invitationCode || validatedData.familyId) {
