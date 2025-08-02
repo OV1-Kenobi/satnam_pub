@@ -9,17 +9,9 @@
  * ✅ Integration with unified messaging service architecture
  */
 
-import { createClient } from "@supabase/supabase-js";
 import { nip19 } from "../../../src/lib/nostr-browser";
 import { PrivacyUtils } from "../privacy/encryption";
-
-import { getEnvVar } from "../utils/env.js";
-
-// Initialize Supabase client for session management
-const supabase = createClient(
-  getEnvVar("SUPABASE_URL")!,
-  getEnvVar("SUPABASE_SERVICE_ROLE_KEY")!
-);
+import { supabase } from "../supabase"; // Use singleton client
 
 /**
  * MASTER CONTEXT COMPLIANCE: Galois Field operations for cryptographic security

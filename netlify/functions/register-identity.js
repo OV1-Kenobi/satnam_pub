@@ -7,6 +7,7 @@
  * CONSOLIDATED VERSION - Complete database schema support with comprehensive error handling
  */
 
+import { createHashedUserData, verifyPrivacyCompliance } from "../../lib/security/privacy-hashing.js";
 import { supabase } from "./supabase.js";
 
 export const handler = async (event) => {
@@ -111,44 +112,81 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
-    // Store user data in existing user_identities table
+    // 1. Create hashed user data for privacy-first storage
+    const hashedProfileData = await createHashedUserData({
+      username: userData.username,
+      npub: userData.npub,
+      nip05: userData.nip05 || `${userData.username}@satnam.pub`,
+      role: 'private'
+    });
+
+    // Store user profile in profiles table (PRIVACY-FIRST: hashed sensitive data)
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: userId, // Same ID for consistency across tables
+        username: hashedProfileData.username, // Unencrypted for user management
+        display_name: hashedProfileData.username, // Use username as display name initially
+        bio: '', // Empty bio initially
+        picture: '', // Empty picture initially
+        user_salt: hashedProfileData.user_salt, // Individual user salt
+        hashed_npub: hashedProfileData.hashed_npub, // HASHED: No plaintext npub
+        hashed_nip05: hashedProfileData.hashed_nip05, // HASHED: No plaintext nip05
+        lightning_address: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null),
+        is_active: true,
+        created_at: hashedProfileData.created_at,
+        updated_at: hashedProfileData.updated_at
+      });
+
+    if (profileError) {
+      console.error('Failed to store user profile:', profileError);
+      throw new Error('Failed to store user profile');
+    }
+
+    // 2. Create comprehensive hashed identity data with UNIQUE salt
+    const hashedIdentityData = await createHashedUserData({
+      username: userData.username,
+      npub: userData.npub,
+      nip05: userData.nip05 || `${userData.username}@satnam.pub`,
+      encryptedNsec: userData.encryptedNsec,
+      role: 'private'
+    }); // SECURITY FIX: Generate unique salt (no reuse)
+
+    // Store user identity in user_identities table (PRIVACY-FIRST: all sensitive data hashed)
     const { error: userError } = await supabase
       .from('user_identities')
       .insert({
-        // Standard UUID primary key
-        id: userId,
-
-        // Identity data
-        username: userData.username,
-        npub: userData.npub,
-        encrypted_nsec: userData.encryptedNsec,
-
-        // Network integration
-        nip05: userData.nip05 || `${userData.username}@satnam.pub`,
+        id: userId, // Same ID as profile for consistency
+        username: hashedIdentityData.username, // Unencrypted for user management
+        user_salt: hashedIdentityData.user_salt, // Individual user salt
+        hashed_npub: hashedIdentityData.hashed_npub, // HASHED: No plaintext npub
+        hashed_nip05: hashedIdentityData.hashed_nip05, // HASHED: No plaintext nip05
+        hashed_encrypted_nsec: hashedIdentityData.hashed_encrypted_nsec, // HASHED: No plaintext encrypted nsec
         lightning_address: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null),
-
-        // User sovereignty
-        role: 'private', // Default role for individual users
-        spending_limits: {
+        role: hashedIdentityData.role, // Default role for individual users
+        spending_limits: JSON.stringify({
           daily_limit: -1, // Unlimited for private users
           requires_approval: false
-        },
-        privacy_settings: {
+        }),
+        privacy_settings: JSON.stringify({
           privacy_level: 'enhanced',
           zero_knowledge_enabled: true
-        },
-
-        // Access control
-        is_active: true,
-
-        // Timestamps
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        }),
+        is_active: hashedIdentityData.is_active,
+        created_at: hashedIdentityData.created_at,
+        updated_at: hashedIdentityData.updated_at
       });
 
     if (userError) {
-      console.error('Failed to store user identity data:', userError);
-      throw new Error('Failed to store user identity data');
+      console.error('Failed to store user identity:', userError);
+
+      // Cleanup: Remove the profile if identity creation failed
+      await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
+
+      throw new Error('Failed to store user identity');
     }
 
     console.log('✅ Successfully stored user identity data:', {
@@ -158,16 +196,23 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
-    // 4. Create NIP-05 record for verification
+    // 4. Create NIP-05 record with UNIQUE salt (SECURITY FIX: No salt reuse)
+    const nip05Salt = await generateUserSalt(); // Generate unique salt for nip05_records
+    const hashedNip05Data = await createHashedUserData({
+      username: userData.username,
+      npub: userData.npub
+    }, nip05Salt);
+
     const { error: nip05Error } = await supabase
       .from('nip05_records')
       .insert({
-        name: userData.username,
-        pubkey: userData.npub,
-        domain: 'satnam.pub', // NEW COLUMN - now supported
+        name: userData.username, // Unencrypted for NIP-05 resolution
+        user_salt: hashedNip05Data.user_salt, // UNIQUE salt (no reuse)
+        hashed_pubkey: hashedNip05Data.hashed_npub, // HASHED with unique salt
+        domain: 'satnam.pub',
         is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: hashedNip05Data.created_at,
+        updated_at: hashedNip05Data.updated_at
       });
 
     if (nip05Error) {
@@ -179,26 +224,33 @@ export const handler = async (event) => {
       throw new Error('Failed to create NIP-05 record');
     }
 
-    console.log('✅ User registered successfully in user_identities table:', {
+    // 5. Verify privacy compliance before response
+    const privacyCompliant = verifyPrivacyCompliance(hashedIdentityData);
+    if (!privacyCompliant) {
+      console.error('❌ PRIVACY VIOLATION: Sensitive data not properly hashed');
+      throw new Error('Privacy compliance verification failed');
+    }
+
+    console.log('✅ User registered successfully with privacy-first hashing:', {
       userId: userId,
       username: userData.username,
-      npub: userData.npub,
+      hasHashedData: true,
       table: 'user_identities',
       timestamp: new Date().toISOString()
     });
 
-    // Success response with user_identities architecture data
+    // Success response (PRIVACY-FIRST: No sensitive data in response)
     const responseData = {
       success: true,
-      message: "Identity registered successfully in user_identities table",
+      message: "Identity registered successfully with privacy-first protection",
       user: {
         id: userId, // Standard UUID identifier
-        username: userData.username,
-        npub: userData.npub,
-        nip05: userData.nip05 || `${userData.username}@satnam.pub`,
+        username: userData.username, // Only unencrypted field
+        nip05: userData.nip05 || `${userData.username}@satnam.pub`, // Public identifier
         lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null),
         registeredAt: new Date().toISOString(),
         role: 'private', // Individual user role
+        privacyProtected: true, // Indicates all sensitive data is hashed
         privacyLevel: 'enhanced',
         zeroKnowledgeEnabled: true
       },

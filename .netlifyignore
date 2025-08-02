@@ -78,7 +78,6 @@ Thumbs.db
 netlify/functions/**/*.js
 !netlify/functions/nostr-otp-service.js
 !netlify/functions/register-identity.js
-!netlify/functions/supabase.js
 
 # Keep only essential functions for production
 # Exclude development-only functions
@@ -90,3 +89,24 @@ netlify/functions/enhanced-rewards.ts
 # Exclude privacy examples and demos
 netlify/functions/examples/
 netlify/functions/privacy/lnproxy-privacy.ts
+
+# Additional storage optimizations
+scripts/
+database/
+migrations/
+*.sql
+*.md
+!README.md
+
+# Large development files
+**/*.log
+**/*.cache
+**/coverage/
+**/dist/
+**/build/
+
+# Duplicate or legacy files
+lib/supabase-server.ts
+**/*-backup.*
+**/*-old.*
+**/*-legacy.*

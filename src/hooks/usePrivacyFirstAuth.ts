@@ -16,14 +16,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AuthCredentials,
   AuthResult,
+  UserIdentity,
   userIdentitiesAuth,
 } from "../lib/auth/user-identities-auth";
-// Legacy imports for backward compatibility
-import {
-  createPrivacyFirstAuth,
-  PrivacyUser,
-  SecureSession,
-} from "../lib/auth/privacy-first-auth.js";
 import { FamilyFederationUser } from "../types/auth";
 
 // Helper function to extract pubkey from nsec (zero-knowledge protocol)
@@ -53,8 +48,8 @@ async function extractPubkeyFromNsec(nsecKey: string): Promise<string | null> {
 }
 
 interface PrivacyAuthState {
-  user: PrivacyUser | null;
-  session: SecureSession | null;
+  user: UserIdentity | null;
+  session: any | null; // Generic session object
   authenticated: boolean;
   loading: boolean;
   error: string | null;
@@ -103,7 +98,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     requiresOnboarding: false,
   });
 
-  const auth = createPrivacyFirstAuth();
+  // Use userIdentitiesAuth directly instead of deprecated createPrivacyFirstAuth
 
   // Check existing session on mount - FIXED: Only run once
   useEffect(() => {
@@ -115,16 +110,33 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
 
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        const session = await auth.getSession();
-        if (session && session.expiresAt > Date.now()) {
-          // Valid session found
-          if (mounted) {
-            setState((prev) => ({
-              ...prev,
-              session,
-              authenticated: true,
-              loading: false,
-            }));
+        // Check for existing session using userIdentitiesAuth
+        const sessionToken = localStorage.getItem("auth_token");
+        if (sessionToken) {
+          const sessionResult = await userIdentitiesAuth.validateSession(
+            sessionToken
+          );
+          if (sessionResult.success && sessionResult.user) {
+            // Valid session found
+            if (mounted) {
+              setState((prev) => ({
+                ...prev,
+                user: sessionResult.user,
+                session: { token: sessionToken },
+                authenticated: true,
+                loading: false,
+              }));
+            }
+          } else {
+            // Invalid session - clear it
+            localStorage.removeItem("auth_token");
+            if (mounted) {
+              setState((prev) => ({
+                ...prev,
+                authenticated: false,
+                loading: false,
+              }));
+            }
           }
         } else {
           if (mounted) {

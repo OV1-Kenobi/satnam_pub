@@ -19,6 +19,7 @@ import {
   Zap
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ApiClient } from '../../utils/api-client.js';
 import { useCryptoOperations } from "../hooks/useCrypto";
 import { NostrProfileService } from "../lib/nostr-profile-service";
@@ -62,6 +63,24 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   // Zero-Knowledge Ephemeral Nsec Display (Master Context Compliance)
   const [ephemeralNsec, setEphemeralNsec] = useState<string | null>(null);
+  const [nsecProtected, setNsecProtected] = useState(false); // Prevents premature clearing
+
+  // Protected setter that prevents clearing when nsec should be preserved
+  const setEphemeralNsecProtected = (value: string | null, force: boolean = false) => {
+    // If trying to clear (set to null) but nsec is protected and not forced, prevent it
+    if (value === null && nsecProtected && !force) {
+      return; // Silently block the clear attempt
+    }
+
+    // If setting a value, enable protection
+    if (value !== null) {
+      setNsecProtected(true);
+    } else if (force) {
+      setNsecProtected(false); // Disable protection when force clearing
+    }
+
+    setEphemeralNsec(value);
+  };
   const [nsecDisplayed, setNsecDisplayed] = useState(false);
   const [nsecSecured, setNsecSecured] = useState(false);
   const [showNsecConfirmation, setShowNsecConfirmation] = useState(false);
@@ -116,17 +135,31 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
+  // Use refs to track current values for cleanup without triggering effect re-runs
+  const ephemeralNsecRef = useRef<string | null>(null);
+  const importedNsecRef = useRef<string>('');
+
+  // Update refs when state changes (no cleanup function)
+  useEffect(() => {
+    ephemeralNsecRef.current = ephemeralNsec;
+  }, [ephemeralNsec]);
+
+  useEffect(() => {
+    importedNsecRef.current = importedNsec;
+  }, [importedNsec]);
+
+  // Component unmount cleanup - NO dependencies to prevent re-runs during state changes
   useEffect(() => {
     return () => {
-      // Critical: Secure cleanup of ephemeral nsec on component unmount
-      if (ephemeralNsec) {
-        secureMemoryCleanup(ephemeralNsec);
-        setEphemeralNsec(null);
+      // Critical: Secure cleanup of ephemeral nsec on component unmount ONLY
+      if (ephemeralNsecRef.current) {
+        secureMemoryCleanup(ephemeralNsecRef.current);
+        // Don't call setEphemeralNsecProtected here - component is unmounting
       }
       // Critical: Secure cleanup of imported nsec from memory
-      if (importedNsec) {
-        secureMemoryCleanup(importedNsec);
-        setImportedNsec('');
+      if (importedNsecRef.current) {
+        secureMemoryCleanup(importedNsecRef.current);
+        // Don't call setImportedNsec here - component is unmounting
       }
       // Clear any active timers using ref-based approach
       if (timerStateRef.current.cleanupTimer) {
@@ -138,7 +171,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         timerStateRef.current.countdown = null;
       }
     };
-  }, [ephemeralNsec, importedNsec, secureMemoryCleanup]); // Added secureMemoryCleanup dependency
+  }, []); // EMPTY dependencies - only runs on mount/unmount
 
   // Auto-cleanup timer for ephemeral nsec (5-minute maximum exposure for manual recording)
   // Split into separate useEffects to prevent infinite loops
@@ -164,7 +197,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
 
         // Critical: Auto-clear nsec after 5 minutes for security (only if not in registration)
-        setEphemeralNsec(null);
+        setEphemeralNsecProtected(null, true); // Force clear after timer expires
         setNsecDisplayed(false);
         setShowNsecConfirmation(false);
         setTimeRemaining(0);
@@ -205,6 +238,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       };
     }
   }, [ephemeralNsec, nsecDisplayed, nsecSecured]); // Dependencies exclude timer state to prevent re-runs
+
+
 
   // Timer cleanup effect - runs when nsec is secured or hidden
   useEffect(() => {
@@ -253,6 +288,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     // User confirms they have secured their nsec
     setNsecSecured(true);
     setShowNsecConfirmation(false);
+
+    // Disable protection since user has secured their key
+    setNsecProtected(false);
 
     // CRITICAL FIX: DO NOT clear ephemeralNsec here!
     // The ephemeralNsec must persist until AFTER successful encryption in registerIdentity()
@@ -378,7 +416,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           npub = nip19.npubEncode(publicKey);
 
           // Store ephemeral nsec for full access (zero-knowledge compliance)
-          setEphemeralNsec(cleanedKey);
+          setEphemeralNsecProtected(cleanedKey);
 
           console.log('✅ Private key imported successfully');
         } catch (decodeError) {
@@ -440,7 +478,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       secureMemoryCleanup(importedNsec);
       secureMemoryCleanup(ephemeralNsec);
       setImportedNsec('');
-      setEphemeralNsec(null);
+      setEphemeralNsecProtected(null, true); // Force clear on error
     } finally {
       setIsDetectingProfile(false);
     }
@@ -675,13 +713,19 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       setGenerationStep("Finalizing secure identity...");
 
       // STEP 5: Update state with cryptographically secure keys
-      setFormData((prev) => ({
-        ...prev,
-        pubkey: keyPair.npub
-      }));
+      // CRITICAL FIX: Use flushSync to prevent React state batching timing issues
+      flushSync(() => {
+        // Set ephemeralNsec FIRST to ensure it's available when pubkey triggers re-render
+        setEphemeralNsecProtected(keyPair.nsec);
+      });
 
-      // Store ephemeral nsec for user backup
-      setEphemeralNsec(keyPair.nsec);
+      flushSync(() => {
+        // Set pubkey SECOND to trigger the key display section render
+        setFormData((prev) => ({
+          ...prev,
+          pubkey: keyPair.npub
+        }));
+      });
 
       setGenerationProgress(100);
       setGenerationStep("Cryptographic identity forged successfully!");
@@ -762,7 +806,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       // CRITICAL: Secure cleanup of ephemeral nsec from memory immediately after encryption
       secureMemoryCleanup(ephemeralNsec);
-      setEphemeralNsec('');
+      setEphemeralNsecProtected('', true); // Force clear after successful registration
 
       for (let i = 30; i <= 80; i++) {
         setGenerationProgress(i);
@@ -2455,7 +2499,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       setShowMigrationConsent(false);
                       setMigrationMode('generate');
                       setDetectedProfile(null);
-                      setEphemeralNsec(null);
+                      setEphemeralNsecProtected(null, true); // Force clear when canceling migration
                     }}
                     className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
                   >

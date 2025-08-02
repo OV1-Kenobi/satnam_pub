@@ -166,3 +166,23 @@
 # Scheduled functions for cleanup tasks (only essential ones)
 [functions."cleanup-expired-credentials"]
   schedule = "0 */6 * * *"  # Run every 6 hours
+
+# Build optimization settings
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
+
+# Function size limits and optimization
+[functions.settings]
+  # Reduce function size limits to catch bloat early
+  max_size = "50MB"  # Default is 50MB, keeping it explicit

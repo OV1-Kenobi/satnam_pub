@@ -1,22 +1,23 @@
 import {
-    AlertTriangle,
-    ArrowRight,
-    CheckCircle,
-    Eye,
-    EyeOff,
-    Info,
-    Key,
-    MessageCircle,
-    RefreshCw,
-    Send,
-    Shield,
-    Wallet,
-    X,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  Info,
+  Key,
+  MessageCircle,
+  RefreshCw,
+  Send,
+  Shield,
+  Wallet,
+  X,
 } from "lucide-react";
 import React, { useState } from "react";
 import { useFamilyFederationAuth } from "../../hooks/useFamilyFederationAuth";
 import type { NWCAuthResponse, VerificationResponse } from "../../types/auth";
 import { handleAuthenticationSuccess, isSuccessfulAuthResponse } from '../../utils/authSuccessHandler.js';
+import { userIdentitiesAuth } from "../../lib/auth/user-identities-auth";
 
 interface NWCOTPSignInProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ const NWCOTPSignIn: React.FC<NWCOTPSignInProps> = ({
   onCreateNew,
 }) => {
   const { login } = useFamilyFederationAuth();
-  
+
   // UI State
   const [showOTPFlow, setShowOTPFlow] = useState(false);
   const [showNWCFlow, setShowNWCFlow] = useState(false);
@@ -119,7 +120,7 @@ const NWCOTPSignIn: React.FC<NWCOTPSignInProps> = ({
 
     try {
       const requestBody: any = {};
-      
+
       if (nipOrNpub.includes("@")) {
         requestBody.nip05 = nipOrNpub;
       } else if (nipOrNpub.startsWith("npub")) {
@@ -142,7 +143,7 @@ const NWCOTPSignIn: React.FC<NWCOTPSignInProps> = ({
         setOtpKey(result.data.otpKey);
         setOtpSent(true);
         setSuccess("OTP sent successfully! Check your Nostr DMs.");
-        
+
         // For demo purposes, show the OTP
         if (result.data._demo_otp) {
           setSuccess(`Demo OTP: ${result.data._demo_otp} (Check your Nostr DMs in production)`);

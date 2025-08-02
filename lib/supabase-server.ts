@@ -1,4 +1,3 @@
-
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -6,7 +5,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -16,7 +15,8 @@ function getEnvVar(key: string): string | undefined {
 
 /**
  * Server-side Supabase client for migrations and scripts
- * Uses process.env instead of import.meta.env for Node.js compatibility
+ * DEPRECATED: Use the singleton client from src/lib/supabase.ts instead
+ * This file is kept only for legacy migration script compatibility
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -34,13 +34,14 @@ const defaultKey = "your-anon-key";
 const finalUrl = supabaseUrl || defaultUrl;
 const finalKey = supabaseKey || defaultKey;
 
-console.log("🔧 Supabase Server Client Configuration:");
+console.log("⚠️  DEPRECATED: Using lib/supabase-server.ts");
+console.log("   Consider migrating to src/lib/supabase.ts singleton");
 console.log(`   URL: ${finalUrl}`);
 console.log(
   `   Key: ${finalKey ? finalKey.substring(0, 20) + "..." : "not set"}`
 );
 
-// Create server-side Supabase client
+// Create server-side Supabase client (LEGACY - for migration scripts only)
 export const supabase = createClient(finalUrl, finalKey, {
   auth: {
     persistSession: false, // Server-side doesn't need session persistence
@@ -50,6 +51,7 @@ export const supabase = createClient(finalUrl, finalKey, {
   global: {
     headers: {
       "x-client-info": "satnam-migration-tools@1.0.0",
+      "x-deprecated": "true",
     },
   },
 });

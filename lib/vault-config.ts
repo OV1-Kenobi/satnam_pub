@@ -356,8 +356,16 @@ export class VaultConfigManager {
 
   /**
    * Create fallback Supabase client if main client is not available
+   * SECURITY: Only creates new client as last resort to prevent multiple GoTrueClient instances
    */
   private createFallbackClient(): void {
+    console.warn(
+      "⚠️  Creating fallback Supabase client - this should be avoided"
+    );
+    console.warn(
+      "   Consider using the singleton client from src/lib/supabase.ts instead"
+    );
+
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -368,7 +376,19 @@ export class VaultConfigManager {
       );
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false, // Prevent session conflicts with main client
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          "x-client-info": "vault-fallback-client@1.0.0",
+          "x-warning": "fallback-client-should-be-avoided",
+        },
+      },
+    });
     console.log("✅ Fallback Supabase client created for vault operations");
   }
 

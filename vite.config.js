@@ -77,7 +77,7 @@ export default defineConfig({
     minify: isProduction ? "terser" : false,
     target: "esnext",
     chunkSizeWarningLimit: 600, // Slightly increase from 500kb to 600kb
-    
+
     rollupOptions: {
       output: {
         manualChunks: (id) => {
