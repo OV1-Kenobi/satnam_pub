@@ -31,6 +31,10 @@ docs/
 # Migration files (not needed in production)
 **/migrations/
 database/
+# CRITICAL FIX: Ensure crypto and security utilities are NOT excluded
+!lib/security/
+!utils/crypto-factory.ts
+!src/hooks/useCrypto.ts
 
 # Example and demo files
 **/examples/
@@ -78,6 +82,10 @@ Thumbs.db
 netlify/functions/**/*.js
 !netlify/functions/nostr-otp-service.js
 !netlify/functions/register-identity.js
+!netlify/functions/supabase.js
+# CRITICAL FIX: Ensure essential utility JS files are not excluded
+!lib/**/*.js
+!utils/**/*.js
 
 # Keep only essential functions for production
 # Exclude development-only functions

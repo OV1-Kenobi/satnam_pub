@@ -78,6 +78,12 @@ export default defineConfig({
     target: "esnext",
     chunkSizeWarningLimit: 600, // Slightly increase from 500kb to 600kb
 
+    // CRITICAL FIX: Ensure crypto modules are properly handled in production
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
+
     rollupOptions: {
       output: {
         manualChunks: (id) => {
@@ -210,13 +216,16 @@ export default defineConfig({
       "lucide-react",
       "clsx",
       "crypto-js",
-    ],
-    exclude: [
+      // CRITICAL FIX: Include crypto libraries for proper Netlify production bundling
       "nostr-tools",
       "@scure/bip32",
       "@scure/bip39",
       "@noble/secp256k1",
+      "@noble/hashes",
+      "@scure/base",
     ],
+    // Remove exclude to ensure crypto libraries are properly bundled
+    exclude: [],
   },
 
   worker: {
