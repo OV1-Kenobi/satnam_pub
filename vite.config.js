@@ -78,11 +78,8 @@ export default defineConfig({
     target: "esnext",
     chunkSizeWarningLimit: 600, // Slightly increase from 500kb to 600kb
 
-    // CRITICAL FIX: Ensure crypto modules are properly handled in production
-    commonjsOptions: {
-      include: [/node_modules/],
-      transformMixedEsModules: true,
-    },
+    // CRITICAL FIX: Ensure proper ES module output for dynamic imports
+    format: "es",
 
     rollupOptions: {
       output: {
@@ -207,6 +204,8 @@ export default defineConfig({
     global: "globalThis",
     'process.env.NODE_ENV': JSON.stringify(getEnvVar('NODE_ENV') || 'production'),
     __DEV__: isDevelopment,
+    // CRITICAL FIX: Prevent async response errors in production
+    'process.env.VITE_LEGACY_BUILD': 'false',
   },
 
   optimizeDeps: {

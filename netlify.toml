@@ -55,7 +55,35 @@
   status = 200
   force = true
 
-# SPA redirects - all non-API routes go to index.html
+# CRITICAL FIX: Exclude static assets from SPA redirect to prevent MIME type errors
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+  force = false
+
+# Exclude JavaScript modules from SPA redirect
+[[redirects]]
+  from = "*.js"
+  to = "/:splat"
+  status = 200
+  force = false
+
+# Exclude CSS files from SPA redirect
+[[redirects]]
+  from = "*.css"
+  to = "/:splat"
+  status = 200
+  force = false
+
+# Exclude other static assets from SPA redirect
+[[redirects]]
+  from = "*.wasm"
+  to = "/:splat"
+  status = 200
+  force = false
+
+# SPA redirects - all non-API, non-static routes go to index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -113,6 +141,21 @@
 
 [[headers]]
   for = "*.mjs"
+  [headers.values]
+    Content-Type = "application/javascript"
+    X-Content-Type-Options = "nosniff"
+
+# CRITICAL FIX: JavaScript modules MIME type
+[[headers]]
+  for = "/assets/*.js"
+  [headers.values]
+    Content-Type = "application/javascript"
+    X-Content-Type-Options = "nosniff"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Ensure all JS files have correct MIME type
+[[headers]]
+  for = "*.js"
   [headers.values]
     Content-Type = "application/javascript"
     X-Content-Type-Options = "nosniff"
