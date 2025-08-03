@@ -12,23 +12,10 @@ import { createClient } from "@supabase/supabase-js";
  * @returns {string} Environment variable value
  */
 function getEnvVar(key: string, defaultValue: string = ""): string {
-  // Primary: process.env for Node.js/Netlify Function environments (most reliable)
-  if (typeof process !== "undefined" && process.env && process.env[key]) {
-    return process.env[key] || defaultValue;
-  }
-
-  // Secondary: import.meta.env for Vite/browser environments
-  try {
-    // Use eval to avoid TypeScript compilation issues with import.meta
-    const importMeta = eval("import.meta");
-    if (importMeta && importMeta.env && importMeta.env[key]) {
-      return importMeta.env[key] || defaultValue;
-    }
-  } catch (e) {
-    // import.meta not available, already tried process.env above
-  }
-
-  return defaultValue;
+  // CRITICAL FIX: Simplified to use process.env only
+  // Vite will inject environment variables into process.env at build time via define
+  // This works in both browser (via Vite define) and Netlify Functions (native process.env)
+  return process.env[key] || defaultValue;
 }
 
 const getSupabaseConfig = () => {

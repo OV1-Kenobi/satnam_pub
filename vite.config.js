@@ -204,8 +204,6 @@ export default defineConfig({
     global: "globalThis",
     'process.env.NODE_ENV': JSON.stringify(getEnvVar('NODE_ENV') || 'production'),
     __DEV__: isDevelopment,
-    // CRITICAL FIX: Prevent async response errors in production
-    'process.env.VITE_LEGACY_BUILD': 'false',
   },
 
   optimizeDeps: {
