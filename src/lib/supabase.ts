@@ -5,12 +5,38 @@ import { createClient } from "@supabase/supabase-js";
 // Following Master Context: "Store secrets in Supabase Vault, NOT .env files"
 // Bootstrap credentials from environment - ONLY for accessing Vault
 
+/**
+ * Environment variable getter with browser and Netlify Function compatibility
+ * @param {string} key - Environment variable key
+ * @param {string} [defaultValue] - Default value if not found
+ * @returns {string} Environment variable value
+ */
+function getEnvVar(key: string, defaultValue: string = ""): string {
+  // Primary: process.env for Node.js/Netlify Function environments (most reliable)
+  if (typeof process !== "undefined" && process.env && process.env[key]) {
+    return process.env[key] || defaultValue;
+  }
+
+  // Secondary: import.meta.env for Vite/browser environments
+  try {
+    // Use eval to avoid TypeScript compilation issues with import.meta
+    const importMeta = eval("import.meta");
+    if (importMeta && importMeta.env && importMeta.env[key]) {
+      return importMeta.env[key] || defaultValue;
+    }
+  } catch (e) {
+    // import.meta not available, already tried process.env above
+  }
+
+  return defaultValue;
+}
+
 const getSupabaseConfig = () => {
   // Bootstrap credentials for Vault access
   // These are the minimal credentials needed to access the Vault
   // All other sensitive credentials are stored in the Vault
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const url = getEnvVar("VITE_SUPABASE_URL");
+  const key = getEnvVar("VITE_SUPABASE_ANON_KEY");
 
   // Security validation - ensure we have bootstrap credentials
   if (!url || !key) {
