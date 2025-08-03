@@ -93,6 +93,20 @@ netlify/functions/crypto-profile-installer.ts
 netlify/functions/crypto-validator.ts
 netlify/functions/startup-validator.ts
 netlify/functions/enhanced-rewards.ts
+netlify/functions/badge-system.ts
+netlify/functions/educational-api.ts
+netlify/functions/secure-storage.ts
+netlify/functions/redis.ts
+netlify/functions/hybrid-auth.ts
+
+# Exclude entire development directories
+netlify/functions/crypto/
+netlify/functions/examples/
+netlify/functions/privacy/
+netlify/functions/security/
+netlify/functions/services/
+netlify/functions/utils/
+netlify/functions/middleware/
 
 # Exclude privacy examples and demos
 netlify/functions/examples/
@@ -112,6 +126,33 @@ migrations/
 **/coverage/
 **/dist/
 **/build/
+
+# Additional storage optimization - exclude large/unnecessary files
+**/*.md
+!README.md
+**/*.txt
+**/*.pdf
+**/*.doc
+**/*.docx
+**/*.zip
+**/*.tar.gz
+**/*.rar
+
+# Exclude TypeScript declaration files (keep source)
+**/*.d.ts
+!src/**/*.d.ts
+!types/**/*.d.ts
+
+# Exclude source maps in production
+**/*.map
+**/*.js.map
+**/*.css.map
+
+# Exclude large image files
+**/*.psd
+**/*.ai
+**/*.sketch
+**/*.fig
 
 # Duplicate or legacy files
 lib/supabase-server.ts

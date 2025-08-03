@@ -7,7 +7,7 @@
  * CONSOLIDATED VERSION - Complete database schema support with comprehensive error handling
  */
 
-import { createHashedUserData, verifyPrivacyCompliance } from "../../lib/security/privacy-hashing.js";
+import { createHashedUserData } from "../../lib/security/privacy-hashing.js";
 import { supabase } from "./supabase.js";
 
 export const handler = async (event) => {
@@ -208,7 +208,7 @@ export const handler = async (event) => {
       .insert({
         name: userData.username, // Unencrypted for NIP-05 resolution
         user_salt: hashedNip05Data.user_salt, // UNIQUE salt (no reuse)
-        hashed_pubkey: hashedNip05Data.hashed_npub, // HASHED with unique salt
+        hashed_npub: hashedNip05Data.hashed_npub, // HASHED with unique salt (CONSISTENT NAMING)
         domain: 'satnam.pub',
         is_active: true,
         created_at: hashedNip05Data.created_at,
@@ -225,6 +225,7 @@ export const handler = async (event) => {
     }
 
     // 5. Verify privacy compliance before response
+    const { verifyPrivacyCompliance } = privacyModule;
     const privacyCompliant = verifyPrivacyCompliance(hashedIdentityData);
     if (!privacyCompliant) {
       console.error('❌ PRIVACY VIOLATION: Sensitive data not properly hashed');

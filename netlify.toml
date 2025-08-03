@@ -193,8 +193,25 @@
   # Node.js version for functions
   node_bundler = "esbuild"
   external_node_modules = ["pg", "redis", "jsonwebtoken", "@supabase/supabase-js"]
-  # Exclude test files and development utilities
-  included_files = ["!**/__tests__/**", "!**/*.test.*", "!**/*.spec.*", "!**/examples/**"]
+  # CRITICAL: Exclude more files to reduce storage usage
+  included_files = [
+    "!**/__tests__/**",
+    "!**/*.test.*",
+    "!**/*.spec.*",
+    "!**/examples/**",
+    "!**/*.md",
+    "!**/*.map",
+    "!**/*.d.ts",
+    "!**/coverage/**",
+    "!**/docs/**",
+    "!netlify/functions/crypto/**",
+    "!netlify/functions/examples/**",
+    "!netlify/functions/privacy/**",
+    "!netlify/functions/security/**",
+    "!netlify/functions/services/**",
+    "!netlify/functions/utils/**",
+    "!netlify/functions/middleware/**"
+  ]
 
 # Essential functions only - reduce storage usage
 [functions."register-identity"]
@@ -227,5 +244,5 @@
 
 # Function size limits and optimization
 [functions.settings]
-  # Reduce function size limits to catch bloat early
-  max_size = "50MB"  # Default is 50MB, keeping it explicit
+  # CRITICAL: Reduce function size limits to prevent storage bloat
+  max_size = "25MB"  # Reduced from 50MB to force smaller bundles
