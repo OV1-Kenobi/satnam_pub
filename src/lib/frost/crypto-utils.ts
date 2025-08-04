@@ -41,20 +41,40 @@ export class CryptoUtils {
   }
 
   /**
-   * Convert hex string to Uint8Array
+   * Convert hex string to Uint8Array with enhanced security validation
+   * SECURITY: Comprehensive input validation and error handling
    * @param hex Hex string to convert
    * @returns Byte array representation
    */
   static hexToBytes(hex: string): Uint8Array {
-    if (!this.isValidHex(hex)) {
-      throw new Error("Invalid hex string");
+    // Enhanced validation with security checks
+    if (!hex || typeof hex !== "string") {
+      throw new Error("Invalid hex input - must be a non-empty string");
     }
 
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    if (hex.length % 2 !== 0) {
+      throw new Error("Invalid hex string - must have even length");
     }
-    return bytes;
+
+    if (!this.isValidHex(hex)) {
+      throw new Error("Invalid hex string - contains non-hex characters");
+    }
+
+    try {
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) {
+        const byte = parseInt(hex.substring(i, i + 2), 16);
+        if (isNaN(byte)) {
+          throw new Error(`Invalid hex byte at position ${i}`);
+        }
+        bytes[i / 2] = byte;
+      }
+      return bytes;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      throw new Error(`Hex conversion failed: ${errorMessage}`);
+    }
   }
 
   /**

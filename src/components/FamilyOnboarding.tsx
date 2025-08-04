@@ -1,24 +1,24 @@
 import {
-    ArrowLeft,
-    ArrowRight,
-    Award,
-    Bitcoin,
-    BookOpen,
-    CheckCircle,
-    Clock,
-    Eye,
-    EyeOff,
-    Gift,
-    Heart,
-    Key,
-    Lightbulb,
-    Lock,
-    Play,
-    QrCode,
-    Sparkles,
-    Star,
-    Target,
-    Zap
+  ArrowLeft,
+  ArrowRight,
+  Award,
+  Bitcoin,
+  BookOpen,
+  CheckCircle,
+  Clock,
+  Eye,
+  EyeOff,
+  Gift,
+  Heart,
+  Key,
+  Lightbulb,
+  Lock,
+  Play,
+  QrCode,
+  Sparkles,
+  Star,
+  Target,
+  Zap
 } from "lucide-react";
 import React, { useState } from "react";
 
@@ -59,7 +59,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
         "Understanding digital money and why it matters for your family",
       completed: false,
       icon: (
-        <img src="/LN Bitcoin icon.png" alt="Bitcoin" className="h-6 w-6" />
+        <img src="/LN-Bitcoin-icon.png" alt="Bitcoin" className="h-6 w-6" />
       ),
     },
     {
@@ -92,7 +92,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
       completed: false,
       icon: (
         <img
-          src="/Citadel Academy Logo.png"
+          src="/Citadel-Academy-Logo.png"
           alt="Citadel Academy"
           className="h-6 w-6"
         />
@@ -169,11 +169,10 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
             {steps.map((step, index) => (
               <div key={index} className="flex items-center">
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${
-                    index <= currentStep
-                      ? "bg-yellow-400 text-purple-900"
-                      : "bg-white/20 text-white"
-                  }`}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${index <= currentStep
+                    ? "bg-yellow-400 text-purple-900"
+                    : "bg-white/20 text-white"
+                    }`}
                 >
                   {index < currentStep ? (
                     <CheckCircle className="h-5 w-5" />
@@ -183,9 +182,8 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                 </div>
                 {index < steps.length - 1 && (
                   <div
-                    className={`h-1 w-16 mx-4 transition-all duration-300 ${
-                      index < currentStep ? "bg-yellow-400" : "bg-white/20"
-                    }`}
+                    className={`h-1 w-16 mx-4 transition-all duration-300 ${index < currentStep ? "bg-yellow-400" : "bg-white/20"
+                      }`}
                   />
                 )}
               </div>
@@ -204,7 +202,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
               <div className="relative">
                 <div className="w-32 h-32 mx-auto mb-6 flex items-center justify-center transform rotate-3 shadow-2xl">
                   <img
-                    src="/SatNam.Pub logo.png"
+                    src="/SatNam-logo.png"
                     alt="SatNam.Pub"
                     className="h-32 w-32 rounded-2xl"
                   />
@@ -229,7 +227,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                 <div className="grid md:grid-cols-3 gap-6 text-center">
                   <div className="space-y-3">
                     <img
-                      src="/SatNam.Pub logo.png"
+                      src="/SatNam-logo.png"
                       alt="SatNam.Pub"
                       className="h-16 w-16 mx-auto rounded-full"
                     />
@@ -291,11 +289,10 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
               <div className="grid md:grid-cols-2 gap-8">
                 {/* Traditional Identity */}
                 <div
-                  className={`bg-white/10 rounded-2xl p-6 border-2 transition-all duration-500 cursor-pointer ${
-                    showTraditional
-                      ? "border-red-400 bg-red-500/10"
-                      : "border-white/20"
-                  }`}
+                  className={`bg-white/10 rounded-2xl p-6 border-2 transition-all duration-500 cursor-pointer ${showTraditional
+                    ? "border-red-400 bg-red-500/10"
+                    : "border-white/20"
+                    }`}
                   onClick={() => setShowTraditional(true)}
                 >
                   <div className="text-center mb-6">
@@ -334,11 +331,10 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
 
                 {/* Sovereign Identity */}
                 <div
-                  className={`bg-white/10 rounded-2xl p-6 border-2 transition-all duration-500 cursor-pointer ${
-                    !showTraditional
-                      ? "border-green-400 bg-green-500/10"
-                      : "border-white/20"
-                  }`}
+                  className={`bg-white/10 rounded-2xl p-6 border-2 transition-all duration-500 cursor-pointer ${!showTraditional
+                    ? "border-green-400 bg-green-500/10"
+                    : "border-white/20"
+                    }`}
                   onClick={() => setShowTraditional(false)}
                 >
                   <div className="text-center mb-6">
@@ -413,20 +409,18 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                 {learningModules.map((module) => (
                   <div
                     key={module.id}
-                    className={`bg-white/10 rounded-2xl p-6 border-2 cursor-pointer transition-all duration-300 hover:bg-white/15 ${
-                      selectedModules.includes(module.id)
-                        ? "border-yellow-400 bg-yellow-400/10"
-                        : "border-white/20"
-                    }`}
+                    className={`bg-white/10 rounded-2xl p-6 border-2 cursor-pointer transition-all duration-300 hover:bg-white/15 ${selectedModules.includes(module.id)
+                      ? "border-yellow-400 bg-yellow-400/10"
+                      : "border-white/20"
+                      }`}
                     onClick={() => toggleModule(module.id)}
                   >
                     <div className="flex items-start space-x-4">
                       <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                          selectedModules.includes(module.id)
-                            ? "bg-yellow-400 text-purple-900"
-                            : "bg-white/20 text-white"
-                        }`}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center ${selectedModules.includes(module.id)
+                          ? "bg-yellow-400 text-purple-900"
+                          : "bg-white/20 text-white"
+                          }`}
                       >
                         {module.icon}
                       </div>
@@ -513,7 +507,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                     <div className="grid md:grid-cols-3 gap-4 text-sm">
                       <div className="bg-white/10 rounded-lg p-4">
                         <img
-                          src="/Citadel Academy Logo.png"
+                          src="/Citadel-Academy-Logo.png"
                           alt="Citadel Academy"
                           className="h-6 w-6 mx-auto mb-2"
                         />
@@ -839,11 +833,10 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
             <button
               onClick={nextStep}
               disabled={currentStep === 3 && isCreatingIdentity}
-              className={`flex items-center space-x-2 px-8 py-3 rounded-lg font-bold transition-all duration-300 ${
-                currentStep === 3 && isCreatingIdentity
-                  ? "bg-white/10 text-purple-300 cursor-not-allowed"
-                  : "bg-purple-700 hover:bg-purple-800 text-white transform hover:scale-105"
-              }`}
+              className={`flex items-center space-x-2 px-8 py-3 rounded-lg font-bold transition-all duration-300 ${currentStep === 3 && isCreatingIdentity
+                ? "bg-white/10 text-purple-300 cursor-not-allowed"
+                : "bg-purple-700 hover:bg-purple-800 text-white transform hover:scale-105"
+                }`}
             >
               <span>
                 {currentStep === 0
@@ -868,7 +861,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200">
             <span className="flex items-center space-x-2">
               <img
-                src="/Citadel Academy Logo.png"
+                src="/Citadel-Academy-Logo.png"
                 alt="Citadel Academy"
                 className="h-4 w-4"
               />

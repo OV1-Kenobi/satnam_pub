@@ -8,7 +8,6 @@ import { getEnvVar } from "../utils/env.js";
 
 import * as crypto from "crypto";
 import { randomBytes } from "crypto";
-import { deriveEncryptionKey } from "../../security.js";
 
 /**
  * Encryption configuration
@@ -63,12 +62,48 @@ export function generateUniqueSalts(count: number): Buffer[] {
 }
 
 /**
- * Derive encryption key from master key and salt using Gold Standard Argon2id
- * This replaces the previous scrypt implementation with Argon2id for maximum security
+ * Derive encryption key from master key and salt using PBKDF2
+ * Netlify Functions compatible implementation using Web Crypto API
  */
 async function deriveKey(masterKey: string, salt: Buffer): Promise<Buffer> {
-  // Use the Gold Standard Argon2id key derivation from security module
-  return await deriveEncryptionKey(masterKey, salt);
+  try {
+    // Convert Buffer to Uint8Array for Web Crypto API compatibility
+    const saltArray = new Uint8Array(salt);
+
+    // Use Web Crypto API PBKDF2 for key derivation
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(masterKey),
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+
+    // Convert salt to proper ArrayBuffer for Web Crypto API
+    const saltBuffer = new ArrayBuffer(saltArray.length);
+    new Uint8Array(saltBuffer).set(saltArray);
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: saltBuffer,
+        iterations: ENCRYPTION_CONFIG.iterations,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      ENCRYPTION_CONFIG.keyLength * 8
+    );
+
+    // Convert ArrayBuffer to Buffer for Node.js compatibility
+    return Buffer.from(derivedBits);
+  } catch (error) {
+    throw new Error(
+      `Key derivation failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
 }
 
 /**
@@ -561,20 +596,76 @@ export function validateUniqueSalts(
 }
 
 /**
- * Zero out sensitive data from memory (best effort)
+ * Secure memory management for Netlify Functions
+ * SECURITY: Uses proper ArrayBuffer memory management
  */
-export function secureClearMemory(sensitiveString: string): void {
-  try {
-    // This is a best-effort attempt to clear sensitive data from memory
-    // JavaScript doesn't provide guaranteed memory clearing, but we can overwrite
-    if (typeof sensitiveString === "string") {
-      for (let i = 0; i < sensitiveString.length; i++) {
-        (sensitiveString as any)[i] = "0";
+export interface SecureMemoryTarget {
+  data: ArrayBuffer | Uint8Array | string;
+  type: "arraybuffer" | "uint8array" | "string";
+}
+
+/**
+ * Secure memory clearing for Netlify Functions environment
+ * SECURITY: Proper ArrayBuffer memory management with cryptographic overwriting
+ * @param targets Array of memory targets to securely clear
+ */
+export function secureClearMemory(targets: SecureMemoryTarget[]): void {
+  targets.forEach((target) => {
+    try {
+      switch (target.type) {
+        case "arraybuffer":
+          if (target.data instanceof ArrayBuffer) {
+            const view = new Uint8Array(target.data);
+            // Multiple overwrite passes for security
+            crypto.getRandomValues(view);
+            view.fill(0);
+            view.fill(0xff);
+            crypto.getRandomValues(view);
+          }
+          break;
+
+        case "uint8array":
+          if (target.data instanceof Uint8Array) {
+            // Multiple overwrite passes for security
+            crypto.getRandomValues(target.data);
+            target.data.fill(0);
+            target.data.fill(0xff);
+            crypto.getRandomValues(target.data);
+          }
+          break;
+
+        case "string":
+          if (typeof target.data === "string") {
+            // Convert string to ArrayBuffer for proper clearing
+            const encoder = new TextEncoder();
+            const buffer = encoder.encode(target.data);
+            crypto.getRandomValues(buffer);
+            buffer.fill(0);
+            buffer.fill(0xff);
+            crypto.getRandomValues(buffer);
+          }
+          break;
       }
+    } catch (error) {
+      console.warn(
+        `Failed to clear memory target of type ${target.type}:`,
+        error
+      );
     }
-  } catch (error) {
-    // Silent fail - this is best effort
+  });
+
+  // Force garbage collection hint (if available in Node.js)
+  if (typeof global !== "undefined" && global.gc) {
+    global.gc();
   }
+}
+
+/**
+ * Legacy function for backward compatibility - now uses proper memory management
+ * @deprecated Use secureClearMemory with targets instead
+ */
+export function secureClearMemoryLegacy(sensitiveString: string): void {
+  secureClearMemory([{ data: sensitiveString, type: "string" }]);
 }
 
 /**

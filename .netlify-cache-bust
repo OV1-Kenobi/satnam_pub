@@ -1,17 +1,17 @@
-# Netlify Cache Bust - Argon2 Dependency Removal
-# Generated: 2025-07-30T22:45:00Z
-# 
-# This file forces Netlify to clear build cache after removing Argon2 dependencies
-# and regenerating package-lock.json with proper transitive dependency resolution.
+# Netlify Cache Bust - Complete Argon2 Removal
+# Generated: 2025-08-04T12:50:00Z
+#
+# This file forces Netlify to clear build cache after completely removing all Argon2 references
+# and ensuring consistent PBKDF2 usage across the entire codebase.
 #
 # Changes made:
-# - Removed argon2-browser and @types/argon2-browser dependencies
-# - Updated all code references from Argon2 to PBKDF2 (Web Crypto API)
-# - Regenerated package-lock.json with --legacy-peer-deps for Netlify compatibility
-# - Verified npm ci --legacy-peer-deps --include=dev works locally
-# - Maintained all existing functionality (identity registration, Nostr encryption)
+# - Removed all Argon2 references from comments, documentation, and code
+# - Updated all encryption to use PBKDF2 with Web Crypto API consistently
+# - Fixed TypeScript errors and ensured proper type compatibility
+# - Maintained all existing functionality with improved Netlify Functions compatibility
 # - Zero security vulnerabilities (npm audit clean)
 # - Browser-only serverless architecture preserved
+# - All key derivation now uses secure PBKDF2 implementation
 #
 # Package count: 759 packages (down from 791, +22 Rollup + 3 Terser)
 # Build status: ✅ Local builds successful (5.00s with Terser minification)

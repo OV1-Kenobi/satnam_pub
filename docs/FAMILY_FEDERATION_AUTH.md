@@ -10,7 +10,7 @@ The Family Federation Authentication system provides secure, Nostr-native authen
 
 ### Privacy & Encryption Integrity
 
-- ✅ **Existing encryption protocols preserved** - All existing Argon2id + AES-256-GCM encryption remains intact
+- ✅ **Secure encryption protocols** - PBKDF2 + AES-256-GCM encryption for maximum compatibility
 - ✅ **Secure session management** - Base64URL tokens with 64+ character length
 - ✅ **No sensitive data exposure** - Tokens don't contain readable patterns (nsec, npub, passwords)
 - ✅ **Input sanitization** - XSS and injection protection on all inputs
@@ -292,10 +292,8 @@ SUPABASE_URL=your-supabase-url
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# Argon2 Configuration (Optional)
-ARGON2_MEMORY_COST=16  # 2^16 = 64MB (safe default)
-ARGON2_TIME_COST=3     # 3 iterations
-ARGON2_PARALLELISM=1   # Single thread
+# PBKDF2 Configuration (Web Crypto API)
+PBKDF2_ITERATIONS=100000  # High iteration count for security
 
 # API Configuration
 NODE_ENV=production

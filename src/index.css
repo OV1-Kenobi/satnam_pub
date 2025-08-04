@@ -32,7 +32,7 @@
     align-items: center !important;
     justify-content: center !important;
     padding: 1rem !important;
-    background-image: url("/Bitcoin Citadel Valley.jpg") !important;
+    background-image: url("/BitcoinCitadelValley.jpg") !important;
     background-size: cover !important;
     background-position: center !important;
     background-repeat: no-repeat !important;
@@ -150,6 +150,7 @@ body.modal-open {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 .line-clamp-2 {
@@ -157,6 +158,7 @@ body.modal-open {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .line-clamp-3 {
@@ -164,6 +166,7 @@ body.modal-open {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 /* Fallback for browsers that don't support line-clamp */

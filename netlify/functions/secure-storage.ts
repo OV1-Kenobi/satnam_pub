@@ -175,7 +175,7 @@ export class SecureStorage {
     let encryptedNsecBuffer: SecureBuffer | null = null;
 
     try {
-      // Encrypt the nsec using Gold Standard Argon2id key derivation
+      // Encrypt the nsec using secure PBKDF2 key derivation
       const encryptedNsec = await encryptCredentials(
         nsecBuffer.toString(),
         passwordBuffer.toString()
@@ -234,7 +234,7 @@ export class SecureStorage {
         return null;
       }
 
-      // Decrypt the nsec using Gold Standard Argon2id key derivation
+      // Decrypt the nsec using secure PBKDF2 key derivation
       try {
         const decryptedNsec = await decryptCredentials(
           data.encrypted_nsec,

@@ -1,14 +1,9 @@
 import {
-  Bitcoin,
-  BookOpen,
   ExternalLink,
   Menu,
   Network,
-  Users,
-  X,
-  Zap,
+  X
 } from "lucide-react";
-import { useState } from "react";
 
 interface NavigationProps {
   currentView: string;
@@ -56,29 +51,29 @@ const Navigation: React.FC<NavigationProps> = ({
   return (
     <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                  <div className="flex items-center h-16">
-            {/* Logo with SatNam.Pub Custom Logo - Clickable to return to landing */}
-            <button
-              onClick={() => setCurrentView("landing")}
-              className="flex items-center space-x-3 hover:opacity-80 transition-opacity duration-200"
-            >
-              <img
-                src="/SatNam.Pub logo.png"
-                alt="SatNam.Pub"
-                className="h-10 w-auto"
-                loading="lazy"
-              />
-              <span className="text-white text-xl font-bold">Satnam.pub</span>
-            </button>
+        <div className="flex items-center h-16">
+          {/* Logo with SatNam.Pub Custom Logo - Clickable to return to landing */}
+          <button
+            onClick={() => setCurrentView("landing")}
+            className="flex items-center space-x-3 hover:opacity-80 transition-opacity duration-200"
+          >
+            <img
+              src="/SatNam-logo.png"
+              alt="SatNam.Pub"
+              className="h-10 w-auto"
+              loading="lazy"
+            />
+            <span className="text-white text-xl font-bold">Satnam.pub</span>
+          </button>
 
-            {/* Desktop Navigation - Centered */}
-            <div className="hidden lg:flex items-center space-x-3 flex-1 justify-center">
+          {/* Desktop Navigation - Centered */}
+          <div className="hidden lg:flex items-center space-x-3 flex-1 justify-center">
             {/* Primary CTA */}
             <button
               onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg border-2 border-black text-xs"
             >
-              <img src="/ID forge icon.png" alt="Forge" className="h-3 w-3" />
+              <img src="/ID-forge-icon.png" alt="Forge" className="h-3 w-3" />
               <span>Forge ID</span>
             </button>
 
@@ -179,7 +174,7 @@ const Navigation: React.FC<NavigationProps> = ({
                 className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
               >
                 <img
-                  src="/ID forge icon.png"
+                  src="/ID-forge-icon.png"
                   alt="Forge"
                   className="h-4 w-4"
                 />

@@ -153,6 +153,14 @@ export const handler = async (event) => {
     try {
 
       console.log("🔍 Creating MAXIMUM ENCRYPTION hashed user data...");
+      console.log("🔍 Input data for hashing:", {
+        username: userData.username,
+        hasNpub: !!userData.npub,
+        hasEncryptedNsec: !!userData.encryptedNsec,
+        nip05: userData.nip05 || `${userData.username}@satnam.pub`,
+        lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null)
+      });
+
       const hashedUserData = await createHashedUserData({
         username: userData.username,
         bio: '', // Empty initially, will be hashed
@@ -165,43 +173,81 @@ export const handler = async (event) => {
         role: 'private'
       });
 
+      console.log("🔍 Hashed user data generated:", {
+        hasUserSalt: !!hashedUserData.user_salt,
+        hasHashedUsername: !!hashedUserData.hashed_username,
+        hasHashedNpub: !!hashedUserData.hashed_npub,
+        hasHashedNip05: !!hashedUserData.hashed_nip05,
+        hasHashedEncryptedNsec: !!hashedUserData.hashed_encrypted_nsec,
+        allHashedKeys: Object.keys(hashedUserData)
+      });
+
       // MAXIMUM ENCRYPTION: Store ALL user data as hashed (over-encryption strategy)
       console.log("🔍 Inserting MAXIMUM ENCRYPTED user data into user_identities table...");
+
+      // Prepare insert payload with detailed logging
+      const insertPayload = {
+        // UNENCRYPTED: Only essential system operation fields
+        id: userId, // System identifier (required)
+        role: 'private', // User role (required for authorization)
+        is_active: true, // Active status (required for system operation)
+        created_at: new Date().toISOString(), // System timestamp
+        updated_at: new Date().toISOString(), // System timestamp
+
+        // MAXIMUM ENCRYPTION: ALL user data hashed
+        user_salt: hashedUserData.user_salt, // Individual user salt
+        hashed_username: hashedUserData.hashed_username, // ENCRYPTED: Username
+        hashed_bio: hashedUserData.hashed_bio, // ENCRYPTED: Bio text
+        hashed_display_name: hashedUserData.hashed_display_name, // ENCRYPTED: Display name
+        hashed_picture: hashedUserData.hashed_picture, // ENCRYPTED: Picture URL
+        hashed_npub: hashedUserData.hashed_npub, // ENCRYPTED: Nostr public key
+        hashed_nip05: hashedUserData.hashed_nip05, // ENCRYPTED: NIP-05 identifier
+        hashed_lightning_address: hashedUserData.hashed_lightning_address, // ENCRYPTED: Lightning address
+        hashed_encrypted_nsec: hashedUserData.hashed_encrypted_nsec, // ENCRYPTED: Encrypted private key
+
+        // METADATA (can be encrypted if needed)
+        spending_limits: JSON.stringify({
+          daily_limit: -1, // Unlimited for private users
+          requires_approval: false
+        }),
+        privacy_settings: JSON.stringify({
+          privacy_level: 'maximum',
+          zero_knowledge_enabled: true,
+          over_encryption: true
+        })
+      };
+
+      console.log("🔍 Database insert payload structure:", {
+        payloadKeys: Object.keys(insertPayload),
+        hasRequiredFields: {
+          id: !!insertPayload.id,
+          role: !!insertPayload.role,
+          is_active: insertPayload.is_active !== undefined,
+          user_salt: !!insertPayload.user_salt,
+          hashed_username: !!insertPayload.hashed_username,
+          hashed_npub: !!insertPayload.hashed_npub
+        }
+      });
+
       const { error: userError } = await supabase
         .from('user_identities')
-        .insert({
-          // UNENCRYPTED: Only essential system operation fields
-          id: userId, // System identifier (required)
-          role: 'private', // User role (required for authorization)
-          is_active: true, // Active status (required for system operation)
-          created_at: new Date().toISOString(), // System timestamp
-          updated_at: new Date().toISOString(), // System timestamp
-
-          // MAXIMUM ENCRYPTION: ALL user data hashed
-          user_salt: hashedUserData.user_salt, // Individual user salt
-          hashed_username: hashedUserData.hashed_username, // ENCRYPTED: Username
-          hashed_bio: hashedUserData.hashed_bio, // ENCRYPTED: Bio text
-          hashed_display_name: hashedUserData.hashed_display_name, // ENCRYPTED: Display name
-          hashed_picture: hashedUserData.hashed_picture, // ENCRYPTED: Picture URL
-          hashed_npub: hashedUserData.hashed_npub, // ENCRYPTED: Nostr public key
-          hashed_nip05: hashedUserData.hashed_nip05, // ENCRYPTED: NIP-05 identifier
-          hashed_lightning_address: hashedUserData.hashed_lightning_address, // ENCRYPTED: Lightning address
-          hashed_encrypted_nsec: hashedUserData.hashed_encrypted_nsec, // ENCRYPTED: Encrypted private key
-
-          // METADATA (can be encrypted if needed)
-          spending_limits: JSON.stringify({
-            daily_limit: -1, // Unlimited for private users
-            requires_approval: false
-          }),
-          privacy_settings: JSON.stringify({
-            privacy_level: 'maximum',
-            zero_knowledge_enabled: true,
-            over_encryption: true
-          })
-        });
+        .insert(insertPayload);
 
       if (userError) {
-        console.error('❌ Consolidated user creation failed:', userError);
+        console.error('❌ CRITICAL DATABASE ERROR - Consolidated user creation failed:', {
+          message: userError.message,
+          details: userError.details,
+          hint: userError.hint,
+          code: userError.code,
+          fullError: userError
+        });
+
+        // Check if it's a column missing error
+        if (userError.message && userError.message.includes('column')) {
+          console.error('❌ SCHEMA ERROR: Missing database column detected');
+          console.error('❌ Required columns for user_identities table:', Object.keys(insertPayload));
+        }
+
         throw new Error(`User creation failed: ${userError.message}`);
       }
 

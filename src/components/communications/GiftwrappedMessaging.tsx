@@ -107,7 +107,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false }: Giftwrap
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{
-            backgroundImage: `url('/Nostr Zapstorm.jpg')`,
+            backgroundImage: `url('/Nostr-Zapstorm.jpg')`,
           }}
         >
           {/* Gradient overlay with 50% reduced opacity */}

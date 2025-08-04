@@ -6,8 +6,8 @@
   NODE_VERSION = "22.16.0"
   NPM_VERSION = "10.8.2"
   CI = "true"
-  # Cache bust after Argon2 removal + Rollup + Terser + Import fixes - 2025-07-30
-  NETLIFY_CACHE_BUST = "argon2-imports-fixed-20250730"
+  # Cache bust after complete Argon2 removal + PBKDF2 migration - 2025-08-04
+  NETLIFY_CACHE_BUST = "pbkdf2-migration-complete-20250804"
 
 # Development server configuration
 [dev]

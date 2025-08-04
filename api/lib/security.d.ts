@@ -21,7 +21,7 @@ export function verifyPassword(
 export function generateSecureToken(): string;
 export function generateSecureToken(length: number): string;
 
-// Additional exports for Argon2SecurityTest
+// Additional exports for PBKDF2 Security
 export function encryptCredentials(
   credentials: any,
   key: CryptoKey
@@ -35,7 +35,7 @@ export function verifyPassphrase(
   passphrase: string,
   hash: string
 ): Promise<boolean>;
-export function validateArgon2ConfigOnStartup(): Promise<boolean>;
+export function validatePBKDF2ConfigOnStartup(): Promise<boolean>;
 
 export interface SecurityConfig {
   saltLength: number;

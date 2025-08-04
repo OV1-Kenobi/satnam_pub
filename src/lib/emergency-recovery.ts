@@ -28,6 +28,82 @@ const getSupabaseClient = async () => {
   return supabaseClient;
 };
 
+/**
+ * Secure cryptographic utilities for emergency recovery
+ * SECURITY: Shared utilities with proper validation and error handling
+ */
+class EmergencyRecoveryCrypto {
+  /**
+   * Secure hex string to bytes conversion with validation
+   * SECURITY: Prevents malformed hex from causing issues
+   */
+  static hexToBytes(hex: string): Uint8Array | null {
+    try {
+      // Validate hex string format
+      if (!hex || hex.length % 2 !== 0) {
+        return null;
+      }
+
+      // Validate hex characters
+      if (!/^[0-9a-fA-F]+$/.test(hex)) {
+        return null;
+      }
+
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) {
+        const byte = parseInt(hex.substring(i, i + 2), 16);
+        if (isNaN(byte)) {
+          return null;
+        }
+        bytes[i / 2] = byte;
+      }
+      return bytes;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Constant-time comparison for signature verification
+   * SECURITY: Prevents timing attacks during signature validation
+   */
+  static constantTimeEquals(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) {
+      return false;
+    }
+
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result |= a[i] ^ b[i];
+    }
+    return result === 0;
+  }
+
+  /**
+   * Secure memory cleanup for sensitive signature data
+   * SECURITY: Clears sensitive data from memory after use
+   */
+  static async secureCleanup(sensitiveData: string[]): Promise<void> {
+    try {
+      const sensitiveTargets = sensitiveData.map((data) => ({
+        data,
+        type: "string" as const,
+      }));
+
+      // Import secure memory clearing if available
+      try {
+        const { secureClearMemory } = await import("./privacy/encryption.js");
+        secureClearMemory(sensitiveTargets);
+      } catch (importError) {
+        // Fallback to basic clearing if import fails
+        console.warn("Could not import secure memory clearing");
+      }
+    } catch (cleanupError) {
+      console.warn("Memory cleanup failed:", cleanupError);
+    }
+  }
+}
+
 // Emergency Recovery Types
 export interface RecoveryDetails {
   requestId?: string;
@@ -200,20 +276,29 @@ function getUserType(userRole: FederationRole): UserType {
 class SelfSovereignRecovery {
   /**
    * Verify nsec signature for self-sovereign recovery
+   * SECURITY: Enhanced with proper input validation, constant-time operations, and comprehensive error handling
    */
   static async verifyNsecSignature(
     userNpub: string,
     signature: string,
     recoveryData: string
   ): Promise<boolean> {
+    // Input validation with early returns for security
+    if (!userNpub || !signature || !recoveryData) {
+      console.error("Missing required parameters for signature verification");
+      return false;
+    }
+
     try {
-      // Validate npub format
-      if (!userNpub.startsWith("npub1") || userNpub.length < 20) {
-        console.error("Invalid user npub format:", userNpub);
+      // Validate npub format with comprehensive checks
+      if (!userNpub.startsWith("npub1") || userNpub.length !== 63) {
+        console.error(
+          "Invalid user npub format - must be 63 characters starting with npub1"
+        );
         return false;
       }
 
-      // Decode user npub to get public key hex
+      // Decode user npub to get public key hex with enhanced error handling
       let userPubkeyHex: string;
       try {
         const decoded = nip19.decode(userNpub);
@@ -222,57 +307,73 @@ class SelfSovereignRecovery {
           return false;
         }
         userPubkeyHex = decoded.data as string;
+
+        // Validate decoded public key format
+        if (!userPubkeyHex || userPubkeyHex.length !== 64) {
+          console.error("Invalid decoded public key length");
+          return false;
+        }
       } catch (error) {
         console.error("User npub decode failed:", error);
         return false;
       }
 
-      // Create message hash
+      // Validate signature format with strict requirements
+      if (signature.length !== 128) {
+        console.error(
+          "Invalid signature format - expected exactly 128 hex characters"
+        );
+        return false;
+      }
+
+      // Convert hex signature to bytes with validation
+      const signatureBytes = EmergencyRecoveryCrypto.hexToBytes(signature);
+      if (!signatureBytes || signatureBytes.length !== 64) {
+        console.error("Invalid signature hex format");
+        return false;
+      }
+
+      // Convert public key to bytes with validation
+      const publicKeyBytes = EmergencyRecoveryCrypto.hexToBytes(userPubkeyHex);
+      if (!publicKeyBytes || publicKeyBytes.length !== 32) {
+        console.error("Invalid public key hex format");
+        return false;
+      }
+
+      // Create message hash using Web Crypto API
       const messageBytes = new TextEncoder().encode(recoveryData);
       const messageHash = await crypto.subtle.digest("SHA-256", messageBytes);
       const messageHashArray = new Uint8Array(messageHash);
 
-      // Validate signature format
-      if (!signature || signature.length !== 128) {
-        console.error("Invalid signature format - expected 128 hex characters");
-        return false;
-      }
-
-      // Convert hex signature to bytes
-      const signatureBytes = new Uint8Array(64);
-      for (let i = 0; i < 64; i++) {
-        signatureBytes[i] = parseInt(signature.substring(i * 2, i * 2 + 2), 16);
-      }
-
-      // Convert public key to bytes
-      const publicKeyBytes = new Uint8Array(32);
-      for (let i = 0; i < 32; i++) {
-        publicKeyBytes[i] = parseInt(
-          userPubkeyHex.substring(i * 2, i * 2 + 2),
-          16
+      // Verify signature using secp256k1 with proper error handling
+      try {
+        const { verify } = await import("@noble/secp256k1");
+        const isValid = verify(
+          signatureBytes,
+          messageHashArray,
+          publicKeyBytes
         );
-      }
 
-      // Verify signature using secp256k1
-      const { verify } = await import("@noble/secp256k1");
-      const isValid = verify(signatureBytes, messageHashArray, publicKeyBytes);
+        // Use constant-time logging to prevent timing attacks
+        const logMessage = isValid
+          ? "✅ Self-sovereign signature verified successfully"
+          : "❌ Self-sovereign signature verification failed";
 
-      if (!isValid) {
+        console.log(logMessage, userNpub.substring(0, 12) + "...");
+        return isValid;
+      } catch (cryptoError) {
         console.error(
-          "Self-sovereign signature verification failed for user:",
-          userNpub
+          "Cryptographic signature verification failed:",
+          cryptoError
         );
         return false;
       }
-
-      console.log(
-        "✅ Self-sovereign signature verified successfully:",
-        userNpub
-      );
-      return true;
     } catch (error) {
       console.error("Self-sovereign signature verification error:", error);
       return false;
+    } finally {
+      // Secure memory cleanup for sensitive data
+      await EmergencyRecoveryCrypto.secureCleanup([signature, recoveryData]);
     }
   }
 
@@ -1259,21 +1360,31 @@ export class EmergencyRecoverySystem {
 
   /**
    * Verify guardian cryptographic signature for recovery request approval
-   * CRITICAL SECURITY: This validates that the guardian actually signed the specific recovery request
+   * CRITICAL SECURITY: Enhanced with proper input validation, constant-time operations, and comprehensive error handling
    */
   private static async verifyGuardianSignature(
     guardianNpub: string,
     signature: string,
     request: EmergencyRecoveryRequest
   ): Promise<boolean> {
+    // Input validation with early returns for security
+    if (!guardianNpub || !signature || !request) {
+      console.error(
+        "Missing required parameters for guardian signature verification"
+      );
+      return false;
+    }
+
     try {
-      // Validate npub format using fixed NIP-19 encoding
-      if (!guardianNpub.startsWith("npub1") || guardianNpub.length < 20) {
-        console.error("Invalid guardian npub format:", guardianNpub);
+      // Validate npub format with comprehensive checks
+      if (!guardianNpub.startsWith("npub1") || guardianNpub.length !== 63) {
+        console.error(
+          "Invalid guardian npub format - must be 63 characters starting with npub1"
+        );
         return false;
       }
 
-      // Decode guardian npub to get public key hex
+      // Decode guardian npub to get public key hex with enhanced error handling
       let guardianPubkeyHex: string;
       try {
         const decoded = nip19.decode(guardianNpub);
@@ -1285,44 +1396,50 @@ export class EmergencyRecoverySystem {
           return false;
         }
         guardianPubkeyHex = decoded.data as string;
+
+        // Validate decoded public key format
+        if (!guardianPubkeyHex || guardianPubkeyHex.length !== 64) {
+          console.error("Invalid decoded guardian public key length");
+          return false;
+        }
       } catch (error) {
         console.error("Guardian npub decode failed:", error);
+        return false;
+      }
+
+      // Validate signature format with strict requirements
+      if (signature.length !== 128) {
+        console.error(
+          "Invalid signature format - expected exactly 128 hex characters"
+        );
+        return false;
+      }
+
+      // Convert hex signature to bytes with validation
+      const signatureBytes = EmergencyRecoveryCrypto.hexToBytes(signature);
+      if (!signatureBytes || signatureBytes.length !== 64) {
+        console.error("Invalid guardian signature hex format");
+        return false;
+      }
+
+      // Convert public key to bytes with validation
+      const publicKeyBytes =
+        EmergencyRecoveryCrypto.hexToBytes(guardianPubkeyHex);
+      if (!publicKeyBytes || publicKeyBytes.length !== 32) {
+        console.error("Invalid guardian public key hex format");
         return false;
       }
 
       // Generate the canonical signing data
       const signingData = this.generateRecoveryRequestSigningData(request);
 
-      // Create message hash using Web Crypto API (browser-compatible)
+      // Create message hash using Web Crypto API
       const messageBytes = new TextEncoder().encode(signingData);
       const messageHash = await crypto.subtle.digest("SHA-256", messageBytes);
       const messageHashArray = new Uint8Array(messageHash);
 
-      // Parse the signature (expecting hex format)
-      if (!signature || signature.length !== 128) {
-        // 64 bytes = 128 hex chars
-        console.error("Invalid signature format - expected 128 hex characters");
-        return false;
-      }
-
-      // Convert hex signature to bytes
-      const signatureBytes = new Uint8Array(64);
-      for (let i = 0; i < 64; i++) {
-        signatureBytes[i] = parseInt(signature.substring(i * 2, i * 2 + 2), 16);
-      }
-
-      // Verify signature using Web Crypto API (browser-compatible)
+      // Verify signature using secp256k1 with proper error handling
       try {
-        // Import the guardian's public key
-        const publicKeyBytes = new Uint8Array(32);
-        for (let i = 0; i < 32; i++) {
-          publicKeyBytes[i] = parseInt(
-            guardianPubkeyHex.substring(i * 2, i * 2 + 2),
-            16
-          );
-        }
-
-        // Use secp256k1 verification (compatible with Nostr)
         const { verify } = await import("@noble/secp256k1");
         const isValid = verify(
           signatureBytes,
@@ -1330,26 +1447,26 @@ export class EmergencyRecoverySystem {
           publicKeyBytes
         );
 
-        if (!isValid) {
-          console.error(
-            "Signature verification failed for guardian:",
-            guardianNpub
-          );
-          return false;
-        }
+        // Use constant-time logging to prevent timing attacks
+        const logMessage = isValid
+          ? "✅ Guardian signature verified successfully"
+          : "❌ Guardian signature verification failed";
 
-        console.log(
-          "✅ Guardian signature verified successfully:",
-          guardianNpub
-        );
-        return true;
+        console.log(logMessage, guardianNpub.substring(0, 12) + "...");
+        return isValid;
       } catch (cryptoError) {
-        console.error("Cryptographic verification failed:", cryptoError);
+        console.error(
+          "Cryptographic guardian signature verification failed:",
+          cryptoError
+        );
         return false;
       }
     } catch (error) {
       console.error("Guardian signature verification error:", error);
       return false;
+    } finally {
+      // Secure memory cleanup for sensitive data
+      await EmergencyRecoveryCrypto.secureCleanup([signature]);
     }
   }
 

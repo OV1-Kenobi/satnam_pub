@@ -31,10 +31,7 @@ function getEnvVar(key) {
 /**
  * Security configuration constants following Master Context requirements
  * @typedef {Object} SecurityConfig
- * @property {number} ARGON2_MEMORY_COST - Argon2 memory cost (2^16 = 64MB)
- * @property {number} ARGON2_TIME_COST - Argon2 time cost (3 iterations)
- * @property {number} ARGON2_PARALLELISM - Argon2 parallelism (1 thread)
- * @property {number} ARGON2_HASH_LENGTH - Argon2 hash length (32 bytes)
+
  * @property {number} AES_KEY_LENGTH - AES key length (32 bytes for AES-256)
  * @property {number} IV_LENGTH - IV length for AES-GCM (12 bytes)
  * @property {number} SALT_LENGTH - Salt length (32 bytes)
@@ -264,9 +261,9 @@ export async function deriveEncryptionKey(passphrase, salt) {
 }
 
 /**
- * Encrypts sensitive data using AES-256-GCM with Argon2id key derivation
+ * Encrypts sensitive data using AES-256-GCM with PBKDF2 key derivation
  * Master Context Compliant: Uses AES-256-GCM for data encryption per directive
- * Gold Standard: Authenticated encryption with Argon2id key derivation
+ * Secure Implementation: Authenticated encryption with PBKDF2 key derivation using Web Crypto API
  * Returns base64 encoded encrypted data with IV and salt prepended
  * @param {string} data - Data to encrypt
  * @param {string} passphrase - Passphrase for encryption
@@ -325,7 +322,7 @@ export async function encryptCredentials(data, passphrase) {
 }
 
 /**
- * Decrypts data encrypted with encryptCredentials using Argon2id key derivation
+ * Decrypts data encrypted with encryptCredentials using PBKDF2 key derivation
  * Master Context Compliant: Uses AES-256-GCM for data decryption per directive
  * @param {string} encryptedData - Base64 encoded encrypted data
  * @param {string} passphrase - Passphrase for decryption
@@ -402,10 +399,11 @@ export function getPBKDF2Config() {
     );
   }
 
-  if (SECURITY_CONFIG.ARGON2_TIME_COST < 2) {
-    warnings.push("Time cost too low - may be vulnerable to attacks");
-  } else if (SECURITY_CONFIG.ARGON2_TIME_COST > 10) {
-    warnings.push("Time cost very high - may cause performance issues");
+  // PBKDF2 validation - ensure secure iteration count
+  if (SECURITY_CONFIG.PBKDF2_ITERATIONS < 50000) {
+    warnings.push("PBKDF2 iteration count too low - may be vulnerable to attacks");
+  } else if (SECURITY_CONFIG.PBKDF2_ITERATIONS > 200000) {
+    warnings.push("PBKDF2 iteration count very high - may cause performance issues");
   }
 
   // Environment-specific recommendations
@@ -471,7 +469,7 @@ export function validateCredentials() {
 }
 
 /**
- * Creates a secure backup of credentials (encrypted with Argon2id)
+ * Creates a secure backup of credentials (encrypted with PBKDF2)
  * Use this to store credentials securely outside of source code
  * @param {string} passphrase - Passphrase for encryption
  * @returns {Promise<string>} Encrypted credential backup
@@ -482,7 +480,7 @@ export async function createSecureCredentialBackup(passphrase) {
     supabaseKey: getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     lightningDomain: getEnvVar("LIGHTNING_DOMAIN"),
     timestamp: new Date().toISOString(),
-    version: "2.0.0", // Updated for Argon2-browser
+    version: "3.0.0", // Updated for PBKDF2 with Web Crypto API
   };
 
   const credentialData = JSON.stringify(credentials, null, 2);
@@ -490,7 +488,7 @@ export async function createSecureCredentialBackup(passphrase) {
 }
 
 /**
- * Restores credentials from secure backup encrypted with Argon2id
+ * Restores credentials from secure backup encrypted with PBKDF2
  * @param {string} encryptedBackup - Encrypted backup data
  * @param {string} passphrase - Passphrase for decryption
  * @returns {Promise<Object>} Restored credentials

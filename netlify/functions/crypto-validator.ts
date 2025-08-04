@@ -266,9 +266,9 @@ function validateEnvironmentConfiguration(): {
       priority: "MEDIUM",
       category: "MAINTENANCE",
       description:
-        "Development environment - consider lower Argon2 settings for faster testing",
+        "Development environment - PBKDF2 provides consistent performance across environments",
       action:
-        "Set ARGON2_MEMORY_COST=15 for development to improve performance",
+        "PBKDF2 configuration is optimized for both development and production",
     });
   }
 
@@ -327,9 +327,7 @@ function validateEnvironmentSecrets(): boolean {
  */
 function validateConfigurationCompleteness(): boolean {
   const requiredConfig = [
-    "ARGON2_MEMORY_COST",
-    "ARGON2_TIME_COST",
-    "ARGON2_PARALLELISM",
+    "PBKDF2_ITERATIONS",
     "PRIVACY_MASTER_KEY",
     "JWT_SECRET",
   ];
@@ -362,12 +360,9 @@ export function displayValidationResults(result: CryptoValidationResult): void {
   console.log("📊 CONFIGURATION SUMMARY");
   console.log("─".repeat(40));
   console.log(
-    `Argon2 Memory: ${result.configSummary.argon2.memoryMB}MB ${
-      result.configSummary.argon2.meetsGoldStandard ? "✅" : "⚠️"
-    }`
-  );
-  console.log(
-    `Argon2 Time Cost: ${result.configSummary.argon2.timeCost} iterations`
+    `PBKDF2 Iterations: ${
+      result.configSummary.pbkdf2?.iterations || "Not configured"
+    } ${(result.configSummary.pbkdf2?.iterations || 0) >= 100000 ? "✅" : "⚠️"}`
   );
   console.log(
     `Encryption: ${result.configSummary.encryption.algorithm} ${

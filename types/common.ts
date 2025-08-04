@@ -412,7 +412,7 @@ export interface AllowanceAutomation {
 export interface EncryptionConfig {
   algorithm: string;
   keyDerivation: {
-    function: "pbkdf2" | "scrypt" | "argon2";
+    function: "pbkdf2";
     iterations: number;
     saltLength: number;
     keyLength: number;

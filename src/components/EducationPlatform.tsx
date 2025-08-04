@@ -1,36 +1,28 @@
-import React, { useState } from "react";
 import {
-  Zap,
-  Users,
+  ArrowLeft,
+  Award,
   Bitcoin,
   BookOpen,
-  Key,
-  ArrowLeft,
-  Play,
-  CheckCircle,
-  Lock,
-  Star,
-  Trophy,
-  Target,
-  Flame,
-  Award,
-  MessageCircle,
-  ExternalLink,
-  ShoppingCart,
-  UserCheck,
-  Library,
-  Home,
-  TrendingUp,
-  Clock,
-  Eye,
-  Download,
-  Lightbulb,
-  Coins,
-  Wallet,
-  Network,
   Crown,
+  Download,
+  ExternalLink,
+  Flame,
+  Home,
+  Key,
+  Library,
+  MessageCircle,
+  Network,
+  Play,
+  ShoppingCart,
   Sparkles,
+  Star,
+  Target,
+  Trophy,
+  UserCheck,
+  Users,
+  Zap
 } from "lucide-react";
+import React, { useState } from "react";
 
 interface Lesson {
   id: string;
@@ -94,7 +86,7 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
       id: "basics",
       title: "Bitcoin Basics",
       icon: (
-        <img src="/LN Bitcoin icon.png\" alt="Bitcoin\" className="h-8 w-8" />
+        <img src="/LN-Bitcoin-icon.png" alt="Bitcoin" className="h-8 w-8" />
       ),
       color: "from-orange-400 to-orange-600",
       progress: 90,
@@ -217,8 +209,8 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
       title: "Privacy & Sovereignty",
       icon: (
         <img
-          src="/Citadel Academy Logo.png\"
-          alt="Citadel Academy\"
+          src="/Citadel-Academy-Logo.png"
+          alt="Citadel Academy"
           className="h-8 w-8"
         />
       ),
@@ -318,7 +310,7 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
               className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
             >
               <img
-                src="/Citadel Academy Logo.png"
+                src="/Citadel-Academy-Logo.png"
                 alt="Citadel Academy"
                 className="h-5 w-5"
               />
@@ -429,13 +421,12 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
                         {category.lessons.slice(0, 3).map((lesson, index) => (
                           <div
                             key={index}
-                            className={`w-3 h-3 rounded-full ${
-                              lesson.completed
+                            className={`w-3 h-3 rounded-full ${lesson.completed
                                 ? "bg-green-400"
                                 : lesson.locked
                                   ? "bg-gray-500"
                                   : "bg-yellow-400"
-                            }`}
+                              }`}
                           />
                         ))}
                         {category.lessons.length > 3 && (
@@ -455,7 +446,7 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
               <div className="text-center mb-6">
                 <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
                   <img
-                    src="/Citadel Academy Logo.png"
+                    src="/Citadel-Academy-Logo.png"
                     alt="Citadel Academy"
                     className="h-10 w-10"
                   />
@@ -540,7 +531,7 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
                   className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 transform hover:scale-105 inline-flex items-center space-x-2 shadow-lg"
                 >
                   <img
-                    src="/Citadel Academy Logo.png"
+                    src="/Citadel-Academy-Logo.png"
                     alt="Citadel Academy"
                     className="h-5 w-5"
                   />
@@ -567,15 +558,14 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
                     className="flex items-center space-x-3 bg-white/10 rounded-lg p-3"
                   >
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                        index === 0
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${index === 0
                           ? "bg-yellow-500"
                           : index === 1
                             ? "bg-gray-400"
                             : index === 2
                               ? "bg-orange-600"
                               : "bg-purple-500"
-                      }`}
+                        }`}
                     >
                       {index < 3 ? index + 1 : member.avatar}
                     </div>
@@ -668,7 +658,7 @@ const EducationPlatform: React.FC<EducationPlatformProps> = ({ onBack }) => {
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200">
             <span className="flex items-center space-x-2">
               <img
-                src="/Citadel Academy Logo.png"
+                src="/Citadel-Academy-Logo.png"
                 alt="Citadel Academy"
                 className="h-4 w-4"
               />

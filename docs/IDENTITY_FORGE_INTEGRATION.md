@@ -95,7 +95,7 @@ Frontend (IdentityForge) → API (/api/auth/register-identity) → Backend (Iden
 
 ### Security Features
 
-- **Password Encryption**: Uses Argon2id via `encryptCredentials()`
+- **Password Encryption**: Uses PBKDF2 via `encryptCredentials()`
 - **Recovery Phrase**: BIP39-compatible 12-word mnemonic
 - **Database Storage**: Encrypted private keys in `encrypted_keys` table
 - **One-Time Secrets**: Private keys only returned once during registration
@@ -120,7 +120,7 @@ Frontend (IdentityForge) → API (/api/auth/register-identity) → Backend (Iden
 2. **`encrypted_keys`**: Encrypted private key storage
    ```sql
    - user_id (uuid, foreign key to profiles.id)
-   - encrypted_nsec (text) -- Argon2id encrypted private key
+   - encrypted_nsec (text) -- PBKDF2 encrypted private key
    - salt (text, nullable) -- Embedded in encrypted_nsec format
    - created_at (timestamp)
    ```
@@ -222,7 +222,7 @@ The IdentityForge automatically handles PostAuth invitation flow:
 
 ### Backend Security
 
-- **Password Hashing**: Argon2id for password-based encryption
+- **Password Hashing**: PBKDF2 with Web Crypto API for password-based encryption
 - **Key Encryption**: Private keys encrypted before database storage
 - **Input Validation**: Comprehensive validation with Zod schemas
 - **Rate Limiting**: Protection against brute force attacks
@@ -240,7 +240,7 @@ The IdentityForge automatically handles PostAuth invitation flow:
 2. **Password Security**:
 
    - Enforce strong password requirements
-   - Use secure password derivation (Argon2id)
+   - Use secure password derivation (PBKDF2)
    - Never log or store plaintext passwords
 
 3. **Key Management**:

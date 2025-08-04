@@ -843,7 +843,7 @@ function App() {
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{
-          backgroundImage: `url('/Bitcoin Citadel Valley.jpg')`,
+          backgroundImage: `url('/BitcoinCitadelValley.jpg')`,
         }}
       >
         {/* Gradient overlay with 50% reduced opacity */}
@@ -956,7 +956,7 @@ function App() {
               onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
-              <img src="/ID forge icon.png" alt="Forge" className="h-5 w-5" />
+              <img src="/ID-forge-icon.png" alt="Forge" className="h-5 w-5" />
               <span>Forge Identity</span>
             </button>
             <button
@@ -1009,7 +1009,7 @@ function App() {
               className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
               <img
-                src="/Citadel Academy Logo.png"
+                src="/Citadel-Academy-Logo.png"
                 alt="Citadel Academy"
                 className="h-4 w-4"
               />
@@ -1033,7 +1033,7 @@ function App() {
           >
             <div className="w-16 h-16 mx-auto mb-6 relative">
               <img
-                src="/SatNam.Pub logo.png"
+                src="/SatNam-logo.png"
                 alt="SatNam.Pub"
                 className="h-16 w-16 rounded-full"
                 loading="lazy"
@@ -1048,7 +1048,7 @@ function App() {
               cryptographic verification that no one can take, fake, or censor.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
-              <img src="/ID forge icon.png" alt="Forge" className="h-4 w-4" />
+              <img src="/ID-forge-icon.png" alt="Forge" className="h-4 w-4" />
               <span>Create Identity</span>
             </button>
           </div>
@@ -1060,7 +1060,7 @@ function App() {
           >
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-6 relative">
               <img
-                src="/LN Bitcoin icon.png"
+                src="/LN-Bitcoin-icon.png"
                 alt="Lightning Bitcoin"
                 className="h-14 w-14"
                 loading="lazy"
@@ -1317,7 +1317,7 @@ function App() {
                 className="text-yellow-400 hover:text-yellow-300 font-bold flex items-center space-x-1 transition-colors duration-200"
               >
                 <img
-                  src="/Citadel Academy Logo.png"
+                  src="/Citadel-Academy-Logo.png"
                   alt="Citadel Academy"
                   className="h-4 w-4"
                   loading="lazy"
@@ -1331,7 +1331,7 @@ function App() {
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200">
               <span className="flex items-center space-x-2">
                 <img
-                  src="/Citadel Academy Logo.png"
+                  src="/Citadel-Academy-Logo.png"
                   alt="Citadel Academy"
                   className="h-4 w-4"
                   loading="lazy"
