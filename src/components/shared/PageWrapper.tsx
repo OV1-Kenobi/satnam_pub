@@ -34,13 +34,10 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
   // Determine which background image to use
   const getBackgroundImage = () => {
     if (useNostrBackground) {
-      console.log('Using Nostr background for view:', currentView);
       return `url('/Nostr%20Zapstorm.jpg')`;
     } else if (useFinancialBackground) {
-      console.log('Using Financial background for view:', currentView);
       return `url('/Energized%20Bitcoin.jpg')`;
     } else {
-      console.log('Using default background for view:', currentView);
       return `url('/Bitcoin%20Citadel%20Valley.jpg')`;
     }
   };
