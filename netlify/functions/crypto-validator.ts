@@ -1,26 +1,30 @@
 /**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
+ * @fileoverview Memory-Optimized Crypto Configuration Validator
+ * @description Ensures all encryption protocols meet security standards with minimal memory footprint
+ * MEMORY OPTIMIZATION: Uses dynamic imports and lazy loading
  */
-import { getEnvVar } from "./utils/env.js";
+
+// MEMORY OPTIMIZATION: Lazy-loaded dependencies
+let securityModule: any = null;
 
 /**
- * @fileoverview Gold Standard Crypto Configuration Validator
- * @description Ensures all encryption protocols meet the highest security standards
- * for high-tech users who demand the absolute best in cryptographic protection
+ * Lazy load security module
  */
-
-import { getPBKDF2Config } from "../../api/lib/security.js";
+async function getSecurityModule() {
+  if (!securityModule) {
+    securityModule = await import("../../api/lib/security.js");
+  }
+  return securityModule;
+}
 
 /**
- * Gold Standard Encryption Configuration Requirements
- * These settings ensure maximum security for the most demanding users
+ * PBKDF2 Security Standards Configuration Requirements
+ * These settings ensure maximum security for cryptographic operations
  */
-export const GOLD_STANDARD_REQUIREMENTS = {
+export const PBKDF2_SECURITY_REQUIREMENTS = {
   // PBKDF2 Iteration Requirements
   MINIMUM_PBKDF2_ITERATIONS: 50000, // Absolute minimum for production
-  RECOMMENDED_PBKDF2_ITERATIONS: 100000, // Gold standard recommendation
+  RECOMMENDED_PBKDF2_ITERATIONS: 100000, // Recommended security standard
   MAXIMUM_SAFE_PBKDF2_ITERATIONS: 200000, // Upper limit before performance issues
 
   // Required Algorithms
@@ -40,7 +44,7 @@ export const GOLD_STANDARD_REQUIREMENTS = {
  * Validation Result Interface
  */
 export interface CryptoValidationResult {
-  isGoldStandard: boolean;
+  meetsSecurityStandards: boolean;
   securityLevel: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   issues: SecurityIssue[];
   recommendations: SecurityRecommendation[];
@@ -66,7 +70,7 @@ interface SecurityRecommendation {
 interface ConfigSummary {
   pbkdf2: {
     iterations: number;
-    meetsGoldStandard: boolean;
+    meetsSecurityStandards: boolean;
   };
   encryption: {
     algorithm: string;
@@ -81,16 +85,17 @@ interface ConfigSummary {
 }
 
 /**
- * Comprehensive validation of all crypto configurations against Gold Standard requirements
+ * Comprehensive validation of all crypto configurations against PBKDF2 security standards
+ * MEMORY OPTIMIZATION: Uses dynamic imports
  */
-export function validateGoldStandardCrypto(): CryptoValidationResult {
-  console.log("🔍 Running Gold Standard Cryptographic Security Audit...\n");
+export async function validateCryptoConfiguration(): Promise<CryptoValidationResult> {
+  console.log("🔍 Running PBKDF2 Cryptographic Security Audit...\n");
 
   const issues: SecurityIssue[] = [];
   const recommendations: SecurityRecommendation[] = [];
 
   // 1. Validate PBKDF2 Configuration
-  const pbkdf2Validation = validatePBKDF2Configuration();
+  const pbkdf2Validation = await validatePBKDF2Configuration();
   issues.push(...pbkdf2Validation.issues);
   recommendations.push(...pbkdf2Validation.recommendations);
 
@@ -119,17 +124,20 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
     securityLevel = "LOW";
   }
 
-  const isGoldStandard =
+  const meetsSecurityStandards =
     criticalIssues === 0 && highIssues === 0 && issues.length <= 1;
 
+  // MEMORY OPTIMIZATION: Load security module dynamically
+  const security = await getSecurityModule();
+
   // Build configuration summary
-  const pbkdf2Config = getPBKDF2Config();
+  const pbkdf2Config = security.getPBKDF2Config();
   const configSummary: ConfigSummary = {
     pbkdf2: {
       iterations: pbkdf2Config.iterations,
-      meetsGoldStandard:
+      meetsSecurityStandards:
         pbkdf2Config.iterations >=
-        GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS,
+        PBKDF2_SECURITY_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS,
     },
     encryption: {
       algorithm: "aes-256-gcm", // We enforce this in our security module
@@ -137,14 +145,14 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
       usesAuthenticatedEncryption: true,
     },
     environment: {
-      nodeEnv: getEnvVar("NODE_ENV") || "development",
+      nodeEnv: process.env.NODE_ENV || "development",
       hasProperSecrets: validateEnvironmentSecrets(),
       configurationComplete: validateConfigurationCompleteness(),
     },
   };
 
   return {
-    isGoldStandard,
+    meetsSecurityStandards,
     securityLevel,
     issues,
     recommendations,
@@ -153,43 +161,45 @@ export function validateGoldStandardCrypto(): CryptoValidationResult {
 }
 
 /**
- * Validate PBKDF2 configuration against Gold Standard requirements
+ * Validate PBKDF2 configuration against security standards
+ * MEMORY OPTIMIZATION: Uses dynamic imports
  */
-function validatePBKDF2Configuration(): {
+async function validatePBKDF2Configuration(): Promise<{
   issues: SecurityIssue[];
   recommendations: SecurityRecommendation[];
-} {
+}> {
   const issues: SecurityIssue[] = [];
   const recommendations: SecurityRecommendation[] = [];
 
   try {
-    const pbkdf2Config = getPBKDF2Config();
+    const security = await getSecurityModule();
+    const pbkdf2Config = security.getPBKDF2Config();
     const { iterations, warnings } = pbkdf2Config;
 
     // Check iteration count
-    if (iterations < GOLD_STANDARD_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS) {
+    if (iterations < PBKDF2_SECURITY_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS) {
       issues.push({
         severity: "CRITICAL",
         category: "KEY_DERIVATION",
         description: "PBKDF2 iteration count below secure minimum",
         currentValue: iterations,
-        requiredValue: GOLD_STANDARD_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS,
-        fix: `Set PBKDF2_ITERATIONS=${GOLD_STANDARD_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS} in .env.local`,
+        requiredValue: PBKDF2_SECURITY_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS,
+        fix: `Set PBKDF2_ITERATIONS=${PBKDF2_SECURITY_REQUIREMENTS.MINIMUM_PBKDF2_ITERATIONS} in .env.local`,
       });
     } else if (
-      iterations < GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS
+      iterations < PBKDF2_SECURITY_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS
     ) {
       recommendations.push({
         priority: "HIGH",
         category: "SECURITY",
         description:
-          "Consider increasing PBKDF2 iteration count for Gold Standard security",
-        action: `Set PBKDF2_ITERATIONS=${GOLD_STANDARD_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS} in .env.local`,
+          "Consider increasing PBKDF2 iteration count for enhanced security",
+        action: `Set PBKDF2_ITERATIONS=${PBKDF2_SECURITY_REQUIREMENTS.RECOMMENDED_PBKDF2_ITERATIONS} in .env.local`,
       });
     }
 
     // Check for configuration warnings
-    warnings.forEach((warning) => {
+    warnings.forEach((warning: string) => {
       issues.push({
         severity: warning.includes("performance") ? "HIGH" : "MEDIUM",
         category: "CONFIGURATION",
@@ -251,7 +261,7 @@ function validateEnvironmentConfiguration(): {
   });
 
   // Check NODE_ENV
-  const nodeEnv = getEnvVar("NODE_ENV");
+  const nodeEnv = process.env.NODE_ENV;
   if (nodeEnv === "production") {
     recommendations.push({
       priority: "HIGH",
@@ -340,20 +350,18 @@ function validateConfigurationCompleteness(): boolean {
  */
 export function displayValidationResults(result: CryptoValidationResult): void {
   console.log("═".repeat(80));
-  console.log("🔐 GOLD STANDARD CRYPTOGRAPHIC SECURITY AUDIT RESULTS");
+  console.log("🔐 PBKDF2 CRYPTOGRAPHIC SECURITY AUDIT RESULTS");
   console.log("═".repeat(80));
 
   // Overall Status
-  if (result.isGoldStandard) {
+  if (result.meetsSecurityStandards) {
+    console.log("✅ CONGRATULATIONS! Your encryption meets security standards");
     console.log(
-      "✅ CONGRATULATIONS! Your encryption meets GOLD STANDARD requirements"
-    );
-    console.log(
-      "   Your high-tech users can trust in maximum cryptographic protection\n"
+      "   Your application uses high-level PBKDF2 cryptographic security\n"
     );
   } else {
     console.log(`⚠️  SECURITY LEVEL: ${result.securityLevel}`);
-    console.log("   Improvements needed to achieve Gold Standard encryption\n");
+    console.log("   Improvements needed to achieve security standards\n");
   }
 
   // Configuration Summary
@@ -421,30 +429,27 @@ export function displayValidationResults(result: CryptoValidationResult): void {
     "For high-tech users who demand the best: Fix all CRITICAL and HIGH issues"
   );
   console.log(
-    "Contact support if you need assistance achieving Gold Standard encryption"
+    "Contact support if you need assistance achieving security standards"
   );
   console.log("═".repeat(80));
 }
 
 /**
- * Validate crypto configuration on startup and exit if not Gold Standard
+ * Validate crypto configuration on startup and exit if not meeting security standards
+ * MEMORY OPTIMIZATION: Uses dynamic imports
  */
-export function enforceGoldStandardOnStartup(
+export async function validateCryptoOnStartup(
   exitOnFailure: boolean = false
-): boolean {
-  console.log("🚀 Starting Gold Standard Crypto Validation...\n");
+): Promise<boolean> {
+  console.log("🚀 Starting PBKDF2 Crypto Security Validation...\n");
 
-  // First run the basic Argon2 validation
-  validateArgon2ConfigOnStartup();
-  console.log();
-
-  // Then run comprehensive Gold Standard validation
-  const result = validateGoldStandardCrypto();
+  // Run comprehensive PBKDF2 security validation
+  const result = await validateCryptoConfiguration();
   displayValidationResults(result);
 
-  if (!result.isGoldStandard && exitOnFailure) {
+  if (!result.meetsSecurityStandards && exitOnFailure) {
     console.error(
-      "\n❌ STARTUP FAILED: Crypto configuration does not meet Gold Standard requirements"
+      "\n❌ STARTUP FAILED: Crypto configuration does not meet security standards"
     );
     console.error(
       "Please fix the issues above before starting the application"
@@ -452,5 +457,76 @@ export function enforceGoldStandardOnStartup(
     process.exit(1);
   }
 
-  return result.isGoldStandard;
+  return result.meetsSecurityStandards;
+}
+
+/**
+ * Netlify Functions handler - Memory Optimized
+ * MEMORY OPTIMIZATION: Minimal imports and lazy loading
+ */
+export async function handler(event: any, _context: any) {
+  try {
+    // CORS headers
+    const headers = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Content-Type": "application/json",
+    };
+
+    // Handle preflight requests
+    if (event.httpMethod === "OPTIONS") {
+      return {
+        statusCode: 200,
+        headers,
+        body: "",
+      };
+    }
+
+    // Only allow GET requests for validation
+    if (event.httpMethod !== "GET") {
+      return {
+        statusCode: 405,
+        headers,
+        body: JSON.stringify({ error: "Method not allowed" }),
+      };
+    }
+
+    // MEMORY OPTIMIZATION: Lazy load validation
+    const result = await validateCryptoConfigurationAsync();
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        meetsSecurityStandards: result.meetsSecurityStandards,
+        securityLevel: result.securityLevel,
+        issueCount: result.issues.length,
+        recommendationCount: result.recommendations.length,
+        summary: result.configSummary,
+      }),
+    };
+  } catch (error) {
+    console.error("Crypto validation error:", error);
+    return {
+      statusCode: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        error: "Internal server error",
+        meetsSecurityStandards: false,
+      }),
+    };
+  }
+}
+
+/**
+ * Async version of validation for Netlify Functions
+ * MEMORY OPTIMIZATION: Uses dynamic imports
+ */
+async function validateCryptoConfigurationAsync(): Promise<CryptoValidationResult> {
+  // Use the existing validation logic with dynamic imports
+  return validateCryptoConfiguration();
 }

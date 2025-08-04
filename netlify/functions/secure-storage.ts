@@ -1,11 +1,5 @@
-// lib/secure-storage.ts
-import {
-  generateSecretKey,
-  getPublicKey,
-  nip19,
-} from "../../src/lib/nostr-browser";
-import { decryptCredentials, encryptCredentials } from "../security.js";
-import { supabase } from "./supabase";
+// lib/secure-storage.ts - Memory Optimized
+// MEMORY OPTIMIZATION: Use dynamic imports to reduce initial bundle size
 
 export interface EncryptedKeyData {
   userId: string;
@@ -19,6 +13,42 @@ export interface NewAccountKeyPair {
   npub: string;
   hexPrivateKey: string;
   hexPublicKey: string;
+}
+
+// MEMORY OPTIMIZATION: Lazy-loaded dependencies
+let nostrBrowser: any = null;
+let securityModule: any = null;
+let supabaseClient: any = null;
+
+/**
+ * Lazy load Nostr browser utilities
+ */
+async function getNostrBrowser() {
+  if (!nostrBrowser) {
+    nostrBrowser = await import("../../src/lib/nostr-browser.js");
+  }
+  return nostrBrowser;
+}
+
+/**
+ * Lazy load security module
+ */
+async function getSecurityModule() {
+  if (!securityModule) {
+    securityModule = await import("../security.js");
+  }
+  return securityModule;
+}
+
+/**
+ * Lazy load Supabase client
+ */
+async function getSupabaseClient() {
+  if (!supabaseClient) {
+    const module = await import("./supabase.js");
+    supabaseClient = module.supabase;
+  }
+  return supabaseClient;
 }
 
 /**
@@ -107,6 +137,8 @@ export class SecureStorage {
     fallbackOperation?: () => Promise<T>
   ): Promise<T | null> {
     try {
+      const supabase = await getSupabaseClient();
+
       // Try to begin transaction
       const { error: beginError } = await supabase.rpc("begin_transaction");
 
@@ -143,17 +175,21 @@ export class SecureStorage {
 
   /**
    * Generate a new Nostr keypair for account creation
+   * MEMORY OPTIMIZATION: Uses dynamic imports
    */
-  static generateNewAccountKeyPair(): NewAccountKeyPair {
-    const privateKeyBytes = generateSecretKey();
+  static async generateNewAccountKeyPair(): Promise<NewAccountKeyPair> {
+    const nostr = await getNostrBrowser();
+
+    // Use the correct Nostr browser API
+    const privateKeyBytes = nostr.generateSecretKey();
     const hexPrivateKey = Array.from(privateKeyBytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
+      .map((b: unknown) => (b as number).toString(16).padStart(2, "0"))
       .join("");
-    const hexPublicKey = getPublicKey(privateKeyBytes);
+    const hexPublicKey = nostr.getPublicKey(privateKeyBytes);
 
     return {
-      nsec: nip19.nsecEncode(hexPrivateKey), // Required for signing - keep secure
-      npub: nip19.npubEncode(hexPublicKey),
+      nsec: nostr.nip19.nsecEncode(hexPrivateKey), // Required for signing - keep secure
+      npub: nostr.nip19.npubEncode(hexPublicKey),
       hexPrivateKey,
       hexPublicKey,
     };
@@ -175,8 +211,12 @@ export class SecureStorage {
     let encryptedNsecBuffer: SecureBuffer | null = null;
 
     try {
+      // MEMORY OPTIMIZATION: Load security module and Supabase client dynamically
+      const security = await getSecurityModule();
+      const supabase = await getSupabaseClient();
+
       // Encrypt the nsec using secure PBKDF2 key derivation
-      const encryptedNsec = await encryptCredentials(
+      const encryptedNsec = await security.encryptCredentials(
         nsecBuffer.toString(),
         passwordBuffer.toString()
       );
@@ -222,6 +262,10 @@ export class SecureStorage {
     const passwordBuffer = this.createSecureBuffer(userPassword);
 
     try {
+      // MEMORY OPTIMIZATION: Load security module and Supabase client dynamically
+      const security = await getSecurityModule();
+      const supabase = await getSupabaseClient();
+
       // Get encrypted data from database atomically
       const { data, error } = await supabase
         .from("encrypted_keys")
@@ -236,7 +280,7 @@ export class SecureStorage {
 
       // Decrypt the nsec using secure PBKDF2 key derivation
       try {
-        const decryptedNsec = await decryptCredentials(
+        const decryptedNsec = await security.decryptCredentials(
           data.encrypted_nsec,
           passwordBuffer.toString()
         );
@@ -265,6 +309,9 @@ export class SecureStorage {
     newPassword: string
   ): Promise<boolean> {
     try {
+      // MEMORY OPTIMIZATION: Load Supabase client dynamically
+      const supabase = await getSupabaseClient();
+
       // Try database-level transaction first (if available)
       try {
         const { data, error } = await supabase.rpc(
@@ -314,8 +361,12 @@ export class SecureStorage {
     let newEncryptedNsecBuffer: SecureBuffer | null = null;
 
     try {
+      // MEMORY OPTIMIZATION: Load security module and Supabase client dynamically
+      const security = await getSecurityModule();
+      const supabase = await getSupabaseClient();
+
       // Use Supabase transaction for atomic operations
-      const { data: transactionResult, error: transactionError } =
+      const { data: _transactionResult, error: transactionError } =
         await supabase.rpc("begin_transaction");
 
       if (transactionError) {
@@ -348,7 +399,7 @@ export class SecureStorage {
 
         // Decrypt with old password
         try {
-          const decryptedNsec = await decryptCredentials(
+          const decryptedNsec = await security.decryptCredentials(
             currentData.encrypted_nsec,
             oldPasswordBuffer.toString()
           );
@@ -360,7 +411,7 @@ export class SecureStorage {
         }
 
         // Re-encrypt with new password
-        const newEncryptedNsec = await encryptCredentials(
+        const newEncryptedNsec = await security.encryptCredentials(
           decryptedNsecBuffer.toString(),
           newPasswordBuffer.toString()
         );
@@ -427,6 +478,10 @@ export class SecureStorage {
     const maxRetries = 3;
 
     try {
+      // MEMORY OPTIMIZATION: Load security module and Supabase client dynamically
+      const security = await getSecurityModule();
+      const supabase = await getSupabaseClient();
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         let decryptedNsecBuffer: SecureBuffer | null = null;
         let newEncryptedNsecBuffer: SecureBuffer | null = null;
@@ -449,7 +504,7 @@ export class SecureStorage {
 
           // Decrypt with old password
           try {
-            const decryptedNsec = await decryptCredentials(
+            const decryptedNsec = await security.decryptCredentials(
               currentData.encrypted_nsec,
               oldPasswordBuffer.toString()
             );
@@ -460,14 +515,14 @@ export class SecureStorage {
           }
 
           // Re-encrypt with new password
-          const newEncryptedNsec = await encryptCredentials(
+          const newEncryptedNsec = await security.encryptCredentials(
             decryptedNsecBuffer.toString(),
             newPasswordBuffer.toString()
           );
           newEncryptedNsecBuffer = this.createSecureBuffer(newEncryptedNsec);
 
           // Atomic update with optimistic locking using both encrypted_nsec and updated_at
-          const { error: updateError, count } = await supabase
+          const { error: updateError, count: _count } = await supabase
             .from("encrypted_keys")
             .update({
               encrypted_nsec: newEncryptedNsecBuffer.toString(),
@@ -533,6 +588,8 @@ export class SecureStorage {
    */
   static async hasStoredNsec(userId: string): Promise<boolean> {
     try {
+      const supabase = await getSupabaseClient();
+
       const { data, error } = await supabase
         .from("encrypted_keys")
         .select("user_id")
@@ -551,8 +608,10 @@ export class SecureStorage {
    */
   static async deleteStoredNsec(userId: string): Promise<boolean> {
     try {
+      const supabase = await getSupabaseClient();
+
       // Use transaction for atomic deletion if available
-      const { data: transactionResult, error: transactionError } =
+      const { data: _transactionResult, error: transactionError } =
         await supabase.rpc("begin_transaction");
 
       if (!transactionError) {

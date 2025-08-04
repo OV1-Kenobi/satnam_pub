@@ -1,15 +1,23 @@
 /**
- * Identity Registration Netlify Function
+ * Identity Registration Netlify Function - Memory Optimized
  * POST /.netlify/functions/register-identity - Register new user identity
  * Accessible via /api/register-identity through netlify.toml redirects
  * @compliance Master Context - Privacy-first, browser-compatible, Bitcoin-only
- *
- * CONSOLIDATED VERSION - Complete database schema support with comprehensive error handling
+ * MEMORY OPTIMIZATION: Uses dynamic imports and lazy loading
  */
 
-import { supabase } from "./supabase.js";
+// MEMORY OPTIMIZATION: Import memory utilities
+import {
+    cleanup,
+    handleCORS,
+    withMemoryMonitoring
+} from "./utils/memory-optimizer.js";
 
-export const handler = async (event) => {
+// MEMORY OPTIMIZATION: Wrap handler with memory monitoring
+export const handler = withMemoryMonitoring(async (event) => {
+  // Handle CORS preflight
+  const corsResponse = handleCORS(event);
+  if (corsResponse) return corsResponse;
   console.log("🔍 REGISTER IDENTITY: Function called", {
     method: event.httpMethod,
     hasBody: !!event.body,
@@ -393,5 +401,8 @@ export const handler = async (event) => {
         timestamp: new Date().toISOString()
       }),
     };
+  } finally {
+    // MEMORY OPTIMIZATION: Cleanup after request
+    cleanup();
   }
-};
+}, "register-identity");

@@ -188,11 +188,21 @@
     NODE_ENV = "development"
     VITE_API_BASE_URL = "/.netlify/functions"
 
-# Functions configuration - Optimized for storage efficiency
+# Functions configuration - Optimized for memory and storage efficiency
 [functions]
   # Node.js version for functions
   node_bundler = "esbuild"
-  external_node_modules = ["pg", "redis", "jsonwebtoken", "@supabase/supabase-js"]
+  # MEMORY OPTIMIZATION: Externalize heavy dependencies to reduce bundle size
+  external_node_modules = [
+    "pg",
+    "redis",
+    "jsonwebtoken",
+    "@supabase/supabase-js",
+    "@noble/secp256k1",
+    "@noble/hashes",
+    "crypto-js",
+    "nostr-tools"
+  ]
   # CRITICAL: Exclude more files to reduce storage usage
   included_files = [
     "!**/__tests__/**",
@@ -213,15 +223,31 @@
     "!netlify/functions/middleware/**"
   ]
 
-# Essential functions only - reduce storage usage
+# Essential functions with memory optimization
 [functions."register-identity"]
   node_bundler = "esbuild"
+  memory_size = 512  # 512MB for identity operations
+  timeout = 20
 
 [functions."nostr"]
   node_bundler = "esbuild"
+  memory_size = 256  # 256MB for NIP-05 operations
+  timeout = 10
 
 [functions."nostr-otp-service"]
   node_bundler = "esbuild"
+  memory_size = 256  # 256MB for OTP operations
+  timeout = 15
+
+[functions."secure-storage"]
+  node_bundler = "esbuild"
+  memory_size = 512  # 512MB for encryption operations
+  timeout = 20
+
+[functions."crypto-validator"]
+  node_bundler = "esbuild"
+  memory_size = 256  # 256MB for validation operations
+  timeout = 10
 
 # Scheduled functions for cleanup tasks (only essential ones)
 [functions."cleanup-expired-credentials"]
@@ -242,7 +268,10 @@
 [build.processing.html]
   pretty_urls = true
 
-# Function size limits and optimization
+# Function size limits and memory optimization
 [functions.settings]
-  # CRITICAL: Reduce function size limits to prevent storage bloat
-  max_size = "25MB"  # Reduced from 50MB to force smaller bundles
+  # MEMORY OPTIMIZATION: Increase limits to prevent deployment failures
+  max_size = "50MB"  # Increased to handle security enhancements
+  # Memory optimization settings
+  memory_size = 1024  # 1GB memory limit (increased from default 128MB)
+  timeout = 30  # 30 second timeout for complex operations
