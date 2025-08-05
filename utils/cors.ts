@@ -73,11 +73,23 @@ export function setCorsHeaders(
   const origin = req.headers.origin;
   const allowedOrigins = getAllowedOrigins();
 
-  // Check if origin is allowed
-  const isOriginAllowed =
-    origin && (allowedOrigins.includes(origin) || validateOrigin(origin)); // Use shared validation logic
+  // SECURITY: Explicit, separate validation checks for transparency and debugging
+  const isExplicitlyAllowed = origin && allowedOrigins.includes(origin);
+  const isValidatedOrigin = origin && validateOrigin(origin);
 
-  if (isOriginAllowed) {
+  // Log validation results for security auditing
+  if (origin) {
+    if (isExplicitlyAllowed) {
+      console.log(`[CORS] Origin allowed via explicit allowlist: ${origin}`);
+    } else if (isValidatedOrigin) {
+      console.log(`[CORS] Origin allowed via validation function: ${origin}`);
+    } else {
+      console.warn(`[CORS] Origin rejected: ${origin}`);
+    }
+  }
+
+  // Allow origin if it passes either validation method
+  if (isExplicitlyAllowed || isValidatedOrigin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
 
@@ -141,11 +153,27 @@ export function setCorsHeadersForCustomAPI(
   const origin = req.headers.origin;
   const allowedOrigins = getAllowedOrigins();
 
-  // Check if origin is allowed
-  const isOriginAllowed =
-    origin && (allowedOrigins.includes(origin) || validateOrigin(origin));
+  // SECURITY: Explicit, separate validation checks for transparency and debugging
+  const isExplicitlyAllowed = origin && allowedOrigins.includes(origin);
+  const isValidatedOrigin = origin && validateOrigin(origin);
 
-  if (isOriginAllowed) {
+  // Log validation results for security auditing
+  if (origin) {
+    if (isExplicitlyAllowed) {
+      console.log(
+        `[CORS-Custom] Origin allowed via explicit allowlist: ${origin}`
+      );
+    } else if (isValidatedOrigin) {
+      console.log(
+        `[CORS-Custom] Origin allowed via validation function: ${origin}`
+      );
+    } else {
+      console.warn(`[CORS-Custom] Origin rejected: ${origin}`);
+    }
+  }
+
+  // Allow origin if it passes either validation method
+  if (isExplicitlyAllowed || isValidatedOrigin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
 

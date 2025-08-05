@@ -20,6 +20,16 @@ interface UseCryptoOptions {
   };
 }
 
+// Cached crypto factory import to avoid multiple dynamic imports
+let cryptoFactoryPromise: Promise<any> | null = null;
+
+const getCryptoFactory = () => {
+  if (!cryptoFactoryPromise) {
+    cryptoFactoryPromise = import("../../utils/crypto-factory");
+  }
+  return cryptoFactoryPromise;
+};
+
 interface UseCryptoReturn extends CryptoLoadingState {
   loadCrypto: () => Promise<void>;
   retry: () => Promise<void>;
@@ -73,11 +83,9 @@ export function useCrypto(options: UseCryptoOptions = {}): UseCryptoReturn {
   // Configure strategy if provided
   useEffect(() => {
     if (strategy) {
-      import("../../utils/crypto-factory").then(
-        ({ configureCryptoStrategy }) => {
-          configureCryptoStrategy(strategy);
-        }
-      );
+      getCryptoFactory().then(({ configureCryptoStrategy }) => {
+        configureCryptoStrategy(strategy);
+      });
     }
   }, [strategy]);
 
@@ -228,24 +236,24 @@ export function useCryptoOperations() {
     async generateNostrKeyPair(recoveryPhrase?: string, account?: number) {
       console.log("🔑 generateNostrKeyPair called");
 
-      // Use direct import approach (same as working debug test)
+      // Use cached crypto factory import
       try {
-        console.log("🔄 Using direct crypto factory import...");
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        console.log("🔄 Using cached crypto factory import...");
+        const cryptoFactory = await getCryptoFactory();
         const result = await cryptoFactory.generateNostrKeyPair(
           recoveryPhrase,
           account
         );
-        console.log("✅ Direct crypto factory import successful");
+        console.log("✅ Cached crypto factory import successful");
         return result;
       } catch (error) {
-        console.error("❌ Direct crypto factory import failed:", error);
+        console.error("❌ Cached crypto factory import failed:", error);
 
         // Fallback to executeWithLoading approach
         try {
           console.log("🔄 Falling back to executeWithLoading...");
           return await executeWithLoading(async () => {
-            const cryptoFactory = await import("../../utils/crypto-factory");
+            const cryptoFactory = await getCryptoFactory();
             return cryptoFactory.generateNostrKeyPair(recoveryPhrase, account);
           });
         } catch (fallbackError) {
@@ -259,7 +267,7 @@ export function useCryptoOperations() {
       // For essential functions, try direct loading if preloading fails
       try {
         return await executeWithLoading(async () => {
-          const cryptoFactory = await import("../../utils/crypto-factory");
+          const cryptoFactory = await getCryptoFactory();
           return cryptoFactory.generateRecoveryPhrase();
         });
       } catch (error) {
@@ -268,7 +276,7 @@ export function useCryptoOperations() {
           console.warn(
             "⚠️ Crypto preloading timed out, trying direct import..."
           );
-          const cryptoFactory = await import("../../utils/crypto-factory");
+          const cryptoFactory = await getCryptoFactory();
           return cryptoFactory.generateRecoveryPhrase();
         }
         throw error;
@@ -277,28 +285,28 @@ export function useCryptoOperations() {
 
     async privateKeyFromPhrase(phrase: string) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.privateKeyFromPhrase(phrase);
       });
     },
 
     async generateTOTP(secret: string, window?: number) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.generateTOTP(secret, window);
       });
     },
 
     async encryptData(data: string, password: string) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.encryptData(data, password);
       });
     },
 
     async decryptData(encryptedData: string, password: string) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.decryptData(encryptedData, password);
       });
     },
@@ -306,21 +314,21 @@ export function useCryptoOperations() {
     // Additional crypto utilities
     async generateRandomHex(length: number) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.generateRandomHex(length);
       });
     },
 
     async generateSecureToken(length?: number) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.generateSecureToken(length);
       });
     },
 
     async sha256(data: string) {
       return executeWithLoading(async () => {
-        const cryptoFactory = await import("../../utils/crypto-factory");
+        const cryptoFactory = await getCryptoFactory();
         return cryptoFactory.sha256(data);
       });
     },

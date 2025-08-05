@@ -1,10 +1,10 @@
 // lib/citadel/relay.ts
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import type { Event as NostrEvent } from "../../src/lib/nostr-browser";
 import {
   SimplePool,
   finalizeEvent as finishEvent,
   generateSecretKey,
-  nip19,
 } from "../../src/lib/nostr-browser";
 import { supabase } from "../../src/lib/supabase";
 
@@ -21,7 +21,7 @@ export class CitadelRelay {
     // Generate a new server key for each session - no persistent storage
     // This follows privacy-first principles and avoids env variable dependencies
     const privateKeyHex = await generateSecretKey.generate();
-    return nip19.hexToBytes(privateKeyHex);
+    return hexToBytes(privateKeyHex);
   })();
 
   /**
@@ -99,10 +99,10 @@ export class CitadelRelay {
             // Don't store private key in relay - only reference
             backup_type: "identity_reference",
           }),
-          pubkey: nip19.bytesToHex(serverKeyBytes),
+          pubkey: bytesToHex(serverKeyBytes),
           id: "",
         },
-        nip19.bytesToHex(serverKeyBytes)
+        bytesToHex(serverKeyBytes)
       );
 
       // Publish to relay
@@ -188,10 +188,10 @@ export class CitadelRelay {
             ["server", "identity-forge"],
           ],
           content: encryptedData,
-          pubkey: nip19.bytesToHex(serverKeyBytes),
+          pubkey: bytesToHex(serverKeyBytes),
           id: "",
         },
-        nip19.bytesToHex(serverKeyBytes)
+        bytesToHex(serverKeyBytes)
       );
 
       const publishResults = await this.pool.publish([relay], backupEvent);
@@ -291,10 +291,10 @@ export class CitadelRelay {
             created_at: new Date().toISOString(),
             backup_type: "family_reference",
           }),
-          pubkey: nip19.bytesToHex(serverKeyBytes),
+          pubkey: bytesToHex(serverKeyBytes),
           id: "",
         },
-        nip19.bytesToHex(serverKeyBytes)
+        bytesToHex(serverKeyBytes)
       );
 
       const publishResults = await this.pool.publish([relay], familyEvent);

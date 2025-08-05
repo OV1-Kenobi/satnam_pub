@@ -1,28 +1,104 @@
 // lib/crypto/privacy-manager.ts
-import crypto from "crypto";
-import { constantTimeEquals } from '../../utils/crypto.js';
+// Browser-compatible crypto using Web Crypto API
+// Browser-compatible constant time comparison
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
 
 export class PrivacyManager {
   /**
    * Create a non-reversible hash for authentication
    * Uses the pubkey but doesn't store it - only the hash
+   * Browser-compatible using Web Crypto API
    */
-  static createAuthHash(pubkey: string, salt?: string): string {
-    const authSalt = salt || crypto.randomBytes(32).toString("hex");
-    const hash = crypto.pbkdf2Sync(pubkey, authSalt, 100000, 64, "sha512");
-    return `${authSalt}:${hash.toString("hex")}`;
+  static async createAuthHash(pubkey: string, salt?: string): Promise<string> {
+    // Generate random salt using Web Crypto API
+    const authSalt =
+      salt ||
+      Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+    // Use PBKDF2 with Web Crypto API
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(pubkey),
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+
+    const saltBuffer = new Uint8Array(
+      authSalt.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+    );
+    const hashBuffer = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: saltBuffer,
+        iterations: 100000,
+        hash: "SHA-512",
+      },
+      keyMaterial,
+      512 // 64 bytes * 8 bits
+    );
+
+    const hashHex = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    return `${authSalt}:${hashHex}`;
   }
 
   /**
    * Verify a pubkey against stored auth hash
    * Allows authentication without storing the actual pubkey
    * Uses constant-time comparison to prevent timing attacks
+   * Browser-compatible using Web Crypto API
    */
-  static verifyAuthHash(pubkey: string, storedHash: string): boolean {
+  static async verifyAuthHash(
+    pubkey: string,
+    storedHash: string
+  ): Promise<boolean> {
     try {
       const [salt, originalHash] = storedHash.split(":");
-      const hash = crypto.pbkdf2Sync(pubkey, salt, 100000, 64, "sha512");
-      return constantTimeEquals(hash.toString("hex"), originalHash);
+
+      // Use PBKDF2 with Web Crypto API
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(pubkey),
+        { name: "PBKDF2" },
+        false,
+        ["deriveBits"]
+      );
+
+      const saltBuffer = new Uint8Array(
+        salt.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+      const hashBuffer = await crypto.subtle.deriveBits(
+        {
+          name: "PBKDF2",
+          salt: saltBuffer,
+          iterations: 100000,
+          hash: "SHA-512",
+        },
+        keyMaterial,
+        512 // 64 bytes * 8 bits
+      );
+
+      const hashHex = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      return constantTimeEquals(hashHex, originalHash);
     } catch {
       return false;
     }
@@ -31,38 +107,109 @@ export class PrivacyManager {
   /**
    * Encrypt user data with their own password/key
    * Platform cannot decrypt this - only the user can
+   * Browser-compatible using Web Crypto API
    */
-  static encryptUserData(data: any, userKey: string): string {
-    const key = crypto.scryptSync(userKey, "salt", 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  static async encryptUserData(data: any, userKey: string): Promise<string> {
+    // Derive key using PBKDF2 (Web Crypto API equivalent of scrypt)
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(userKey),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
 
-    let encrypted = cipher.update(JSON.stringify(data), "utf8", "hex");
-    encrypted += cipher.final("hex");
+    const salt = encoder.encode("salt"); // Static salt for compatibility
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
 
-    const authTag = cipher.getAuthTag();
+    // Generate random IV
+    const iv = crypto.getRandomValues(new Uint8Array(12)); // AES-GCM uses 12-byte IV
 
-    return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
+    // Encrypt data
+    const dataBuffer = encoder.encode(JSON.stringify(data));
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      dataBuffer
+    );
+
+    // Convert to hex strings
+    const ivHex = Array.from(iv)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const encryptedHex = Array.from(new Uint8Array(encryptedBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    return `${ivHex}:${encryptedHex}`;
   }
 
   /**
    * Decrypt user data with their password/key
    * Only the user can decrypt their own data
+   * Browser-compatible using Web Crypto API
    */
-  static decryptUserData(encryptedData: string, userKey: string): any {
+  static async decryptUserData(
+    encryptedData: string,
+    userKey: string
+  ): Promise<any> {
     try {
-      const [ivHex, authTagHex, encrypted] = encryptedData.split(":");
-      const key = crypto.scryptSync(userKey, "salt", 32);
-      const iv = Buffer.from(ivHex, "hex");
-      const authTag = Buffer.from(authTagHex, "hex");
+      const [ivHex, encryptedHex] = encryptedData.split(":");
 
-      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(authTag);
+      // Derive key using PBKDF2 with Web Crypto API
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(userKey),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
+      const salt = encoder.encode("salt"); // Static salt for compatibility
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+      );
 
-      return JSON.parse(decrypted);
+      // Convert hex strings to Uint8Array
+      const iv = new Uint8Array(
+        ivHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+      const encryptedBytes = new Uint8Array(
+        encryptedHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
+      // Decrypt using AES-GCM
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        encryptedBytes
+      );
+
+      const decoder = new TextDecoder();
+      const decryptedText = decoder.decode(decryptedBuffer);
+      return JSON.parse(decryptedText);
     } catch {
       throw new Error("Failed to decrypt user data - invalid key");
     }
@@ -71,53 +218,127 @@ export class PrivacyManager {
   /**
    * Create a privacy-safe identifier for platform use
    * Derived from pubkey but not reversible
+   * Browser-compatible using Web Crypto API
    */
-  static createPlatformId(pubkey: string): string {
-    return crypto
-      .createHash("sha256")
-      .update(pubkey + "platform_salt")
-      .digest("hex")
-      .substring(0, 16);
+  static async createPlatformId(pubkey: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pubkey + "platform_salt");
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return hashHex.substring(0, 16);
   }
 
   /**
    * Encrypt private key with user's passphrase
    * SECURITY: Private keys should never be stored unencrypted
+   * Browser-compatible using Web Crypto API
    */
-  static encryptPrivateKey(privateKey: string, userPassphrase: string): string {
-    const key = crypto.scryptSync(userPassphrase, "privkey_salt", 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  static async encryptPrivateKey(
+    privateKey: string,
+    userPassphrase: string
+  ): Promise<string> {
+    // Derive key using PBKDF2 with Web Crypto API
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(userPassphrase),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
 
-    let encrypted = cipher.update(privateKey, "utf8", "hex");
-    encrypted += cipher.final("hex");
+    const salt = encoder.encode("privkey_salt"); // Static salt for compatibility
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
 
-    const authTag = cipher.getAuthTag();
+    // Generate random IV
+    const iv = crypto.getRandomValues(new Uint8Array(12)); // AES-GCM uses 12-byte IV
 
-    return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
+    // Encrypt private key
+    const dataBuffer = encoder.encode(privateKey);
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      dataBuffer
+    );
+
+    // Convert to hex strings
+    const ivHex = Array.from(iv)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const encryptedHex = Array.from(new Uint8Array(encryptedBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    return `${ivHex}:${encryptedHex}`;
   }
 
   /**
    * Decrypt private key with user's passphrase
    * SECURITY: Only user with correct passphrase can decrypt
+   * Browser-compatible using Web Crypto API
    */
-  static decryptPrivateKey(
+  static async decryptPrivateKey(
     encryptedPrivateKey: string,
-    userPassphrase: string,
-  ): string {
+    userPassphrase: string
+  ): Promise<string> {
     try {
-      const [ivHex, authTagHex, encrypted] = encryptedPrivateKey.split(":");
-      const key = crypto.scryptSync(userPassphrase, "privkey_salt", 32);
-      const iv = Buffer.from(ivHex, "hex");
-      const authTag = Buffer.from(authTagHex, "hex");
+      const [ivHex, encryptedHex] = encryptedPrivateKey.split(":");
 
-      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(authTag);
+      // Derive key using PBKDF2 with Web Crypto API
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(userPassphrase),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
+      const salt = encoder.encode("privkey_salt"); // Static salt for compatibility
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+      );
 
-      return decrypted;
+      // Convert hex strings to Uint8Array
+      const iv = new Uint8Array(
+        ivHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+      const encryptedBytes = new Uint8Array(
+        encryptedHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
+      // Decrypt using AES-GCM
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        encryptedBytes
+      );
+
+      const decoder = new TextDecoder();
+      return decoder.decode(decryptedBuffer);
     } catch {
       throw new Error("Failed to decrypt private key - invalid passphrase");
     }
@@ -230,7 +451,7 @@ export class PrivacyManager {
     // Character check
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
       errors.push(
-        "Username can only contain letters, numbers, underscores, and hyphens",
+        "Username can only contain letters, numbers, underscores, and hyphens"
       );
     }
 
@@ -274,24 +495,63 @@ export class PrivacyManager {
    * Encrypt service configuration data
    * SECURITY: Encrypts sensitive external service credentials and configs
    * Used for securely storing BTCPay, Voltage, and other service configurations
+   * Browser-compatible using Web Crypto API
    */
-  static encryptServiceConfig(config: any, serviceKey: string): string {
+  static async encryptServiceConfig(
+    config: any,
+    serviceKey: string
+  ): Promise<string> {
     try {
-      // Use stronger key derivation for service configs
-      const key = crypto.scryptSync(serviceKey, "service_config_salt", 32);
-      const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+      // Derive key using PBKDF2 with Web Crypto API
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(serviceKey),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
 
-      let encrypted = cipher.update(JSON.stringify(config), "utf8", "hex");
-      encrypted += cipher.final("hex");
+      const salt = encoder.encode("service_config_salt"); // Static salt for compatibility
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt"]
+      );
 
-      const authTag = cipher.getAuthTag();
+      // Generate random IV
+      const iv = crypto.getRandomValues(new Uint8Array(12)); // AES-GCM uses 12-byte IV
+
+      // Encrypt config data
+      const dataBuffer = encoder.encode(JSON.stringify(config));
+      const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        dataBuffer
+      );
+
+      // Convert to hex strings
+      const ivHex = Array.from(iv)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const encryptedHex = Array.from(new Uint8Array(encryptedBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 
       // Include version for future migration compatibility
-      return `v1:${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
+      return `v1:${ivHex}:${encryptedHex}`;
     } catch (error) {
       throw new Error(
-        `Service config encryption failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Service config encryption failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -300,34 +560,67 @@ export class PrivacyManager {
    * Decrypt service configuration data
    * SECURITY: Decrypts external service credentials and configs
    * Only accessible with the correct service encryption key
+   * Browser-compatible using Web Crypto API
    */
-  static decryptServiceConfig(
+  static async decryptServiceConfig(
     encryptedConfig: string,
-    serviceKey: string,
-  ): any {
+    serviceKey: string
+  ): Promise<any> {
     try {
       // Handle versioned format
-      const [version, ivHex, authTagHex, encrypted] =
-        encryptedConfig.split(":");
+      const [version, ivHex, encryptedHex] = encryptedConfig.split(":");
 
       if (version !== "v1") {
         throw new Error("Unsupported service config version");
       }
 
-      const key = crypto.scryptSync(serviceKey, "service_config_salt", 32);
-      const iv = Buffer.from(ivHex, "hex");
-      const authTag = Buffer.from(authTagHex, "hex");
+      // Derive key using PBKDF2 with Web Crypto API
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(serviceKey),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
 
-      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(authTag);
+      const salt = encoder.encode("service_config_salt"); // Static salt for compatibility
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+      );
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
+      // Convert hex strings to Uint8Array
+      const iv = new Uint8Array(
+        ivHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+      const encryptedBytes = new Uint8Array(
+        encryptedHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
 
-      return JSON.parse(decrypted);
+      // Decrypt using AES-GCM
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        encryptedBytes
+      );
+
+      const decoder = new TextDecoder();
+      const decryptedText = decoder.decode(decryptedBuffer);
+      return JSON.parse(decryptedText);
     } catch (error) {
       throw new Error(
-        `Service config decryption failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Service config decryption failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }

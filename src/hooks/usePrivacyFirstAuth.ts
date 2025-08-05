@@ -19,7 +19,40 @@ import {
   UserIdentity,
   userIdentitiesAuth,
 } from "../lib/auth/user-identities-auth";
-import { FamilyFederationUser } from "../types/auth";
+import { FamilyFederationUser, FederationRole } from "../types/auth";
+
+// Additional type definitions for compatibility
+export interface PrivacyUser {
+  hashedUUID: string;
+  userSalt: string;
+  federationRole: "private" | "offspring" | "adult" | "steward" | "guardian";
+  authMethod: "nip05-password" | "nip07" | "otp" | "nsec";
+  isWhitelisted: boolean;
+  votingPower: number;
+  guardianApproved: boolean;
+  stewardApproved: boolean;
+  sessionHash: string;
+  lastAuthAt: number;
+  createdAt: number;
+}
+
+export interface SecureSession {
+  sessionId: string;
+  userHash: string;
+  expiresAt: number;
+  isValid: boolean;
+  sessionToken: string;
+  // Additional properties for compatibility
+  encryptionKey?: string;
+  keyVersion?: number;
+  privacySettings?: {
+    encryptionEnabled: boolean;
+    hashingEnabled: boolean;
+    anonymityLevel?: number;
+    metadataProtection?: boolean;
+    forwardSecrecy?: boolean;
+  };
+}
 
 // Helper function to extract pubkey from nsec (zero-knowledge protocol)
 async function extractPubkeyFromNsec(nsecKey: string): Promise<string | null> {
@@ -121,7 +154,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
             if (mounted) {
               setState((prev) => ({
                 ...prev,
-                user: sessionResult.user,
+                user: sessionResult.user || null,
                 session: { token: sessionToken },
                 authenticated: true,
                 loading: false,
@@ -185,8 +218,8 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     if (result.success && result.user && result.session) {
       setState((prev) => ({
         ...prev,
-        user: result.user!,
-        session: result.session!,
+        user: result.user || null,
+        session: result.session || null,
         authenticated: true,
         loading: false,
         error: null,
@@ -240,7 +273,12 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
           pubkey, // Ephemeral - not stored
         };
 
-        const result = await auth.authenticateNsec(credentials);
+        // Note: Nsec authentication not implemented in userIdentitiesAuth
+        // This would need to be implemented or use a different auth method
+        const result = {
+          success: false,
+          error: "Nsec authentication not implemented",
+        };
 
         // Clear nsec from memory immediately after use
         credentials.nsecKey = "";
@@ -272,7 +310,12 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
           otpCode,
         };
 
-        const result = await auth.authenticateOTP(credentials);
+        // Note: OTP authentication not implemented in userIdentitiesAuth
+        // This would need to be implemented or use a different auth method
+        const result = {
+          success: false,
+          error: "OTP authentication not implemented",
+        };
         return handleAuthResult(result);
       } catch (error) {
         setState((prev) => ({
@@ -305,7 +348,12 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
           pubkey,
         };
 
-        const result = await auth.authenticateNIP07(credentials);
+        // Note: NIP-07 authentication not implemented in userIdentitiesAuth
+        // This would need to be implemented or use a different auth method
+        const result = {
+          success: false,
+          error: "NIP-07 authentication not implemented",
+        };
         return handleAuthResult(result);
       } catch (error) {
         setState((prev) => ({
@@ -360,24 +408,10 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
             createdAt: Date.now(),
           };
 
-          // Create compatible SecureSession
-          const compatibleSession: SecureSession = {
-            sessionId: result.sessionToken || "",
-            userHash: result.user.id,
-            encryptionKey: "", // Not needed for this auth method
-            expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-            keyVersion: 1,
-            privacySettings: {
-              anonymityLevel: 95, // Maximum anonymity
-              metadataProtection: true,
-              forwardSecrecy: true,
-            },
-          };
-
           setState((prev) => ({
             ...prev,
-            user: compatibleUser,
-            session: compatibleSession,
+            user: result.user || null,
+            session: { token: result.sessionToken || "" },
             authenticated: true,
             loading: false,
             error: null,
@@ -411,7 +445,8 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   const logout = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, loading: true }));
-      await auth.logout();
+      // Clear session token from localStorage
+      localStorage.removeItem("sessionToken");
       setState({
         user: null,
         session: null,
@@ -432,7 +467,20 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   const refreshSession = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, loading: true }));
-      const session = await auth.getSession();
+      // Get session from localStorage and validate
+      const sessionToken = localStorage.getItem("sessionToken");
+      if (!sessionToken) {
+        throw new Error("No session token found");
+      }
+      const sessionResult = await userIdentitiesAuth.validateSession(
+        sessionToken
+      );
+      const session = sessionResult.success
+        ? {
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+            token: sessionToken,
+          }
+        : null;
       if (session && session.expiresAt > Date.now()) {
         setState((prev) => ({
           ...prev,
@@ -460,7 +508,7 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
   const checkPermission = useCallback(
     (requiredRoles: string[]): boolean => {
       if (!state.user || !state.authenticated) return false;
-      return requiredRoles.includes(state.user.federationRole);
+      return requiredRoles.includes(state.user.federationRole || "private");
     },
     [state.user, state.authenticated]
   );
@@ -481,8 +529,9 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      // Use the comprehensive key rotation method
-      const result = await auth.rotateSessionKeys(state.session.userHash);
+      // Key rotation not implemented in userIdentitiesAuth
+      // This would need to be implemented or use a different approach
+      const result = { success: false, error: "Key rotation not implemented" };
 
       if (result.success) {
         // Refresh session to get updated keys and metadata
@@ -525,20 +574,22 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
 
     // Create compatible user object without exposing real identifiers
     return {
-      npub: `privacy_${state.user.hashedUUID}`, // Anonymized identifier
+      npub: `privacy_${state.user.hashedUUID || state.user.id}`, // Anonymized identifier
       nip05: `anonymous@privacy.federation`, // Generic anonymous identifier
-      federationRole: state.user.federationRole,
-      authMethod:
-        state.user.authMethod === "nip07"
-          ? "otp"
-          : state.user.authMethod === "nip05-password"
-          ? "otp"
-          : state.user.authMethod, // Map to supported types
-      isWhitelisted: state.user.isWhitelisted,
-      votingPower: state.user.votingPower,
-      stewardApproved: state.user.stewardApproved,
-      guardianApproved: state.user.guardianApproved,
-      sessionToken: state.session.sessionId,
+      federationRole: (state.user.federationRole ||
+        "private") as FederationRole,
+      authMethod: (state.user.authMethod === "nip07" ||
+      state.user.authMethod === "nip05-password"
+        ? "otp"
+        : "otp") as "otp" | "nwc", // Map to supported types
+      isWhitelisted: state.user.isWhitelisted || false,
+      votingPower: state.user.votingPower || 0,
+      stewardApproved: state.user.stewardApproved || false,
+      guardianApproved: state.user.guardianApproved || false,
+      sessionToken:
+        (state.session as any)?.sessionId ||
+        (state.session as any)?.token ||
+        "",
     };
   }, [state.user, state.session]);
 

@@ -62,6 +62,37 @@
   status = 200
   force = false
 
+# Exclude image files from SPA redirect
+[[redirects]]
+  from = "*.png"
+  to = "/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "*.jpg"
+  to = "/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "*.jpeg"
+  to = "/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "*.svg"
+  to = "/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "*.ico"
+  to = "/:splat"
+  status = 200
+  force = false
+
 # Exclude JavaScript modules from SPA redirect
 [[redirects]]
   from = "*.js"

@@ -118,30 +118,49 @@ const SignInModal: React.FC<SignInModalProps> = ({
         setIsCheckingExtension(true);
 
         try {
-          if (typeof window !== 'undefined' && window.nostr) {
-            const nostr = window.nostr;
+          // Add timeout to prevent hanging on unresponsive extensions
+          const extensionCheckPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('Extension check timeout'));
+            }, 3000); // 3 second timeout
 
-            if (typeof nostr.getPublicKey === 'function') {
-              setExtensionStatus({
-                available: true,
-                name: 'Nostr Extension'
-              });
-            } else {
-              setExtensionStatus({
-                available: false,
-                error: 'Extension not fully compatible'
-              });
+            try {
+              if (typeof window !== 'undefined' && window.nostr) {
+                const nostr = window.nostr;
+
+                if (typeof nostr.getPublicKey === 'function') {
+                  clearTimeout(timeout);
+                  resolve({
+                    available: true,
+                    name: 'Nostr Extension'
+                  });
+                } else {
+                  clearTimeout(timeout);
+                  resolve({
+                    available: false,
+                    error: 'Extension not fully compatible'
+                  });
+                }
+              } else {
+                clearTimeout(timeout);
+                resolve({
+                  available: false,
+                  error: 'No Nostr extension detected'
+                });
+              }
+            } catch (error) {
+              clearTimeout(timeout);
+              reject(error);
             }
-          } else {
-            setExtensionStatus({
-              available: false,
-              error: 'No Nostr extension detected'
-            });
-          }
+          });
+
+          const result = await extensionCheckPromise;
+          setExtensionStatus(result as any);
         } catch (error) {
+          console.warn('Browser extension check failed (non-critical):', error);
           setExtensionStatus({
             available: false,
-            error: 'Extension check failed'
+            error: 'Extension check failed - this is normal if no Nostr extension is installed'
           });
         } finally {
           setIsCheckingExtension(false);
@@ -193,12 +212,29 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
       const nostr = window.nostr;
 
-      // Get public key from extension
+      // Get public key from extension with timeout
       let publicKey: string;
       try {
-        publicKey = await nostr.getPublicKey();
+        const getPublicKeyPromise = new Promise<string>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Extension response timeout - please try again'));
+          }, 10000); // 10 second timeout
+
+          nostr.getPublicKey()
+            .then((key: string) => {
+              clearTimeout(timeout);
+              resolve(key);
+            })
+            .catch((error: any) => {
+              clearTimeout(timeout);
+              reject(error);
+            });
+        });
+
+        publicKey = await getPublicKeyPromise;
       } catch (error) {
-        throw new Error('Extension access denied. Please allow access and try again.');
+        console.warn('NIP-07 getPublicKey failed:', error);
+        throw new Error('Extension access denied or timed out. Please allow access and try again.');
       }
 
       const npub = nip19.npubEncode(publicKey);

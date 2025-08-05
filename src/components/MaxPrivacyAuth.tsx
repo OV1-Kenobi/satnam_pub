@@ -118,10 +118,55 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      // Simulate OTP sending
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setOtpSent(true);
-      setSuccess('OTP sent! Use code: 123456 for demo');
+      // Generate secure OTP using Web Crypto API
+      const generateSecureOTP = async (): Promise<string> => {
+        const array = new Uint32Array(1);
+        crypto.getRandomValues(array);
+        // Generate number between 100000 and 999999
+        const randomNum = array[0] % 900000 + 100000;
+        return randomNum.toString();
+      };
+
+      // Generate OTP and session ID
+      const otp = await generateSecureOTP();
+      const sessionId = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+      // Send OTP via privacy-first messaging system
+      try {
+        // Import communication service dynamically
+        const { CommunicationServiceFactory } = await import('../../utils/communication-service');
+        const communicationService = await CommunicationServiceFactory.getDefaultService();
+
+        const sendResult = await communicationService.sendOTP(
+          nipOrNpub,
+          otp,
+          sessionId,
+          expiresAt
+        );
+
+        if (sendResult.success) {
+          setOtpSent(true);
+          setSuccess('OTP sent via encrypted Nostr DM! Check your Nostr client.');
+
+          // Store session info for verification (in development, show OTP)
+          if (import.meta.env.DEV) {
+            console.log(`🔐 [DEV] OTP for testing: ${otp}`);
+            setSuccess(`OTP sent! For development: ${otp}`);
+          }
+        } else {
+          throw new Error(sendResult.error || 'Failed to send OTP via messaging service');
+        }
+      } catch (communicationError) {
+        console.error('Communication service error:', communicationError);
+        // Fallback: In development mode, show the OTP directly
+        if (import.meta.env.DEV) {
+          setOtpSent(true);
+          setSuccess(`Development mode - OTP: ${otp} (expires in 5 minutes)`);
+        } else {
+          throw new Error('Failed to send OTP. Please check your Nostr connection.');
+        }
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to send OTP');
     } finally {

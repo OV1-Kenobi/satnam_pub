@@ -23,7 +23,7 @@ import {
   Zap
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service.js'
+import { MessageSendResult, nostrMessageService } from '../../lib/nostr-message-service'
 import { Contact } from '../../types/contacts'
 import { PrivacyLevel, calculatePrivacyMetrics, getDefaultPrivacyLevel } from '../../types/privacy'
 import { ContactsManagerModal } from '../ContactsManagerModal'
@@ -570,17 +570,16 @@ export function PrivateCommunicationModal({
     setError(null)
 
     try {
-      if (messageType === 'individual') {
-        // Send individual message
-        const communicationService = new GiftwrappedCommunicationService()
+      let result: MessageSendResult;
 
-        const result = await communicationService.sendGiftwrappedMessage({
+      if (messageType === 'individual') {
+        // Send individual message using unified service
+        result = await nostrMessageService.sendMessage({
           content: message,
-          recipient: recipient,
-          sender: userProfile.npub,
-          encryptionLevel: getEncryptionLevel(privacyLevel),
-          communicationType: communicationType
-        })
+          recipientNpub: recipient,
+          privacyLevel,
+          messageType: 'message'
+        });
 
         if (result.success) {
           // Save to history
@@ -592,33 +591,30 @@ export function PrivateCommunicationModal({
             messageType: 'individual',
             status: 'sent',
             canDelete: true
-          })
+          });
 
-          setMessage('')
-          setSuccess('Individual message sent successfully with full privacy protection!')
+          setMessage('');
+          const privacyMethod = result.method === 'giftwrapped' ? 'Gift Wrapped (Maximum Privacy)' :
+            result.method === 'encrypted' ? 'Encrypted DM (Selective Privacy)' :
+              'Public Note (Minimal Privacy)';
+          setSuccess(`Individual message sent successfully!\nMethod: ${privacyMethod}`);
         } else {
-          setError(`Failed to send message: ${result.error}`)
+          setError(`Failed to send message: ${result.error}`);
         }
       } else {
-        // Send group message
-        const response = await fetch('/.netlify/functions/group-messaging', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${userProfile.npub}`,
-          },
-          body: JSON.stringify({
-            action: 'send_message',
-            groupId: selectedGroup,
-            content: message,
-            messageType: privacyLevel === PrivacyLevel.GIFTWRAPPED ? 'sensitive' : 'text'
-          }),
-        })
+        // Send group message using unified service
+        const group = groups.find(g => g.id === selectedGroup);
 
-        if (response.ok) {
-          await response.json()
-          const group = groups.find(g => g.id === selectedGroup)
+        result = await nostrMessageService.sendMessage({
+          content: message,
+          recipientNpub: selectedGroup, // Use groupId as recipient for group messages
+          privacyLevel,
+          messageType: 'message',
+          groupId: selectedGroup,
+          groupName: group?.name
+        });
 
+        if (result.success) {
           // Save to history
           await saveMessageToHistory({
             content: message,
@@ -630,13 +626,15 @@ export function PrivateCommunicationModal({
             groupName: group?.name,
             status: 'sent',
             canDelete: true
-          })
+          });
 
-          setMessage('')
-          setSuccess('Group message sent successfully!')
+          setMessage('');
+          const privacyMethod = result.method === 'giftwrapped' ? 'Gift Wrapped (Maximum Privacy)' :
+            result.method === 'encrypted' ? 'Encrypted (Selective Privacy)' :
+              'Standard (Minimal Privacy)';
+          setSuccess(`Group message sent successfully!\nMethod: ${privacyMethod}`);
         } else {
-          const errorData = await response.json()
-          setError(errorData.error || 'Failed to send group message')
+          setError(`Failed to send group message: ${result.error}`);
         }
       }
 

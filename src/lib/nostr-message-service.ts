@@ -1,0 +1,604 @@
+/**
+ * MASTER CONTEXT COMPLIANCE: Nostr Message Service
+ *
+ * Privacy-first message sending with multiple encryption levels
+ * Implements NIP-04 (Encrypted DMs), NIP-59 (Gift Wrapped), and standard messaging
+ * Uses authenticated user's encrypted nsec from user_identities table with existing decryption utilities
+ * All operations use browser-compatible APIs only
+ */
+
+import { bytesToHex } from "@noble/hashes/utils";
+import { PrivacyLevel } from "../types/privacy";
+import { GiftwrappedCommunicationService } from "./giftwrapped-communication-service";
+import { finalizeEvent, getPublicKey, nip04, nip19 } from "./nostr-browser";
+import { decryptNsec } from "./privacy/encryption";
+import { supabase } from "./supabase";
+
+export interface MessageSendResult {
+  success: boolean;
+  messageId?: string;
+  method: "giftwrapped" | "encrypted" | "minimal";
+  error?: string;
+  relayUrl?: string;
+}
+
+export interface NostrMessageConfig {
+  content: string;
+  recipientNpub: string;
+  privacyLevel: PrivacyLevel;
+  messageType?: "invitation" | "message" | "notification";
+  groupId?: string; // For group messages
+  groupName?: string; // For group message display
+}
+
+export interface AuthenticatedUser {
+  id: string;
+  npub: string;
+  encryptedNsec?: any; // JSON object with encryption data
+  authMethod: string;
+}
+
+/**
+ * Nostr Message Service - Privacy-first messaging implementation
+ */
+export class NostrMessageService {
+  private static instance: NostrMessageService;
+  private giftwrappedService: GiftwrappedCommunicationService;
+  private relays: string[] = [
+    "wss://relay.satnam.pub",
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+  ];
+  private connections: Map<string, WebSocket> = new Map();
+
+  constructor() {
+    this.giftwrappedService = new GiftwrappedCommunicationService();
+  }
+
+  static getInstance(): NostrMessageService {
+    if (!NostrMessageService.instance) {
+      NostrMessageService.instance = new NostrMessageService();
+    }
+    return NostrMessageService.instance;
+  }
+
+  /**
+   * Send message with privacy level routing
+   */
+  async sendMessage(config: NostrMessageConfig): Promise<MessageSendResult> {
+    try {
+      // Get authenticated user and their private key
+      const user = await this.getAuthenticatedUser();
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      const privateKey = await this.getUserPrivateKey(user);
+      if (!privateKey) {
+        throw new Error("Unable to access user private key");
+      }
+
+      // Route to group messaging if groupId is provided
+      if (config.groupId) {
+        return await this.sendGroupMessage(config, privateKey, user);
+      }
+
+      switch (config.privacyLevel) {
+        case PrivacyLevel.GIFTWRAPPED:
+          return await this.sendGiftWrappedMessage(config, privateKey, user);
+
+        case PrivacyLevel.ENCRYPTED:
+          return await this.sendEncryptedDM(config, privateKey, user);
+
+        case PrivacyLevel.MINIMAL:
+          return await this.sendStandardMessage(config, privateKey, user);
+
+        default:
+          throw new Error(`Unsupported privacy level: ${config.privacyLevel}`);
+      }
+    } catch (error) {
+      console.error("Message sending failed:", error);
+      return {
+        success: false,
+        method: config.privacyLevel as any,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Get authenticated user from Supabase session
+   */
+  private async getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.user) {
+        return null;
+      }
+
+      // Get user identity from user_identities table
+      const { data: userIdentity, error: userError } = await supabase
+        .from("user_identities")
+        .select("id, npub, encrypted_nsec, auth_method")
+        .eq("id", session.user.id)
+        .eq("is_active", true)
+        .single();
+
+      if (userError || !userIdentity) {
+        return null;
+      }
+
+      return {
+        id: userIdentity.id,
+        npub: userIdentity.npub,
+        encryptedNsec: userIdentity.encrypted_nsec,
+        authMethod: userIdentity.auth_method,
+      };
+    } catch (error) {
+      console.error("Failed to get authenticated user:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Get user's private key (nsec) for signing using existing decryption utilities
+   */
+  private async getUserPrivateKey(
+    user: AuthenticatedUser
+  ): Promise<string | null> {
+    try {
+      // If user authenticated with NIP-07, use browser extension
+      if (user.authMethod === "nip07") {
+        return "nip07"; // Special marker to indicate NIP-07 usage
+      }
+
+      // Otherwise, decrypt the stored nsec using existing decryption utilities
+      if (user.encryptedNsec) {
+        // Parse the encrypted nsec data (should be JSON with encryption parameters)
+        let encryptedData;
+        if (typeof user.encryptedNsec === "string") {
+          encryptedData = JSON.parse(user.encryptedNsec);
+        } else {
+          encryptedData = user.encryptedNsec;
+        }
+
+        // Use the existing decryptNsec function from privacy/encryption.ts
+        const decryptedNsec = await decryptNsec({
+          encryptedNsec: encryptedData.encrypted || encryptedData.encryptedNsec,
+          salt: encryptedData.salt,
+          iv: encryptedData.iv,
+          tag: encryptedData.tag,
+        });
+
+        return decryptedNsec;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Failed to get user private key:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Send Gift Wrapped message (NIP-59) - Maximum privacy
+   */
+  private async sendGiftWrappedMessage(
+    config: NostrMessageConfig,
+    privateKey: string,
+    user: AuthenticatedUser
+  ): Promise<MessageSendResult> {
+    try {
+      // Convert npub to hex pubkey
+      const recipientPubkey = this.npubToHex(config.recipientNpub);
+      if (!recipientPubkey) {
+        throw new Error("Invalid recipient npub format");
+      }
+
+      // Use the existing giftwrapped service
+      const result = await this.giftwrappedService.sendGiftwrappedMessage({
+        content: config.content,
+        recipient: config.recipientNpub,
+        sender: user.npub,
+        encryptionLevel: "maximum",
+        communicationType:
+          config.messageType === "invitation" ? "individual" : "individual",
+      });
+
+      return {
+        success: result.success,
+        messageId: result.messageId,
+        method: "giftwrapped",
+        error: result.error,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        method: "giftwrapped",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Gift wrapped message failed",
+      };
+    }
+  }
+
+  /**
+   * Send encrypted DM (NIP-04) - Selective privacy
+   */
+  private async sendEncryptedDM(
+    config: NostrMessageConfig,
+    privateKey: string,
+    user: AuthenticatedUser
+  ): Promise<MessageSendResult> {
+    try {
+      // Convert npub to hex pubkey
+      const recipientPubkey = this.npubToHex(config.recipientNpub);
+      if (!recipientPubkey) {
+        throw new Error("Invalid recipient npub format");
+      }
+
+      let encryptedContent: string;
+      let senderPubkey: string;
+      let signedEvent: any;
+
+      if (privateKey === "nip07") {
+        // Use NIP-07 browser extension
+        const nostr = (window as any).nostr;
+        if (!nostr) {
+          throw new Error("NIP-07 extension not available");
+        }
+
+        senderPubkey = await nostr.getPublicKey();
+
+        // Encrypt using NIP-07
+        if (nostr.nip04?.encrypt) {
+          encryptedContent = await nostr.nip04.encrypt(
+            recipientPubkey,
+            config.content
+          );
+        } else {
+          throw new Error("NIP-07 encryption not supported");
+        }
+
+        // Create the DM event (kind 4)
+        const dmEvent = {
+          kind: 4,
+          pubkey: senderPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [["p", recipientPubkey]],
+          content: encryptedContent,
+        };
+
+        // Sign with NIP-07
+        signedEvent = await nostr.signEvent(dmEvent);
+      } else {
+        // Use stored private key
+        senderPubkey = await getPublicKey.fromPrivateKey(privateKey);
+
+        // Encrypt the message using NIP-04
+        encryptedContent = await nip04.encrypt(
+          config.content,
+          recipientPubkey,
+          privateKey
+        );
+
+        // Create the DM event (kind 4)
+        const dmEvent = {
+          kind: 4,
+          pubkey: senderPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [["p", recipientPubkey]],
+          content: encryptedContent,
+          id: "",
+        };
+
+        // Sign the event
+        signedEvent = await finalizeEvent.sign(dmEvent, privateKey);
+      }
+
+      // Publish to relays
+      const publishResult = await this.publishToRelays(signedEvent);
+
+      return {
+        success: publishResult.success,
+        messageId: signedEvent.id,
+        method: "encrypted",
+        error: publishResult.error,
+        relayUrl: publishResult.relayUrl,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        method: "encrypted",
+        error: error instanceof Error ? error.message : "Encrypted DM failed",
+      };
+    }
+  }
+
+  /**
+   * Send standard message - Minimal encryption
+   */
+  private async sendStandardMessage(
+    config: NostrMessageConfig,
+    privateKey: string,
+    user: AuthenticatedUser
+  ): Promise<MessageSendResult> {
+    try {
+      // Convert npub to hex pubkey
+      const recipientPubkey = this.npubToHex(config.recipientNpub);
+      if (!recipientPubkey) {
+        throw new Error("Invalid recipient npub format");
+      }
+
+      let senderPubkey: string;
+      let signedEvent: any;
+
+      if (privateKey === "nip07") {
+        // Use NIP-07 browser extension
+        const nostr = (window as any).nostr;
+        if (!nostr) {
+          throw new Error("NIP-07 extension not available");
+        }
+
+        senderPubkey = await nostr.getPublicKey();
+
+        // Create a public note event (kind 1) mentioning the recipient
+        const noteEvent = {
+          kind: 1,
+          pubkey: senderPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ["p", recipientPubkey],
+            ["t", "invitation"],
+            ["t", "satnam-pub"],
+          ],
+          content: `${config.content}\n\n#invitation #satnam-pub`,
+        };
+
+        // Sign with NIP-07
+        signedEvent = await nostr.signEvent(noteEvent);
+      } else {
+        // Use stored private key
+        senderPubkey = await getPublicKey.fromPrivateKey(privateKey);
+
+        // Create a public note event (kind 1) mentioning the recipient
+        const noteEvent = {
+          kind: 1,
+          pubkey: senderPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ["p", recipientPubkey],
+            ["t", "invitation"],
+            ["t", "satnam-pub"],
+          ],
+          content: `${config.content}\n\n#invitation #satnam-pub`,
+          id: "",
+        };
+
+        // Sign the event
+        signedEvent = await finalizeEvent.sign(noteEvent, privateKey);
+      }
+
+      // Publish to relays
+      const publishResult = await this.publishToRelays(signedEvent);
+
+      return {
+        success: publishResult.success,
+        messageId: signedEvent.id,
+        method: "minimal",
+        error: publishResult.error,
+        relayUrl: publishResult.relayUrl,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        method: "minimal",
+        error:
+          error instanceof Error ? error.message : "Standard message failed",
+      };
+    }
+  }
+
+  /**
+   * Send group message using the group-messaging API
+   */
+  private async sendGroupMessage(
+    config: NostrMessageConfig,
+    privateKey: string,
+    user: AuthenticatedUser
+  ): Promise<MessageSendResult> {
+    try {
+      // Use the existing group-messaging API endpoint
+      const response = await fetch("/.netlify/functions/group-messaging", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.npub}`,
+        },
+        body: JSON.stringify({
+          action: "send_message",
+          groupId: config.groupId,
+          content: config.content,
+          messageType:
+            config.privacyLevel === PrivacyLevel.GIFTWRAPPED
+              ? "sensitive"
+              : "text",
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          success: true,
+          messageId: result.data?.messageId || crypto.randomUUID(),
+          method:
+            config.privacyLevel === PrivacyLevel.GIFTWRAPPED
+              ? "giftwrapped"
+              : "encrypted",
+          relayUrl: "group-messaging-api",
+        };
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to send group message");
+      }
+    } catch (error) {
+      return {
+        success: false,
+        method:
+          config.privacyLevel === PrivacyLevel.GIFTWRAPPED
+            ? "giftwrapped"
+            : "encrypted",
+        error: error instanceof Error ? error.message : "Group message failed",
+      };
+    }
+  }
+
+  /**
+   * Publish event to Nostr relays
+   */
+  private async publishToRelays(event: any): Promise<{
+    success: boolean;
+    error?: string;
+    relayUrl?: string;
+  }> {
+    const publishPromises = this.relays.map(async (relayUrl) => {
+      try {
+        const ws = await this.connectToRelay(relayUrl);
+
+        return new Promise<{
+          success: boolean;
+          relayUrl: string;
+          error?: string;
+        }>((resolve) => {
+          const timeout = setTimeout(() => {
+            resolve({ success: false, relayUrl, error: "Timeout" });
+          }, 10000); // 10 second timeout
+
+          ws.onmessage = (message) => {
+            try {
+              const data = JSON.parse(message.data);
+              if (data[0] === "OK" && data[1] === event.id) {
+                clearTimeout(timeout);
+                resolve({
+                  success: data[2],
+                  relayUrl,
+                  error: data[2] ? undefined : data[3],
+                });
+              }
+            } catch (e) {
+              // Ignore parsing errors for other messages
+            }
+          };
+
+          ws.onerror = () => {
+            clearTimeout(timeout);
+            resolve({ success: false, relayUrl, error: "Connection error" });
+          };
+
+          // Send the event
+          ws.send(JSON.stringify(["EVENT", event]));
+        });
+      } catch (error) {
+        return {
+          success: false,
+          relayUrl,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    });
+
+    try {
+      const results = await Promise.allSettled(publishPromises);
+
+      // Find the first successful result
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value.success) {
+          return {
+            success: true,
+            relayUrl: result.value.relayUrl,
+          };
+        }
+      }
+
+      // If no success, return the first error
+      const firstError = results.find((r) => r.status === "fulfilled")?.value
+        ?.error;
+      return {
+        success: false,
+        error: firstError || "All relays failed",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Publish failed",
+      };
+    }
+  }
+
+  /**
+   * Connect to a Nostr relay
+   */
+  private async connectToRelay(url: string): Promise<WebSocket> {
+    // Check if we already have a connection
+    const existing = this.connections.get(url);
+    if (existing && existing.readyState === WebSocket.OPEN) {
+      return existing;
+    }
+
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(url);
+
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error(`Connection timeout to ${url}`));
+      }, 5000);
+
+      ws.onopen = () => {
+        clearTimeout(timeout);
+        this.connections.set(url, ws);
+        resolve(ws);
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error(`Failed to connect to ${url}`));
+      };
+    });
+  }
+
+  /**
+   * Convert npub to hex pubkey
+   */
+  private npubToHex(npub: string): string | null {
+    try {
+      const { type, data } = nip19.decode(npub);
+      if (type === "npub") {
+        return typeof data === "string" ? data : bytesToHex(data as Uint8Array);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Clean up connections
+   */
+  cleanup(): void {
+    this.connections.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    });
+    this.connections.clear();
+  }
+}
+
+// Export singleton instance
+export const nostrMessageService = NostrMessageService.getInstance();

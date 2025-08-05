@@ -649,7 +649,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                 <div className="relative">
                   <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4">
                     <img
-                      src="/LN Bitcoin icon.png"
+                      src="/LN-Bitcoin-icon.png"
                       alt="Lightning Bitcoin"
                       className="h-12 w-12"
                     />

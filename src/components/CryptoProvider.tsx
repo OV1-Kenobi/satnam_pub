@@ -2,11 +2,20 @@
 // File: src/components/CryptoProvider.tsx
 
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import {
-    configureCryptoStrategy,
-    type CryptoLoadingState,
-    type CryptoLoadingStrategy
-} from '../../utils/crypto-factory.js';
+
+// Dynamic import types - define locally to avoid static import
+interface CryptoLoadingState {
+  isLoading: boolean;
+  isLoaded: boolean;
+  error: Error | null;
+}
+
+interface CryptoLoadingStrategy {
+  useSync: boolean;
+  enableCaching: boolean;
+  timeoutMs: number;
+  retryAttempts: number;
+}
 
 interface CryptoContextValue extends CryptoLoadingState {
   loadCrypto: () => Promise<void>;
@@ -66,7 +75,9 @@ export function CryptoProvider({
   // Configure strategy on mount
   useEffect(() => {
     if (strategy) {
-      configureCryptoStrategy(strategy);
+      import('../../utils/crypto-factory.js').then(({ configureCryptoStrategy }) => {
+        configureCryptoStrategy(strategy);
+      });
     }
   }, [strategy]);
 
@@ -81,7 +92,9 @@ export function CryptoProvider({
   };
 
   const configure = (newStrategy: Partial<CryptoLoadingStrategy>) => {
-    configureCryptoStrategy(newStrategy);
+    import('../../utils/crypto-factory.js').then(({ configureCryptoStrategy }) => {
+      configureCryptoStrategy(newStrategy);
+    });
   };
 
   // Preload on mount if requested
@@ -148,7 +161,7 @@ export function withCrypto<P extends object>(
 
     // Show error fallback if there's an error
     if (crypto.error) {
-      return options.errorFallback 
+      return options.errorFallback
         ? options.errorFallback(crypto.error, crypto.retry)
         : <div>Failed to load crypto modules: {crypto.error.message}</div>;
     }
@@ -200,7 +213,7 @@ export function CryptoGate({
   // Show error fallback if there's an error
   if (crypto.error) {
     return <>{
-      errorFallback 
+      errorFallback
         ? errorFallback(crypto.error, crypto.retry)
         : (
           <div>

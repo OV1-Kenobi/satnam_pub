@@ -13,6 +13,64 @@ This document describes the database-backed rate limiting implementation for the
 - **Monitoring**: Comprehensive logging and statistics
 - **Automatic Cleanup**: Built-in cleanup for expired records
 
+## ⚠️ Migration from In-Memory Rate Limiting
+
+**IMPORTANT:** The old in-memory rate limiting (`checkRateLimit()` from `utils/auth-crypto.ts`) has been **deprecated** due to critical production limitations in serverless environments:
+
+### Critical Issues with In-Memory Rate Limiting:
+
+- ❌ **Not shared across server instances** - Each Netlify Function maintains separate counters
+- ❌ **Lost on server restart** - Rate limit data disappears on cold-start
+- ❌ **Memory leaks possible** - Map grows indefinitely without cleanup
+- ❌ **No persistence** - Cannot track rate limits across deployments
+- ❌ **Inconsistent enforcement** - Users can bypass limits by hitting different instances
+
+### ✅ Solution: Database-Backed Rate Limiting
+
+Use `checkRateLimitDB()` for production-ready database-backed rate limiting that provides:
+
+- ✅ **Distributed rate limiting** - Shared across all server instances
+- ✅ **Persistent storage** - Survives server restarts and deployments
+- ✅ **No memory leaks** - Database handles cleanup automatically
+- ✅ **Consistent enforcement** - Same rate limits across all instances
+- ✅ **Privacy protection** - IP addresses hashed before storage
+
+### Migration Steps
+
+1. **Database Setup**: Run the migration script in Supabase SQL Editor:
+
+   ```bash
+   # Copy and paste migrations/production-rate-limiting-migration.sql
+   ```
+
+2. **Code Updates**: Replace deprecated function calls:
+
+   ```typescript
+   // Before (deprecated):
+   import { checkRateLimit } from "../../utils/auth-crypto";
+   const rateLimitResult = checkRateLimit(clientIP, 30, 15 * 60 * 1000);
+
+   // After (production-ready):
+   import { checkRateLimitDB } from "../../utils/auth-crypto";
+   const rateLimitResult = await checkRateLimitDB(clientIP, 30, 15 * 60 * 1000);
+   ```
+
+3. **Add async/await**: Update calling functions to handle the Promise:
+   ```typescript
+   // Make sure calling functions are async
+   export async function myHandler(req, res) {
+     const rateLimitResult = await checkRateLimitDB(clientIP);
+     if (!rateLimitResult.allowed) {
+       return res.status(429).json({
+         error: "Rate limit exceeded",
+         remainingRequests: rateLimitResult.remainingRequests,
+         resetTime: rateLimitResult.resetTime,
+       });
+     }
+     // ... rest of handler
+   }
+   ```
+
 ## Database Schema
 
 ### Rate Limits Table
@@ -88,7 +146,25 @@ npm run rate-limits:stats
 
 ## Usage Examples
 
-### Basic Rate Limit Check
+### Production-Ready Database-Backed Rate Limiting
+
+```typescript
+import { checkRateLimitDB } from "../../utils/auth-crypto";
+
+// For IP-based rate limiting
+const clientIP = getClientIP(req);
+const rateLimitResult = await checkRateLimitDB(clientIP, 30, 15 * 60 * 1000);
+
+if (!rateLimitResult.allowed) {
+  return res.status(429).json({
+    error: "Rate limit exceeded",
+    remainingRequests: rateLimitResult.remainingRequests,
+    resetTime: rateLimitResult.resetTime,
+  });
+}
+```
+
+### Custom Database-Backed Rate Limiting
 
 ```typescript
 import { checkRateLimit } from "./api/authenticated/generate-peer-invite";

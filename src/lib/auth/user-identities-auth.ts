@@ -6,6 +6,61 @@
 
 import { supabase } from "../supabase";
 
+/**
+ * Web Crypto API utilities for browser-only serverless architecture
+ */
+class CryptoUtils {
+  /**
+   * Get Web Crypto API instance with fallback handling
+   */
+  static getCrypto(): Crypto {
+    const crypto =
+      globalThis.crypto ||
+      (typeof window !== "undefined" ? window.crypto : null);
+    if (!crypto) {
+      throw new Error(
+        "Web Crypto API not available - browser-only serverless architecture requires modern browser"
+      );
+    }
+    return crypto;
+  }
+
+  /**
+   * Get SubtleCrypto instance with availability check
+   */
+  static getSubtleCrypto(): SubtleCrypto {
+    const crypto = this.getCrypto();
+    if (!crypto.subtle) {
+      throw new Error(
+        "SubtleCrypto not available - secure context (HTTPS) required"
+      );
+    }
+    return crypto.subtle;
+  }
+
+  /**
+   * Generate cryptographically secure random bytes
+   */
+  static getRandomBytes(length: number): Uint8Array {
+    const crypto = this.getCrypto();
+    return crypto.getRandomValues(new Uint8Array(length));
+  }
+
+  /**
+   * Convert ArrayBuffer to base64 string
+   */
+  static arrayBufferToBase64(buffer: ArrayBuffer): string {
+    return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  }
+
+  /**
+   * Convert base64 string to Uint8Array
+   */
+  static base64ToUint8Array(base64: string): Uint8Array {
+    return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  }
+}
+
 // Types for authentication
 export interface AuthCredentials {
   nip05?: string;
@@ -15,6 +70,10 @@ export interface AuthCredentials {
   nsecKey?: string;
   pubkey?: string;
   otpCode?: string;
+  // Additional properties for compatibility
+  identifier?: string;
+  challenge?: string;
+  signature?: string;
 }
 
 export interface AuthResult {
@@ -37,6 +96,15 @@ export interface UserIdentity {
   failed_attempts: number;
   locked_until?: string;
   last_successful_auth?: string;
+  // Additional properties for compatibility
+  password_salt?: string;
+  federationRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
+  hashedUUID?: string;
+  authMethod?: "nip05-password" | "nip07" | "otp" | "nsec";
+  isWhitelisted?: boolean;
+  votingPower?: number;
+  stewardApproved?: boolean;
+  guardianApproved?: boolean;
 }
 
 export interface AuthAttempt {
@@ -59,24 +127,20 @@ export interface AuthAttempt {
  */
 class PasswordUtils {
   /**
-   * Hash password using PBKDF2 with SHA-512
+   * Hash password using PBKDF2 with SHA-512 (Web Crypto API only)
    */
   static async hashPassword(password: string, salt: string): Promise<string> {
     const iterations = 100000;
     const keyLength = 64;
-    const algorithm = "sha512";
 
-    // Use Web Crypto API for browser compatibility
-    if (
-      typeof window !== "undefined" &&
-      window.crypto &&
-      window.crypto.subtle
-    ) {
+    try {
+      // Use Web Crypto API for browser-only serverless architecture
+      const subtle = CryptoUtils.getSubtleCrypto();
       const encoder = new TextEncoder();
       const passwordBuffer = encoder.encode(password);
       const saltBuffer = encoder.encode(salt);
 
-      const keyMaterial = await window.crypto.subtle.importKey(
+      const keyMaterial = await subtle.importKey(
         "raw",
         passwordBuffer,
         { name: "PBKDF2" },
@@ -84,7 +148,7 @@ class PasswordUtils {
         ["deriveBits"]
       );
 
-      const derivedBits = await window.crypto.subtle.deriveBits(
+      const derivedBits = await subtle.deriveBits(
         {
           name: "PBKDF2",
           salt: saltBuffer,
@@ -95,26 +159,15 @@ class PasswordUtils {
         keyLength * 8
       );
 
-      return btoa(String.fromCharCode(...new Uint8Array(derivedBits)));
-    } else {
-      // Node.js fallback (for server-side)
-      const { pbkdf2 } = await import("crypto");
-      const { promisify } = await import("util");
-      const pbkdf2Async = promisify(pbkdf2);
-
-      const hash = await pbkdf2Async(
-        password,
-        salt,
-        iterations,
-        keyLength,
-        algorithm
-      );
-      return hash.toString("base64");
+      return CryptoUtils.arrayBufferToBase64(derivedBits);
+    } catch (error) {
+      console.error("Password hashing failed:", error);
+      throw new Error("Password hashing failed");
     }
   }
 
   /**
-   * Verify password using timing-safe comparison
+   * Verify password using timing-safe comparison (Web Crypto API only)
    */
   static async verifyPassword(
     password: string,
@@ -124,37 +177,20 @@ class PasswordUtils {
     try {
       const computedHash = await this.hashPassword(password, salt);
 
-      // Timing-safe comparison
-      if (
-        typeof window !== "undefined" &&
-        window.crypto &&
-        window.crypto.subtle
-      ) {
-        // Browser environment - use constant-time comparison
-        const storedBuffer = Uint8Array.from(atob(storedHash), (c) =>
-          c.charCodeAt(0)
-        );
-        const computedBuffer = Uint8Array.from(atob(computedHash), (c) =>
-          c.charCodeAt(0)
-        );
+      // Browser-only timing-safe comparison using constant-time algorithm
+      const storedBuffer = CryptoUtils.base64ToUint8Array(storedHash);
+      const computedBuffer = CryptoUtils.base64ToUint8Array(computedHash);
 
-        if (storedBuffer.length !== computedBuffer.length) {
-          return false;
-        }
-
-        let result = 0;
-        for (let i = 0; i < storedBuffer.length; i++) {
-          result |= storedBuffer[i] ^ computedBuffer[i];
-        }
-        return result === 0;
-      } else {
-        // Node.js environment
-        const crypto = await import("crypto");
-        return crypto.timingSafeEqual(
-          Buffer.from(computedHash, "base64"),
-          Buffer.from(storedHash, "base64")
-        );
+      if (storedBuffer.length !== computedBuffer.length) {
+        return false;
       }
+
+      // Constant-time comparison to prevent timing attacks
+      let result = 0;
+      for (let i = 0; i < storedBuffer.length; i++) {
+        result |= storedBuffer[i] ^ computedBuffer[i];
+      }
+      return result === 0;
     } catch (error) {
       console.error("Password verification failed:", error);
       return false;
@@ -464,16 +500,18 @@ export class UserIdentitiesAuth {
   }
 
   /**
-   * Create HMAC-SHA256 signature for JWT
+   * Create HMAC-SHA256 signature for JWT (Web Crypto API only)
    */
   private async createHMACSignature(
     data: string,
     secret: string
   ): Promise<string> {
-    if (typeof window !== "undefined") {
-      // Browser environment - use Web Crypto API
+    try {
+      // Browser-only serverless architecture - use Web Crypto API
+      const subtle = CryptoUtils.getSubtleCrypto();
       const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
+
+      const key = await subtle.importKey(
         "raw",
         encoder.encode(secret),
         { name: "HMAC", hash: "SHA-256" },
@@ -481,51 +519,39 @@ export class UserIdentitiesAuth {
         ["sign"]
       );
 
-      const signature = await crypto.subtle.sign(
-        "HMAC",
-        key,
-        encoder.encode(data)
-      );
-      return btoa(String.fromCharCode(...new Uint8Array(signature)))
+      const signature = await subtle.sign("HMAC", key, encoder.encode(data));
+
+      return CryptoUtils.arrayBufferToBase64(signature)
         .replace(/[+/]/g, (m) => ({ "+": "-", "/": "_" }[m]!))
         .replace(/=/g, "");
-    } else {
-      // Node.js environment
-      const crypto = await import("crypto");
-      const hmac = crypto.createHmac("sha256", secret);
-      hmac.update(data);
-      return hmac
-        .digest("base64")
-        .replace(/[+/]/g, (m) => ({ "+": "-", "/": "_" }[m]!))
-        .replace(/=/g, "");
+    } catch (error) {
+      console.error("HMAC signature creation failed:", error);
+      throw new Error("HMAC signature creation failed");
     }
   }
 
   /**
-   * Generate fallback secure token if JWT fails
+   * Generate fallback secure token if JWT fails (Web Crypto API only)
    */
   private async generateFallbackToken(user: UserIdentity): Promise<string> {
-    const tokenData = {
-      userId: user.id,
-      username: user.username,
-      nip05: user.nip05,
-      role: user.role,
-      timestamp: Date.now(),
-      expires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-      type: "fallback-session",
-    };
+    try {
+      const tokenData = {
+        userId: user.id,
+        username: user.username,
+        nip05: user.nip05,
+        role: user.role,
+        timestamp: Date.now(),
+        expires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+        type: "fallback-session",
+      };
 
-    // Use secure random bytes for fallback token
-    if (typeof window !== "undefined") {
-      const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-      const randomString = btoa(String.fromCharCode(...randomBytes));
+      // Browser-only serverless architecture - use Web Crypto API for secure random bytes
+      const randomBytes = CryptoUtils.getRandomBytes(32);
+      const randomString = CryptoUtils.arrayBufferToBase64(randomBytes.buffer);
       return `${btoa(JSON.stringify(tokenData))}.${randomString}`;
-    } else {
-      const crypto = await import("crypto");
-      const randomBytes = crypto.randomBytes(32);
-      return `${btoa(JSON.stringify(tokenData))}.${randomBytes.toString(
-        "base64"
-      )}`;
+    } catch (error) {
+      console.error("Fallback token generation failed:", error);
+      throw new Error("Fallback token generation failed");
     }
   }
 
@@ -559,17 +585,19 @@ export class UserIdentitiesAuth {
   }
 
   /**
-   * Hash session token for secure storage
+   * Hash session token for secure storage (Web Crypto API only)
    */
   private async hashSessionToken(token: string): Promise<string> {
-    if (typeof window !== "undefined") {
+    try {
+      // Browser-only serverless architecture - use Web Crypto API
+      const subtle = CryptoUtils.getSubtleCrypto();
       const encoder = new TextEncoder();
       const data = encoder.encode(token);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
-    } else {
-      const crypto = await import("crypto");
-      return crypto.createHash("sha256").update(token).digest("base64");
+      const hashBuffer = await subtle.digest("SHA-256", data);
+      return CryptoUtils.arrayBufferToBase64(hashBuffer);
+    } catch (error) {
+      console.error("Session token hashing failed:", error);
+      throw new Error("Session token hashing failed");
     }
   }
 
@@ -634,6 +662,48 @@ export class UserIdentitiesAuth {
     } catch (error) {
       console.error("Token verification failed:", error);
       return null;
+    }
+  }
+
+  /**
+   * Validate session token and return user data
+   */
+  async validateSession(sessionToken: string): Promise<AuthResult> {
+    try {
+      if (!sessionToken) {
+        return { success: false, error: "No session token provided" };
+      }
+
+      // Verify the token
+      const payload = await this.verifySessionToken(sessionToken);
+      if (!payload) {
+        return { success: false, error: "Invalid or expired session token" };
+      }
+
+      // Get user data from database
+      const { data: user, error } = await supabase
+        .from("user_identities")
+        .select("*")
+        .eq("id", payload.userId)
+        .single();
+
+      if (error || !user) {
+        return { success: false, error: "User not found" };
+      }
+
+      // Check if user is still active
+      if (!user.is_active) {
+        return { success: false, error: "User account is inactive" };
+      }
+
+      return {
+        success: true,
+        user: user as UserIdentity,
+        sessionToken,
+      };
+    } catch (error) {
+      console.error("Session validation failed:", error);
+      return { success: false, error: "Session validation failed" };
     }
   }
 }

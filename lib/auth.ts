@@ -17,12 +17,12 @@ import {
 } from "jsonwebtoken";
 import type { StringValue } from "ms";
 import { Request } from "../types/netlify-functions";
-import browserCrypto from "./utils/browser-crypto-simple";
+import browserCrypto from "./utils/browser-crypto";
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
   if (!supabaseClient) {
-    const { supabase } = await import("./supabase");
+    const { supabase } = await import("../src/lib/supabase");
     supabaseClient = supabase;
   }
   return supabaseClient;
@@ -155,7 +155,11 @@ export async function createAuthHash(
 ): Promise<string> {
   try {
     // Generate salt if not provided
-    const authSalt = salt || browserCrypto.randomBytes(32).toString("hex");
+    const authSalt =
+      salt ||
+      Array.from(browserCrypto.randomBytes(32))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 
     // Use Web Crypto API for PBKDF2 in browser environment
     if (
@@ -285,22 +289,19 @@ export async function createHashedUserId(userId: string): Promise<string> {
     );
   }
 
-  return browserCrypto
-    .createHash("sha256")
-    .update(userId + hashSalt)
-    .digest("hex");
+  return await browserCrypto.createHashAsync("SHA-256", userId + hashSalt);
 }
 
 /**
  * Create platform ID (privacy-safe identifier)
  * Browser-compatible implementation
  */
-export function createPlatformId(pubkey: string): string {
-  return browserCrypto
-    .createHash("sha256")
-    .update(pubkey + "platform_salt")
-    .digest("hex")
-    .substring(0, 16);
+export async function createPlatformId(pubkey: string): Promise<string> {
+  const hash = await browserCrypto.createHashAsync(
+    "SHA-256",
+    pubkey + "platform_salt"
+  );
+  return hash.substring(0, 16);
 }
 
 /**
@@ -341,13 +342,15 @@ export async function getUserFromRequest(
  * Browser-compatible random bytes generation
  */
 export function generateRandomBytes(size: number): string {
-  return browserCrypto.randomBytes(size).toString("hex");
+  return Array.from(browserCrypto.randomBytes(size))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
- * Generate random bytes as Buffer (for compatibility with existing code)
+ * Generate random bytes as Uint8Array (browser-compatible)
  */
-export function randomBytes(size: number): Buffer {
+export function randomBytes(size: number): Uint8Array {
   return browserCrypto.randomBytes(size);
 }
 

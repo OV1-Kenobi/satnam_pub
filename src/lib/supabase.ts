@@ -12,10 +12,29 @@ import { createClient } from "@supabase/supabase-js";
  * @returns {string} Environment variable value
  */
 function getEnvVar(key: string, defaultValue: string = ""): string {
-  // FIXED: Simple process.env approach that works in both browser and Netlify Functions
   // Vite injects environment variables into process.env via define configuration
-  // This eliminates the import.meta CJS compatibility issue completely
-  return process.env[key] || defaultValue;
+  // This works in both browser and Node.js environments
+  if (typeof process !== "undefined" && process.env && process.env[key]) {
+    return process.env[key] || defaultValue;
+  }
+
+  // Fallback to import.meta.env for browser environments (if Vite injection fails)
+  if (typeof window !== "undefined") {
+    try {
+      const env = (import.meta as any).env;
+      if (env && env[key]) {
+        return env[key] || defaultValue;
+      }
+    } catch (error) {
+      console.warn(`Failed to access import.meta.env for ${key}:`, error);
+    }
+  }
+
+  // Final fallback
+  console.warn(
+    `Environment variable ${key} not accessible in current environment`
+  );
+  return defaultValue;
 }
 
 const getSupabaseConfig = () => {
@@ -25,12 +44,40 @@ const getSupabaseConfig = () => {
   const url = getEnvVar("VITE_SUPABASE_URL");
   const key = getEnvVar("VITE_SUPABASE_ANON_KEY");
 
+  // Debug environment variable access (without exposing sensitive data)
+  console.log("🔍 Supabase Environment Check:", {
+    hasUrl: !!url,
+    hasKey: !!key,
+    urlLength: url ? url.length : 0,
+    keyLength: key ? key.length : 0,
+    environment: typeof window !== "undefined" ? "browser" : "node",
+    processEnvAvailable: typeof process !== "undefined" && !!process.env,
+    processEnvHasViteVars:
+      typeof process !== "undefined" && !!process.env?.VITE_SUPABASE_URL,
+    viteEnvAvailable: typeof process !== "undefined" && !!process.env,
+    viteEnvHasVars:
+      typeof process !== "undefined" && !!process.env?.VITE_SUPABASE_URL,
+  });
+
   // Security validation - ensure we have bootstrap credentials
   if (!url || !key) {
+    const errorDetails = {
+      hasUrl: !!url,
+      hasKey: !!key,
+      environment: typeof window !== "undefined" ? "browser" : "node",
+      availableEnvVars: Object.keys(process.env || {}).filter((k) =>
+        k.startsWith("VITE_")
+      ),
+    };
+
+    console.error("❌ Supabase credentials missing:", errorDetails);
+
     throw new Error(
       "CRITICAL: Bootstrap Supabase credentials missing. " +
         "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables " +
-        "to access the Vault system."
+        "to access the Vault system. " +
+        `Environment: ${errorDetails.environment}, ` +
+        `Available VITE_ vars: ${errorDetails.availableEnvVars.length}`
     );
   }
 
@@ -89,8 +136,8 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: true,
     flowType: "pkce", // Enhanced security with PKCE
     lock: async <R>(
-      name: string,
-      acquireTimeout: number,
+      _name: string,
+      _acquireTimeout: number,
       fn: () => Promise<R>
     ) => await fn(), // Prevent concurrent session operations
     storageKey: "citadel-auth", // Custom storage key
@@ -470,7 +517,7 @@ export class CitadelDatabase {
       const issues: string[] = [];
       const username = profile.username;
       const expectedIdentifier = `${username}@${
-        import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
+        process.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
       }`;
 
       // Check Lightning address
@@ -528,7 +575,7 @@ export class CitadelDatabase {
       }
 
       const correctIdentifier = `${profile.username}@${
-        import.meta.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
+        process.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
       }`;
 
       // Fix Lightning address if inconsistent

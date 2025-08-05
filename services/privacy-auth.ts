@@ -60,34 +60,49 @@ export async function startPrivateOnboarding(
 
   // Validate username format against security requirements
   const validation = PrivacyManager.validateUsernameFormat(username);
-  if (!validation.isValid) {
-    throw new Error(`Invalid username: ${validation.errors.join(", ")}`);
+  if (!validation.valid) {
+    throw new Error(
+      `Invalid username: ${validation.error || "Invalid format"}`
+    );
   }
 
   // Check username availability to prevent conflicts
-  const existingUser = await db.query(
-    "SELECT id FROM profiles WHERE username = $1",
-    [username]
-  );
+  const client = await db.getClient();
+  const { data: existingUser, error: userCheckError } = await client
+    .from("profiles")
+    .select("id")
+    .eq("username", username)
+    .single();
 
-  if (existingUser.rows.length > 0) {
+  if (userCheckError && userCheckError.code !== "PGRST116") {
+    // PGRST116 = no rows found
+    throw new Error(`Database error: ${userCheckError.message}`);
+  }
+
+  if (existingUser) {
     throw new Error("Username already exists");
   }
 
   // Generate cryptographically secure session token
-  const sessionToken = generateRandomHex(32);
+  const sessionToken = await generateRandomHex(32);
   const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1_000); // 2 hours
 
   try {
-    const result = await db.query(
-      `INSERT INTO onboarding_sessions (
-        temp_username, session_token, expires_at
-      ) VALUES ($1, $2, $3)
-      RETURNING *`,
-      [username, sessionToken, expiresAt]
-    );
+    const { data: session, error: insertError } = await client
+      .from("onboarding_sessions")
+      .insert({
+        temp_username: username,
+        session_token: sessionToken,
+        expires_at: expiresAt.toISOString(),
+      })
+      .select()
+      .single();
 
-    const session = result.rows[0];
+    if (insertError) {
+      throw new Error(
+        `Failed to create onboarding session: ${insertError.message}`
+      );
+    }
 
     return {
       id: session.id,
@@ -99,7 +114,9 @@ export async function startPrivateOnboarding(
     };
   } catch (error) {
     throw new Error(
-      `Failed to create onboarding session: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to create onboarding session: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -142,55 +159,87 @@ export async function completePrivateRegistration(
 
   try {
     // Validate onboarding session exists and is not expired
-    const sessionResult = await db.query(
-      "SELECT * FROM onboarding_sessions WHERE session_token = $1 AND expires_at > NOW() AND completed = FALSE",
-      [session_token]
-    );
+    const client = await db.getClient();
+    const { data: session, error: sessionError } = await client
+      .from("onboarding_sessions")
+      .select("*")
+      .eq("session_token", session_token)
+      .eq("completed", false)
+      .gt("expires_at", new Date().toISOString())
+      .single();
 
-    if (sessionResult.rows.length === 0) {
+    if (sessionError || !session) {
       throw new Error("Invalid or expired onboarding session");
     }
-
-    const session = sessionResult.rows[0];
 
     // Create privacy-safe auth hash from pubkey (pubkey is not stored)
     const authHash = PrivacyManager.createAuthHash(pubkey);
 
-    // Create non-reversible platform identifier
-    const platformId = PrivacyManager.createPlatformId(pubkey);
+    // Create non-reversible platform identifier using auth hash
+    const platformId = authHash; // Use auth hash as platform identifier
 
     // Use database function for secure user registration
-    const userId = await db.query(
-      "SELECT register_user_privacy_first($1, $2, $3, NULL) as user_id",
-      [session.temp_username, authHash, encrypted_profile ?? null]
+    const { data: registrationResult, error: userError } = await client.rpc(
+      "register_user_privacy_first",
+      {
+        p_username: session.temp_username,
+        p_auth_hash: authHash,
+        p_encrypted_profile: encrypted_profile ?? null,
+        p_invite_code: null,
+      }
     );
 
-    const newUserId = userId.rows[0].user_id;
+    if (userError) {
+      throw new Error(`User registration failed: ${userError.message}`);
+    }
+
+    const newUserId = registrationResult;
 
     // Update user with encryption metadata if provided
     if (encryption_hint) {
-      await db.query("UPDATE profiles SET encryption_hint = $1 WHERE id = $2", [
-        encryption_hint,
-        newUserId,
-      ]);
+      const { error: updateError } = await client
+        .from("profiles")
+        .update({ encryption_hint })
+        .eq("id", newUserId);
+
+      if (updateError) {
+        throw new Error(
+          `Failed to update encryption hint: ${updateError.message}`
+        );
+      }
     }
 
     // Mark onboarding session as completed
-    await db.query(
-      "UPDATE onboarding_sessions SET completed = TRUE, platform_id = $1 WHERE session_token = $2",
-      [platformId, session_token]
-    );
+    const { error: sessionUpdateError } = await client
+      .from("onboarding_sessions")
+      .update({
+        completed: true,
+        platform_id: platformId,
+      })
+      .eq("session_token", session_token);
 
-    // Retrieve the created user profile
-    const userResult = await db.query("SELECT * FROM profiles WHERE id = $1", [
-      newUserId,
-    ]);
-
-    if (userResult.rows.length === 0) {
-      throw new Error("Failed to retrieve created user");
+    if (sessionUpdateError) {
+      throw new Error(
+        `Failed to complete session: ${sessionUpdateError.message}`
+      );
     }
 
-    const user = userResult.rows[0];
+    // Retrieve the created user profile
+    const { data: userProfile, error: profileError } = await client
+      .from("profiles")
+      .select("*")
+      .eq("id", newUserId)
+      .single();
+
+    if (profileError || !userProfile) {
+      throw new Error(
+        `Failed to retrieve user profile: ${
+          profileError?.message || "Profile not found"
+        }`
+      );
+    }
+
+    const user = userProfile;
 
     // Create comprehensive audit log entry
     const auditLog = await createAuditLog(
@@ -201,7 +250,7 @@ export async function completePrivateRegistration(
     );
 
     // Generate JWT token without exposing pubkey
-    const token = generateToken({
+    const token = await generateToken({
       id: user.id,
       npub: "", // Privacy-first: no pubkey in tokens
       role: user.role,
@@ -218,7 +267,9 @@ export async function completePrivateRegistration(
     };
   } catch (error) {
     throw new Error(
-      `Registration failed: ${error instanceof Error ? error.message : String(error)}`
+      `Registration failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -252,15 +303,17 @@ export async function authenticatePrivacyFirst(
     const searchHash = PrivacyManager.createAuthHash(pubkey);
 
     // Attempt to find existing user by auth hash
-    let userResult = await db.query(
-      "SELECT * FROM profiles WHERE auth_hash = $1",
-      [searchHash]
-    );
+    const client = await db.getClient();
+    const { data: existingUser, error: userSearchError } = await client
+      .from("profiles")
+      .select("*")
+      .eq("auth_hash", searchHash)
+      .single();
 
     let user: User;
     let isNewUser = false;
 
-    if (userResult.rows.length === 0) {
+    if (!existingUser || userSearchError?.code === "PGRST116") {
       // New user - registration required
       if (!username) {
         throw new Error("Username required for new user registration");
@@ -268,57 +321,85 @@ export async function authenticatePrivacyFirst(
 
       // Validate username format and availability
       const validation = PrivacyManager.validateUsernameFormat(username);
-      if (!validation.isValid) {
-        throw new Error(`Invalid username: ${validation.errors.join(", ")}`);
+      if (!validation.valid) {
+        throw new Error(
+          `Invalid username: ${validation.error || "Invalid format"}`
+        );
       }
 
       // Check username availability
-      const existingUsername = await db.query(
-        "SELECT id FROM profiles WHERE username = $1",
-        [username]
-      );
+      const { data: existingUsername, error: usernameCheckError } = await client
+        .from("profiles")
+        .select("id")
+        .eq("username", username)
+        .single();
 
-      if (existingUsername.rows.length > 0) {
+      if (existingUsername && !usernameCheckError) {
         throw new Error("Username already exists");
       }
 
       // Register new user with privacy-first approach
-      const newUserId = await db.query(
-        "SELECT register_user_privacy_first($1, $2, NULL, NULL) as user_id",
-        [username, searchHash]
+      const { data: newUserId, error: registrationError } = await client.rpc(
+        "register_user_privacy_first",
+        {
+          p_username: username,
+          p_auth_hash: searchHash,
+          p_encrypted_profile: null,
+          p_invite_code: null,
+        }
       );
 
-      // Retrieve the newly created user
-      userResult = await db.query("SELECT * FROM profiles WHERE id = $1", [
-        newUserId.rows[0].user_id,
-      ]);
-
-      if (userResult.rows.length === 0) {
-        throw new Error("Failed to retrieve newly created user");
+      if (registrationError) {
+        throw new Error(
+          `User registration failed: ${registrationError.message}`
+        );
       }
 
-      user = userResult.rows[0];
+      // Retrieve the newly created user
+      const { data: newUser, error: newUserError } = await client
+        .from("profiles")
+        .select("*")
+        .eq("id", newUserId)
+        .single();
+
+      if (newUserError || !newUser) {
+        throw new Error(
+          `Failed to retrieve newly created user: ${
+            newUserError?.message || "User not found"
+          }`
+        );
+      }
+
+      user = newUser;
       isNewUser = true;
 
       await createAuditLog(user.id, "new_user_authenticated", true);
     } else {
       // Existing user - verify auth hash using constant-time comparison
-      user = userResult.rows[0];
+      user = existingUser;
 
-      if (!PrivacyManager.verifyAuthHash(pubkey, user.auth_hash)) {
+      // Verify auth hash by recreating it and comparing
+      const expectedHash = PrivacyManager.createAuthHash(pubkey);
+      if (expectedHash !== user.auth_hash) {
         await createAuditLog(user.id, "authentication_failed", false);
         throw new Error("Invalid authentication credentials");
       }
 
       // Update last login timestamp
-      await db.query("UPDATE profiles SET last_login = NOW() WHERE id = $1", [
-        user.id,
-      ]);
+      const { error: updateError } = await client
+        .from("profiles")
+        .update({ last_login: new Date().toISOString() })
+        .eq("id", user.id);
+
+      if (updateError) {
+        console.error("Failed to update last login:", updateError.message);
+      }
+
       await createAuditLog(user.id, "user_authenticated", true);
     }
 
     // Generate JWT token without exposing sensitive data
-    const token = generateToken({
+    const token = await generateToken({
       id: user.id,
       npub: "", // Privacy-first: no pubkey in tokens
       role: user.role,
@@ -335,7 +416,9 @@ export async function authenticatePrivacyFirst(
     };
   } catch (error) {
     throw new Error(
-      `Authentication failed: ${error instanceof Error ? error.message : String(error)}`
+      `Authentication failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -370,17 +453,25 @@ export async function updateEncryptedProfile(
   }
 
   try {
-    await db.query(
-      `UPDATE profiles 
-       SET encrypted_profile = $1, encryption_hint = $2
-       WHERE id = $3`,
-      [encryptedProfile, encryptionHint ?? null, userId]
-    );
+    const client = await db.getClient();
+    const { error: updateError } = await client
+      .from("profiles")
+      .update({
+        encrypted_profile: encryptedProfile,
+        encryption_hint: encryptionHint ?? null,
+      })
+      .eq("id", userId);
+
+    if (updateError) {
+      throw new Error(`Failed to update profile: ${updateError.message}`);
+    }
 
     await createAuditLog(userId, "profile_updated", true);
   } catch (error) {
     throw new Error(
-      `Failed to update profile: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to update profile: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -405,19 +496,25 @@ export async function getEncryptedProfile(userId: string): Promise<{
   }
 
   try {
-    const result = await db.query(
-      "SELECT encrypted_profile, encryption_hint FROM profiles WHERE id = $1",
-      [userId]
-    );
+    const client = await db.getClient();
+    const { data: user, error: userError } = await client
+      .from("profiles")
+      .select("encrypted_profile, encryption_hint")
+      .eq("id", userId)
+      .single();
 
-    if (result.rows.length === 0) {
-      throw new Error("User not found");
+    if (userError || !user) {
+      throw new Error(
+        `User not found: ${userError?.message || "No user data"}`
+      );
     }
 
-    return result.rows[0];
+    return user;
   } catch (error) {
     throw new Error(
-      `Failed to retrieve profile: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to retrieve profile: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -469,8 +566,8 @@ export async function createAuditLog(
 
   try {
     // Hash sensitive data for privacy protection
-    const ipHash = ipAddress ? sha256(ipAddress) : null;
-    const userAgentHash = userAgent ? sha256(userAgent) : null;
+    const ipHash = ipAddress ? await sha256(ipAddress) : null;
+    const userAgentHash = userAgent ? await sha256(userAgent) : null;
 
     // Encrypt audit details for security using AES-256-GCM
     let encryptedDetails: string | null = null;
@@ -482,7 +579,6 @@ export async function createAuditLog(
         // Store all encryption components as a JSON string for database storage
         encryptedDetails = JSON.stringify({
           encrypted: encryptionResult.encrypted,
-          salt: encryptionResult.salt,
           iv: encryptionResult.iv,
           tag: encryptionResult.tag,
         });
@@ -496,15 +592,25 @@ export async function createAuditLog(
       }
     }
 
-    const result = await db.query(
-      `INSERT INTO auth_audit_log (
-        user_id, action, encrypted_details, ip_hash, user_agent_hash, success
-      ) VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *`,
-      [userId, action, encryptedDetails, ipHash, userAgentHash, success]
-    );
+    const client = await db.getClient();
+    const { data: log, error: auditError } = await client
+      .from("auth_audit_log")
+      .insert({
+        user_id: userId,
+        action,
+        encrypted_details: encryptedDetails,
+        ip_hash: ipHash,
+        user_agent_hash: userAgentHash,
+        success,
+      })
+      .select("*")
+      .single();
 
-    const log = result.rows[0];
+    if (auditError || !log) {
+      throw new Error(
+        `Failed to create audit log: ${auditError?.message || "Unknown error"}`
+      );
+    }
 
     return {
       id: log.id,
@@ -518,7 +624,9 @@ export async function createAuditLog(
     };
   } catch (error) {
     throw new Error(
-      `Failed to create audit log: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to create audit log: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -540,15 +648,19 @@ export async function getUserAuditLog(userId: string): Promise<AuthAuditLog[]> {
   }
 
   try {
-    const result = await db.query(
-      `SELECT * FROM auth_audit_log 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC 
-       LIMIT 100`,
-      [userId]
-    );
+    const client = await db.getClient();
+    const { data: logs, error: logsError } = await client
+      .from("auth_audit_log")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-    return result.rows.map((log) => ({
+    if (logsError) {
+      throw new Error(`Failed to retrieve audit logs: ${logsError.message}`);
+    }
+
+    return (logs || []).map((log) => ({
       id: log.id,
       user_id: log.user_id,
       action: log.action,
@@ -560,7 +672,9 @@ export async function getUserAuditLog(userId: string): Promise<AuthAuditLog[]> {
     }));
   } catch (error) {
     throw new Error(
-      `Failed to retrieve audit log: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to retrieve audit log: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -584,42 +698,40 @@ export async function generateUsernameSuggestions(
   }
 
   try {
-    const suggestions = PrivacyManager.generateUsernameOptions(count);
+    const client = await db.getClient();
     const available: string[] = [];
 
-    // Check availability of generated suggestions
-    for (const suggestion of suggestions) {
-      const exists = await db.query(
-        "SELECT id FROM profiles WHERE username = $1",
-        [suggestion]
-      );
-
-      if (exists.rows.length === 0) {
-        available.push(suggestion);
-      }
-    }
-
-    // Generate additional suggestions if needed
+    // Generate suggestions using existing method
     let attempts = 0;
     const maxAttempts = count * 3; // Prevent infinite loop
 
     while (available.length < count && attempts < maxAttempts) {
       const newSuggestion = PrivacyManager.generateAnonymousUsername();
-      const exists = await db.query(
-        "SELECT id FROM profiles WHERE username = $1",
-        [newSuggestion]
-      );
 
-      if (exists.rows.length === 0 && !available.includes(newSuggestion)) {
+      // Check availability
+      const { data: existingUser, error: checkError } = await client
+        .from("profiles")
+        .select("id")
+        .eq("username", newSuggestion)
+        .single();
+
+      // If no user found (PGRST116) and not already in our list, add it
+      if (
+        (checkError?.code === "PGRST116" || !existingUser) &&
+        !available.includes(newSuggestion)
+      ) {
         available.push(newSuggestion);
       }
+
       attempts++;
     }
 
     return available.slice(0, count);
   } catch (error) {
     throw new Error(
-      `Failed to generate username suggestions: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to generate username suggestions: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -643,16 +755,21 @@ export async function getOnboardingSession(
   }
 
   try {
-    const result = await db.query(
-      "SELECT * FROM onboarding_sessions WHERE session_token = $1 AND expires_at > NOW()",
-      [session_token]
-    );
+    const client = await db.getClient();
+    const { data: session, error: sessionError } = await client
+      .from("onboarding_sessions")
+      .select("*")
+      .eq("session_token", session_token)
+      .gt("expires_at", new Date().toISOString())
+      .single();
 
-    if (result.rows.length === 0) {
+    if (sessionError?.code === "PGRST116" || !session) {
       return null;
     }
 
-    const session = result.rows[0];
+    if (sessionError) {
+      throw new Error(`Database error: ${sessionError.message}`);
+    }
 
     return {
       id: session.id,
@@ -666,7 +783,9 @@ export async function getOnboardingSession(
     };
   } catch (error) {
     throw new Error(
-      `Failed to retrieve onboarding session: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to retrieve onboarding session: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -711,17 +830,17 @@ export async function decryptAuditDetails(
     }
 
     // Decrypt the audit details
-    const decryptedJson = await decryptSensitiveData({
-      encrypted: encryptionData.encrypted,
-      salt: encryptionData.salt,
-      iv: encryptionData.iv,
-      tag: encryptionData.tag,
-    });
+    const decryptedJson = await decryptSensitiveData(
+      encryptionData.encrypted,
+      encryptionData.iv
+    );
 
     return JSON.parse(decryptedJson);
   } catch (error) {
     throw new Error(
-      `Failed to decrypt audit details: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to decrypt audit details: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }
@@ -749,16 +868,20 @@ export async function getUserAuditLogWithDetails(
   }
 
   try {
-    const result = await db.query(
-      `SELECT * FROM auth_audit_log 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC 
-       LIMIT 100`,
-      [userId]
-    );
+    const client = await db.getClient();
+    const { data: auditLogs, error: logsError } = await client
+      .from("auth_audit_log")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (logsError) {
+      throw new Error(`Failed to retrieve audit logs: ${logsError.message}`);
+    }
 
     const logs = await Promise.all(
-      result.rows.map(async (log) => {
+      (auditLogs || []).map(async (log: any) => {
         const auditLog: AuthAuditLog & {
           decrypted_details?: Record<string, unknown> | null;
         } = {
@@ -795,7 +918,9 @@ export async function getUserAuditLogWithDetails(
     return logs;
   } catch (error) {
     throw new Error(
-      `Failed to retrieve audit log: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to retrieve audit log: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
 }

@@ -7,7 +7,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -21,12 +21,12 @@ function getEnvVar(key: string): string | undefined {
  * doesn't break existing privacy/encryption protocols
  */
 
-import { decryptCredentials, encryptCredentials } from '../lib/security.js';
+import { decryptCredentials, encryptCredentials } from "../api/lib/security.js";
 import {
   generateRandomHex,
   generateSecureToken,
   sha256,
-} from '../utils/crypto.js';
+} from "../utils/crypto.js";
 import { validateNWCUri } from "../utils/nwc-validation";
 
 console.log("🔐 Verifying Privacy and Encryption Integrity...\n");
@@ -61,21 +61,25 @@ async function verifyEncryptionIntegrity() {
       await decryptCredentials(encrypted, "wrong-password");
       throw new Error("Decryption should have failed with wrong password");
     } catch (error) {
-      if (error.message.includes("Decryption failed")) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      if (errorMessage.includes("Decryption failed")) {
         console.log("   ✅ Wrong password properly rejected");
       } else {
         throw error;
       }
     }
   } catch (error) {
-    console.error("   ❌ Encryption test failed:", error.message);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("   ❌ Encryption test failed:", errorMessage);
     return false;
   }
 
   return true;
 }
 
-function verifyTokenSecurity() {
+async function verifyTokenSecurity() {
   console.log("\n2. Testing secure token generation...");
 
   try {
@@ -83,7 +87,7 @@ function verifyTokenSecurity() {
 
     // Generate multiple tokens to test uniqueness and format
     for (let i = 0; i < 100; i++) {
-      const token = generateSecureToken(64);
+      const token = await generateSecureToken(64);
 
       // Check format (base64url)
       if (!token.match(/^[A-Za-z0-9_-]+$/)) {
@@ -113,19 +117,21 @@ function verifyTokenSecurity() {
       `   ✅ Average token length: ${Array.from(tokens)[0].length} characters`
     );
   } catch (error) {
-    console.error("   ❌ Token generation test failed:", error.message);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("   ❌ Token generation test failed:", errorMessage);
     return false;
   }
 
   return true;
 }
 
-function verifyExistingCryptoUtils() {
+async function verifyExistingCryptoUtils() {
   console.log("\n3. Testing existing crypto utilities...");
 
   try {
     // Test random hex generation
-    const hex = generateRandomHex(32);
+    const hex = await generateRandomHex(32);
     if (!hex.match(/^[0-9a-f]{32}$/)) {
       throw new Error(`Invalid hex format: ${hex}`);
     }
@@ -133,8 +139,8 @@ function verifyExistingCryptoUtils() {
 
     // Test SHA256 hashing
     const testData = "test-data-for-hashing";
-    const hash1 = sha256(testData);
-    const hash2 = sha256(testData);
+    const hash1 = await sha256(testData);
+    const hash2 = await sha256(testData);
 
     if (!hash1.match(/^[0-9a-f]{64}$/)) {
       throw new Error(`Invalid SHA256 format: ${hash1}`);
@@ -144,13 +150,16 @@ function verifyExistingCryptoUtils() {
       throw new Error("SHA256 not deterministic");
     }
 
-    if (sha256("different-data") === hash1) {
+    const differentHash = await sha256("different-data");
+    if (differentHash === hash1) {
       throw new Error("SHA256 collision detected");
     }
 
     console.log("   ✅ SHA256 hashing working correctly");
   } catch (error) {
-    console.error("   ❌ Crypto utilities test failed:", error.message);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("   ❌ Crypto utilities test failed:", errorMessage);
     return false;
   }
 
@@ -207,7 +216,9 @@ function verifyNWCValidation() {
     }
     console.log("   ✅ Malicious NWC URLs properly rejected and sanitized");
   } catch (error) {
-    console.error("   ❌ NWC validation test failed:", error.message);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("   ❌ NWC validation test failed:", errorMessage);
     return false;
   }
 
@@ -265,7 +276,9 @@ function verifyDataSanitization() {
 
     console.log("   ✅ Malicious inputs properly rejected");
   } catch (error) {
-    console.error("   ❌ Data sanitization test failed:", error.message);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("   ❌ Data sanitization test failed:", errorMessage);
     return false;
   }
 
@@ -293,7 +306,9 @@ async function main() {
         failed++;
       }
     } catch (error) {
-      console.error(`   ❌ Test failed with exception:`, error.message);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error(`   ❌ Test failed with exception:`, errorMessage);
       failed++;
     }
   }

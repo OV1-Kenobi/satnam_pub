@@ -1,4 +1,12 @@
-const CryptoJS = require("crypto-js");
+// Dynamic import for crypto-js to avoid Node.js module externalization
+let CryptoJS: any = null;
+
+async function getCryptoJS() {
+  if (!CryptoJS) {
+    CryptoJS = await import("crypto-js");
+  }
+  return CryptoJS;
+}
 import { bytesToHex } from "@noble/hashes/utils";
 import { getPublicKey, utils } from "@noble/secp256k1";
 
@@ -163,7 +171,12 @@ export async function deriveKey(
     ["deriveBits"]
   );
   const derivedBits = await window.crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: saltBuffer, iterations, hash: "SHA-256" },
+    {
+      name: "PBKDF2",
+      salt: new Uint8Array(saltBuffer),
+      iterations,
+      hash: "SHA-256",
+    },
     key,
     keyLength * 8
   );

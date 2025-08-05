@@ -22,12 +22,15 @@ import {
   SimplePool,
   type Event,
 } from "nostr-tools";
-import {
-  decryptData,
-  encryptData,
-  generateRandomHex,
-  sha256,
-} from "../utils/crypto-factory.js";
+// Cached crypto factory import to avoid static/dynamic import mixing
+let cryptoFactoryPromise: Promise<any> | null = null;
+
+const getCryptoFactory = () => {
+  if (!cryptoFactoryPromise) {
+    cryptoFactoryPromise = import("../utils/crypto-factory.js");
+  }
+  return cryptoFactoryPromise;
+};
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
@@ -203,35 +206,40 @@ class PrivacyUtils {
     identifier: string,
     salt?: string
   ): Promise<string> {
-    const actualSalt = salt || (await generateRandomHex(32));
-    return await sha256(identifier + actualSalt);
+    const cryptoFactory = await getCryptoFactory();
+    const actualSalt = salt || (await cryptoFactory.generateRandomHex(32));
+    return await cryptoFactory.sha256(identifier + actualSalt);
   }
 
   static async generateEncryptedUUID(): Promise<string> {
+    const cryptoFactory = await getCryptoFactory();
     const uuid = crypto.randomUUID();
     const timestamp = Date.now().toString();
-    const randomBytes = await generateRandomHex(32);
+    const randomBytes = await cryptoFactory.generateRandomHex(32);
 
     const combinedData = `${uuid}-${timestamp}-${randomBytes}`;
-    return await sha256(combinedData);
+    return await cryptoFactory.sha256(combinedData);
   }
 
   static async generateSessionKey(): Promise<string> {
-    return await generateRandomHex(64);
+    const cryptoFactory = await getCryptoFactory();
+    return await cryptoFactory.generateRandomHex(64);
   }
 
   static async encryptWithSessionKey(
     data: string,
     sessionKey: string
   ): Promise<string> {
-    return await encryptData(data, sessionKey);
+    const cryptoFactory = await getCryptoFactory();
+    return await cryptoFactory.encryptData(data, sessionKey);
   }
 
   static async decryptWithSessionKey(
     encryptedData: string,
     sessionKey: string
   ): Promise<string> {
-    return await decryptData(encryptedData, sessionKey);
+    const cryptoFactory = await getCryptoFactory();
+    return await cryptoFactory.decryptData(encryptedData, sessionKey);
   }
 
   /**

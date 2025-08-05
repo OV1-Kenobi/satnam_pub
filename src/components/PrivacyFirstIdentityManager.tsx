@@ -11,11 +11,8 @@
  * - Security audit trails
  */
 
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import React, { useEffect, useState } from 'react';
 import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging';
-import { PrivacyFirstMessagingService } from '../lib/gift-wrapped-messaging/privacy-first-service.js';
-import { MESSAGING_CONFIG } from '../lib/gift-wrapped-messaging/privacy-first-service';
 import ContactsManagerModal from './ContactsManagerModal';
 
 interface PrivacyFirstIdentityManagerProps {
@@ -49,7 +46,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
   className = '',
 }) => {
   const messaging = usePrivacyFirstMessaging()
-  
+
   const [nip05Input, setNip05Input] = useState('')
   const [selectedScope, setSelectedScope] = useState<'direct' | 'groups' | 'specific-groups'>('direct')
   const [specificGroups, setSpecificGroups] = useState<string[]>([])
@@ -65,7 +62,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
     },
     readingTimeSeconds: 0,
   })
-  
+
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
   const [readingTimer, setReadingTimer] = useState<NodeJS.Timeout | null>(null)
   const [showContactsModal, setShowContactsModal] = useState(false)
@@ -108,13 +105,13 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
 
   const handleInitializeSession = async () => {
     if (!userNsec) return
-    
+
     try {
       const sessionId = await messaging.initializeSession(userNsec, {
         userAgent: navigator.userAgent,
         ttlHours: 24, // Default session TTL
       })
-      
+
       if (sessionId) {
         onSessionCreated?.(sessionId)
       }
@@ -128,7 +125,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
     try {
       await messaging.destroySession()
       onSessionDestroyed?.()
-      
+
       // Reset form state
       setConsentForm({
         warningRead: false,
@@ -195,11 +192,11 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
   const isConsentFormValid = () => {
     const minReadingTime = 15 // 15 seconds minimum
     const hasReadEnough = consentForm.readingTimeSeconds >= minReadingTime
-    const hasAcknowledged = consentForm.warningRead && 
-                           consentForm.consequencesAcknowledged && 
-                           consentForm.recommendationsRead
+    const hasAcknowledged = consentForm.warningRead &&
+      consentForm.consequencesAcknowledged &&
+      consentForm.recommendationsRead
     const hasCheckedAll = Object.values(consentForm.privacyCheckboxes).every(Boolean)
-    
+
     return hasReadEnough && hasAcknowledged && hasCheckedAll
   }
 
@@ -214,7 +211,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
         consentGiven: true,
         warningAcknowledged: true,
       })
-      
+
       if (success) {
         onIdentityDisclosureChanged?.(true, selectedScope)
       }
@@ -265,7 +262,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
               </h2>
               <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
                 <p className="text-sm text-yellow-700">
-                  <strong>Privacy First:</strong> This system defaults to private messaging. 
+                  <strong>Privacy First:</strong> This system defaults to private messaging.
                   You are choosing to reveal your identity.
                 </p>
               </div>
@@ -285,7 +282,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                <div 
+                <div
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${Math.min((consentForm.readingTimeSeconds / 15) * 100, 100)}%` }}
                 />
@@ -361,7 +358,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   />
                   <span className="text-sm">I understand the privacy implications of enabling NIP-05 disclosure</span>
                 </label>
-                
+
                 <label className="flex items-start">
                   <input
                     type="checkbox"
@@ -371,7 +368,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   />
                   <span className="text-sm">I confirm this creates a permanent linkage between my identity and messages</span>
                 </label>
-                
+
                 <label className="flex items-start">
                   <input
                     type="checkbox"
@@ -381,7 +378,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   />
                   <span className="text-sm">I accept that recipients may store this identity information</span>
                 </label>
-                
+
                 <label className="flex items-start">
                   <input
                     type="checkbox"
@@ -408,15 +405,14 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
               >
                 Keep Private (Cancel)
               </button>
-              
+
               <button
                 onClick={handleConfirmConsent}
                 disabled={!isConsentFormValid() || messaging.loading}
-                className={`px-6 py-2 rounded transition-colors ${
-                  isConsentFormValid() && !messaging.loading
+                className={`px-6 py-2 rounded transition-colors ${isConsentFormValid() && !messaging.loading
                     ? 'bg-red-600 text-white hover:bg-red-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
+                  }`}
               >
                 {messaging.loading ? 'Processing...' : 'Enable NIP-05 Disclosure'}
               </button>
@@ -466,18 +462,15 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
 
         {/* Connection Status */}
         <div className="mb-6">
-          <div className={`p-3 rounded-lg ${
-            messaging.connected 
-              ? 'bg-green-50 border border-green-200' 
+          <div className={`p-3 rounded-lg ${messaging.connected
+              ? 'bg-green-50 border border-green-200'
               : 'bg-red-50 border border-red-200'
-          }`}>
+            }`}>
             <div className="flex items-center">
-              <div className={`w-3 h-3 rounded-full mr-2 ${
-                messaging.connected ? 'bg-green-500' : 'bg-red-500'
-              }`} />
-              <span className={`text-sm font-medium ${
-                messaging.connected ? 'text-green-700' : 'text-red-700'
-              }`}>
+              <div className={`w-3 h-3 rounded-full mr-2 ${messaging.connected ? 'bg-green-500' : 'bg-red-500'
+                }`} />
+              <span className={`text-sm font-medium ${messaging.connected ? 'text-green-700' : 'text-red-700'
+                }`}>
                 {messaging.connected ? 'Connected' : 'Disconnected'}
               </span>
               {messaging.sessionId && (
@@ -493,15 +486,14 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
         <div className="mb-6">
           <h3 className="font-semibold text-gray-700 mb-3">Current Identity Status</h3>
           <div className="space-y-2">
-            <div className={`p-3 rounded ${
-              messaging.identityStatus.isDisclosureEnabled 
-                ? 'bg-yellow-50 border border-yellow-200' 
+            <div className={`p-3 rounded ${messaging.identityStatus.isDisclosureEnabled
+                ? 'bg-yellow-50 border border-yellow-200'
                 : 'bg-green-50 border border-green-200'
-            }`}>
+              }`}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
-                  {messaging.identityStatus.isDisclosureEnabled 
-                    ? '⚠️ NIP-05 Disclosure Enabled' 
+                  {messaging.identityStatus.isDisclosureEnabled
+                    ? '⚠️ NIP-05 Disclosure Enabled'
                     : '🔒 Private Messaging (Default)'
                   }
                 </span>
@@ -515,7 +507,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   </button>
                 )}
               </div>
-              
+
               {messaging.identityStatus.isDisclosureEnabled && (
                 <div className="mt-2 text-xs text-gray-600">
                   <div>Direct Messages: {messaging.identityStatus.directMessagesEnabled ? '✓ Enabled' : '✗ Disabled'}</div>
@@ -536,10 +528,10 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
         {!messaging.identityStatus.isDisclosureEnabled && messaging.connected && (
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-700">Enable NIP-05 Identity Disclosure</h3>
-            
+
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-700 mb-3">
-                <strong>Privacy Notice:</strong> This system defaults to private messaging. 
+                <strong>Privacy Notice:</strong> This system defaults to private messaging.
                 Enabling NIP-05 disclosure will make your verified identity visible to recipients.
               </p>
             </div>
@@ -573,7 +565,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   />
                   <span className="text-sm">Direct messages only (recommended)</span>
                 </label>
-                
+
                 <label className="flex items-center">
                   <input
                     type="radio"
@@ -585,7 +577,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   />
                   <span className="text-sm">All group messages (higher privacy risk)</span>
                 </label>
-                
+
                 <label className="flex items-center">
                   <input
                     type="radio"
@@ -598,7 +590,7 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
                   <span className="text-sm">Specific groups only</span>
                 </label>
               </div>
-              
+
               {/* Specific Groups Input */}
               {selectedScope === 'specific-groups' && (
                 <div className="mt-3 p-3 bg-gray-50 rounded-lg">
@@ -623,15 +615,14 @@ export const PrivacyFirstIdentityManager: React.FC<PrivacyFirstIdentityManagerPr
             <button
               onClick={handleEnableDisclosure}
               disabled={!nip05Input.trim() || messaging.loading || (selectedScope === 'specific-groups' && specificGroups.length === 0)}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-                nip05Input.trim() && !messaging.loading && (selectedScope !== 'specific-groups' || specificGroups.length > 0)
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${nip05Input.trim() && !messaging.loading && (selectedScope !== 'specific-groups' || specificGroups.length > 0)
                   ? 'bg-yellow-600 text-white hover:bg-yellow-700'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
+                }`}
             >
               {messaging.loading ? 'Processing...' : 'Show Privacy Warning & Configure'}
             </button>
-            
+
             {/* Validation Error Messages */}
             {selectedScope === 'specific-groups' && specificGroups.length === 0 && (
               <p className="text-sm text-red-600 mt-2">

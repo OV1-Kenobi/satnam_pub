@@ -101,6 +101,7 @@ export class HybridAuth {
       const npub = nip19.npubEncode(nostrEvent.pubkey);
 
       // Check if user exists in database
+      const supabase = await getSupabaseClient();
       const { data: existingUser, error: userError } = await supabase
         .from("user_identities")
         .select("*")
@@ -188,6 +189,7 @@ export class HybridAuth {
       const nwcData = sanitizeNWCData(nwcComponents);
 
       // Store NWC connection securely
+      const supabase = await getSupabaseClient();
       const { data: nwcConnection, error: nwcError } = await supabase
         .from("nwc_connections")
         .insert([
@@ -273,6 +275,7 @@ export class HybridAuth {
   async verifyOTP(otpKey: string, otp: string): Promise<AuthResult> {
     try {
       // Get OTP from database
+      const supabase = await getSupabaseClient();
       const { data: otpData, error: otpError } = await supabase
         .from("otp_codes")
         .select("*")
@@ -385,9 +388,13 @@ export class HybridAuth {
   }
 
   private async generatePrivacyHash(data: string): Promise<string> {
-    // Use Node.js crypto for Netlify Functions
-    const crypto = require("crypto");
-    return crypto.createHash("sha256").update(data).digest("hex");
+    // Use Web Crypto API for browser compatibility
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
 
   async createSession(userData: any, session: any): Promise<Session> {

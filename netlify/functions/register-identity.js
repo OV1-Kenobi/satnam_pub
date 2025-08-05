@@ -35,44 +35,42 @@ export const handler = async (event) => {
     timestamp: new Date().toISOString()
   });
 
-  // CRITICAL DEBUG: Add comprehensive error handling
+  // DEBUG: Check environment variables with actual values (masked)
+  console.log("🔍 Environment variables check:", {
+    hasSupabaseUrl: !!process.env.VITE_SUPABASE_URL,
+    supabaseUrlLength: process.env.VITE_SUPABASE_URL?.length || 0,
+    hasSupabaseKey: !!process.env.VITE_SUPABASE_ANON_KEY,
+    supabaseKeyLength: process.env.VITE_SUPABASE_ANON_KEY?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
+  });
+
+  // Import Supabase client at function scope
+  console.log("🔍 Testing Supabase import...");
+  let supabase;
+
   try {
-    // DEBUG: Check environment variables with actual values (masked)
-    console.log("🔍 Environment variables check:", {
-      hasSupabaseUrl: !!process.env.VITE_SUPABASE_URL,
-      supabaseUrlLength: process.env.VITE_SUPABASE_URL?.length || 0,
-      hasSupabaseKey: !!process.env.VITE_SUPABASE_ANON_KEY,
-      supabaseKeyLength: process.env.VITE_SUPABASE_ANON_KEY?.length || 0,
-      nodeEnv: process.env.NODE_ENV,
-      allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
-    });
+    const supabaseModule = await import("./supabase.js");
+    supabase = supabaseModule.supabase;
+    console.log("✅ Supabase import successful");
 
-    // Import Supabase client at function scope
-    console.log("🔍 Testing Supabase import...");
-    let supabase;
-
-    try {
-      const supabaseModule = await import("./supabase.js");
-      supabase = supabaseModule.supabase;
-      console.log("✅ Supabase import successful");
-
-      // Test basic Supabase connection using correct table
-      console.log("🔍 Testing Supabase connection...");
-      const { error } = await supabase.from('user_identities').select('count').limit(1);
-      if (error) {
-        console.error("❌ Supabase connection test failed:", error);
-      } else {
-        console.log("✅ Supabase connection test successful");
-      }
-    } catch (supabaseError) {
-      console.error("❌ Supabase import/connection failed:", supabaseError);
-      throw new Error(`Supabase setup failed: ${supabaseError.message}`);
+    // Test basic Supabase connection using correct table
+    console.log("🔍 Testing Supabase connection...");
+    const { error } = await supabase.from('user_identities').select('count').limit(1);
+    if (error) {
+      console.error("❌ Supabase connection test failed:", error);
+    } else {
+      console.log("✅ Supabase connection test successful");
     }
+  } catch (supabaseError) {
+    console.error("❌ Supabase import/connection failed:", supabaseError);
+    throw new Error(`Supabase setup failed: ${supabaseError.message}`);
+  }
 
-    // Validate supabase client is available
-    if (!supabase) {
-      throw new Error('Supabase client not available');
-    }
+  // Validate supabase client is available
+  if (!supabase) {
+    throw new Error('Supabase client not available');
+  }
 
   // CORS headers following established codebase pattern
   const headers = {
@@ -395,24 +393,25 @@ export const handler = async (event) => {
       responseData.postAuthAction = "show_invitation_modal";
     }
 
+    console.log("✅ Registration completed successfully");
     return {
       statusCode: 201,
       headers,
       body: JSON.stringify(responseData),
     };
 
-    } catch (privacyError) {
-      console.error("❌ Privacy hashing operation failed:", privacyError);
-      throw new Error(`Privacy hashing failed: ${privacyError.message}`);
+    } catch (registrationError) {
+      console.error("❌ Registration process failed:", registrationError);
+      throw new Error(`Registration failed: ${registrationError.message}`);
     }
 
   } catch (error) {
-    console.error("Error registering identity:", error);
-    
+    console.error("❌ Error registering identity:", error);
+
     // Return appropriate error response
     const errorMessage = error.message || "Internal server error during registration";
     const statusCode = error.message?.includes('Missing required fields') ? 400 : 500;
-    
+
     return {
       statusCode,
       headers,
@@ -422,33 +421,6 @@ export const handler = async (event) => {
         meta: {
           timestamp: new Date().toISOString(),
         },
-      }),
-    };
-  }
-
-  } catch (criticalError) {
-    // CRITICAL DEBUG: Catch any unhandled errors that cause 502/500
-    console.error("❌ CRITICAL FUNCTION ERROR:", criticalError);
-    console.error("❌ Error stack:", criticalError.stack);
-    console.error("❌ Error details:", {
-      name: criticalError.name,
-      message: criticalError.message,
-      cause: criticalError.cause
-    });
-
-    return {
-      statusCode: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        success: false,
-        error: "Critical function error - check Netlify logs",
-        details: criticalError.message,
-        timestamp: new Date().toISOString()
       }),
     };
   }

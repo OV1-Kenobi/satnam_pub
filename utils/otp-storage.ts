@@ -113,12 +113,74 @@ function generateSalt(): string {
 
 /**
  * Extract domain from nip05 for privacy-safe analytics
+ * Validates NIP-05 format and handles edge cases properly
+ *
+ * @param identifier - The NIP-05 identifier to extract domain from
+ * @returns The domain part if valid, undefined otherwise
+ *
+ * Valid NIP-05 format: username@domain.tld
+ * - Username: alphanumeric, dots, underscores, hyphens
+ * - Domain: valid domain name with TLD
+ * - Must have exactly one '@' symbol
  */
 function extractDomain(identifier: string): string | undefined {
-  if (identifier.includes("@")) {
-    return identifier.split("@")[1];
+  // Handle null, undefined, or empty strings
+  if (!identifier || typeof identifier !== "string") {
+    return undefined;
   }
-  return undefined;
+
+  // Trim whitespace
+  const trimmedIdentifier = identifier.trim();
+
+  // Check for empty string after trimming
+  if (!trimmedIdentifier) {
+    return undefined;
+  }
+
+  // Validate NIP-05 format with proper regex
+  // Pattern breakdown:
+  // ^[a-zA-Z0-9._-]+  - Username: alphanumeric, dots, underscores, hyphens (at least 1 char)
+  // @                 - Exactly one @ symbol
+  // [a-zA-Z0-9.-]+    - Domain name: alphanumeric, dots, hyphens (at least 1 char)
+  // \.                - Literal dot before TLD
+  // [a-zA-Z]{2,}$     - TLD: at least 2 alphabetic characters
+  const nip05Regex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+  if (!nip05Regex.test(trimmedIdentifier)) {
+    return undefined;
+  }
+
+  // Extract domain part (everything after the single '@')
+  const parts = trimmedIdentifier.split("@");
+
+  // Additional safety check (should not be needed with regex, but defensive programming)
+  if (parts.length !== 2) {
+    return undefined;
+  }
+
+  const domain = parts[1];
+
+  // Final validation: ensure domain is not empty and has proper structure
+  if (!domain || domain.length === 0) {
+    return undefined;
+  }
+
+  // Validate domain doesn't start or end with dots/hyphens
+  if (
+    domain.startsWith(".") ||
+    domain.endsWith(".") ||
+    domain.startsWith("-") ||
+    domain.endsWith("-")
+  ) {
+    return undefined;
+  }
+
+  // Ensure domain has at least one dot (for TLD separation)
+  if (!domain.includes(".")) {
+    return undefined;
+  }
+
+  return domain;
 }
 
 /**

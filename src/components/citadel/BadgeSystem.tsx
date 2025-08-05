@@ -6,46 +6,35 @@
 
 import {
   Award,
-  BookOpen,
-  CheckCircle,
-  Clock,
-  Crown,
-  Eye,
-  EyeOff,
-  GraduationCap,
-  Lock,
-  Shield,
-  Star,
-  Trophy,
-  Users,
-  Zap,
-  Target,
-  TrendingUp,
-  Bookmark,
   Calendar,
+  CheckCircle,
   ChevronRight,
-  Filter,
-  Search,
   SortAsc,
   SortDesc,
-  Unlock,
-  Verified,
-  AlertTriangle,
-  Info
+  TrendingUp,
+  Trophy,
+  Users,
+  Verified
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import {
-  BadgeDefinition,
-  BadgeAward,
-  StudentDashboardData,
   AchievementLevel,
+  BadgeAward,
+  BadgeAwardRequest,
   BadgeCategory,
+  BadgeDefinition,
   EducationSubject,
-  PrivacyLevel,
-  VerificationLevel,
-  badgeSystem,
-  BadgeAwardRequest
+  StudentDashboardData,
+  badgeSystem
 } from '../../lib/citadel/badge-system.js';
+import {
+  getAchievementLevelColor,
+  getBadgeCategoryColor,
+  getBadgeCategoryIcon,
+  getEducationSubjectIcon,
+  getLevelWeight,
+  getPrivacyLevelIcon
+} from '../../utils/badgeUtils';
 
 interface BadgeSystemProps {
   studentPubkey: string;
@@ -73,90 +62,11 @@ interface AchievementProgressProps {
   total: number;
 }
 
-// Helper functions for badge system
-const getAchievementLevelColor = (level: AchievementLevel) => {
-  const colors = {
-    initiate: 'from-gray-400 to-gray-600',
-    apprentice: 'from-blue-400 to-blue-600',
-    journeyman: 'from-green-400 to-green-600',
-    craftsman: 'from-purple-400 to-purple-600',
-    master: 'from-orange-400 to-orange-600',
-    guardian: 'from-red-400 to-red-600',
-    sage: 'from-yellow-400 to-yellow-600'
-  };
-  return colors[level] || 'from-gray-400 to-gray-600';
-};
+// Helper functions are now imported from badgeUtils
 
-const getBadgeCategoryColor = (category: BadgeCategory) => {
-  const colors = {
-    knowledge: 'from-blue-400 to-blue-600',
-    practical: 'from-green-400 to-green-600',
-    security: 'from-red-400 to-red-600',
-    leadership: 'from-purple-400 to-purple-600',
-    sovereignty: 'from-yellow-400 to-yellow-600',
-    family: 'from-pink-400 to-pink-600',
-    community: 'from-indigo-400 to-indigo-600'
-  };
-  return colors[category] || 'from-gray-400 to-gray-600';
-};
-
-const getBadgeCategoryIcon = (category: BadgeCategory) => {
-  const icons = {
-    knowledge: BookOpen,
-    practical: Target,
-    security: Shield,
-    leadership: Crown,
-    sovereignty: Unlock,
-    family: Users,
-    community: Star
-  };
-  return icons[category] || Award;
-};
-
-const getEducationSubjectIcon = (subject: EducationSubject) => {
-  const icons = {
-    'bitcoin-fundamentals': Zap,
-    'lightning-network': Zap,
-    'privacy-sovereignty': Shield,
-    'self-custody': Lock,
-    'family-treasury': Users,
-    'nostr-identity': Bookmark,
-    'security-ops': Shield,
-    'citadel-building': Crown
-  };
-  return icons[subject] || BookOpen;
-};
-
-const getPrivacyLevelIcon = (level: PrivacyLevel) => {
-  return level === 'private' ? EyeOff : level === 'family' ? Users : Eye;
-};
-
-const getVerificationLevelColor = (level: VerificationLevel) => {
-  const colors = {
-    basic: 'text-green-400',
-    intermediate: 'text-yellow-400',
-    advanced: 'text-red-400'
-  };
-  return colors[level] || 'text-gray-400';
-};
-
-// Helper function to get level weight for sorting
-function getLevelWeight(level: AchievementLevel): number {
-  const weights = {
-    initiate: 1,
-    apprentice: 2,
-    journeyman: 3,
-    craftsman: 4,
-    master: 5,
-    guardian: 6,
-    sage: 7
-  };
-  return weights[level] || 0;
-}
-
-const BadgeSystem: React.FC<BadgeSystemProps> = ({ 
-  studentPubkey, 
-  familyId, 
+const BadgeSystem: React.FC<BadgeSystemProps> = ({
+  studentPubkey,
+  familyId,
   isAdmin = false,
   onBadgeAwarded
 }) => {
@@ -190,7 +100,7 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
   const handleAwardBadge = async (badgeId: string) => {
     try {
       setAwardingBadge(badgeId);
-      
+
       // Create award request
       const request: BadgeAwardRequest = {
         badgeId,
@@ -206,16 +116,16 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
       };
 
       const award = await badgeSystem.awardBadge(request);
-      
+
       if (award) {
         // Refresh data
         await loadDashboardData();
-        
+
         // Notify parent component
         if (onBadgeAwarded) {
           onBadgeAwarded(award);
         }
-        
+
         alert('Badge awarded successfully!');
       } else {
         throw new Error('Failed to award badge');
@@ -357,18 +267,16 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
               <button
                 key={key}
                 onClick={() => setCurrentView(key as any)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                  currentView === key
-                    ? 'bg-yellow-400 text-purple-900 font-bold'
-                    : 'text-white hover:bg-white/10'
-                }`}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-300 ${currentView === key
+                  ? 'bg-yellow-400 text-purple-900 font-bold'
+                  : 'text-white hover:bg-white/10'
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 <span>{label}</span>
                 {count > 0 && (
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    currentView === key ? 'bg-purple-900 text-yellow-400' : 'bg-white/20 text-white'
-                  }`}>
+                  <span className={`px-2 py-1 text-xs rounded-full ${currentView === key ? 'bg-purple-900 text-yellow-400' : 'bg-white/20 text-white'
+                    }`}>
                     {count}
                   </span>
                 )}
@@ -398,7 +306,7 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
                   <option value="community">Community</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="text-purple-200 text-sm font-medium">Subject</label>
                 <select
@@ -417,7 +325,7 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
                   <option value="citadel-building">Citadel Building</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="text-purple-200 text-sm font-medium">Level</label>
                 <select
@@ -435,7 +343,7 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
                   <option value="sage">Sage</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="text-purple-200 text-sm font-medium">Sort By</label>
                 <div className="flex mt-1">
@@ -463,30 +371,30 @@ const BadgeSystem: React.FC<BadgeSystemProps> = ({
 
         {/* Content based on current view */}
         {currentView === 'badges' && (
-          <BadgesSection 
+          <BadgesSection
             badges={filteredBadges}
             earnedBadgeIds={earnedBadgeIds}
             onAward={handleAwardBadge}
             awardingBadge={awardingBadge}
           />
         )}
-        
+
         {currentView === 'achievements' && (
-          <AchievementsSection 
+          <AchievementsSection
             achievements={progress.badges_earned}
             summary={achievements_summary}
           />
         )}
-        
+
         {currentView === 'mentors' && (
-          <MentorsSection 
+          <MentorsSection
             mentorRelationships={achievements_summary.mentor_relationships}
             mentorInteractions={dashboardData.mentor_interactions}
           />
         )}
-        
+
         {currentView === 'progress' && (
-          <ProgressSection 
+          <ProgressSection
             progress={progress}
             summary={achievements_summary}
           />
@@ -517,7 +425,7 @@ const BadgesSection: React.FC<{
   return (
     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
       <h2 className="text-2xl font-bold text-white mb-6">Available Badges</h2>
-      
+
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {badges.map((badge) => (
           <BadgeCard
@@ -534,12 +442,12 @@ const BadgesSection: React.FC<{
   );
 };
 
-const BadgeCard: React.FC<BadgeCardProps> = ({ 
-  badge, 
-  isEarned, 
-  isAvailable, 
-  onAward, 
-  isAwarding = false 
+const BadgeCard: React.FC<BadgeCardProps> = ({
+  badge,
+  isEarned,
+  isAvailable,
+  onAward,
+  isAwarding = false
 }) => {
   const CategoryIcon = getBadgeCategoryIcon(badge.category);
   const SubjectIcon = getEducationSubjectIcon(badge.subject);
@@ -548,11 +456,10 @@ const BadgeCard: React.FC<BadgeCardProps> = ({
   const levelColor = getAchievementLevelColor(badge.level);
 
   return (
-    <div className={`bg-white/10 rounded-xl p-6 border transition-all duration-300 ${
-      isEarned 
-        ? 'border-green-500/50 bg-green-500/10' 
-        : 'border-white/20 hover:border-yellow-400/50'
-    }`}>
+    <div className={`bg-white/10 rounded-xl p-6 border transition-all duration-300 ${isEarned
+      ? 'border-green-500/50 bg-green-500/10'
+      : 'border-white/20 hover:border-yellow-400/50'
+      }`}>
       <div className="text-center">
         <div className="flex items-center justify-center space-x-2 mb-4">
           <div className={`w-12 h-12 bg-gradient-to-br ${categoryColor} rounded-full flex items-center justify-center`}>
@@ -564,10 +471,10 @@ const BadgeCard: React.FC<BadgeCardProps> = ({
             </div>
           )}
         </div>
-        
+
         <h3 className="text-white font-bold text-lg mb-2">{badge.name}</h3>
         <p className="text-purple-200 text-sm mb-4">{badge.description}</p>
-        
+
         <div className="space-y-2 mb-4">
           <div className="flex items-center justify-center space-x-2">
             <div className={`px-2 py-1 bg-gradient-to-r ${levelColor} rounded-full text-white text-xs font-medium`}>
@@ -578,7 +485,7 @@ const BadgeCard: React.FC<BadgeCardProps> = ({
               <span className="text-purple-200">{badge.subject.replace('-', ' ')}</span>
             </div>
           </div>
-          
+
           <div className="flex items-center justify-center space-x-2 text-xs">
             <div className="flex items-center space-x-1">
               <PrivacyIcon className="h-3 w-3 text-purple-300" />
@@ -592,16 +499,15 @@ const BadgeCard: React.FC<BadgeCardProps> = ({
             )}
           </div>
         </div>
-        
+
         {!isEarned && isAvailable && (
           <button
             onClick={() => onAward(badge.badge_id)}
             disabled={isAwarding}
-            className={`w-full py-3 px-4 rounded-lg font-bold transition-all duration-300 ${
-              isAwarding 
-                ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                : 'bg-yellow-400 hover:bg-yellow-500 text-purple-900 hover:scale-105'
-            }`}
+            className={`w-full py-3 px-4 rounded-lg font-bold transition-all duration-300 ${isAwarding
+              ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
+              : 'bg-yellow-400 hover:bg-yellow-500 text-purple-900 hover:scale-105'
+              }`}
           >
             {isAwarding ? (
               <div className="flex items-center justify-center space-x-2">
@@ -649,7 +555,7 @@ const AchievementsSection: React.FC<{
   return (
     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
       <h2 className="text-2xl font-bold text-white mb-6">Your Achievements</h2>
-      
+
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {achievements.map((award) => (
           <BadgeAwardCard
@@ -673,10 +579,10 @@ const BadgeAwardCard: React.FC<BadgeAwardCardProps> = ({ award, onClick }) => {
         <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
           <Award className="h-8 w-8 text-green-400" />
         </div>
-        
+
         <h3 className="text-white font-bold text-lg mb-2">Badge Awarded</h3>
         <p className="text-purple-200 text-sm mb-4">ID: {award.badge_id}</p>
-        
+
         <div className="space-y-2 mb-4">
           <div className="flex items-center justify-center space-x-2">
             <Calendar className="h-4 w-4 text-purple-300" />
@@ -684,20 +590,19 @@ const BadgeAwardCard: React.FC<BadgeAwardCardProps> = ({ award, onClick }) => {
               {new Date(award.awarded_at * 1000).toLocaleDateString()}
             </span>
           </div>
-          
+
           <div className="flex items-center justify-center space-x-2">
-            <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-              award.verification_status === 'verified' 
-                ? 'bg-green-500/20 text-green-400' 
-                : award.verification_status === 'pending'
+            <div className={`px-2 py-1 rounded-full text-xs font-medium ${award.verification_status === 'verified'
+              ? 'bg-green-500/20 text-green-400'
+              : award.verification_status === 'pending'
                 ? 'bg-yellow-500/20 text-yellow-400'
                 : 'bg-red-500/20 text-red-400'
-            }`}>
+              }`}>
               {award.verification_status}
             </div>
           </div>
         </div>
-        
+
         <div className="flex items-center justify-center space-x-2">
           <ChevronRight className="h-4 w-4 text-purple-300" />
           <span className="text-purple-200 text-sm">View Details</span>
@@ -714,7 +619,7 @@ const MentorsSection: React.FC<{
   return (
     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
       <h2 className="text-2xl font-bold text-white mb-6">Mentor Relationships</h2>
-      
+
       {mentorRelationships.length === 0 ? (
         <div className="text-center py-8">
           <div className="w-16 h-16 bg-gray-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -755,7 +660,7 @@ const ProgressSection: React.FC<{
   return (
     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
       <h2 className="text-2xl font-bold text-white mb-6">Learning Progress</h2>
-      
+
       <div className="grid md:grid-cols-2 gap-6">
         <div className="space-y-4">
           <div className="bg-white/10 rounded-xl p-4 border border-white/20">
@@ -764,14 +669,14 @@ const ProgressSection: React.FC<{
               {progress.current_level}
             </div>
           </div>
-          
+
           <div className="bg-white/10 rounded-xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-2">Study Streak</h3>
             <div className="text-2xl font-bold text-green-400">
               {progress.learning_streak_days} days
             </div>
           </div>
-          
+
           <div className="bg-white/10 rounded-xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-2">Total Study Hours</h3>
             <div className="text-2xl font-bold text-blue-400">
@@ -779,7 +684,7 @@ const ProgressSection: React.FC<{
             </div>
           </div>
         </div>
-        
+
         <div className="space-y-4">
           <div className="bg-white/10 rounded-xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-2">Badges Earned</h3>
@@ -787,14 +692,14 @@ const ProgressSection: React.FC<{
               {progress.badges_earned_count}
             </div>
           </div>
-          
+
           <div className="bg-white/10 rounded-xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-2">WoT Verified</h3>
             <div className="text-2xl font-bold text-blue-400">
               {summary.wot_verified_badges}
             </div>
           </div>
-          
+
           <div className="bg-white/10 rounded-xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-2">Institutional Cosigned</h3>
             <div className="text-2xl font-bold text-red-400">

@@ -8,10 +8,11 @@
 
 import { createClient } from "@supabase/supabase-js";
 import {
-  DEFAULT_UNIFIED_CONFIG,
-  UnifiedMessagingService,
+    DEFAULT_UNIFIED_CONFIG,
+    UnifiedMessagingService,
 } from "../../lib/unified-messaging-service.js";
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
+import { decryptNsec } from "../../src/lib/privacy/encryption.js";
 
 /**
  * CRITICAL SECURITY: Master Context environment variable access pattern
@@ -231,10 +232,77 @@ const initializeUnifiedMessaging = async (userNsec, operationId) => {
 };
 
 /**
- * CRITICAL SECURITY: Validate user authentication with JWT and extract Nsec
+ * CRITICAL SECURITY: Decrypt user's nsec using existing decryption utilities
+ * @param {Object} user - User data with encrypted nsec
+ * @param {string} operationId - Operation ID for logging
+ * @returns {Promise<string|null>} Decrypted nsec or null if NIP-07
+ */
+const getUserPrivateKey = async (user, operationId) => {
+  try {
+    // If user authenticated with NIP-07, return special marker
+    if (user.authMethod === 'nip07') {
+      await logGroupMessagingOperation({
+        operation: "nip07_auth_detected",
+        details: {
+          operationId,
+          userId: user.id,
+        },
+        timestamp: new Date(),
+      });
+      return 'nip07'; // Special marker to indicate NIP-07 usage
+    }
+
+    // Otherwise, decrypt the stored nsec using existing decryption utilities
+    if (user.encryptedNsec) {
+      // Parse the encrypted nsec data (should be JSON with encryption parameters)
+      let encryptedData;
+      if (typeof user.encryptedNsec === 'string') {
+        encryptedData = JSON.parse(user.encryptedNsec);
+      } else {
+        encryptedData = user.encryptedNsec;
+      }
+
+      // Use the existing decryptNsec function from privacy/encryption.js
+      const decryptedNsec = await decryptNsec({
+        encryptedNsec: encryptedData.encrypted || encryptedData.encryptedNsec,
+        salt: encryptedData.salt,
+        iv: encryptedData.iv,
+        tag: encryptedData.tag
+      });
+
+      await logGroupMessagingOperation({
+        operation: "nsec_decrypted_successfully",
+        details: {
+          operationId,
+          userId: user.id,
+          hasDecryptedNsec: !!decryptedNsec,
+        },
+        timestamp: new Date(),
+      });
+
+      return decryptedNsec;
+    }
+
+    return null;
+  } catch (error) {
+    await logGroupMessagingOperation({
+      operation: "nsec_decryption_failed",
+      details: {
+        operationId,
+        userId: user.id,
+        error: error.message,
+      },
+      timestamp: new Date(),
+    });
+    throw new Error('Failed to decrypt user private key');
+  }
+};
+
+/**
+ * CRITICAL SECURITY: Validate user authentication with JWT and extract user data
  * @param {Object} event - Netlify event object
  * @param {string} operationId - Operation ID for logging
- * @returns {Promise<string>} User's decrypted Nsec
+ * @returns {Promise<Object>} User authentication data
  */
 const validateUser = async (event, operationId) => {
   try {
@@ -243,15 +311,16 @@ const validateUser = async (event, operationId) => {
       throw new Error("Invalid authentication session");
     }
 
-    // Get user's encrypted nsec from vault
-    const { data: vaultData, error: vaultError } = await supabase
-      .from("encrypted_user_vault")
-      .select("encrypted_nsec")
-      .eq("user_id", sessionData.userId)
+    // Get user identity from user_identities table (same as nostr-message-service)
+    const { data: userIdentity, error: userError } = await supabase
+      .from('user_identities')
+      .select('id, npub, encrypted_nsec, auth_method')
+      .eq('id', sessionData.userId)
+      .eq('is_active', true)
       .single();
 
-    if (vaultError || !vaultData?.encrypted_nsec) {
-      throw new Error("User nsec not found in vault");
+    if (userError || !userIdentity) {
+      throw new Error("User identity not found");
     }
 
     // Log successful authentication
@@ -260,14 +329,20 @@ const validateUser = async (event, operationId) => {
       details: {
         operationId,
         userId: sessionData.userId,
-        hasNsec: !!vaultData.encrypted_nsec,
+        hasNsec: !!userIdentity.encrypted_nsec,
         role: sessionData.role,
+        authMethod: userIdentity.auth_method,
       },
       timestamp: new Date(),
     });
 
-    // Return decrypted nsec (implementation would decrypt using session key)
-    return vaultData.encrypted_nsec;
+    return {
+      id: userIdentity.id,
+      npub: userIdentity.npub,
+      encryptedNsec: userIdentity.encrypted_nsec,
+      authMethod: userIdentity.auth_method,
+      sessionData
+    };
   } catch (error) {
     // CRITICAL SECURITY: Log authentication failure
     await logGroupMessagingOperation({
@@ -310,9 +385,10 @@ export const handler = async (event, context) => {
     }
 
     // CRITICAL SECURITY: Validate user authentication
-    let userNsec;
+    let user, userNsec;
     try {
-      userNsec = await validateUser(event, operationId);
+      user = await validateUser(event, operationId);
+      userNsec = await getUserPrivateKey(user, operationId);
     } catch (error) {
       await logGroupMessagingOperation({
         operation: "request_authentication_failed",

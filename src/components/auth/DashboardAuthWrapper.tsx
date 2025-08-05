@@ -4,6 +4,7 @@
 
 import { AlertTriangle, ArrowLeft, Shield, User } from 'lucide-react';
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useInternalFamilyFederationAuth } from '../../lib';
 import { FederationRole } from '../../types/auth';
 import SignInModal from '../SignInModal';
@@ -17,6 +18,7 @@ interface DashboardAuthWrapperProps {
 interface AccessDeniedMessageProps {
   requiredRole: string;
   userRole?: string;
+  onGoBack: () => void;
 }
 
 interface DashboardHeaderProps {
@@ -25,7 +27,7 @@ interface DashboardHeaderProps {
 }
 
 // Access Denied Message Component
-const AccessDeniedMessage: React.FC<AccessDeniedMessageProps> = ({ requiredRole, userRole }) => {
+const AccessDeniedMessage: React.FC<AccessDeniedMessageProps> = ({ requiredRole, userRole, onGoBack }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-400 via-red-500 to-red-600 flex items-center justify-center p-4">
       <div className="bg-red-900 rounded-2xl p-8 max-w-md w-full border border-red-300/20 text-center">
@@ -51,7 +53,7 @@ const AccessDeniedMessage: React.FC<AccessDeniedMessageProps> = ({ requiredRole,
           </div>
         </div>
         <button
-          onClick={() => window.history.back()}
+          onClick={onGoBack}
           className="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -110,8 +112,9 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, dashboardType }
 
 // Main Dashboard Authentication Wrapper
 export function DashboardAuthWrapper({ children, requiredRole, dashboardType }: DashboardAuthWrapperProps) {
-  const { isAuthenticated, userAuth, isLoading } = useInternalFamilyFederationAuth();
+  const { isAuthenticated, userAuth, isLoading, checkSession } = useInternalFamilyFederationAuth();
   const [showSignIn, setShowSignIn] = useState(!isAuthenticated);
+  const navigate = useNavigate();
 
   // Loading state
   if (isLoading) {
@@ -130,25 +133,49 @@ export function DashboardAuthWrapper({ children, requiredRole, dashboardType }: 
     );
   }
 
+  // Handle successful sign-in with proper state management
+  const handleSignInSuccess = async (destination?: 'individual' | 'family') => {
+    setShowSignIn(false);
+
+    try {
+      // Refresh authentication state instead of full page reload
+      await checkSession();
+
+      // Optional: Handle destination-specific logic if needed
+      if (destination && destination !== dashboardType) {
+        // Navigate to appropriate dashboard if destination differs
+        const targetPath = destination === 'individual' ? '/dashboard/individual' : '/dashboard/family';
+        navigate(targetPath);
+      }
+    } catch (error) {
+      console.error('Failed to refresh authentication state:', error);
+      // Fallback: If session check fails, show sign-in modal again
+      setShowSignIn(true);
+    }
+  };
+
   // Check authentication
   if (!isAuthenticated) {
     return (
       <SignInModal
         isOpen={showSignIn}
         onClose={() => setShowSignIn(false)}
-        onSignInSuccess={(destination) => {
-          setShowSignIn(false);
-          window.location.reload();
-        }}
+        onSignInSuccess={handleSignInSuccess}
         onCreateNew={() => setShowSignIn(false)}
         destination={dashboardType === 'individual' ? 'individual' : 'family'}
       />
     );
   }
 
+  // Create navigation handler with sensible fallback
+  const handleGoBack = () => {
+    // Navigate to home page as a safe fallback instead of relying on browser history
+    navigate('/');
+  };
+
   // Check role-based access
   if (requiredRole && userAuth?.federationRole !== requiredRole) {
-    return <AccessDeniedMessage requiredRole={requiredRole} userRole={userAuth?.federationRole} />;
+    return <AccessDeniedMessage requiredRole={requiredRole} userRole={userAuth?.federationRole} onGoBack={handleGoBack} />;
   }
 
   return (

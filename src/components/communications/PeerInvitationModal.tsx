@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MessageSendResult, nostrMessageService } from '../../lib/nostr-message-service';
 import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 
 interface SenderProfile {
@@ -29,59 +30,70 @@ export function PeerInvitationModal({
   const [invitationType, setInvitationType] = useState('friend');
   const [personalMessage, setPersonalMessage] = useState('');
   const [privacyLevel, setPrivacyLevel] = useState<PrivacyLevel>(getDefaultPrivacyLevel());
+  const [isSending, setIsSending] = useState(false);
 
-  // Enhanced message sending function
-  const sendMessage = async (content: string, recipient: string, privacyLevel: PrivacyLevel) => {
-    switch (privacyLevel) {
-      case PrivacyLevel.GIFTWRAPPED:
-        // Use Gift Wrapped implementation for complete privacy
-        return await sendGiftWrappedMessage(content, recipient);
+  // Enhanced message sending function using authenticated user's keys
+  const sendMessage = async (content: string, recipient: string, privacyLevel: PrivacyLevel): Promise<MessageSendResult> => {
+    try {
+      const result = await nostrMessageService.sendMessage({
+        content,
+        recipientNpub: recipient,
+        privacyLevel,
+        messageType: 'invitation'
+      });
 
-      case PrivacyLevel.ENCRYPTED:
-        // Use encrypted DM implementation
-        return await sendEncryptedDM(content, recipient);
-
-      case PrivacyLevel.MINIMAL:
-        // Use standard message implementation
-        return await sendStandardMessage(content, recipient);
+      return result;
+    } catch (error) {
+      console.error('Message sending failed:', error);
+      return {
+        success: false,
+        method: privacyLevel as any,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
   };
 
-  const sendGiftWrappedMessage = async (_content: string, _recipient: string) => {
-    // Gift Wrapped implementation - complete metadata protection
-    console.log('Sending gift wrapped message with maximum privacy');
-    return { success: true, method: 'giftwrapped' };
-  };
-
-  const sendEncryptedDM = async (_content: string, _recipient: string) => {
-    // Encrypted DM implementation
-    console.log('Sending encrypted DM with selective privacy');
-    return { success: true, method: 'encrypted' };
-  };
-
-  const sendStandardMessage = async (_content: string, _recipient: string) => {
-    // Standard message implementation
-    console.log('Sending standard message with minimal encryption');
-    return { success: true, method: 'minimal' };
-  };
-
   const handleSendInvitation = async () => {
-    if (!recipientNpub) return;
+    if (!recipientNpub || isSending) return;
+
+    setIsSending(true);
+
     try {
+      // Create invitation message
+      const invitationMessage = personalMessage ||
+        `Hi! I'd like to connect with you on Satnam.pub for secure Bitcoin communications and family coordination. This is a ${invitationType} invitation.`;
+
       // Use the enhanced privacy-aware message sending
-      await sendMessage(personalMessage, recipientNpub, privacyLevel);
-      onSendInvitation({
-        recipientNpub,
-        invitationType,
-        personalMessage,
-        privacyLevel
-      });
-      setRecipientNpub('');
-      setPersonalMessage('');
-      onClose();
-      alert('Peer invitation sent successfully!');
+      const result = await sendMessage(invitationMessage, recipientNpub, privacyLevel);
+
+      if (result.success) {
+        // Call the parent callback
+        onSendInvitation({
+          recipientNpub,
+          invitationType,
+          personalMessage: invitationMessage,
+          privacyLevel
+        });
+
+        // Reset form
+        setRecipientNpub('');
+        setPersonalMessage('');
+        onClose();
+
+        // Show success message with details
+        const privacyMethod = result.method === 'giftwrapped' ? 'Gift Wrapped (Maximum Privacy)' :
+          result.method === 'encrypted' ? 'Encrypted DM (Selective Privacy)' :
+            'Public Note (Minimal Privacy)';
+
+        alert(`Peer invitation sent successfully!\n\nMethod: ${privacyMethod}\nMessage ID: ${result.messageId || 'N/A'}\nRelay: ${result.relayUrl || 'Multiple relays'}`);
+      } else {
+        throw new Error(result.error || 'Failed to send invitation');
+      }
     } catch (error) {
-      alert('Failed to send invitation');
+      console.error('Invitation sending failed:', error);
+      alert(`Failed to send invitation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSending(false);
     }
   };
   if (!isOpen) return null;
@@ -229,10 +241,17 @@ export function PeerInvitationModal({
           </button>
           <button
             onClick={handleSendInvitation}
-            disabled={!recipientNpub}
+            disabled={!recipientNpub || isSending}
             className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-500 disabled:to-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all duration-300"
           >
-            Send Invitation
+            {isSending ? (
+              <div className="flex items-center justify-center space-x-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Sending...</span>
+              </div>
+            ) : (
+              'Send Invitation'
+            )}
           </button>
         </div>
       </div>

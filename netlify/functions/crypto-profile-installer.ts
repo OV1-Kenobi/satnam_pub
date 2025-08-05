@@ -4,11 +4,7 @@
  * Reduces bundle size and improves loading performance
  */
 
-import {
-  configureCryptoStrategy,
-  getCryptoEnvironmentInfo,
-  preloadCryptoModules,
-} from "../../utils/crypto-factory.js";
+// Dynamic import for crypto-factory to avoid static/dynamic import mixing
 
 // Define crypto profiles for different app features
 export type CryptoProfile =
@@ -121,11 +117,15 @@ async function loadProfileWithDependencies(
     `🔧 Installing crypto profile: ${profile} (${profileConfig.description})`
   );
 
-  // Configure optimal strategy for the profile
+  // Dynamic import and configure optimal strategy for the profile
+  const { configureCryptoStrategy } = await import(
+    "../../utils/crypto-factory.js"
+  );
   configureCryptoStrategy({
     enableCaching: true,
-    preloadModules: true,
-    preferBrowserCrypto: true,
+    useSync: false,
+    timeoutMs: 30000,
+    retryAttempts: 3,
   });
 
   // Load the modules for this profile
@@ -142,7 +142,7 @@ async function loadProfileWithDependencies(
  * Load specific modules for a profile
  */
 async function loadProfileModules(profile: CryptoProfile): Promise<void> {
-  const profileConfig = CRYPTO_PROFILES[profile];
+  // Load specific modules for the profile
 
   switch (profile) {
     case "minimal":
@@ -150,12 +150,13 @@ async function loadProfileModules(profile: CryptoProfile): Promise<void> {
       break;
 
     case "auth":
-      // Load TOTP/HOTP functions
-      const { generateTOTP, generateHOTP } = await import(
+      // Load crypto functions for authentication
+      const { sha256, generateSecureToken } = await import(
         "../../utils/crypto-lazy"
       );
-      // Cache these functions
-      await generateTOTP("test", 0).catch(() => {}); // Warm up
+      // Cache these functions by calling them
+      await sha256("test").catch(() => {}); // Warm up
+      await generateSecureToken(32).catch(() => {}); // Warm up
       break;
 
     case "nostr":
@@ -178,6 +179,9 @@ async function loadProfileModules(profile: CryptoProfile): Promise<void> {
 
     case "full":
       // Preload all crypto modules
+      const { preloadCryptoModules } = await import(
+        "../../utils/crypto-factory.js"
+      );
       await preloadCryptoModules();
       break;
   }
@@ -307,11 +311,14 @@ export async function initializeCryptoProfiles(
 ): Promise<void> {
   console.log("🚀 Initializing crypto profiles:", profiles);
 
+  // Get crypto environment info using dynamic import
+  const { getCryptoEnvironmentInfo } = await import(
+    "../../utils/crypto-factory.js"
+  );
   const envInfo = getCryptoEnvironmentInfo();
   console.log("🔍 Crypto environment:", {
-    isBrowser: envInfo.isBrowser,
-    hasWebCrypto: envInfo.hasWebCrypto,
-    hasNodeCrypto: envInfo.hasNodeCrypto,
+    type: envInfo.type,
+    features: envInfo.features,
   });
 
   // Install requested profiles

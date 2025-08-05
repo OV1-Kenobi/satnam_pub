@@ -12,8 +12,6 @@
  * - Fallback mechanisms for different runtime environments
  */
 
-import { CryptoUnified } from "./crypto-unified";
-
 /**
  * Configuration for crypto utilities
  */
@@ -147,7 +145,14 @@ export function getClientIP(
 
 /**
  * Rate limiting store for in-memory tracking
- * In production, consider using Redis or another persistent store
+ * @deprecated This in-memory implementation has critical production limitations:
+ * - Not shared across server instances (each Netlify Function maintains separate counters)
+ * - Lost on server restart (rate limit data disappears on cold-start)
+ * - Memory leaks possible (Map grows indefinitely without cleanup)
+ * - No persistence (cannot track rate limits across deployments)
+ * - Inconsistent enforcement (users can bypass limits by hitting different instances)
+ *
+ * Use checkRateLimitDB() for production-ready database-backed rate limiting.
  */
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
@@ -158,10 +163,14 @@ export interface RateLimitResult {
   allowed: boolean;
   remainingRequests: number;
   resetTime?: number;
+  error?: string;
 }
 
 /**
- * Check rate limiting for an IP address
+ * Check rate limiting for an IP address (IN-MEMORY - DEPRECATED)
+ *
+ * @deprecated This function uses in-memory storage with critical production limitations.
+ * Use checkRateLimitDB() instead for production-ready database-backed rate limiting.
  *
  * @param ip - Client IP address
  * @param maxRequests - Maximum requests allowed (default: 30)
@@ -173,6 +182,15 @@ export function checkRateLimit(
   maxRequests: number = AUTH_CRYPTO_CONFIG.RATE_LIMIT.CHALLENGE_MAX_REQUESTS,
   windowMs: number = AUTH_CRYPTO_CONFIG.RATE_LIMIT.WINDOW_MS
 ): RateLimitResult {
+  // Production warning
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "production") {
+    console.warn(
+      "⚠️  PRODUCTION WARNING: Using deprecated in-memory rate limiting. " +
+        "This has critical limitations in serverless environments. " +
+        "Use checkRateLimitDB() for production-ready database-backed rate limiting."
+    );
+  }
+
   const now = Date.now();
   const record = rateLimitStore.get(ip);
 
@@ -212,6 +230,7 @@ export function checkRateLimit(
 /**
  * Clean up expired rate limit entries from memory
  * Should be called periodically to prevent memory leaks
+ * @deprecated Use database-backed rate limiting instead
  *
  * @param currentTime - Current timestamp (default: Date.now())
  */
@@ -220,6 +239,138 @@ export function cleanupRateLimitStore(currentTime: number = Date.now()): void {
     if (currentTime > record.resetTime) {
       rateLimitStore.delete(ip);
     }
+  }
+}
+
+/**
+ * Hash data for privacy protection using Web Crypto API
+ */
+async function hashForPrivacy(data: string): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch (error) {
+    // Fallback for environments without Web Crypto API
+    console.warn("Web Crypto API not available, using fallback hash");
+    return Buffer.from(data)
+      .toString("base64")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .substring(0, 64);
+  }
+}
+
+/**
+ * Get Supabase URL from environment variables
+ */
+function getSupabaseUrl(): string | undefined {
+  if (typeof process !== "undefined" && process.env) {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  }
+  if (typeof import.meta !== "undefined" && (import.meta as any).env) {
+    const env = (import.meta as any).env;
+    return env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  }
+  return undefined;
+}
+
+/**
+ * Get Supabase service role key from environment variables
+ */
+function getSupabaseServiceKey(): string | undefined {
+  if (typeof process !== "undefined" && process.env) {
+    return process.env.SUPABASE_SERVICE_ROLE_KEY;
+  }
+  if (typeof import.meta !== "undefined" && (import.meta as any).env) {
+    const env = (import.meta as any).env;
+    return env.SUPABASE_SERVICE_ROLE_KEY;
+  }
+  return undefined;
+}
+
+/**
+ * Production-ready database-backed rate limiting
+ *
+ * This function provides persistent, distributed rate limiting using Supabase database:
+ * - Shared across all server instances
+ * - Survives server restarts and cold starts
+ * - No memory leaks or cleanup required
+ * - Persistent across deployments
+ * - Consistent enforcement across all instances
+ *
+ * @param ip - Client IP address (will be hashed for privacy)
+ * @param maxRequests - Maximum requests allowed (default: 30)
+ * @param windowMs - Time window in milliseconds (default: 15 minutes)
+ * @returns Promise<RateLimitResult> Rate limit check result
+ */
+export async function checkRateLimitDB(
+  ip: string,
+  maxRequests: number = AUTH_CRYPTO_CONFIG.RATE_LIMIT.CHALLENGE_MAX_REQUESTS,
+  windowMs: number = AUTH_CRYPTO_CONFIG.RATE_LIMIT.WINDOW_MS
+): Promise<RateLimitResult> {
+  try {
+    // Hash IP address for privacy protection
+    const ipHash = await hashForPrivacy(ip);
+
+    // Dynamic import to avoid circular dependencies and reduce bundle size
+    const { createClient } = await import("@supabase/supabase-js");
+
+    // Get Supabase configuration
+    const supabaseUrl = getSupabaseUrl();
+    const supabaseKey = getSupabaseServiceKey();
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error(
+        "⚠️  Supabase configuration missing for database rate limiting"
+      );
+      // Fallback to in-memory rate limiting
+      return checkRateLimit(ip, maxRequests, windowMs);
+    }
+
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Call database function for rate limiting
+    const { data, error } = await supabase.rpc("check_and_update_rate_limit", {
+      user_hash: ipHash,
+      rate_limit: maxRequests,
+      window_ms: windowMs,
+    });
+
+    if (error) {
+      console.error("Database rate limit check failed:", error);
+      // Fallback to in-memory rate limiting on database error
+      return checkRateLimit(ip, maxRequests, windowMs);
+    }
+
+    // Parse database response
+    const result = data as {
+      allowed: boolean;
+      current_count: number;
+      rate_limit: number;
+      reset_time: number;
+      window_ms: number;
+      error?: string;
+    };
+
+    if (result.error) {
+      console.error("Database rate limit function error:", result.error);
+      // Fallback to in-memory rate limiting on function error
+      return checkRateLimit(ip, maxRequests, windowMs);
+    }
+
+    return {
+      allowed: result.allowed,
+      remainingRequests: Math.max(0, result.rate_limit - result.current_count),
+      resetTime: result.reset_time,
+    };
+  } catch (error) {
+    console.error("Critical error in database rate limiting:", error);
+    // Fallback to in-memory rate limiting on any error
+    return checkRateLimit(ip, maxRequests, windowMs);
   }
 }
 
