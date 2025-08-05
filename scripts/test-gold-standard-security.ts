@@ -6,10 +6,6 @@
  */
 
 import {
-  displayValidationResults,
-  validateGoldStandardCrypto,
-} from "../lib/crypto-validator.js.js";
-import {
   decryptSensitiveData,
   encryptSensitiveData,
 } from "../lib/privacy/encryption.js";
@@ -20,6 +16,10 @@ import {
   hashPassphrase,
   verifyPassphrase,
 } from "../lib/security.js";
+import {
+  displayValidationResults,
+  validateCryptoConfiguration,
+} from "../netlify/functions/crypto-validator.js";
 
 /**
  * Test Results Interface
@@ -387,7 +387,7 @@ class GoldStandardSecurityTester {
     console.log("8️⃣  Testing Gold Standard Validation...");
 
     try {
-      const validationResult = validateGoldStandardCrypto();
+      const validationResult = await validateCryptoConfiguration();
 
       this.addResult(
         "Gold Standard Validation",
@@ -395,13 +395,13 @@ class GoldStandardSecurityTester {
         `Security Level: ${validationResult.securityLevel}, Issues: ${validationResult.issues.length}`
       );
 
-      const isActuallyGoldStandard = validationResult.isGoldStandard;
+      const meetsSecurityStandards = validationResult.meetsSecurityStandards;
       this.addResult(
-        "Gold Standard Compliance",
-        isActuallyGoldStandard,
-        isActuallyGoldStandard
-          ? "Meets all Gold Standard requirements"
-          : "Does not meet Gold Standard"
+        "Security Standards Compliance",
+        meetsSecurityStandards,
+        meetsSecurityStandards
+          ? "Meets all security standards"
+          : "Does not meet security standards"
       );
 
       // Display detailed validation results

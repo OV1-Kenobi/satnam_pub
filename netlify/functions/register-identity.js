@@ -6,15 +6,25 @@
  * MEMORY OPTIMIZATION: Uses dynamic imports and lazy loading
  */
 
-// MEMORY OPTIMIZATION: Import memory utilities
-import {
-    cleanup,
-    handleCORS,
-    withMemoryMonitoring
-} from "./utils/memory-optimizer.js";
+// Simplified CORS handler
+function handleCORS(event) {
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Content-Type': 'application/json'
+      },
+      body: ''
+    };
+  }
+  return null;
+}
 
-// MEMORY OPTIMIZATION: Wrap handler with memory monitoring
-export const handler = withMemoryMonitoring(async (event) => {
+// Main handler function
+export const handler = async (event) => {
   // Handle CORS preflight
   const corsResponse = handleCORS(event);
   if (corsResponse) return corsResponse;
@@ -37,11 +47,13 @@ export const handler = withMemoryMonitoring(async (event) => {
       allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
     });
 
-    // DEBUG: Test Supabase import
+    // Import Supabase client at function scope
     console.log("🔍 Testing Supabase import...");
+    let supabase;
 
     try {
-      const { supabase } = await import("./supabase.js");
+      const supabaseModule = await import("./supabase.js");
+      supabase = supabaseModule.supabase;
       console.log("✅ Supabase import successful");
 
       // Test basic Supabase connection using correct table
@@ -55,6 +67,11 @@ export const handler = withMemoryMonitoring(async (event) => {
     } catch (supabaseError) {
       console.error("❌ Supabase import/connection failed:", supabaseError);
       throw new Error(`Supabase setup failed: ${supabaseError.message}`);
+    }
+
+    // Validate supabase client is available
+    if (!supabase) {
+      throw new Error('Supabase client not available');
     }
 
   // CORS headers following established codebase pattern
@@ -158,6 +175,20 @@ export const handler = withMemoryMonitoring(async (event) => {
     const { createHashedUserData, generateUserSalt } = await import("../../lib/security/privacy-hashing.js");
     console.log("✅ Privacy hashing import successful");
 
+    // Test salt generation first
+    console.log("🔍 Testing salt generation...");
+    try {
+      const testSalt = await generateUserSalt();
+      console.log("✅ Salt generation successful:", {
+        hasSalt: !!testSalt,
+        saltLength: testSalt ? testSalt.length : 0,
+        saltType: typeof testSalt
+      });
+    } catch (saltError) {
+      console.error("❌ Salt generation failed:", saltError);
+      throw new Error(`Salt generation failed: ${saltError.message}`);
+    }
+
     try {
 
       console.log("🔍 Creating MAXIMUM ENCRYPTION hashed user data...");
@@ -169,7 +200,8 @@ export const handler = withMemoryMonitoring(async (event) => {
         lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null)
       });
 
-      const hashedUserData = await createHashedUserData({
+      // Prepare user data object with explicit validation
+      const userDataForHashing = {
         username: userData.username,
         bio: '', // Empty initially, will be hashed
         displayName: userData.username, // Use username as display name initially
@@ -179,7 +211,25 @@ export const handler = withMemoryMonitoring(async (event) => {
         lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null),
         encryptedNsec: userData.encryptedNsec,
         role: 'private'
+      };
+
+      console.log("🔍 User data prepared for hashing:", {
+        hasUsername: !!userDataForHashing.username,
+        usernameType: typeof userDataForHashing.username,
+        usernameValue: userDataForHashing.username,
+        hasDisplayName: !!userDataForHashing.displayName,
+        displayNameType: typeof userDataForHashing.displayName,
+        bioType: typeof userDataForHashing.bio,
+        pictureType: typeof userDataForHashing.picture
       });
+
+      let hashedUserData;
+      try {
+        hashedUserData = await createHashedUserData(userDataForHashing);
+      } catch (hashingError) {
+        console.error("❌ Privacy hashing operation failed:", hashingError);
+        throw new Error(`Privacy hashing failed: ${hashingError.message}`);
+      }
 
       console.log("🔍 Hashed user data generated:", {
         hasUserSalt: !!hashedUserData.user_salt,
@@ -401,8 +451,5 @@ export const handler = withMemoryMonitoring(async (event) => {
         timestamp: new Date().toISOString()
       }),
     };
-  } finally {
-    // MEMORY OPTIMIZATION: Cleanup after request
-    cleanup();
   }
-}, "register-identity");
+};

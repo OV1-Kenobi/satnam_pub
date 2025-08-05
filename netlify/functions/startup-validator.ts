@@ -7,13 +7,12 @@ import { getEnvVar } from "./utils/env.js";
  */
 
 import { validatePBKDF2ConfigOnStartup } from "../../api/lib/security.js";
-import { enforceGoldStandardOnStartup } from "./crypto-validator";
 
 /**
  * Startup validation configuration
  */
 interface StartupValidationConfig {
-  enforceGoldStandard: boolean;
+  enforceSecurityStandards: boolean;
   exitOnFailure: boolean;
   logLevel: "minimal" | "detailed";
   validateEnvironment: boolean;
@@ -27,7 +26,7 @@ export async function validateSecurityOnStartup(
   config: Partial<StartupValidationConfig> = {}
 ): Promise<boolean> {
   const finalConfig: StartupValidationConfig = {
-    enforceGoldStandard: true,
+    enforceSecurityStandards: true,
     exitOnFailure: getEnvVar("NODE_ENV") === "production",
     logLevel: "detailed",
     validateEnvironment: true,
@@ -42,20 +41,20 @@ export async function validateSecurityOnStartup(
     validatePBKDF2ConfigOnStartup();
     console.log("✅ PBKDF2 configuration validated\n");
 
-    // 2. Run Gold Standard validation if required
-    if (finalConfig.enforceGoldStandard) {
-      console.log("2️⃣  Running Gold Standard Crypto Validation...");
-      const isGoldStandard = enforceGoldStandardOnStartup(
+    // 2. Run PBKDF2 security validation if required
+    if (finalConfig.enforceSecurityStandards) {
+      console.log("2️⃣  Running PBKDF2 Crypto Security Validation...");
+      const meetsSecurityStandards = await validateCryptoOnStartup(
         finalConfig.exitOnFailure
       );
 
-      if (!isGoldStandard && finalConfig.exitOnFailure) {
+      if (!meetsSecurityStandards && finalConfig.exitOnFailure) {
         console.error(
-          "❌ Application startup blocked - Gold Standard requirements not met"
+          "❌ Application startup blocked - Security standards not met"
         );
         return false;
       }
-      console.log("✅ Gold Standard validation completed\n");
+      console.log("✅ PBKDF2 security validation completed\n");
     }
 
     // 3. Validate Environment Configuration
@@ -190,13 +189,13 @@ export function quickSecurityCheck(): boolean {
 
 /**
  * Production-ready startup validation
- * Enforces all Gold Standard requirements
+ * Enforces all PBKDF2 security standards
  */
 export async function productionStartupValidation(): Promise<void> {
   console.log("🏭 Production Security Validation Starting...\n");
 
   const success = await validateSecurityOnStartup({
-    enforceGoldStandard: true,
+    enforceSecurityStandards: true,
     exitOnFailure: true,
     logLevel: "detailed",
     validateEnvironment: true,
@@ -222,7 +221,7 @@ export async function developmentStartupValidation(): Promise<void> {
   console.log("🛠  Development Security Validation Starting...\n");
 
   await validateSecurityOnStartup({
-    enforceGoldStandard: false,
+    enforceSecurityStandards: false,
     exitOnFailure: false,
     logLevel: "detailed",
     validateEnvironment: true,
