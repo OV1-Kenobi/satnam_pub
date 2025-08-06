@@ -84,6 +84,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
+
           // Node modules - split by size and usage
           if (id.includes('node_modules')) {
             // React ecosystem
@@ -91,24 +92,27 @@ export default defineConfig({
               return 'react-vendor';
             }
 
-            // Crypto libraries
+            // Crypto libraries - be more specific to ensure they're captured
             if (id.includes('nostr-tools') ||
                 id.includes('@noble/secp256k1') ||
+                id.includes('@noble/hashes') ||
                 id.includes('@scure/bip32') ||
                 id.includes('@scure/bip39') ||
+                id.includes('@scure/base') ||
                 id.includes('crypto-js')) {
               return 'crypto-vendor';
             }
 
-            // UI libraries
+            // UI libraries - only create chunks for libraries that are actually used
             if (id.includes('lucide-react')) return 'icons-vendor';
-            if (id.includes('clsx') || id.includes('tailwind')) return 'ui-vendor';
+            // Remove ui-vendor chunk as clsx/tailwind-merge might not be imported directly
 
             // Everything else
             return 'vendor';
           }
 
           // Source code chunking - be more specific to avoid mixed imports
+          // Priority order: most specific first to avoid conflicts
 
           // Core API client (base)
           if (id.includes('src/lib/api.ts') || id.includes('src/lib/api.js')) {
@@ -125,18 +129,25 @@ export default defineConfig({
             return 'database';
           }
 
-          // Authentication - keep together
+          // Authentication - keep together (including recent auth-adapter changes)
           if (id.includes('src/lib/auth/') ||
               id.includes('src/hooks/useAuth') ||
               id.includes('src/hooks/usePrivacyFirstAuth') ||
+              id.includes('src/hooks/useFamilyFederationAuth') ||
               id.includes('src/utils/authManager') ||
               id.includes('src/utils/secureSession')) {
             return 'auth';
           }
 
-          // Nostr functionality
-          if (id.includes('src/lib/nostr-browser')) {
-            return 'nostr';
+          // Nostr functionality - merge with crypto-vendor since they're related
+          if (id.includes('src/lib/nostr-browser') ||
+              id.includes('lib/nostr.ts') ||
+              id.includes('lib/nostr.js') ||
+              id.includes('src/lib/nip05-verification') ||
+              id.includes('lib/nip05-verification') ||
+              id.includes('netlify/functions/nostr') ||
+              (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))) {
+            return 'crypto-vendor'; // Merge with crypto since they use similar dependencies
           }
 
           // Lightning and payments
@@ -171,6 +182,10 @@ export default defineConfig({
           if (id.includes('src/utils/')) {
             return 'utils';
           }
+
+          // Fallback: return undefined to let Vite handle automatically
+          // This prevents empty chunks by not forcing modules into specific chunks
+          return undefined;
         },
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: (assetInfo) => {

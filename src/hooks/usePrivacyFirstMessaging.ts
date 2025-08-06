@@ -10,6 +10,17 @@ import {
   UnifiedMessagingService,
 } from "../../lib/unified-messaging-service.js";
 
+export interface PrivacyWarningContent {
+  title: string;
+  message: string;
+  risks: string[];
+  recommendations: string[];
+  consequences?: string[];
+  scopeDescription?: string;
+  severity?: "low" | "medium" | "high";
+  timestamp?: number;
+}
+
 export interface PrivacyMessagingState {
   communications: UnifiedMessagingService | null;
   sessionId: string | null;
@@ -29,7 +40,7 @@ export interface PrivacyMessagingState {
 
   // Privacy warning state
   showingPrivacyWarning: boolean;
-  privacyWarningContent: any | null; // Updated to generic type
+  privacyWarningContent: PrivacyWarningContent | null;
   pendingDisclosureConfig: {
     nip05?: string;
     scope?: "direct" | "groups" | "specific-groups";
@@ -62,6 +73,15 @@ export interface PrivacyMessagingActions {
 
   cancelDisclosure: () => void;
   disableDisclosure: () => Promise<boolean>;
+  getNip05DisclosureStatus: () => Promise<{
+    enabled: boolean;
+    nip05?: string;
+    scope?: "direct" | "groups" | "specific-groups";
+    specificGroupIds?: string[];
+    lastUpdated?: Date;
+    verificationStatus?: "pending" | "verified" | "failed";
+    lastVerified?: Date;
+  }>;
 
   // Contact Management - Master Context Role Hierarchy
   addContact: (contactData: {
@@ -303,13 +323,13 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
         // Map encryption type to message type for the unified messaging service
-        // The service handles encryption internally based on contact preferences
+        // Gift-wrap encryption indicates sensitive content, NIP-04 is standard text
         const messageType:
           | "text"
           | "file"
           | "payment"
           | "credential"
-          | "sensitive" = "text";
+          | "sensitive" = encryptionType === "gift-wrap" ? "sensitive" : "text";
 
         const messageId = await communicationsRef.current.sendDirectMessage(
           recipientNpub,
@@ -398,33 +418,114 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     }
   }, []);
 
-  // NIP-05 Identity Disclosure functions (Legacy compatibility - simplified implementations)
+  // NIP-05 Identity Disclosure functions - Full implementation
   const enableNip05Disclosure = useCallback(
     async (
       nip05: string,
       scope: "direct" | "groups" | "specific-groups",
       specificGroupIds?: string[]
     ): Promise<void> => {
-      // Since UnifiedMessagingService doesn't have NIP-05 disclosure,
-      // we'll simulate the workflow for compatibility
-      setState((prev) => ({
-        ...prev,
-        showingPrivacyWarning: true,
-        privacyWarningContent: {
-          title: "Privacy Warning",
-          message:
-            "Enabling NIP-05 disclosure will link your identity to this identifier.",
-          risks: [
-            "Your identity will be publicly linkable",
-            "Messages may be traceable",
-          ],
-          recommendations: [
-            "Consider privacy implications",
-            "Use only if necessary",
-          ],
-        },
-        pendingDisclosureConfig: { nip05, scope, specificGroupIds },
-      }));
+      try {
+        if (!communicationsRef.current) {
+          throw new Error("Communications service not initialized");
+        }
+
+        // Show privacy warning first
+        setState((prev) => ({
+          ...prev,
+          showingPrivacyWarning: true,
+          privacyWarningContent: {
+            title: "NIP-05 Identity Disclosure Warning",
+            message: `Enabling NIP-05 disclosure will publicly link your identity to ${nip05}. This action cannot be easily undone.`,
+            risks: [
+              "Your identity will be publicly linkable to this NIP-05 identifier",
+              "Messages may become traceable to your real identity",
+              "Privacy protection will be reduced for disclosed communications",
+              "Third parties may correlate your activities across platforms",
+            ],
+            recommendations: [
+              "Only enable if you fully understand the privacy implications",
+              "Consider using a pseudonymous NIP-05 identifier",
+              "Review the scope of disclosure carefully",
+              "Regularly audit your disclosure settings",
+            ],
+            consequences: [
+              "Public association between your Nostr identity and NIP-05",
+              "Potential correlation of messaging patterns",
+              "Reduced anonymity in disclosed communication contexts",
+            ],
+            scopeDescription:
+              scope === "direct"
+                ? "Direct messages only"
+                : scope === "groups"
+                ? "All group communications"
+                : `Specific groups: ${specificGroupIds?.join(", ") || "none"}`,
+            severity: "high",
+            timestamp: Date.now(),
+          },
+          pendingDisclosureConfig: { nip05, scope, specificGroupIds },
+        }));
+
+        // Attempt to enable disclosure
+        const result = await communicationsRef.current.enableNip05Disclosure(
+          nip05,
+          scope,
+          specificGroupIds
+        );
+
+        if (!result.success) {
+          setState((prev) => ({
+            ...prev,
+            showingPrivacyWarning: false,
+            privacyWarningContent: {
+              title: "NIP-05 Disclosure Failed",
+              message: `Failed to enable NIP-05 disclosure: ${result.error}`,
+              risks: ["Disclosure configuration was not saved"],
+              recommendations: [
+                "Verify your NIP-05 identifier is correct",
+                "Check your internet connection",
+                "Try again in a few moments",
+              ],
+              severity: "medium",
+              timestamp: Date.now(),
+            },
+          }));
+          return;
+        }
+
+        // Success - update identity status
+        setState((prev) => ({
+          ...prev,
+          identityStatus: {
+            ...prev.identityStatus,
+            nip05Disclosed: true,
+            disclosureScope: scope,
+            disclosedNip05: nip05,
+          },
+          showingPrivacyWarning: false,
+          privacyWarningContent: null,
+          pendingDisclosureConfig: null,
+        }));
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          showingPrivacyWarning: false,
+          privacyWarningContent: {
+            title: "NIP-05 Disclosure Error",
+            message: `An error occurred while enabling NIP-05 disclosure: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+            risks: ["Disclosure configuration may not have been saved"],
+            recommendations: [
+              "Check your internet connection",
+              "Verify your session is still active",
+              "Try again in a few moments",
+            ],
+            severity: "high",
+            timestamp: Date.now(),
+          },
+        }));
+      }
     },
     []
   );
@@ -475,19 +576,78 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
   }, []);
 
   const disableDisclosure = useCallback(async (): Promise<boolean> => {
-    setState((prev) => ({
-      ...prev,
-      identityStatus: {
-        ...prev.identityStatus,
-        hasNip05: false,
-        isDisclosureEnabled: false,
-        directMessagesEnabled: false,
-        groupMessagesEnabled: false,
-        specificGroupsCount: 0,
-        lastUpdated: new Date(),
-      },
-    }));
-    return true;
+    try {
+      if (!communicationsRef.current) {
+        throw new Error("Communications service not initialized");
+      }
+
+      const result = await communicationsRef.current.disableNip05Disclosure();
+
+      if (!result.success) {
+        setState((prev) => ({
+          ...prev,
+          privacyWarningContent: {
+            title: "Failed to Disable NIP-05 Disclosure",
+            message: `Error: ${result.error}`,
+            risks: ["Disclosure settings may still be active"],
+            recommendations: [
+              "Check your internet connection",
+              "Try again in a few moments",
+            ],
+            severity: "medium",
+            timestamp: Date.now(),
+          },
+        }));
+        return false;
+      }
+
+      setState((prev) => ({
+        ...prev,
+        identityStatus: {
+          ...prev.identityStatus,
+          hasNip05: false,
+          isDisclosureEnabled: false,
+          directMessagesEnabled: false,
+          groupMessagesEnabled: false,
+          specificGroupsCount: 0,
+          lastUpdated: new Date(),
+        },
+        privacyWarningContent: null,
+      }));
+      return true;
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        privacyWarningContent: {
+          title: "Error Disabling NIP-05 Disclosure",
+          message: `An error occurred: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+          risks: ["Disclosure settings may still be active"],
+          recommendations: [
+            "Check your internet connection",
+            "Verify your session is still active",
+            "Try again in a few moments",
+          ],
+          severity: "high",
+          timestamp: Date.now(),
+        },
+      }));
+      return false;
+    }
+  }, []);
+
+  const getNip05DisclosureStatus = useCallback(async () => {
+    try {
+      if (!communicationsRef.current) {
+        return { enabled: false };
+      }
+
+      return await communicationsRef.current.getNip05DisclosureStatus();
+    } catch (error) {
+      console.error("Error fetching NIP-05 disclosure status:", error);
+      return { enabled: false };
+    }
   }, []);
 
   return {
@@ -498,6 +658,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     confirmDisclosureConsent,
     cancelDisclosure,
     disableDisclosure,
+    getNip05DisclosureStatus,
     addContact,
     createGroup,
     sendDirectMessage,

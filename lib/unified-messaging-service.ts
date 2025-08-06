@@ -42,6 +42,32 @@ const getSupabaseClient = async () => {
 };
 
 /**
+ * NIP-05 Identity Disclosure interfaces
+ */
+export interface Nip05DisclosureConfig {
+  enabled: boolean;
+  nip05?: string;
+  scope?: "direct" | "groups" | "specific-groups";
+  specificGroupIds?: string[];
+  lastUpdated?: Date;
+  verificationStatus?: "pending" | "verified" | "failed";
+  lastVerified?: Date;
+}
+
+export interface Nip05VerificationResult {
+  success: boolean;
+  error?: string;
+  publicKey?: string;
+  domain?: string;
+  name?: string;
+}
+
+export interface Nip05WellKnownResponse {
+  names: Record<string, string>;
+  relays?: Record<string, string[]>;
+}
+
+/**
  * MASTER CONTEXT COMPLIANCE: Consolidated messaging configuration
  */
 export const MESSAGING_CONFIG = {
@@ -992,6 +1018,400 @@ export class UnifiedMessagingService {
       contactCount: this.contactSessions.size,
       groupCount: this.groupSessions.size,
     };
+  }
+
+  /**
+   * NIP-05 Identity Disclosure: Validate NIP-05 format
+   */
+  private validateNip05Format(nip05: string): {
+    valid: boolean;
+    error?: string;
+  } {
+    const nip05Regex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    if (!nip05Regex.test(nip05)) {
+      return {
+        valid: false,
+        error: "Invalid NIP-05 format. Expected: name@domain.tld",
+      };
+    }
+
+    const [name, domain] = nip05.split("@");
+
+    if (name.length === 0 || domain.length === 0) {
+      return { valid: false, error: "NIP-05 name and domain cannot be empty" };
+    }
+
+    if (name.length > 64) {
+      return {
+        valid: false,
+        error: "NIP-05 name too long (max 64 characters)",
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * NIP-05 Identity Disclosure: Verify NIP-05 against domain's well-known endpoint
+   */
+  private async verifyNip05(
+    nip05: string,
+    expectedPubkey: string
+  ): Promise<Nip05VerificationResult> {
+    try {
+      const [name, domain] = nip05.split("@");
+      const wellKnownUrl = `https://${domain}/.well-known/nostr.json`;
+
+      // Fetch with timeout and retry logic
+      const response = await this.fetchWithRetry(wellKnownUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Satnam-Privacy-Client/1.0",
+        },
+      });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Failed to fetch NIP-05 verification: ${response.status} ${response.statusText}`,
+        };
+      }
+
+      const wellKnownData: Nip05WellKnownResponse = await response.json();
+
+      if (!wellKnownData.names || typeof wellKnownData.names !== "object") {
+        return {
+          success: false,
+          error:
+            "Invalid well-known response: missing or invalid 'names' field",
+        };
+      }
+
+      const publicKey = wellKnownData.names[name];
+      if (!publicKey) {
+        return {
+          success: false,
+          error: `NIP-05 identifier '${name}' not found on domain '${domain}'`,
+        };
+      }
+
+      if (publicKey !== expectedPubkey) {
+        return {
+          success: false,
+          error:
+            "Public key mismatch: NIP-05 identifier does not match your public key",
+        };
+      }
+
+      return {
+        success: true,
+        publicKey,
+        domain,
+        name,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Unknown verification error",
+      };
+    }
+  }
+
+  /**
+   * HTTP fetch with retry logic and timeout
+   */
+  private async fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    maxRetries: number = 3,
+    timeoutMs: number = 10000
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        lastError =
+          error instanceof Error ? error : new Error("Unknown fetch error");
+
+        if (attempt < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error("Max retries exceeded");
+  }
+
+  /**
+   * NIP-05 Identity Disclosure: Enable NIP-05 disclosure with verification
+   */
+  async enableNip05Disclosure(
+    nip05: string,
+    scope: "direct" | "groups" | "specific-groups",
+    specificGroupIds?: string[]
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!this.userSession) {
+        return { success: false, error: "No active session" };
+      }
+
+      // Validate NIP-05 format
+      const formatValidation = this.validateNip05Format(nip05);
+      if (!formatValidation.valid) {
+        return { success: false, error: formatValidation.error };
+      }
+
+      // Verify NIP-05 against domain
+      const verification = await this.verifyNip05(nip05, this.userNpub);
+      if (!verification.success) {
+        return { success: false, error: verification.error };
+      }
+
+      // Store disclosure configuration in database
+      const { supabase } = await import("../src/lib/supabase.js");
+      const client = supabase;
+
+      const disclosureConfig: Nip05DisclosureConfig = {
+        enabled: true,
+        nip05,
+        scope,
+        specificGroupIds,
+        lastUpdated: new Date(),
+        verificationStatus: "verified",
+        lastVerified: new Date(),
+      };
+
+      const { error: updateError } = await client
+        .from("user_identities")
+        .update({
+          nip05_disclosure_config: disclosureConfig,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("npub", this.userNpub);
+
+      if (updateError) {
+        return {
+          success: false,
+          error: `Failed to save disclosure configuration: ${updateError.message}`,
+        };
+      }
+
+      // Log privacy audit event
+      await this.logPrivacyAuditEvent("nip05_disclosure_enabled", {
+        nip05,
+        scope,
+        specificGroupIds: specificGroupIds || [],
+        verificationStatus: "verified",
+      });
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown error enabling NIP-05 disclosure",
+      };
+    }
+  }
+
+  /**
+   * NIP-05 Identity Disclosure: Disable NIP-05 disclosure
+   */
+  async disableNip05Disclosure(): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      if (!this.userSession) {
+        return { success: false, error: "No active session" };
+      }
+
+      // Update database to disable disclosure
+      const { supabase } = await import("../src/lib/supabase.js");
+      const client = supabase;
+
+      const disclosureConfig: Nip05DisclosureConfig = {
+        enabled: false,
+        lastUpdated: new Date(),
+      };
+
+      const { error: updateError } = await client
+        .from("user_identities")
+        .update({
+          nip05_disclosure_config: disclosureConfig,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("npub", this.userNpub);
+
+      if (updateError) {
+        return {
+          success: false,
+          error: `Failed to disable disclosure configuration: ${updateError.message}`,
+        };
+      }
+
+      // Log privacy audit event
+      await this.logPrivacyAuditEvent("nip05_disclosure_disabled", {
+        previouslyEnabled: true,
+      });
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown error disabling NIP-05 disclosure",
+      };
+    }
+  }
+
+  /**
+   * NIP-05 Identity Disclosure: Get current disclosure status
+   */
+  async getNip05DisclosureStatus(): Promise<{
+    enabled: boolean;
+    nip05?: string;
+    scope?: "direct" | "groups" | "specific-groups";
+    specificGroupIds?: string[];
+    lastUpdated?: Date;
+    verificationStatus?: "pending" | "verified" | "failed";
+    lastVerified?: Date;
+  }> {
+    try {
+      if (!this.userSession) {
+        return { enabled: false };
+      }
+
+      // Fetch current disclosure configuration from database
+      const { supabase } = await import("../src/lib/supabase.js");
+      const client = supabase;
+
+      const { data: userIdentity, error: fetchError } = await client
+        .from("user_identities")
+        .select("nip05_disclosure_config")
+        .eq("npub", this.userNpub)
+        .single();
+
+      if (fetchError || !userIdentity) {
+        return { enabled: false };
+      }
+
+      const config =
+        userIdentity.nip05_disclosure_config as Nip05DisclosureConfig | null;
+
+      if (!config || !config.enabled) {
+        return { enabled: false };
+      }
+
+      return {
+        enabled: config.enabled,
+        nip05: config.nip05,
+        scope: config.scope,
+        specificGroupIds: config.specificGroupIds,
+        lastUpdated: config.lastUpdated
+          ? new Date(config.lastUpdated)
+          : undefined,
+        verificationStatus: config.verificationStatus,
+        lastVerified: config.lastVerified
+          ? new Date(config.lastVerified)
+          : undefined,
+      };
+    } catch (error) {
+      console.error("Error fetching NIP-05 disclosure status:", error);
+      return { enabled: false };
+    }
+  }
+
+  /**
+   * Privacy audit logging for NIP-05 disclosure events
+   */
+  private async logPrivacyAuditEvent(
+    action: string,
+    details: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      const { supabase } = await import("../src/lib/supabase.js");
+      const client = supabase;
+
+      // Get user ID from profiles table
+      const { data: profile } = await client
+        .from("profiles")
+        .select("id")
+        .eq("npub", this.userNpub)
+        .single();
+
+      if (!profile) {
+        console.warn("Could not find user profile for audit logging");
+        return;
+      }
+
+      // Encrypt sensitive audit details using Web Crypto API
+      const encoder = new TextEncoder();
+      const data = encoder.encode(JSON.stringify(details));
+      const key = await crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt"]
+      );
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        data
+      );
+
+      const encryptedDetails = {
+        encrypted: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
+        iv: btoa(String.fromCharCode(...iv)),
+        tag: "", // AES-GCM includes tag in encrypted data
+      };
+
+      await client.from("auth_audit_log").insert({
+        user_id: profile.id,
+        action,
+        encrypted_details: JSON.stringify({
+          encrypted: encryptedDetails.encrypted,
+          iv: encryptedDetails.iv,
+          tag: encryptedDetails.tag,
+        }),
+        ip_hash: await this.hashClientInfo("127.0.0.1"), // Placeholder for client IP
+        user_agent_hash: await this.hashClientInfo("Satnam-Client"),
+        success: true,
+      });
+    } catch (error) {
+      console.error("Failed to log privacy audit event:", error);
+      // Don't throw - audit logging failure shouldn't break the main operation
+    }
+  }
+
+  /**
+   * Hash client information for privacy audit logging
+   */
+  private async hashClientInfo(info: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(info);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
   }
 }
 

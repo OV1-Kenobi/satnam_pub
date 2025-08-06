@@ -4,6 +4,12 @@ export interface GiftwrappedMessageConfig {
   sender: string;
   encryptionLevel: "standard" | "enhanced" | "maximum";
   communicationType: "family" | "individual";
+  signedProof?: {
+    signature: string;
+    pubkey: string;
+    timestamp: number;
+    nonce?: string; // Added nonce for additional security
+  };
 }
 
 export interface GiftWrappedMessage {
@@ -62,6 +68,10 @@ export class GiftwrappedCommunicationService {
             communicationType: config.communicationType,
             messageId: this.generateId(),
             timestamp: new Date().toISOString(),
+            signedProof: config.signedProof, // Include the signed proof for authentication
+            // Add additional security metadata
+            securityVersion: "1.1", // Version of the security protocol
+            authMethod: "schnorr", // Authentication method used
           }),
         }
       );

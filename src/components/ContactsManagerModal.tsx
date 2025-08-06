@@ -138,39 +138,37 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
   // CRITICAL SECURITY: Initialize session with zero-knowledge Nsec handling
   useEffect(() => {
     if (isOpen && userNsec && !messaging.connected) {
-      try {
-        // CRITICAL SECURITY: Zero-knowledge Nsec conversion with immediate cleanup
-        const encoder = new TextEncoder();
-        const nsecUint8Array = encoder.encode(userNsec);
-        const nsecBuffer = nsecUint8Array.buffer.slice(nsecUint8Array.byteOffset, nsecUint8Array.byteOffset + nsecUint8Array.byteLength);
+      const initializeSessionAsync = async () => {
+        try {
+          // CRITICAL SECURITY: Direct nsec string passing to messaging service
+          // The messaging service handles secure nsec processing internally
+          await messaging.initializeSession(userNsec);
 
-        messaging.initializeSession(nsecBuffer);
+          // Log secure Nsec processing (metadata only)
+          await logContactManagerOperation({
+            operation: "nsec_processed_securely",
+            details: {
+              hasNsec: !!userNsec,
+              sessionInitialized: true,
+              timestamp: new Date()
+            },
+            timestamp: new Date(),
+          });
 
-        // CRITICAL SECURITY: Immediate memory cleanup
-        nsecUint8Array.fill(0); // Clear the original Uint8Array
+        } catch (error) {
+          // CRITICAL SECURITY: Clear any potential memory traces on error
+          await logContactManagerOperation({
+            operation: "nsec_processing_failed",
+            details: {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              timestamp: new Date()
+            },
+            timestamp: new Date(),
+          });
+        }
+      };
 
-        // Log secure Nsec processing (metadata only)
-        logContactManagerOperation({
-          operation: "nsec_processed_securely",
-          details: {
-            hasNsec: !!userNsec,
-            sessionInitialized: true,
-            timestamp: new Date()
-          },
-          timestamp: new Date(),
-        });
-
-      } catch (error) {
-        // CRITICAL SECURITY: Clear any potential memory traces on error
-        logContactManagerOperation({
-          operation: "nsec_processing_failed",
-          details: {
-            error: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: new Date()
-          },
-          timestamp: new Date(),
-        });
-      }
+      initializeSessionAsync();
     }
   }, [isOpen, userNsec, messaging.connected])
 

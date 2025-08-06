@@ -29,7 +29,7 @@ interface MaxPrivacyAuthProps {
   purpose?: string;
 }
 
-type AuthMethod = 'nsec' | 'otp' | 'nip07' | null;
+type AuthMethod = 'nsec' | 'otp' | 'nip07' | 'nip05-password' | null;
 
 export function MaxPrivacyAuth({
   isOpen,
@@ -53,6 +53,9 @@ export function MaxPrivacyAuth({
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [showNsec, setShowNsec] = useState(false);
+  // NIP-05/Password form states
+  const [nip05Username, setNip05Username] = useState("");
+  const [password, setPassword] = useState("");
 
   const handleClose = () => {
     setAuthMethod(null);
@@ -236,6 +239,31 @@ export function MaxPrivacyAuth({
     }
   };
 
+  // NIP-05/Password Authentication (Maximum Privacy)
+  const handleNIP05PasswordAuth = async () => {
+    if (!nip05Username || !password) {
+      setError('Please enter both NIP-05 identifier and password');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const success = await privacyAuth.authenticateNIP05Password(nip05Username, password);
+
+      if (success) {
+        handleAuthSuccess('NIP-05/Password');
+      } else {
+        setError(privacyAuth.error || 'NIP-05/Password authentication failed');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'NIP-05/Password authentication failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -333,6 +361,20 @@ export function MaxPrivacyAuth({
                   <div>
                     <h4 className="font-semibold text-white">Browser Extension</h4>
                     <p className="text-green-200 text-sm">NIP-07 extension signing</p>
+                  </div>
+                </div>
+              </button>
+
+              {/* NIP-05/Password Method */}
+              <button
+                onClick={() => setAuthMethod('nip05-password')}
+                className="w-full p-4 bg-gradient-to-r from-purple-600/20 to-purple-500/20 border border-purple-500/30 rounded-xl hover:from-purple-600/30 hover:to-purple-500/30 transition-all duration-300 text-left"
+              >
+                <div className="flex items-center space-x-4">
+                  <Key className="h-6 w-6 text-purple-400" />
+                  <div>
+                    <h4 className="font-semibold text-white">NIP-05 + Password</h4>
+                    <p className="text-purple-200 text-sm">Username/password with NIP-05 verification</p>
                   </div>
                 </div>
               </button>
@@ -492,6 +534,54 @@ export function MaxPrivacyAuth({
                   <>
                     <Shield className="h-5 w-5" />
                     <span>Sign with Maximum Privacy</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* NIP-05/Password Form */}
+          {authMethod === 'nip05-password' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">NIP-05 + Password</h3>
+                <button onClick={() => setAuthMethod(null)} className="text-purple-300 hover:text-white text-sm">← Back</button>
+              </div>
+
+              <div className="p-4 bg-purple-500/20 border border-purple-500/30 rounded-lg">
+                <p className="text-purple-300 text-sm">Sign in with your NIP-05 identifier and password.</p>
+              </div>
+
+              <input
+                type="text"
+                value={nip05Username}
+                onChange={(e) => setNip05Username(e.target.value)}
+                placeholder="your-username@domain.com"
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+              />
+
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+              />
+
+              <button
+                onClick={handleNIP05PasswordAuth}
+                disabled={isLoading || !nip05Username || !password}
+                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    <span>Authenticating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-5 w-5" />
+                    <span>Sign In with Maximum Privacy</span>
                   </>
                 )}
               </button>

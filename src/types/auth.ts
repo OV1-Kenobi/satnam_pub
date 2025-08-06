@@ -69,7 +69,7 @@ export interface FamilyFederationUser {
   npub: string;
   nip05?: string;
   federationRole: FederationRole;
-  authMethod: "nwc" | "otp";
+  authMethod: "nip05-password" | "nip07" | "otp" | "nsec";
   isWhitelisted: boolean;
   votingPower: number;
   stewardApproved: boolean;
@@ -154,7 +154,7 @@ export interface NWCAuthResponse {
       npub: string;
       nip05: string;
       federationRole: FederationRole;
-      authMethod: "nwc";
+      authMethod: "nip05-password" | "nip07" | "otp" | "nsec";
       isWhitelisted: boolean;
       votingPower: number;
       stewardApproved: boolean;

@@ -54,9 +54,6 @@ const getSupabaseConfig = () => {
     processEnvAvailable: typeof process !== "undefined" && !!process.env,
     processEnvHasViteVars:
       typeof process !== "undefined" && !!process.env?.VITE_SUPABASE_URL,
-    viteEnvAvailable: typeof process !== "undefined" && !!process.env,
-    viteEnvHasVars:
-      typeof process !== "undefined" && !!process.env?.VITE_SUPABASE_URL,
   });
 
   // Security validation - ensure we have bootstrap credentials
@@ -65,9 +62,10 @@ const getSupabaseConfig = () => {
       hasUrl: !!url,
       hasKey: !!key,
       environment: typeof window !== "undefined" ? "browser" : "node",
-      availableEnvVars: Object.keys(process.env || {}).filter((k) =>
-        k.startsWith("VITE_")
-      ),
+      availableEnvVars:
+        typeof process !== "undefined" && process.env
+          ? Object.keys(process.env).filter((k) => k.startsWith("VITE_"))
+          : [],
     };
 
     console.error("❌ Supabase credentials missing:", errorDetails);
@@ -517,7 +515,9 @@ export class CitadelDatabase {
       const issues: string[] = [];
       const username = profile.username;
       const expectedIdentifier = `${username}@${
-        process.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
+        (typeof process !== "undefined" &&
+          process.env?.VITE_LIGHTNING_DOMAIN) ||
+        "satnam.pub"
       }`;
 
       // Check Lightning address
@@ -575,7 +575,9 @@ export class CitadelDatabase {
       }
 
       const correctIdentifier = `${profile.username}@${
-        process.env.VITE_LIGHTNING_DOMAIN || "satnam.pub"
+        (typeof process !== "undefined" &&
+          process.env?.VITE_LIGHTNING_DOMAIN) ||
+        "satnam.pub"
       }`;
 
       // Fix Lightning address if inconsistent

@@ -578,10 +578,11 @@ export function usePrivacyFirstAuth(): PrivacyAuthState & PrivacyAuthActions {
       nip05: `anonymous@privacy.federation`, // Generic anonymous identifier
       federationRole: (state.user.federationRole ||
         "private") as FederationRole,
-      authMethod: (state.user.authMethod === "nip07" ||
-      state.user.authMethod === "nip05-password"
-        ? "otp"
-        : "otp") as "otp" | "nwc", // Map to supported types
+      authMethod: state.user.authMethod as
+        | "nip05-password"
+        | "nip07"
+        | "otp"
+        | "nsec", // Direct mapping to supported types
       isWhitelisted: state.user.isWhitelisted || false,
       votingPower: state.user.votingPower || 0,
       stewardApproved: state.user.stewardApproved || false,

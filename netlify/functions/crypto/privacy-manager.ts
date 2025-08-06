@@ -2,13 +2,18 @@
 // Browser-compatible crypto using Web Crypto API
 // Browser-compatible constant time comparison
 function constantTimeEquals(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
+  const minLength = Math.min(a.length, b.length);
+  const maxLength = Math.max(a.length, b.length);
   let result = 0;
-  for (let i = 0; i < a.length; i++) {
+
+  // Compare up to minLength
+  for (let i = 0; i < minLength; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
+
+  // Include length difference in result
+  result |= a.length ^ b.length;
+
   return result === 0;
 }
 
@@ -112,6 +117,10 @@ export class PrivacyManager {
   static async encryptUserData(data: any, userKey: string): Promise<string> {
     // Derive key using PBKDF2 (Web Crypto API equivalent of scrypt)
     const encoder = new TextEncoder();
+
+    // Generate random salt
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
       encoder.encode(userKey),
@@ -120,7 +129,6 @@ export class PrivacyManager {
       ["deriveKey"]
     );
 
-    const salt = encoder.encode("salt"); // Static salt for compatibility
     const key = await crypto.subtle.deriveKey(
       {
         name: "PBKDF2",
@@ -146,6 +154,9 @@ export class PrivacyManager {
     );
 
     // Convert to hex strings
+    const saltHex = Array.from(salt)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     const ivHex = Array.from(iv)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
@@ -153,7 +164,7 @@ export class PrivacyManager {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    return `${ivHex}:${encryptedHex}`;
+    return `${saltHex}:${ivHex}:${encryptedHex}`;
   }
 
   /**
@@ -166,10 +177,31 @@ export class PrivacyManager {
     userKey: string
   ): Promise<any> {
     try {
-      const [ivHex, encryptedHex] = encryptedData.split(":");
+      const parts = encryptedData.split(":");
+
+      // Check if we're dealing with the new format (with salt) or legacy format
+      let saltHex, ivHex, encryptedHex;
+
+      if (parts.length === 3) {
+        // New format with salt included
+        [saltHex, ivHex, encryptedHex] = parts;
+      } else if (parts.length === 2) {
+        // Legacy format with static salt - this will fail as we no longer support it
+        throw new Error(
+          "Legacy user data format not supported - please re-encrypt with the latest version"
+        );
+      } else {
+        throw new Error("Invalid encrypted user data format");
+      }
 
       // Derive key using PBKDF2 with Web Crypto API
       const encoder = new TextEncoder();
+
+      // Convert salt from hex
+      const salt = new Uint8Array(
+        saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
       const keyMaterial = await crypto.subtle.importKey(
         "raw",
         encoder.encode(userKey),
@@ -178,7 +210,6 @@ export class PrivacyManager {
         ["deriveKey"]
       );
 
-      const salt = encoder.encode("salt"); // Static salt for compatibility
       const key = await crypto.subtle.deriveKey(
         {
           name: "PBKDF2",
@@ -242,6 +273,10 @@ export class PrivacyManager {
   ): Promise<string> {
     // Derive key using PBKDF2 with Web Crypto API
     const encoder = new TextEncoder();
+
+    // Generate random salt
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
       encoder.encode(userPassphrase),
@@ -250,7 +285,6 @@ export class PrivacyManager {
       ["deriveKey"]
     );
 
-    const salt = encoder.encode("privkey_salt"); // Static salt for compatibility
     const key = await crypto.subtle.deriveKey(
       {
         name: "PBKDF2",
@@ -276,6 +310,9 @@ export class PrivacyManager {
     );
 
     // Convert to hex strings
+    const saltHex = Array.from(salt)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     const ivHex = Array.from(iv)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
@@ -283,7 +320,7 @@ export class PrivacyManager {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    return `${ivHex}:${encryptedHex}`;
+    return `${saltHex}:${ivHex}:${encryptedHex}`;
   }
 
   /**
@@ -296,10 +333,31 @@ export class PrivacyManager {
     userPassphrase: string
   ): Promise<string> {
     try {
-      const [ivHex, encryptedHex] = encryptedPrivateKey.split(":");
+      const parts = encryptedPrivateKey.split(":");
+
+      // Check if we're dealing with the new format (with salt) or legacy format
+      let saltHex, ivHex, encryptedHex;
+
+      if (parts.length === 3) {
+        // New format with salt included
+        [saltHex, ivHex, encryptedHex] = parts;
+      } else if (parts.length === 2) {
+        // Legacy format with static salt - this will fail as we no longer support it
+        throw new Error(
+          "Legacy private key format not supported - please re-encrypt with the latest version"
+        );
+      } else {
+        throw new Error("Invalid encrypted private key format");
+      }
 
       // Derive key using PBKDF2 with Web Crypto API
       const encoder = new TextEncoder();
+
+      // Convert salt from hex
+      const salt = new Uint8Array(
+        saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
       const keyMaterial = await crypto.subtle.importKey(
         "raw",
         encoder.encode(userPassphrase),
@@ -308,7 +366,6 @@ export class PrivacyManager {
         ["deriveKey"]
       );
 
-      const salt = encoder.encode("privkey_salt"); // Static salt for compatibility
       const key = await crypto.subtle.deriveKey(
         {
           name: "PBKDF2",
@@ -504,6 +561,10 @@ export class PrivacyManager {
     try {
       // Derive key using PBKDF2 with Web Crypto API
       const encoder = new TextEncoder();
+
+      // Generate random salt
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+
       const keyMaterial = await crypto.subtle.importKey(
         "raw",
         encoder.encode(serviceKey),
@@ -512,7 +573,6 @@ export class PrivacyManager {
         ["deriveKey"]
       );
 
-      const salt = encoder.encode("service_config_salt"); // Static salt for compatibility
       const key = await crypto.subtle.deriveKey(
         {
           name: "PBKDF2",
@@ -538,6 +598,9 @@ export class PrivacyManager {
       );
 
       // Convert to hex strings
+      const saltHex = Array.from(salt)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
       const ivHex = Array.from(iv)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
@@ -546,7 +609,7 @@ export class PrivacyManager {
         .join("");
 
       // Include version for future migration compatibility
-      return `v1:${ivHex}:${encryptedHex}`;
+      return `v1:${saltHex}:${ivHex}:${encryptedHex}`;
     } catch (error) {
       throw new Error(
         `Service config encryption failed: ${
@@ -568,10 +631,18 @@ export class PrivacyManager {
   ): Promise<any> {
     try {
       // Handle versioned format
-      const [version, ivHex, encryptedHex] = encryptedConfig.split(":");
+      const [version, saltHex, ivHex, encryptedHex] =
+        encryptedConfig.split(":");
 
       if (version !== "v1") {
         throw new Error("Unsupported service config version");
+      }
+
+      // Validate format
+      if (!saltHex || !ivHex || !encryptedHex) {
+        throw new Error(
+          "Invalid encrypted config format - missing required components"
+        );
       }
 
       // Derive key using PBKDF2 with Web Crypto API
@@ -584,7 +655,11 @@ export class PrivacyManager {
         ["deriveKey"]
       );
 
-      const salt = encoder.encode("service_config_salt"); // Static salt for compatibility
+      // Convert salt from hex
+      const salt = new Uint8Array(
+        saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
       const key = await crypto.subtle.deriveKey(
         {
           name: "PBKDF2",

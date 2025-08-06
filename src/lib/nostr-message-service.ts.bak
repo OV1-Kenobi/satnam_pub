@@ -51,25 +51,22 @@ export interface AuthenticatedUser {
  */
 export class NostrMessageService {
   private static instance: NostrMessageService;
-  private static DEFAULT_RELAYS = [
+  private giftwrappedService: GiftwrappedCommunicationService;
+  private relays: string[] = [
     "wss://relay.satnam.pub",
     "wss://relay.damus.io",
     "wss://nos.lol",
     "wss://relay.nostr.band",
   ];
-  private giftwrappedService: GiftwrappedCommunicationService;
-  private relays: string[];
   private connections: Map<string, WebSocket> = new Map();
 
-  constructor(relays?: string[]) {
-    this.relays = relays || NostrMessageService.DEFAULT_RELAYS;
+  constructor() {
     this.giftwrappedService = new GiftwrappedCommunicationService();
-    this.registerCleanup();
   }
 
-  static getInstance(relays?: string[]): NostrMessageService {
+  static getInstance(): NostrMessageService {
     if (!NostrMessageService.instance) {
-      NostrMessageService.instance = new NostrMessageService(relays);
+      NostrMessageService.instance = new NostrMessageService();
     }
     return NostrMessageService.instance;
   }
@@ -176,99 +173,6 @@ export class NostrMessageService {
   }
 
   /**
-   * Get current relay configuration
-   */
-  getRelays(): string[] {
-    return [...this.relays]; // Return a copy to prevent external modification
-  }
-
-  /**
-   * Update relay configuration
-   * Closes existing connections and updates relay list
-   */
-  async updateRelays(newRelays: string[]): Promise<void> {
-    if (!newRelays || newRelays.length === 0) {
-      throw new Error("At least one relay URL is required");
-    }
-
-    // Validate relay URLs
-    for (const relay of newRelays) {
-      if (!relay.startsWith("wss://") && !relay.startsWith("ws://")) {
-        throw new Error(`Invalid relay URL format: ${relay}`);
-      }
-    }
-
-    // Close existing connections
-    await this.closeAllConnections();
-
-    // Update relay list
-    this.relays = [...newRelays];
-  }
-
-  /**
-   * Add relay to current configuration
-   */
-  async addRelay(relayUrl: string): Promise<void> {
-    if (!relayUrl.startsWith("wss://") && !relayUrl.startsWith("ws://")) {
-      throw new Error(`Invalid relay URL format: ${relayUrl}`);
-    }
-
-    if (!this.relays.includes(relayUrl)) {
-      this.relays.push(relayUrl);
-    }
-  }
-
-  /**
-   * Remove relay from current configuration
-   */
-  async removeRelay(relayUrl: string): Promise<void> {
-    const index = this.relays.indexOf(relayUrl);
-    if (index > -1) {
-      this.relays.splice(index, 1);
-
-      // Close connection for this specific relay
-      const connection = this.connections.get(relayUrl);
-      if (connection) {
-        connection.close();
-        this.connections.delete(relayUrl);
-      }
-    }
-
-    if (this.relays.length === 0) {
-      throw new Error(
-        "Cannot remove last relay - at least one relay is required"
-      );
-    }
-  }
-
-  /**
-   * Reset relays to default configuration
-   */
-  async resetToDefaultRelays(): Promise<void> {
-    await this.updateRelays([...NostrMessageService.DEFAULT_RELAYS]);
-  }
-
-  /**
-   * Close all relay connections
-   */
-  private async closeAllConnections(): Promise<void> {
-    const closePromises = Array.from(this.connections.values()).map(
-      (connection) =>
-        new Promise<void>((resolve) => {
-          if (connection.readyState === WebSocket.OPEN) {
-            connection.onclose = () => resolve();
-            connection.close();
-          } else {
-            resolve();
-          }
-        })
-    );
-
-    await Promise.all(closePromises);
-    this.connections.clear();
-  }
-
-  /**
    * Get user's private key (nsec) for signing using existing decryption utilities
    */
   private async getUserPrivateKey(
@@ -367,7 +271,7 @@ export class NostrMessageService {
         const pubkey = await getPublicKey.fromPrivateKey(privateKey);
 
         // Sign the authentication message with the user's decrypted nsec
-        const signature = await finalizeEvent.signEvent(
+        const signature = await finalizeEvent.signSchnorr(
           authMessage,
           privateKey
         );
@@ -591,6 +495,92 @@ export class NostrMessageService {
   }
 
   /**
+   * Create a secure authentication token using cryptographic signatures
+   *
+   * This method generates a secure authentication token that can be used to verify
+   * the identity of the user making API requests. It prioritizes using the NIP-07
+   * browser extension when available, falling back to direct private key signing
+   * when necessary.
+   *
+   * @param user - The authenticated user
+   * @param privateKey - The user's private key or "nip07" for browser extension
+   * @param context - The context of the authentication (e.g., "group", "message")
+   * @param contextId - The ID related to the context (e.g., groupId)
+   * @returns An object containing the authentication token and scheme
+   */
+  private async createAuthToken(
+    user: AuthenticatedUser,
+    privateKey: string,
+    context: string,
+    contextId: string
+  ): Promise<{
+    token: string;
+    authScheme: string;
+  }> {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // Format: satnam:<context>:<npub>:<contextId>:<timestamp>:<nonce>
+    const authMessage = `satnam:${context}:${user.npub}:${contextId}:${timestamp}:${nonce}`;
+
+    let signature: string;
+    let pubkey: string;
+
+    // Prefer NIP-07 when available (browser extension)
+    if (privateKey === "nip07") {
+      const nostr = (window as any).nostr;
+      if (!nostr) {
+        throw new Error("NIP-07 extension not available for secure signing");
+      }
+
+      pubkey = await nostr.getPublicKey();
+      signature = await nostr.signSchnorr(authMessage);
+
+      if (!signature) {
+        throw new Error(
+          `Failed to sign ${context} message with NIP-07: User may have denied the request`
+        );
+      }
+    }
+    // Fall back to private key signing when NIP-07 is not available
+    else {
+      if (!privateKey) {
+        throw new Error(
+          `Private key is required for ${context} message signing`
+        );
+      }
+
+      pubkey = await getPublicKey.fromPrivateKey(privateKey);
+      signature = await finalizeEvent.signSchnorr(authMessage, privateKey);
+
+      if (!signature) {
+        throw new Error(
+          `Failed to sign ${context} message with private key: Signature generation failed`
+        );
+      }
+    }
+
+    // Create the auth token without including the raw message
+    const authToken = {
+      npub: user.npub,
+      pubkey,
+      signature,
+      timestamp,
+      nonce,
+      context,
+      contextId,
+    };
+
+    // Return the token as JSON string with the auth scheme
+    return {
+      token: JSON.stringify(authToken),
+      authScheme: "Nostr",
+    };
+  }
+
+  /**
    * Send group message using the group-messaging API
    */
   private async sendGroupMessage(
@@ -599,61 +589,20 @@ export class NostrMessageService {
     user: AuthenticatedUser
   ): Promise<MessageSendResult> {
     try {
-      // Create a signed authentication token
-      const timestamp = Math.floor(Date.now() / 1000);
-      const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      const authMessage = `satnam:group:${user.npub}:${config.groupId}:${timestamp}:${nonce}`;
-
-      // Sign the authentication message
-      let signature: string;
-      let pubkey: string;
-
-      if (privateKey === "nip07") {
-        // Use NIP-07 browser extension for signing
-        const nostr = (window as any).nostr;
-        if (!nostr) {
-          throw new Error("NIP-07 extension not available");
-        }
-
-        pubkey = await nostr.getPublicKey();
-        signature = await nostr.signSchnorr(authMessage);
-
-        if (!signature) {
-          throw new Error("Failed to sign group message with NIP-07");
-        }
-      } else {
-        // Use the decrypted nsec for signing
-        if (!privateKey) {
-          throw new Error("Private key is required for group message signing");
-        }
-
-        pubkey = await getPublicKey.fromPrivateKey(privateKey);
-        signature = await finalizeEvent.signEvent(authMessage, privateKey);
-
-        if (!signature) {
-          throw new Error("Failed to sign group message with private key");
-        }
-      }
-
-      // Create the signed auth token (without exposing the raw message)
-      const authToken = {
-        npub: user.npub,
-        pubkey,
-        signature,
-        timestamp,
-        nonce,
-        context: "group",
-        contextId: config.groupId,
-      };
+      // Generate a secure authentication token using our reusable method
+      const { token, authScheme } = await this.createAuthToken(
+        user,
+        privateKey,
+        "group",
+        config.groupId || ""
+      );
 
       // Use the existing group-messaging API endpoint with secure authentication
       const response = await fetch("/.netlify/functions/group-messaging", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Nostr ${JSON.stringify(authToken)}`,
+          Authorization: `${authScheme} ${token}`,
         },
         body: JSON.stringify({
           action: "send_message",
@@ -822,33 +771,15 @@ export class NostrMessageService {
   }
 
   /**
-   * Register automatic cleanup on browser window unload
-   */
-  private registerCleanup(): void {
-    if (typeof window !== "undefined") {
-      window.addEventListener("beforeunload", () => this.cleanup());
-    }
-  }
-
-  /**
-   * Clean up connections and resources
+   * Clean up connections
    */
   cleanup(): void {
-    // Clean up WebSocket connections
     this.connections.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
     });
     this.connections.clear();
-
-    // Clean up giftwrapped service if it has a cleanup method
-    if (
-      this.giftwrappedService &&
-      typeof (this.giftwrappedService as any).cleanup === "function"
-    ) {
-      (this.giftwrappedService as any).cleanup();
-    }
   }
 }
 
