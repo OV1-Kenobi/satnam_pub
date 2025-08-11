@@ -16,16 +16,18 @@ function requireEnv(key) {
 
 // Allow both SUPABASE_* (functions) and VITE_SUPABASE_* (if configured) names
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://rhfqfftkizyengcuhuvq.supabase.co";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  || process.env.SUPABASE_ANON_KEY
+  || process.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl) {
   throw new Error("Supabase URL not configured (SUPABASE_URL or VITE_SUPABASE_URL)");
 }
-if (!supabaseAnonKey) {
-  throw new Error("Supabase anon key not configured (SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY)");
+if (!supabaseKey) {
+  throw new Error("Supabase key not configured (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY)");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
