@@ -60,11 +60,17 @@ export class ApiClient {
   private apiBaseUrl: string;
 
   constructor() {
-    this.apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
+    // Prefer Netlify functions direct path to avoid redirect ambiguity
+    const env =
+      typeof import.meta !== "undefined" && (import.meta as any).env
+        ? (import.meta as any).env
+        : {};
+    this.apiBaseUrl =
+      env.VITE_API_BASE_URL || env.VITE_API_URL || "/.netlify/functions";
     console.log("🔍 API CLIENT: Constructor", {
-      VITE_API_URL: import.meta.env.VITE_API_URL,
+      VITE_API_BASE_URL: env.VITE_API_BASE_URL,
+      VITE_API_URL: env.VITE_API_URL,
       apiBaseUrl: this.apiBaseUrl,
-      allEnvVars: import.meta.env,
     });
   }
 

@@ -525,8 +525,13 @@ export class ApiClient {
    * @description Sets up the API client with the current domain's API endpoint
    */
   constructor() {
-    // Use current domain for API calls to your backend API
-    this.baseUrl = window.location.origin + "/api";
+    // Use env-configured base URL when available; default to Netlify Functions path
+    const env =
+      typeof import.meta !== "undefined" && (import.meta as any).env
+        ? (import.meta as any).env
+        : {};
+    this.baseUrl =
+      env.VITE_API_BASE_URL || env.VITE_API_URL || "/.netlify/functions";
   }
 
   /**

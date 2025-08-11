@@ -99,6 +99,8 @@ export const handler = async (event) => {
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Content-Type": "application/json",
+    // Debug headers to correlate client vs server behavior
+    "X-Register-Identity-Status": "ok",
   };
 
   // Handle preflight requests
@@ -196,10 +198,11 @@ export const handler = async (event) => {
     console.log('🔐 Generating secure DUID index...');
 
     // Import server-side DUID indexing using self-contained robust import
-    const { generateDUIDIndexFromNpub, auditDUIDOperation } = await robustImport(
+    const duidMod = await robustImport(
       './security/duid-index-generator.js',
       ['netlify', 'functions', 'security', 'duid-index-generator.js']
     );
+    const { generateDUIDIndexFromNpub, auditDUIDOperation } = duidMod && duidMod.default ? duidMod.default : duidMod;
 
     // Generate DUID index from npub (server-side secret indexing)
     const duid_index = generateDUIDIndexFromNpub(userData.npub);
