@@ -1,15 +1,36 @@
 /**
- * Supabase client for Netlify Functions
- * MASTER CONTEXT COMPLIANCE: Re-exports singleton client to prevent multiple GoTrueClient instances
+ * Supabase client for Netlify Functions (server-only)
  *
- * This file re-exports the singleton Supabase client from src/lib/supabase.ts
- * to ensure only ONE GoTrueClient instance exists across the entire application.
+ * IMPORTANT: Do not import the browser client here. Functions run outside Vite and
+ * require direct access to process.env at runtime. This module creates a dedicated
+ * Supabase client using Node environment variables that Netlify provides.
  */
 
-// Re-export the singleton client to prevent multiple GoTrueClient instances
-// Using .ts extension explicitly for Netlify's build system
-export { supabase } from "../../src/lib/supabase.ts";
+import { createClient } from "@supabase/supabase-js";
 
-// Export for compatibility with existing code
-export { supabase as default } from "../../src/lib/supabase.ts";
+function requireEnv(key) {
+  const val = process.env[key];
+  if (!val) throw new Error(`Missing required environment variable: ${key}`);
+  return val;
+}
+
+// Allow both SUPABASE_* (functions) and VITE_SUPABASE_* (if configured) names
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://rhfqfftkizyengcuhuvq.supabase.co";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl) {
+  throw new Error("Supabase URL not configured (SUPABASE_URL or VITE_SUPABASE_URL)");
+}
+if (!supabaseAnonKey) {
+  throw new Error("Supabase anon key not configured (SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY)");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
+
+export default supabase;
 

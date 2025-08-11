@@ -268,7 +268,6 @@
     "!netlify/functions/crypto/**",
     "!netlify/functions/examples/**",
     "!netlify/functions/privacy/**",
-    "!netlify/functions/security/**",
     "!netlify/functions/services/**",
     "!netlify/functions/utils/**",
     "!netlify/functions/middleware/**"
