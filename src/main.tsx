@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import AppWithErrorBoundary from './App';
+import { CryptoPreloader } from "./components/CryptoPreloader";
 import "./index.css";
 
 // Global error handler for browser extension communication errors
@@ -36,6 +37,8 @@ window.addEventListener('unhandledrejection', (event) => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    {/* Preload crypto modules immediately to avoid late dynamic import failures */}
+    <CryptoPreloader immediate />
     <AppWithErrorBoundary />
   </StrictMode>,
 );

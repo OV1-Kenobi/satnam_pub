@@ -25,7 +25,11 @@ let cryptoFactoryPromise: Promise<any> | null = null;
 
 const getCryptoFactory = () => {
   if (!cryptoFactoryPromise) {
-    cryptoFactoryPromise = import("../../utils/crypto-factory");
+    cryptoFactoryPromise = import("../../utils/crypto-factory").catch((err) => {
+      // Reset promise on failure so future attempts can retry a fresh import
+      cryptoFactoryPromise = null;
+      throw err;
+    });
   }
   return cryptoFactoryPromise;
 };
@@ -134,6 +138,31 @@ export function useCrypto(options: UseCryptoOptions = {}): UseCryptoReturn {
       }
     } catch (error) {
       console.error("❌ Crypto loading failed:", error);
+
+      // Detect stale chunk or network fetch failures and auto-recover
+      const message = error instanceof Error ? error.message : String(error);
+      const isChunkError =
+        /Loading chunk|import\(|dynamic import|failed to fetch|ChunkLoadError|404/i.test(
+          message
+        );
+      if (isChunkError) {
+        try {
+          // Best-effort: clear caches, then reload with a cache-busting param
+          if (typeof window !== "undefined" && "caches" in window) {
+            const cacheKeys = await caches.keys();
+            await Promise.all(cacheKeys.map((k) => caches.delete(k)));
+          }
+          const url = new URL(window.location.href);
+          url.searchParams.set("v", String(Date.now()));
+          window.location.replace(url.toString());
+          return; // stop further handling
+        } catch (cleanupErr) {
+          console.warn("Cache cleanup failed, forcing reload...", cleanupErr);
+          window.location.reload();
+          return;
+        }
+      }
+
       if (mountedRef.current) {
         setState({
           isLoading: false,
@@ -240,6 +269,12 @@ export function useCryptoOperations() {
       try {
         console.log("🔄 Using cached crypto factory import...");
         const cryptoFactory = await getCryptoFactory();
+        if (
+          !cryptoFactory ||
+          typeof cryptoFactory.generateNostrKeyPair !== "function"
+        ) {
+          throw new Error("Crypto factory unavailable or invalid export");
+        }
         const result = await cryptoFactory.generateNostrKeyPair(
           recoveryPhrase,
           account
@@ -248,6 +283,29 @@ export function useCryptoOperations() {
         return result;
       } catch (error) {
         console.error("❌ Cached crypto factory import failed:", error);
+
+        // Detect stale chunk and recover early
+        const message = error instanceof Error ? error.message : String(error);
+        const isChunkError =
+          /Loading chunk|import\(|dynamic import|failed to fetch|ChunkLoadError|404/i.test(
+            message
+          );
+        if (isChunkError) {
+          try {
+            if (typeof window !== "undefined" && "caches" in window) {
+              const cacheKeys = await caches.keys();
+              await Promise.all(cacheKeys.map((k) => caches.delete(k)));
+            }
+            const url = new URL(window.location.href);
+            url.searchParams.set("v", String(Date.now()));
+            window.location.replace(url.toString());
+            // Not reached
+          } catch (cleanupErr) {
+            console.warn("Cache cleanup failed, forcing reload...", cleanupErr);
+            window.location.reload();
+          }
+          throw error; // abort
+        }
 
         // Fallback to executeWithLoading approach
         try {
