@@ -16,12 +16,17 @@ function getEnvVar(key: string, defaultValue: string = ""): string {
   if (
     typeof process !== "undefined" &&
     process.env &&
-    typeof process.env[key] !== "undefined"
+    typeof (process.env as any)[key] !== "undefined"
   ) {
-    return (process.env[key] as string) || defaultValue;
+    return ((process.env as any)[key] as string) || defaultValue;
   }
 
-  // Keep a minimal, safe fallback (no direct import.meta.env usage to avoid build issues)
+  // Fallback to a compile-time injected object to support dynamic key reads in the browser
+  if (typeof globalThis !== "undefined" && (globalThis as any).__APP_ENV__) {
+    const v = (globalThis as any).__APP_ENV__[key];
+    if (typeof v !== "undefined") return v as string;
+  }
+
   return defaultValue;
 }
 

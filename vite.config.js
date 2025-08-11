@@ -217,12 +217,20 @@ export default defineConfig({
 
   define: {
     global: "globalThis",
-    'process.env.NODE_ENV': JSON.stringify(getEnvVar('NODE_ENV') || 'production'),
     __DEV__: isDevelopment,
-    // Inject Supabase variables for both import.meta.env and process.env access patterns
-    'process.env.VITE_SUPABASE_URL': JSON.stringify(getEnvVar('VITE_SUPABASE_URL')),
-    'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(getEnvVar('VITE_SUPABASE_ANON_KEY')),
-    'process.env.VITE_LIGHTNING_DOMAIN': JSON.stringify(getEnvVar('VITE_LIGHTNING_DOMAIN')),
+    // Provide a concrete process.env object at runtime so dynamic lookups work in the browser
+    'process.env': JSON.stringify({
+      NODE_ENV: getEnvVar('NODE_ENV') || 'production',
+      VITE_SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL') || '',
+      VITE_SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY') || '',
+      VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
+    }),
+    'globalThis.__APP_ENV__': JSON.stringify({
+      NODE_ENV: getEnvVar('NODE_ENV') || 'production',
+      VITE_SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL') || '',
+      VITE_SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY') || '',
+      VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
+    }),
   },
 
   optimizeDeps: {
