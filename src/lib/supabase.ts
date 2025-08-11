@@ -12,16 +12,16 @@ import { createClient } from "@supabase/supabase-js";
  * @returns {string} Environment variable value
  */
 function getEnvVar(key: string, defaultValue: string = ""): string {
-  // Vite injects environment variables into process.env via define configuration
-  // This works in both browser and Node.js environments
-  if (typeof process !== "undefined" && process.env && process.env[key]) {
-    return process.env[key] || defaultValue;
+  // Prefer process.env for maximum compatibility with Netlify build/runtime
+  if (
+    typeof process !== "undefined" &&
+    process.env &&
+    typeof process.env[key] !== "undefined"
+  ) {
+    return (process.env[key] as string) || defaultValue;
   }
 
-  // Fallback
-  console.warn(
-    `Environment variable ${key} not accessible in current environment`
-  );
+  // Keep a minimal, safe fallback (no direct import.meta.env usage to avoid build issues)
   return defaultValue;
 }
 
@@ -502,11 +502,10 @@ export class CitadelDatabase {
 
       const issues: string[] = [];
       const username = profile.username;
-      const expectedIdentifier = `${username}@${
-        (typeof process !== "undefined" &&
-          process.env?.VITE_LIGHTNING_DOMAIN) ||
+      const expectedIdentifier = `${username}@${getEnvVar(
+        "VITE_LIGHTNING_DOMAIN",
         "satnam.pub"
-      }`;
+      )}`;
 
       // Check Lightning address
       const lightningAddress = profile.lightning_addresses?.[0]?.address;

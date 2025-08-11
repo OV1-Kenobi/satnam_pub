@@ -219,9 +219,10 @@ export default defineConfig({
     global: "globalThis",
     'process.env.NODE_ENV': JSON.stringify(getEnvVar('NODE_ENV') || 'production'),
     __DEV__: isDevelopment,
-    // CRITICAL FIX: Inject Supabase environment variables into process.env for browser
+    // Inject Supabase variables for both import.meta.env and process.env access patterns
     'process.env.VITE_SUPABASE_URL': JSON.stringify(getEnvVar('VITE_SUPABASE_URL')),
     'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(getEnvVar('VITE_SUPABASE_ANON_KEY')),
+    'process.env.VITE_LIGHTNING_DOMAIN': JSON.stringify(getEnvVar('VITE_LIGHTNING_DOMAIN')),
   },
 
   optimizeDeps: {
