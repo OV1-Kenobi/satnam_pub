@@ -1,0 +1,58 @@
+name: Netlify Functions Bundle Size Check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-bundle-sizes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps (no scripts)
+        run: |
+          npm ci --ignore-scripts
+
+      - name: Build functions (dry run)
+        run: |
+          npx @netlify/build --dry
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN || '' }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID || '' }}
+
+      - name: Estimate zipped bundle sizes
+        run: |
+          echo "Estimating function bundle sizes..."
+          # Find built function directories (common Netlify output path)
+          if [ -d ".netlify/functions" ]; then OUT_DIR=".netlify/functions"; else OUT_DIR=".netlify/functions-internal"; fi
+          if [ ! -d "$OUT_DIR" ]; then echo "No built functions found; skipping."; exit 0; fi
+
+          WARN_LIMIT=$((40 * 1024 * 1024)) # 40MB
+          FAIL_LIMIT=$((50 * 1024 * 1024)) # 50MB
+
+          STATUS=0
+          for fn in "$OUT_DIR"/*; do
+            [ -d "$fn" ] || continue
+            name=$(basename "$fn")
+            zipfile="/tmp/${name}.zip"
+            (cd "$fn" && zip -qry "$zipfile" .)
+            size=$(stat -c%s "$zipfile")
+            echo "Function $name zipped size: $size bytes"
+
+            if [ "$size" -ge "$FAIL_LIMIT" ]; then
+              echo "::error ::Function $name exceeds 50MB limit ($size bytes)"
+              STATUS=1
+            elif [ "$size" -ge "$WARN_LIMIT" ]; then
+              echo "::warning ::Function $name approaching 50MB limit ($size bytes)"
+            fi
+          done
+
+          exit $STATUS
+

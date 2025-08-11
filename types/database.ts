@@ -1,85 +1,147 @@
 /**
- * Database model interfaces for Identity Forge
+ * Database model interfaces for Privacy-First Identity System
  */
 
-export interface Profile {
-  id: string; // UUID from auth.users
-  username: string;
-  npub: string;
-  nip05?: string;
-  lightning_address?: string;
-  family_id?: string;
+export interface UserIdentity {
+  id: string; // DUID index for secure O(1) authentication
+  user_salt: string;
+  hashed_username: string;
+  hashed_npub: string;
+  hashed_encrypted_nsec?: string;
+  hashed_nip05?: string;
+  hashed_lightning_address?: string;
+  password_hash: string;
+  password_salt: string;
+  password_created_at: Date;
+  password_updated_at: Date;
+  failed_attempts: number;
+  locked_until?: Date;
+  requires_password_change: boolean;
+  role: "private" | "offspring" | "adult" | "steward" | "guardian";
+  spending_limits: any; // JSONB
+  privacy_settings: any; // JSONB
+  family_federation_id?: string;
+  is_active: boolean;
   created_at: Date;
   updated_at: Date;
 }
 
-export interface Family {
+export interface FamilyFederation {
   id: string; // UUID
-  family_name: string;
+  federation_name: string;
   domain?: string;
   relay_url?: string;
-  federation_id?: string;
+  federation_duid: string; // Global salted federation identifier
+  is_active: boolean;
   created_at: Date;
+  updated_at: Date;
+}
+
+export interface FamilyMember {
+  id: string; // UUID
+  family_federation_id: string;
+  user_duid: string; // References user_identities.id (DUID)
+  family_role: "offspring" | "adult" | "steward" | "guardian";
+  spending_approval_required: boolean;
+  voting_power: number;
+  joined_at: Date;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Nip05Record {
+  id: string; // UUID
+  name: string; // Temporary plaintext for migration
+  pubkey: string; // Temporary plaintext for migration
+  name_duid?: string;
+  pubkey_duid?: string;
+  domain: string;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface NostrBackup {
   id: string; // UUID
-  user_id: string;
+  user_duid: string; // Updated to use DUID
   event_id: string;
   relay_url: string;
   backup_hash?: string;
   created_at: Date;
 }
 
-export interface LightningAddress {
-  id: string; // UUID
-  user_id: string;
-  address: string;
-  btcpay_store_id?: string;
-  voltage_node_id?: string;
-  active: boolean;
-  created_at: Date;
-}
-
 // Input types for creating records
-export interface CreateProfileInput {
-  id: string;
-  username: string;
-  npub: string;
-  nip05?: string;
-  lightning_address?: string;
-  family_id?: string;
+export interface CreateUserIdentityInput {
+  id: string; // DUID
+  user_salt: string;
+  hashed_username: string;
+  hashed_npub: string;
+  hashed_encrypted_nsec?: string;
+  hashed_nip05?: string;
+  hashed_lightning_address?: string;
+  password_hash: string;
+  password_salt: string;
+  role?: "private" | "offspring" | "adult" | "steward" | "guardian";
+  spending_limits?: any;
+  privacy_settings?: any;
+  family_federation_id?: string;
 }
 
-export interface CreateFamilyInput {
-  family_name: string;
+export interface CreateFamilyFederationInput {
+  federation_name: string;
   domain?: string;
   relay_url?: string;
-  federation_id?: string;
+  federation_duid: string;
+}
+
+export interface CreateFamilyMemberInput {
+  family_federation_id: string;
+  user_duid: string;
+  family_role: "offspring" | "adult" | "steward" | "guardian";
+  spending_approval_required?: boolean;
+  voting_power?: number;
+}
+
+export interface CreateNip05RecordInput {
+  name: string;
+  pubkey: string;
+  name_duid?: string;
+  pubkey_duid?: string;
+  domain?: string;
 }
 
 export interface CreateNostrBackupInput {
-  user_id: string;
+  user_duid: string;
   event_id: string;
   relay_url?: string;
   backup_hash?: string;
 }
 
-export interface CreateLightningAddressInput {
-  user_id: string;
-  address: string;
-  btcpay_store_id?: string;
-  voltage_node_id?: string;
-  active?: boolean;
+// Update types (all fields optional except ID)
+export interface UpdateUserIdentityInput {
+  hashed_username?: string;
+  hashed_npub?: string;
+  hashed_encrypted_nsec?: string;
+  hashed_nip05?: string;
+  hashed_lightning_address?: string;
+  role?: "private" | "offspring" | "adult" | "steward" | "guardian";
+  spending_limits?: any;
+  privacy_settings?: any;
+  family_federation_id?: string;
 }
 
-// Update types (all fields optional except ID)
-export interface UpdateProfileInput {
-  username?: string;
-  npub?: string;
-  nip05?: string;
-  lightning_address?: string;
-  family_id?: string;
+export interface UpdateFamilyFederationInput {
+  federation_name?: string;
+  domain?: string;
+  relay_url?: string;
+}
+
+export interface UpdateFamilyMemberInput {
+  family_role?: "offspring" | "adult" | "steward" | "guardian";
+  spending_approval_required?: boolean;
+  voting_power?: number;
+  is_active?: boolean;
 }
 
 // Educational System Types
@@ -126,25 +188,30 @@ export interface CreateCourseCreditInput {
 export interface Database {
   public: {
     Tables: {
-      profiles: {
-        Row: Profile;
-        Insert: CreateProfileInput;
-        Update: UpdateProfileInput;
+      user_identities: {
+        Row: UserIdentity;
+        Insert: CreateUserIdentityInput;
+        Update: UpdateUserIdentityInput;
       };
-      families: {
-        Row: Family;
-        Insert: CreateFamilyInput;
-        Update: Partial<CreateFamilyInput>;
+      family_federations: {
+        Row: FamilyFederation;
+        Insert: CreateFamilyFederationInput;
+        Update: UpdateFamilyFederationInput;
+      };
+      family_members: {
+        Row: FamilyMember;
+        Insert: CreateFamilyMemberInput;
+        Update: UpdateFamilyMemberInput;
+      };
+      nip05_records: {
+        Row: Nip05Record;
+        Insert: CreateNip05RecordInput;
+        Update: Partial<CreateNip05RecordInput>;
       };
       nostr_backups: {
         Row: NostrBackup;
         Insert: CreateNostrBackupInput;
         Update: Partial<CreateNostrBackupInput>;
-      };
-      lightning_addresses: {
-        Row: LightningAddress;
-        Insert: CreateLightningAddressInput;
-        Update: Partial<CreateLightningAddressInput>;
       };
       educational_invitations: {
         Row: EducationalInvitation;

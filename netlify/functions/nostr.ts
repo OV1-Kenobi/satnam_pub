@@ -1,16 +1,37 @@
 import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase client with service role for vault access
+// Initialize Supabase client with anonymous key for public data access
 const supabaseUrl = "https://rhfqfftkizyengcuhuvq.supabase.co";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+function requireEnv(key: string): string {
+  const val = process.env[key];
+  if (!val) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return val;
+}
+
+const supabaseAnonKey = requireEnv("SUPABASE_ANON_KEY");
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
 });
+// Small timeout helpers
+function fetchWithTimeout(
+  resource: string,
+  options: RequestInit & { timeout?: number } = {}
+) {
+  const { timeout = 8000, ...opts } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  return fetch(resource, { ...opts, signal: controller.signal }).finally(() =>
+    clearTimeout(id)
+  );
+}
 
 interface NIP05Record {
   name: string;

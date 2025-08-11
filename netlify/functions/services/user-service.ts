@@ -47,7 +47,7 @@ export class UserService {
     try {
       const npubHash = this.hashIdentifier(npub);
       const result = await db.query(
-        "SELECT * FROM profiles WHERE npub_hash = $1 LIMIT 1",
+        "SELECT * FROM user_identities WHERE hashed_npub = $1 AND is_active = true LIMIT 1",
         [npubHash]
       );
 
@@ -71,7 +71,7 @@ export class UserService {
   static async getUserById(userId: string): Promise<UserProfile | null> {
     try {
       const result = await db.query(
-        "SELECT * FROM profiles WHERE id = $1 LIMIT 1",
+        "SELECT * FROM user_identities WHERE id = $1 AND is_active = true LIMIT 1",
         [userId]
       );
 

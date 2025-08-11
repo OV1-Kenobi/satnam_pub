@@ -190,93 +190,173 @@ export const models = {
     },
   },
 
-  // User Profiles Model
-  profiles: {
+  // User Identity Model (Privacy-First)
+  userIdentities: {
     async create(data: {
-      user_id: string;
-      username?: string;
-      npub?: string;
-      family_id?: string;
-      privacy_level?: string;
+      id: string; // DUID
+      user_salt: string;
+      hashed_username: string;
+      hashed_npub: string;
+      password_hash: string;
+      password_salt: string;
+      role?: string;
+      family_federation_id?: string;
     }) {
       const client = await initializeSupabaseClient();
-      return await client.from("profiles").insert([data]).select().single();
-    },
-
-    async getById(userId: string) {
-      const client = await initializeSupabaseClient();
       return await client
-        .from("profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .single();
-    },
-
-    async update(
-      userId: string,
-      data: Partial<{
-        username: string;
-        npub: string;
-        family_id: string;
-        privacy_level: string;
-      }>
-    ) {
-      const client = await initializeSupabaseClient();
-      return await client
-        .from("profiles")
-        .update(data)
-        .eq("user_id", userId)
-        .select()
-        .single();
-    },
-  },
-
-  // Family Model
-  families: {
-    async getById(familyId: string) {
-      const client = await initializeSupabaseClient();
-      return await client
-        .from("families")
-        .select("*")
-        .eq("id", familyId)
-        .single();
-    },
-
-    async create(data: {
-      name: string;
-      created_by: string;
-      federation_config?: any;
-    }) {
-      const client = await initializeSupabaseClient();
-      return await client.from("families").insert([data]).select().single();
-    },
-  },
-
-  // Lightning Addresses Model
-  lightningAddresses: {
-    async create(data: { user_id: string; address: string; node_config: any }) {
-      const client = await initializeSupabaseClient();
-      return await client
-        .from("lightning_addresses")
+        .from("user_identities")
         .insert([data])
         .select()
         .single();
     },
 
-    async getByUserId(userId: string) {
+    async getByDuid(userDuid: string) {
       const client = await initializeSupabaseClient();
       return await client
-        .from("lightning_addresses")
+        .from("user_identities")
         .select("*")
-        .eq("user_id", userId)
+        .eq("id", userDuid)
+        .single();
+    },
+
+    async updateByDuid(
+      userDuid: string,
+      data: Partial<{
+        hashed_username: string;
+        hashed_npub: string;
+        role: string;
+        family_federation_id: string;
+        privacy_settings: any;
+      }>
+    ) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("user_identities")
+        .update(data)
+        .eq("id", userDuid)
+        .select()
         .single();
     },
   },
 
-  // Nostr Backups Model
+  // Family Federation Model (Privacy-First)
+  familyFederations: {
+    async getById(federationId: string) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("family_federations")
+        .select("*")
+        .eq("id", federationId)
+        .single();
+    },
+
+    async getByDuid(federationDuid: string) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("family_federations")
+        .select("*")
+        .eq("federation_duid", federationDuid)
+        .single();
+    },
+
+    async create(data: {
+      federation_name: string;
+      federation_duid: string;
+      domain?: string;
+      relay_url?: string;
+    }) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("family_federations")
+        .insert([data])
+        .select()
+        .single();
+    },
+  },
+
+  // Family Members Model (Privacy-First)
+  familyMembers: {
+    async getByFederation(familyFederationId: string) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("family_members")
+        .select("*")
+        .eq("family_federation_id", familyFederationId)
+        .eq("is_active", true);
+    },
+
+    async getByUserDuid(userDuid: string) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("family_members")
+        .select(
+          `
+          *,
+          family_federations(*)
+        `
+        )
+        .eq("user_duid", userDuid)
+        .eq("is_active", true);
+    },
+
+    async create(data: {
+      family_federation_id: string;
+      user_duid: string;
+      family_role: string;
+      spending_approval_required?: boolean;
+      voting_power?: number;
+    }) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("family_members")
+        .insert([data])
+        .select()
+        .single();
+    },
+  },
+
+  // NIP-05 Records Model (Privacy-First)
+  nip05Records: {
+    async create(data: {
+      name: string;
+      pubkey: string;
+      name_duid?: string;
+      pubkey_duid?: string;
+      domain?: string;
+    }) {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("nip05_records")
+        .insert([data])
+        .select()
+        .single();
+    },
+
+    async getByDuid(nameDuid: string, domain: string = "satnam.pub") {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("nip05_records")
+        .select("*")
+        .eq("name_duid", nameDuid)
+        .eq("domain", domain)
+        .eq("is_active", true)
+        .single();
+    },
+
+    async getByDomain(domain: string = "satnam.pub") {
+      const client = await initializeSupabaseClient();
+      return await client
+        .from("nip05_records")
+        .select("*")
+        .eq("domain", domain)
+        .eq("is_active", true);
+    },
+  },
+
+  // Nostr Backups Model (Privacy-First)
   nostrBackups: {
     async create(data: {
-      user_id: string;
+      user_duid: string;
       encrypted_backup: string;
       backup_type: string;
     }) {
@@ -288,12 +368,12 @@ export const models = {
         .single();
     },
 
-    async getByUserId(userId: string) {
+    async getByUserDuid(userDuid: string) {
       const client = await initializeSupabaseClient();
       const { data, error } = await client
         .from("nostr_backups")
         .select("*")
-        .eq("user_id", userId)
+        .eq("user_duid", userDuid)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

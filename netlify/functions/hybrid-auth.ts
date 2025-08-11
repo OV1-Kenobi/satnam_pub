@@ -98,14 +98,36 @@ export class HybridAuth {
       }
 
       // Extract npub from pubkey
+
+      // Self-contained robust dynamic import helper to avoid utility imports
+      async function robustImport(rel: string, segs: string[]) {
+        try {
+          return await import(rel);
+        } catch (_e1) {
+          const path = await import("node:path");
+          const url = await import("node:url");
+          const fileUrl = url.pathToFileURL(
+            path.resolve(process.cwd(), ...segs)
+          ).href;
+          return await import(fileUrl);
+        }
+      }
+
       const npub = nip19.npubEncode(nostrEvent.pubkey);
 
-      // Check if user exists in database
+      // Generate DUID index for secure database lookup (Phase 2)
+      const { generateDUIDIndexFromNpub } = await robustImport(
+        "./security/duid-index-generator.js",
+        ["netlify", "functions", "security", "duid-index-generator.js"]
+      );
+      const duid_index = generateDUIDIndexFromNpub(npub);
+
+      // Check if user exists in database using secure DUID index
       const supabase = await getSupabaseClient();
       const { data: existingUser, error: userError } = await supabase
         .from("user_identities")
         .select("*")
-        .eq("npub", npub)
+        .eq("id", duid_index)
         .single();
 
       if (userError && userError.code !== "PGRST116") {
@@ -306,13 +328,33 @@ export class HybridAuth {
         .delete()
         .eq("otp_key", otpKey);
 
-      // Get user data
+      // Self-contained robust dynamic import helper to avoid utility imports
+      async function robustImport(rel: string, segs: string[]) {
+        try {
+          return await import(rel);
+        } catch (_e1) {
+          const path = await import("node:path");
+          const url = await import("node:url");
+          const fileUrl = url.pathToFileURL(
+            path.resolve(process.cwd(), ...segs)
+          ).href;
+          return await import(fileUrl);
+        }
+      }
+
+      // Get user data using secure DUID index lookup
+      const { generateDUIDIndexFromNpub } = await robustImport(
+        "./security/duid-index-generator.js",
+        ["netlify", "functions", "security", "duid-index-generator.js"]
+      );
+      const duid_index = generateDUIDIndexFromNpub(otpData.npub);
+
       const { data: userData, error: userError } = await (
         await getSupabaseClient()
       )
         .from("user_identities")
         .select("*")
-        .eq("npub", otpData.npub)
+        .eq("id", duid_index)
         .single();
 
       if (userError || !userData) {

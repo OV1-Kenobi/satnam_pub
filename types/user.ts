@@ -29,6 +29,7 @@ export interface User {
   created_at: number; // Unix timestamp to match NostrEvent
   last_login?: number; // Unix timestamp
   npub?: string; // Optional Nostr public key for backward compatibility
+  nip05?: string; // NIP-05 identifier (username@domain.com)
 }
 
 /**

@@ -59,6 +59,8 @@ ALTER TABLE otp_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE otp_attempts ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
+-- Note: OTP tables use privacy_users.hashed_uuid which requires custom context setting
+-- This is necessary for privacy-first architecture where user_hash != auth.uid()
 CREATE POLICY otp_secrets_policy ON otp_secrets
     FOR ALL
     USING (user_hash = current_setting('app.current_user_hash', true));

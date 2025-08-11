@@ -1,3 +1,4 @@
+
 /**
  * CRITICAL SECURITY: NIP-05 Federation Whitelist Management with Master Context Compliance
  * 
@@ -7,7 +8,6 @@
  */
 
 import { z } from "zod";
-import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
 
 /**

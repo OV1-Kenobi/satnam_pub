@@ -378,9 +378,13 @@ export async function authenticatePrivacyFirst(
       // Existing user - verify auth hash using constant-time comparison
       user = existingUser;
 
-      // Verify auth hash by recreating it and comparing
+      // Verify auth hash by recreating it and comparing using constant-time comparison
       const expectedHash = PrivacyManager.createAuthHash(pubkey);
-      if (expectedHash !== user.auth_hash) {
+      const hashesMatch = PrivacyManager.constantTimeCompare(
+        expectedHash,
+        user.auth_hash
+      );
+      if (!hashesMatch) {
         await createAuditLog(user.id, "authentication_failed", false);
         throw new Error("Invalid authentication credentials");
       }

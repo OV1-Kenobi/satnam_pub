@@ -20,8 +20,8 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
-import { usePrivacyFirstAuth } from "../../hooks/usePrivacyFirstAuth";
-import { userIdentitiesAuth } from "../../lib/auth/user-identities-auth";
+import { UserIdentitiesAuth } from '../../lib/auth/user-identities-auth';
+import { useAuth } from './AuthProvider';
 
 interface NIP05PasswordAuthProps {
   isOpen: boolean;
@@ -40,7 +40,8 @@ export function NIP05PasswordAuth({
   title = 'NIP-05/Password Authentication',
   purpose = 'Sign in with your NIP-05 identifier and password'
 }: NIP05PasswordAuthProps) {
-  const privacyAuth = usePrivacyFirstAuth();
+  const privacyAuth = useAuth();
+  const userIdentitiesAuth = new UserIdentitiesAuth();
 
   // UI State
   const [isLoading, setIsLoading] = useState(false);
@@ -120,7 +121,7 @@ export function NIP05PasswordAuth({
       });
 
       if (result.success && result.user) {
-        console.log('✅ Authentication successful:', result.user.username);
+        console.log('✅ Authentication successful:', result.user.id);
 
         // Store session information for the app
         if (result.sessionToken) {
@@ -128,10 +129,8 @@ export function NIP05PasswordAuth({
           localStorage.setItem('auth_session', result.sessionToken);
           localStorage.setItem('user_data', JSON.stringify({
             id: result.user.id,
-            username: result.user.username,
-            nip05: result.user.nip05,
-            npub: result.user.npub,
-            role: result.user.role
+            role: result.user.role,
+            isActive: result.user.is_active
           }));
         }
 

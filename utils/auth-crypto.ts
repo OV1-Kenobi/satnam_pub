@@ -254,12 +254,8 @@ async function hashForPrivacy(data: string): Promise<string> {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   } catch (error) {
-    // Fallback for environments without Web Crypto API
-    console.warn("Web Crypto API not available, using fallback hash");
-    return Buffer.from(data)
-      .toString("base64")
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .substring(0, 64);
+    console.error("Error hashing data for privacy:", error);
+    throw error;
   }
 }
 
@@ -278,15 +274,17 @@ function getSupabaseUrl(): string | undefined {
 }
 
 /**
- * Get Supabase service role key from environment variables
+ * Get Supabase anonymous key from environment variables (server-safe)
  */
-function getSupabaseServiceKey(): string | undefined {
+function getSupabaseAnonKey(): string | undefined {
   if (typeof process !== "undefined" && process.env) {
-    return process.env.SUPABASE_SERVICE_ROLE_KEY;
+    return (
+      process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
   }
   if (typeof import.meta !== "undefined" && (import.meta as any).env) {
     const env = (import.meta as any).env;
-    return env.SUPABASE_SERVICE_ROLE_KEY;
+    return env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   }
   return undefined;
 }
@@ -318,9 +316,9 @@ export async function checkRateLimitDB(
     // Dynamic import to avoid circular dependencies and reduce bundle size
     const { createClient } = await import("@supabase/supabase-js");
 
-    // Get Supabase configuration
+    // Get Supabase configuration (anon key only)
     const supabaseUrl = getSupabaseUrl();
-    const supabaseKey = getSupabaseServiceKey();
+    const supabaseKey = getSupabaseAnonKey();
 
     if (!supabaseUrl || !supabaseKey) {
       console.error(
@@ -330,7 +328,7 @@ export async function checkRateLimitDB(
       return checkRateLimit(ip, maxRequests, windowMs);
     }
 
-    // Create Supabase client
+    // Create Supabase client (anon)
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Call database function for rate limiting

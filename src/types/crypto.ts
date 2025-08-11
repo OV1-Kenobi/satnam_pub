@@ -16,7 +16,7 @@ export interface CryptoBuffer {
 export type BufferEncoding = "hex" | "base64" | "utf8" | "ascii" | "binary";
 
 // Hash algorithm types
-export type HashAlgorithm = "sha256" | "sha512" | "sha1" | "md5";
+export type HashAlgorithm = "sha256" | "sha512" | "sha1";
 
 // Encryption algorithm types
 export type EncryptionAlgorithm =

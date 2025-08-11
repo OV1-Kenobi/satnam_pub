@@ -42,21 +42,26 @@ export class CryptoLazy {
 
   // Browser-compatible password hashing
   async hashPassword(password: string, salt?: string): Promise<string> {
-    const saltToUse = salt || CryptoJS.lib.WordArray.random(128 / 8).toString();
-    return CryptoJS.PBKDF2(password, saltToUse, {
-      keySize: 256 / 32,
-      iterations: 10000,
-    }).toString();
+    const cryptoJS = await getCryptoJS();
+    const saltToUse = salt || cryptoJS.lib.WordArray.random(128 / 8).toString();
+    return cryptoJS
+      .PBKDF2(password, saltToUse, {
+        keySize: 256 / 32,
+        iterations: 100000,
+      })
+      .toString();
   }
 
   // Browser-compatible encryption
   async encryptData(data: string, key: string): Promise<string> {
-    return CryptoJS.AES.encrypt(data, key).toString();
+    const cryptoJS = await getCryptoJS();
+    return cryptoJS.AES.encrypt(data, key).toString();
   }
 
   async decryptData(encryptedData: string, key: string): Promise<string> {
-    const bytes = CryptoJS.AES.decrypt(encryptedData, key);
-    return bytes.toString(CryptoJS.enc.Utf8);
+    const cryptoJS = await getCryptoJS();
+    const bytes = cryptoJS.AES.decrypt(encryptedData, key);
+    return bytes.toString(cryptoJS.enc.Utf8);
   }
 }
 

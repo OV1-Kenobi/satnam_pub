@@ -130,10 +130,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    
+
     # Content Security Policy for Bitcoin-only, privacy-first app
     Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
-    
+
     # CORS headers for API
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
@@ -232,7 +232,11 @@
     "@noble/secp256k1",
     "@noble/hashes",
     "crypto-js",
-    "nostr-tools"
+    "nostr-tools",
+    "@scure/bip32",
+    "@scure/bip39",
+    "@scure/base",
+    "phoenix-server-js"
   ]
   # CRITICAL: Exclude more files to reduce storage usage
   included_files = [
@@ -260,6 +264,20 @@
   memory_size = 512  # 512MB for identity operations
   timeout = 20
 
+
+  # Ensure server-only DUID index generator is included without lifting directory excludes
+  included_files = [
+    "netlify/functions/security/duid-index-generator.js"
+  ]
+
+[functions."hybrid-auth"]
+  node_bundler = "esbuild"
+  memory_size = 256
+  timeout = 20
+  included_files = [
+    "netlify/functions/security/duid-index-generator.js"
+  ]
+
 [functions."nostr"]
   node_bundler = "esbuild"
   memory_size = 256  # 256MB for NIP-05 operations
@@ -279,6 +297,11 @@
   node_bundler = "esbuild"
   memory_size = 256  # 256MB for validation operations
   timeout = 10
+
+[functions."crypto-profile-installer"]
+  node_bundler = "esbuild"
+  memory_size = 384  # 384MB for crypto module loading
+  timeout = 15
 
 # Scheduled functions for cleanup tasks (only essential ones)
 [functions."cleanup-expired-credentials"]
@@ -301,8 +324,7 @@
 
 # Function size limits and memory optimization
 [functions.settings]
-  # MEMORY OPTIMIZATION: Increase limits to prevent deployment failures
-  max_size = "50MB"  # Increased to handle security enhancements
-  # Memory optimization settings
-  memory_size = 1024  # 1GB memory limit (increased from default 128MB)
-  timeout = 30  # 30 second timeout for complex operations
+# Reduced to comply with Netlify large-function limits
+max_size = "50MB"     # Down from 75MB to meet zipped limit
+memory_size = 1024    # Down from 1536MB to meet memory limit
+timeout = 26          # Down from 45s to meet timeout limit

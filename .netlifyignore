@@ -89,7 +89,7 @@ netlify/functions/**/*.js
 
 # Keep only essential functions for production
 # Exclude development-only functions
-netlify/functions/crypto-profile-installer.ts
+# Note: crypto-profile-installer.js is now the production version
 netlify/functions/crypto-validator.ts
 netlify/functions/startup-validator.ts
 netlify/functions/enhanced-rewards.ts

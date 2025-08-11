@@ -92,6 +92,7 @@ declare module "./redis" {
 declare module "../crypto/privacy-manager.js" {
   export class PrivacyManager {
     static createAuthHash(pubkey: string): string;
+    static constantTimeCompare(a: string, b: string): boolean;
     static decryptUserData(
       encryptedData: string,
       userKey: string

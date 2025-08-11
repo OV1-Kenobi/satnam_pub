@@ -8,7 +8,7 @@ import {
   installCryptoProfile,
   isCryptoProfileInstalled,
   smartCryptoInstaller,
-} from "../lib/crypto-profile-installer";
+} from "../lib/crypto-profile-installer.js";
 
 interface UseCryptoProfileOptions {
   autoInstall?: boolean;

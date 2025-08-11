@@ -1,5 +1,9 @@
 // lib/middleware/auth.ts
-import { NextFunction, Request, Response } from "../../../types/netlify-functions";
+import {
+  NextFunction,
+  Request,
+  Response,
+} from "../../../types/netlify-functions";
 import db from "../db";
 import { supabase } from "../supabase";
 
@@ -157,19 +161,19 @@ export async function checkFamilyAccess(
       };
     }
 
-    // Check if user is a member of the family
+    // Check if user is a member of the family federation
     const result = await db.query(
-      `SELECT fm.role, f.admin_id 
+      `SELECT fm.family_role, ff.federation_duid, fm.voting_power
        FROM family_members fm
-       JOIN families f ON fm.family_id = f.id
-       WHERE fm.family_id = $1 AND fm.user_id = $2`,
+       JOIN family_federations ff ON fm.family_federation_id = ff.id
+       WHERE fm.family_federation_id = $1 AND fm.user_duid = $2 AND fm.is_active = true`,
       [familyId, user.id]
     );
 
     if (result.rows.length === 0) {
       return {
         allowed: false,
-        error: "User is not a member of this family",
+        error: "User is not a member of this family federation",
       };
     }
 
@@ -177,7 +181,8 @@ export async function checkFamilyAccess(
 
     return {
       allowed: true,
-      role: memberData.role,
+      role: memberData.family_role,
+      votingPower: memberData.voting_power,
     };
   } catch (error) {
     console.error("Family access check error:", error);

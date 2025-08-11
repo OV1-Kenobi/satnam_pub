@@ -79,6 +79,16 @@ export interface FamilyFederationUser {
   rolePermissions?: RolePermissions;
 }
 
+// REMOVED: Duplicate HashedUserIdentity interface
+// Now using the consolidated UserIdentity interface from src/lib/auth/user-identities-auth.ts
+// This eliminates duplication and ensures single source of truth for user identity types
+
+// MAXIMUM ENCRYPTION: Authentication credentials for hashed lookup
+export interface HashedAuthCredentials {
+  nip05: string; // Input plaintext (will be hashed for comparison)
+  password: string; // Input plaintext (will be hashed for comparison)
+}
+
 export interface AuthResponse {
   success: boolean;
   data?: {

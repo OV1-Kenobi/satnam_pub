@@ -195,6 +195,8 @@ export class ApiClient {
 
   /**
    * Store user data during identity registration
+   * MAXIMUM ENCRYPTION: Data is sent as plaintext but immediately hashed server-side
+   * The backend uses privacy-first hashing to store all sensitive data in hashed columns only
    */
   async storeUserData(userData: {
     username: string;
@@ -205,6 +207,10 @@ export class ApiClient {
     nip05: string;
     lightningAddress?: string;
     generateInviteToken?: boolean;
+    deterministicUserId?: string; // Pre-generated DUID from Identity Forge
+    invitationToken?: string;
+    isImportedAccount?: boolean;
+    detectedProfile?: any;
   }): Promise<any> {
     try {
       // Always use API endpoint - no development mode bypasses
@@ -222,11 +228,16 @@ export class ApiClient {
         username: userData.username,
         password: userData.password,
         confirmPassword: userData.confirmPassword,
-        publicKey: userData.npub,
+        npub: userData.npub, // Fixed: endpoint expects 'npub', not 'publicKey'
         encryptedNsec: userData.encryptedNsec,
         nip05: userData.nip05,
         lightningAddress: userData.lightningAddress,
         generateInviteToken: userData.generateInviteToken,
+        // DUID Integration: Include pre-generated DUID from Identity Forge
+        deterministicUserId: userData.deterministicUserId,
+        invitationToken: userData.invitationToken,
+        isImportedAccount: userData.isImportedAccount,
+        detectedProfile: userData.detectedProfile,
       };
 
       console.log("🔍 API CLIENT: Request body being sent", {
@@ -270,6 +281,64 @@ export class ApiClient {
       );
     } catch (error) {
       console.error("🔍 API CLIENT: storeUserData error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update existing user profile data
+   * Uses the correct /identity/profile endpoint for profile updates
+   * @param profileUpdates - Profile fields to update
+   * @param npub - User's npub for identification
+   */
+  async updateUserProfile(profileUpdates: {
+    npub: string;
+    nip05?: string;
+    email?: string;
+    bio?: string;
+    displayName?: string;
+    lightningAddress?: string;
+  }): Promise<any> {
+    try {
+      const fullUrl = `${this.apiBaseUrl}/identity/profile`;
+      console.log(
+        "🔍 API CLIENT: Calling identity/profile endpoint for update",
+        {
+          apiBaseUrl: this.apiBaseUrl,
+          fullUrl: fullUrl,
+          updateFields: Object.keys(profileUpdates).filter(
+            (key) => key !== "npub"
+          ),
+        }
+      );
+
+      const response = await fetch(fullUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(profileUpdates),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("🔍 API CLIENT: Profile update failed", {
+          status: response.status,
+          statusText: response.statusText,
+          errorText,
+        });
+
+        throw new Error(
+          `Profile update failed: ${response.status} ${response.statusText} - ${errorText}`
+        );
+      }
+
+      const result = await response.json();
+      console.log("🔍 API CLIENT: Profile update successful", result);
+      return result;
+    } catch (error) {
+      console.error("🔍 API CLIENT: updateUserProfile error:", error);
       throw error;
     }
   }

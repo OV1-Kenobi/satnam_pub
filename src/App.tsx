@@ -436,6 +436,34 @@ function App() {
     );
   }
 
+  if (currentView === "communications") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFederationAuthProvider>
+          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
+            <GiftwrappedMessaging
+              familyMember={{
+                id: "current-user",
+                npub: "npub1placeholder",
+                username: "Current User",
+                role: "adult"
+              }}
+            />
+          </FamilyFederationAuthWrapper>
+        </FamilyFederationAuthProvider>
+      </PageWrapper>
+    );
+  }
+
   if (currentView === "family-payment-automation") {
     return (
       <PageWrapper
@@ -817,25 +845,7 @@ function App() {
     );
   }
 
-  const navigationItems = [
-    { label: "Family Financials", action: () => setCurrentView("dashboard") },
-    { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
-    { label: "Communications", action: () => setShowCommunications(true) },
-    {
-      label: "Nostr Resources",
-      action: () => setCurrentView("nostr-ecosystem"),
-    },
-    {
-      label: "Advanced Coordination",
-      action: () => setCurrentView("coordination"),
-    },
-    { label: "Recovery Help", action: () => setCurrentView("recovery") },
-    {
-      label: "Citadel Academy",
-      action: () => window.open("https://citadel.academy", "_blank"),
-      external: true,
-    },
-  ];
+
 
   return (
     <div className="min-h-screen relative overflow-hidden">

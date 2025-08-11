@@ -8,6 +8,27 @@ import {
     SimplePool,
 } from "nostr-tools";
 import { vault } from "../../lib/vault.js";
+// Timeout helpers and backoff
+/**
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} [label]
+ * @returns {Promise<T>}
+ */
+function withTimeout(promise, ms, label = 'op') {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then((v) => { clearTimeout(id); resolve(v); }).catch((e) => { clearTimeout(id); reject(e); });
+  });
+}
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
 import { supabase } from "./supabase.js";
 
 function getEnvVar(key) {
@@ -115,24 +136,45 @@ class RebuildingCamelotOTPService {
     return this.config;
   }
 
+  /**
+   * @param {string} recipientNpub
+   * @param {string} [userNip05]
+   * @returns {Promise<OTPResult>}
+   */
   async sendOTPDM(recipientNpub, userNip05) {
+    const start = Date.now();
+    const MAX_BUDGET_MS = 15000;
     try {
       const config = await this.getConfig();
 
-      // Retrieve Rebuilding Camelot credentials from Vault
+      // Retrieve Rebuilding Camelot credentials from Vault (10s timeout)
       let nsecData, nip05Data;
 
       try {
-        nsecData = await vault.getCredentials("rebuilding_camelot_nsec");
-        nip05Data = await vault.getCredentials("rebuilding_camelot_nip05");
+        nsecData = await withTimeout(
+          vault.getCredentials("rebuilding_camelot_nsec"),
+          10000,
+          "vault_get_nsec"
+        );
+        nip05Data = await withTimeout(
+          vault.getCredentials("rebuilding_camelot_nip05"),
+          10000,
+          "vault_get_nip05"
+        );
       } catch (vaultError) {
-        // Fallback to Supabase if Vault is not available
-        const { data: nsecResult, error: nsecError } = await supabase.rpc(
-          "get_rebuilding_camelot_nsec"
+        // Fallback to Supabase if Vault is not available (10s timeout each)
+        const nsecResp = await withTimeout(
+          (async () => await supabase.rpc("get_rebuilding_camelot_nsec"))(),
+          10000,
+          "rpc_get_nsec"
         );
-        const { data: nip05Result, error: nip05Error } = await supabase.rpc(
-          "get_rebuilding_camelot_nip05"
+        const nip05Resp = await withTimeout(
+          (async () => await supabase.rpc("get_rebuilding_camelot_nip05"))(),
+          10000,
+          "rpc_get_nip05"
         );
+        const { data: nsecResult, error: nsecError } = nsecResp || {};
+        const { data: nip05Result, error: nip05Error } = nip05Resp || {};
 
         if (nsecError || nip05Error || !nsecResult || !nip05Result) {
           throw new Error("Failed to retrieve Rebuilding Camelot credentials");
@@ -158,6 +200,7 @@ class RebuildingCamelotOTPService {
 
       // Try gift-wrapped messaging first if preferred, fallback to NIP-04
       let dmEvent;
+      /** @type {"gift-wrap"|"nip04"} */
       let messageType = "nip04";
 
       if (config.preferGiftWrap) {
@@ -187,9 +230,9 @@ class RebuildingCamelotOTPService {
 
           const privateKeyHex = bytesToHex(privateKeyBytes);
           const encryptedContent = await nip04.encrypt(
-            dmContent,
+            privateKeyHex,
             recipientPubkey,
-            privateKeyHex
+            dmContent
           );
 
           dmEvent = await this.createSignedDMEvent(
@@ -210,9 +253,9 @@ class RebuildingCamelotOTPService {
 
         const privateKeyHex = bytesToHex(privateKeyBytes);
         const encryptedContent = await nip04.encrypt(
-          dmContent,
+          privateKeyHex,
           recipientPubkey,
-          privateKeyHex
+          dmContent
         );
 
         dmEvent = await this.createSignedDMEvent(
@@ -285,13 +328,18 @@ If you didn't request this code, please ignore this message.
 🏰 Rebuilding Camelot - Sovereign Family Banking`;
   }
 
+  /**
+   * @param {string} npub
+   * @returns {string}
+   */
   npubToHex(npub) {
     try {
       const decoded = nip19.decode(npub);
       if (decoded.type !== "npub") {
         throw new Error("Invalid npub format");
       }
-      return decoded.data;
+      // Return the hex string - nip19.decode for npub returns hex string in data
+      return /** @type {string} */ (decoded.data);
     } catch (error) {
       throw new Error(
         `Failed to decode npub: ${error instanceof Error ? error.message : String(error)}`
@@ -299,18 +347,23 @@ If you didn't request this code, please ignore this message.
     }
   }
 
+  /**
+   * @param {string} nsec
+   * @returns {Uint8Array}
+   */
   nsecToBytes(nsec) {
     try {
       const decoded = nip19.decode(nsec);
       if (decoded.type !== "nsec") {
         throw new Error("Invalid nsec format");
       }
-      // For nsec, data should already be Uint8Array
-      if (decoded.data instanceof Uint8Array) {
-        return decoded.data;
+      // For nsec, data should be Uint8Array
+      const data = /** @type {Uint8Array} */ (decoded.data);
+      if (data instanceof Uint8Array) {
+        return data;
       }
       // Fallback: if it's a hex string, convert it
-      const hexString = String(decoded.data);
+      const hexString = String(data);
       return new Uint8Array(hexString.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
     } catch (error) {
       throw new Error(
@@ -321,7 +374,7 @@ If you didn't request this code, please ignore this message.
 
   async createGiftWrappedOTPEvent(privateKeyBytes, recipientPubkey, content) {
     const privateKeyHex = bytesToHex(privateKeyBytes);
-    const senderPubkey = await getPublicKey.fromPrivateKey(privateKeyHex);
+    const senderPubkey = getPublicKey(privateKeyBytes);
 
     const baseEvent = {
       kind: 4,
@@ -335,22 +388,19 @@ If you didn't request this code, please ignore this message.
       content: content,
     };
 
-    const giftWrappedEventString = await nip59.encryptGiftWrapped(
+    const giftWrappedEvent = await nip59.wrapEvent(
       baseEvent,
       recipientPubkey,
       privateKeyHex
     );
 
-    const giftWrappedEvent = JSON.parse(giftWrappedEventString);
-
     return giftWrappedEvent;
   }
 
   async createSignedDMEvent(privateKeyBytes, recipientPubkey, encryptedContent) {
-    const privateKeyHex = bytesToHex(privateKeyBytes);
-    const senderPubkey = await getPublicKey.fromPrivateKey(privateKeyHex);
+    const senderPubkey = getPublicKey(privateKeyBytes);
 
-    const eventWithoutId = {
+    const eventTemplate = {
       kind: 4,
       pubkey: senderPubkey,
       created_at: Math.floor(Date.now() / 1000),
@@ -358,31 +408,27 @@ If you didn't request this code, please ignore this message.
       content: encryptedContent,
     };
 
-    // Generate event ID first
-    const eventId = await finalizeEvent.generateEventId({
-      ...eventWithoutId,
-      id: "", // Temporary placeholder
-    });
-
-    const eventWithId = {
-      ...eventWithoutId,
-      id: eventId,
-    };
-
-    return await finalizeEvent.sign(eventWithId, privateKeyHex);
+    return finalizeEvent(eventTemplate, privateKeyBytes);
   }
 
   async publishToRelays(event, config) {
     const allRelays = [...config.relays, ...config.fallbackRelays];
-    const publishPromises = allRelays.map(async (relay) => {
-      try {
-        await this.pool.publish(relay, event);
-        return true;
-      } catch (error) {
-        return false;
+    const perRelayTimeout = 5000; // 5s per relay publish
+    const results = [];
+    for (const relay of allRelays) {
+      let success = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await withTimeout(Promise.all(this.pool.publish([relay], event)), perRelayTimeout, `publish_${relay}`);
+          success = true;
+          break;
+        } catch {}
+        // exponential backoff: 200ms, 400ms
+        await new Promise((r) => setTimeout(r, 200 * (2 ** attempt)));
       }
-    });
-    return Promise.all(publishPromises);
+      results.push(success);
+    }
+    return results;
   }
 
   async storeOTPForVerification(recipientNpub, otp, expiresAt) {

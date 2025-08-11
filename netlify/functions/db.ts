@@ -266,111 +266,211 @@ const models = {
   },
 
   /**
-   * Family operations
+   * User Identity operations (Privacy-First)
    */
-  families: {
+  userIdentities: {
     /**
-     * Create a new family
+     * Create a new user identity
      */
-    create: async (family: {
-      family_name: string;
-      domain?: string;
-      relay_url?: string;
-      federation_id?: string;
+    create: async (userData: {
+      id: string; // DUID
+      user_salt: string;
+      hashed_username: string;
+      hashed_npub: string;
+      password_hash: string;
+      password_salt: string;
+      role?: string;
+      family_federation_id?: string;
     }) => {
       const result = await pool.query(
         `
-        INSERT INTO families (family_name, domain, relay_url, federation_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO user_identities (
+          id, user_salt, hashed_username, hashed_npub, 
+          password_hash, password_salt, role, family_federation_id,
+          created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
         RETURNING *
       `,
         [
-          family.family_name,
-          family.domain,
-          family.relay_url,
-          family.federation_id,
+          userData.id,
+          userData.user_salt,
+          userData.hashed_username,
+          userData.hashed_npub,
+          userData.password_hash,
+          userData.password_salt,
+          userData.role || "private",
+          userData.family_federation_id,
         ]
       );
       return result.rows[0];
     },
 
     /**
-     * Get family by ID
+     * Get user identity by DUID
      */
-    getById: async (id: string) => {
-      const result = await pool.query("SELECT * FROM families WHERE id = $1", [
-        id,
-      ]);
+    getByDuid: async (userDuid: string) => {
+      const result = await pool.query(
+        "SELECT * FROM user_identities WHERE id = $1 AND is_active = true",
+        [userDuid]
+      );
       return result.rows[0];
     },
 
     /**
-     * Get family members
+     * Get user identity by hashed npub
      */
-    getMembers: async (familyId: string) => {
+    getByHashedNpub: async (hashedNpub: string) => {
+      const result = await pool.query(
+        "SELECT * FROM user_identities WHERE hashed_npub = $1 AND is_active = true",
+        [hashedNpub]
+      );
+      return result.rows[0];
+    },
+  },
+
+  /**
+   * Family Federation operations (Privacy-First)
+   */
+  familyFederations: {
+    /**
+     * Create a new family federation
+     */
+    create: async (federation: {
+      federation_name: string;
+      domain?: string;
+      relay_url?: string;
+      federation_duid: string;
+    }) => {
       const result = await pool.query(
         `
-        SELECT p.* FROM profiles p
-        WHERE p.family_id = $1
-        ORDER BY p.created_at
+        INSERT INTO family_federations (federation_name, domain, relay_url, federation_duid)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
       `,
-        [familyId]
+        [
+          federation.federation_name,
+          federation.domain || "satnam.pub",
+          federation.relay_url,
+          federation.federation_duid,
+        ]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Get family federation by ID
+     */
+    getById: async (id: string) => {
+      const result = await pool.query(
+        "SELECT * FROM family_federations WHERE id = $1",
+        [id]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Get family federation by DUID
+     */
+    getByDuid: async (federationDuid: string) => {
+      const result = await pool.query(
+        "SELECT * FROM family_federations WHERE federation_duid = $1",
+        [federationDuid]
+      );
+      return result.rows[0];
+    },
+
+    /**
+     * Get family federation members (Privacy-First)
+     */
+    getMembers: async (familyFederationId: string) => {
+      const result = await pool.query(
+        `
+        SELECT fm.*, ui.hashed_username, ui.role as user_role
+        FROM family_members fm
+        JOIN user_identities ui ON fm.user_duid = ui.id
+        WHERE fm.family_federation_id = $1 AND fm.is_active = true
+        ORDER BY fm.created_at
+      `,
+        [familyFederationId]
+      );
+      return result.rows;
+    },
+
+    /**
+     * Get members by role for voting calculations
+     */
+    getMembersByRole: async (familyFederationId: string, role: string) => {
+      const result = await pool.query(
+        `
+        SELECT fm.*
+        FROM family_members fm
+        WHERE fm.family_federation_id = $1 
+          AND fm.family_role = $2 
+          AND fm.is_active = true
+        ORDER BY fm.voting_power DESC
+      `,
+        [familyFederationId, role]
       );
       return result.rows;
     },
   },
 
   /**
-   * Lightning address operations
+   * Lightning address operations (Privacy-First - stored in user_identities)
    */
   lightningAddresses: {
     /**
-     * Create lightning address
+     * Update hashed lightning address in user identity
      */
-    create: async (data: {
-      user_id: string;
-      address: string;
-      btcpay_store_id?: string;
-      voltage_node_id?: string;
-      active?: boolean;
+    updateHashedAddress: async (data: {
+      user_duid: string;
+      hashed_lightning_address: string;
+      encrypted_config?: object;
     }) => {
+      // Update privacy settings with Lightning config
+      const privacyUpdate = data.encrypted_config
+        ? { lightning_config: data.encrypted_config }
+        : {};
+
       const result = await pool.query(
         `
-        INSERT INTO lightning_addresses (user_id, address, btcpay_store_id, voltage_node_id, active)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
+        UPDATE user_identities 
+        SET hashed_lightning_address = $2, 
+            privacy_settings = privacy_settings || $3::jsonb,
+            updated_at = NOW()
+        WHERE id = $1 AND is_active = true
+        RETURNING id, hashed_lightning_address, privacy_settings
       `,
         [
-          data.user_id,
-          data.address,
-          data.btcpay_store_id,
-          data.voltage_node_id,
-          data.active ?? true,
+          data.user_duid,
+          data.hashed_lightning_address,
+          JSON.stringify(privacyUpdate),
         ]
       );
       return result.rows[0];
     },
 
     /**
-     * Get lightning addresses for user
+     * Get hashed lightning address for user by DUID
      */
-    getByUserId: async (userId: string) => {
+    getByUserDuid: async (userDuid: string) => {
       const result = await pool.query(
-        "SELECT * FROM lightning_addresses WHERE user_id = $1 ORDER BY created_at",
-        [userId]
+        "SELECT id, hashed_lightning_address, privacy_settings FROM user_identities WHERE id = $1 AND is_active = true AND hashed_lightning_address IS NOT NULL",
+        [userDuid]
       );
-      return result.rows;
+      return result.rows[0];
     },
 
     /**
-     * Get active lightning address for user
+     * Get Lightning configuration from privacy settings
      */
-    getActiveByUserId: async (userId: string) => {
+    getLightningConfig: async (userDuid: string) => {
       const result = await pool.query(
-        "SELECT * FROM lightning_addresses WHERE user_id = $1 AND active = true LIMIT 1",
-        [userId]
+        "SELECT privacy_settings->'lightning_config' as lightning_config FROM user_identities WHERE id = $1 AND is_active = true",
+        [userDuid]
       );
-      return result.rows[0];
+      return result.rows[0]?.lightning_config || null;
     },
   },
 

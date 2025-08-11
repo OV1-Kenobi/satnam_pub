@@ -9,7 +9,7 @@
 
 import { AlertTriangle, Lock, MessageCircle, Send, Shield, X } from 'lucide-react';
 import { useState } from 'react';
-import { usePrivacyFirstAuth } from '../hooks/usePrivacyFirstAuth';
+import { useAuth } from './auth/AuthProvider';
 
 interface PrivacyFirstMessagingProps {
   isOpen: boolean;
@@ -36,7 +36,7 @@ export function PrivacyFirstMessaging({
   recipient,
   isGroup = false
 }: PrivacyFirstMessagingProps) {
-  const privacyAuth = usePrivacyFirstAuth();
+  const privacyAuth = useAuth();
   const [message, setMessage] = useState('');
   const [privacyLevel, setPrivacyLevel] = useState<MessagePrivacyLevel>('enhanced');
   const [scheduledDelivery, setScheduledDelivery] = useState<number | undefined>();
@@ -121,7 +121,7 @@ export function PrivacyFirstMessaging({
 
       setSuccess(`Message sent with ${privacyLevel} privacy protection!`);
       setMessage('');
-      
+
       setTimeout(() => {
         onClose();
         setSuccess(null);
@@ -139,7 +139,7 @@ export function PrivacyFirstMessaging({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      
+
       <div className="relative w-full max-w-2xl max-h-[90vh] bg-gradient-to-br from-purple-900 via-purple-800 to-purple-900 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="bg-white/10 backdrop-blur-sm border-b border-white/20 p-6">
@@ -199,11 +199,10 @@ export function PrivacyFirstMessaging({
                 <button
                   key={level.level}
                   onClick={() => setPrivacyLevel(level.level)}
-                  className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${
-                    privacyLevel === level.level
-                      ? 'border-purple-400 bg-purple-500/20'
-                      : 'border-white/20 bg-white/5 hover:bg-white/10'
-                  }`}
+                  className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${privacyLevel === level.level
+                    ? 'border-purple-400 bg-purple-500/20'
+                    : 'border-white/20 bg-white/5 hover:bg-white/10'
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-semibold text-white">{level.name} Privacy</h4>
@@ -278,7 +277,7 @@ export function PrivacyFirstMessaging({
             <div className="mb-6 p-4 bg-white/5 border border-white/20 rounded-lg">
               <h4 className="font-semibold text-white mb-2">Recipient</h4>
               <p className="text-purple-200 text-sm">
-                {recipient.displayName || 'Anonymous User'} 
+                {recipient.displayName || 'Anonymous User'}
                 <span className="text-xs text-purple-400 ml-2">
                   (Hash: {recipient.hashedUUID.substring(0, 12)}...)
                 </span>

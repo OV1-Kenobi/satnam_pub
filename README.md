@@ -529,7 +529,34 @@ Satnam.pub implements a zero-knowledge security model where:
 - **FROST Zero-Knowledge Nsec** - Advanced threshold cryptography ensuring no complete private key ever exists
 - **Hybrid SSS/FROST Architecture** - Browser-compatible threshold signatures with ephemeral key generation
 - **Cryptographic Memory Wiping** - Sensitive data is securely cleared from memory after use
+
+### 🔑 **Secure DUID Architecture**
+
+Satnam.pub implements a two-phase secure Deterministic User ID (DUID) system:
+
+**Phase 1: Client-Side Public Generation**
+
+- `duid_public = SHA-256("DUIDv1" + npub)`
+- Stable across password changes (npub-only derivation)
+- No client-side secrets required
+- Privacy-preserving deterministic identifier
+
+**Phase 2: Server-Side Secret Indexing**
+
+- `duid_index = HMAC-SHA-256(server_secret, duid_public)`
+- Prevents enumeration attacks
+- Maintains O(1) authentication performance
+- Server-only secret never exposed to client
+
+**Security Benefits:**
+
+- ✅ **No Client Secrets**: All cryptographic secrets remain server-side
+- ✅ **Stable Identifiers**: DUIDs survive password changes
+- ✅ **Enumeration Resistant**: Unpredictable database keys
+- ✅ **Performance Optimized**: Constant-time authentication
+
   In the pipeline:
+
 - **zk-SNARKs** for transaction verification without revealing amounts or participants
 - **Bulletproofs** for range proofs to verify transaction validity without exposing values
 - **zk-STARKs** for scalable, transparent verification of complex operations

@@ -5,11 +5,21 @@
 
 export class PrivacyManager {
   static createAuthHash(pubkey: string): string;
+  static constantTimeCompare(a: string, b: string): boolean;
   static decryptUserData(encryptedData: string, userKey: string): Promise<any>;
   static generateAnonymousUsername(): string;
-  static validateUsernameFormat(username: string): { valid: boolean; error?: string };
+  static validateUsernameFormat(username: string): {
+    valid: boolean;
+    error?: string;
+  };
   static encryptUserData(data: any, key: string): Promise<string>;
-  static encryptPrivateKey(privateKey: string, password: string): Promise<string>;
+  static encryptPrivateKey(
+    privateKey: string,
+    password: string
+  ): Promise<string>;
   static encryptServiceConfig(config: any, key: string): Promise<string>;
-  static decryptPrivateKey(encryptedKey: string, password: string): Promise<string>;
+  static decryptPrivateKey(
+    encryptedKey: string,
+    password: string
+  ): Promise<string>;
 }

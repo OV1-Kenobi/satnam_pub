@@ -1,23 +1,28 @@
 #!/usr/bin/env tsx
 /**
- * VAULT-BASED DATABASE SCHEMA UPDATE
- * Retrieves service role key from Supabase Vault and executes schema updates
- * CRITICAL: Automated execution with proper vault access patterns
+ * VAULT SCHEMA UPDATE - SECURITY NOTICE
+ * This script requires manual execution in Supabase SQL Editor
+ * Service role keys should never be retrieved programmatically
  */
 
-import { createClient } from '@supabase/supabase-js';
-import { config } from 'dotenv';
-
-// Load environment variables
-config({ path: '.env' });
-config({ path: '.env.local' });
-
-// Supabase configuration
-const supabaseUrl = 'https://rhfqfftkizyengcuhuvq.supabase.co';
-const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
-
-if (!anonKey) {
-  console.error('❌ CRITICAL: VITE_SUPABASE_ANON_KEY not found');
+// Security: Admin scripts should not programmatically access service role keys
+console.error('❌ SECURITY NOTICE: This script contains DDL operations that require service role privileges.');
+console.error('');
+console.error('🔒 SECURE EXECUTION REQUIRED:');
+console.error('   1. Copy the SQL content from this script');
+console.error('   2. Execute it manually in Supabase SQL Editor');
+console.error('   3. Use your admin dashboard access, not programmatic service role keys');
+console.error('');
+console.error('🚫 REASON: Service role keys should never be retrieved programmatically');
+console.error('   in application code, even for admin scripts. This prevents');
+console.error('   accidental exposure and follows security best practices.');
+console.error('');
+console.error('📋 MANUAL STEPS:');
+console.error('   1. Log into Supabase Dashboard');
+console.error('   2. Navigate to SQL Editor');
+console.error('   3. Copy/paste the vault schema update SQL');
+console.error('   4. Execute with your admin privileges');
+process.exit(1);
   process.exit(1);
 }
 

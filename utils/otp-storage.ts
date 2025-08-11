@@ -137,14 +137,14 @@ function extractDomain(identifier: string): string | undefined {
     return undefined;
   }
 
-  // Validate NIP-05 format with proper regex
+  // Validate NIP-05 format with proper regex (local-part must be lowercase)
   // Pattern breakdown:
   // ^[a-zA-Z0-9._-]+  - Username: alphanumeric, dots, underscores, hyphens (at least 1 char)
   // @                 - Exactly one @ symbol
   // [a-zA-Z0-9.-]+    - Domain name: alphanumeric, dots, hyphens (at least 1 char)
   // \.                - Literal dot before TLD
   // [a-zA-Z]{2,}$     - TLD: at least 2 alphabetic characters
-  const nip05Regex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const nip05Regex = /^[a-z0-9._-]+@[A-Za-z0-9.-]+\.[a-zA-Z]{2,}$/;
 
   if (!nip05Regex.test(trimmedIdentifier)) {
     return undefined;

@@ -50,8 +50,8 @@ CREATE TABLE wot_mentor_notarizations (
     verification_notes TEXT,
     verification_level VARCHAR(20) NOT NULL DEFAULT 'basic' CHECK (verification_level IN ('basic', 'intermediate', 'advanced')),
     competency_verified TEXT[], -- Specific competencies verified
-    vice_principle_pubkey VARCHAR(64),
-    vice_principle_signature TEXT,
+    vice_principal_pubkey VARCHAR(64),
+    vice_principal_signature TEXT,
     institutional_verification BOOLEAN NOT NULL DEFAULT false,
     institutional_verification_date TIMESTAMP WITH TIME ZONE,
     block_timestamp BIGINT, -- Bitcoin block timestamp

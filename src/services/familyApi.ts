@@ -1,7 +1,6 @@
 // Family API Service (Privacy-Enhanced)
 // File: src/services/familyApi.ts
 
-// Use relative paths for Bolt.new compatibility
 const API_BASE = "";
 
 // Legacy interface for backward compatibility

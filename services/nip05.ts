@@ -15,7 +15,7 @@ interface Nip05Record {
 export async function createNip05Record(
   name: string,
   pubkey: string,
-  userId: string,
+  userId: string
 ): Promise<Nip05Record> {
   try {
     // Insert new record directly, relying on DB uniqueness constraint
@@ -23,7 +23,7 @@ export async function createNip05Record(
       `INSERT INTO nip05_records (name, pubkey, user_id, created_at, updated_at) 
        VALUES ($1, $2, $3, NOW(), NOW()) 
        RETURNING id, name, pubkey, user_id as "userId", created_at as "createdAt", updated_at as "updatedAt"`,
-      [name, pubkey, userId],
+      [name, pubkey, userId]
     );
 
     return result.rows[0];
@@ -37,28 +37,42 @@ export async function createNip05Record(
 }
 
 /**
- * Get NIP-05 verification record by name
+ * Get NIP-05 verification record by name (Privacy-First)
  */
 export async function getNip05RecordByName(
-  name: string,
+  name: string
 ): Promise<Nip05Record | null> {
   const result = await db.query(
-    'SELECT id, name, pubkey, user_id as "userId", created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE name = $1',
-    [name],
+    'SELECT id, name, pubkey, name_duid, pubkey_duid, domain, is_active, created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE name = $1 AND is_active = true',
+    [name]
   );
 
   return result.rows.length > 0 ? result.rows[0] : null;
 }
 
 /**
- * Get all NIP-05 verification records for a user
+ * Get NIP-05 verification record by DUID (Privacy-First)
  */
-export async function getNip05RecordsByUserId(
-  userId: string,
+export async function getNip05RecordByDuid(
+  nameDuid: string
+): Promise<Nip05Record | null> {
+  const result = await db.query(
+    'SELECT id, name, pubkey, name_duid, pubkey_duid, domain, is_active, created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE name_duid = $1 AND is_active = true',
+    [nameDuid]
+  );
+
+  return result.rows.length > 0 ? result.rows[0] : null;
+}
+
+/**
+ * Get all NIP-05 verification records for a domain (Privacy-First)
+ */
+export async function getNip05RecordsByDomain(
+  domain: string = "satnam.pub"
 ): Promise<Nip05Record[]> {
   const result = await db.query(
-    'SELECT id, name, pubkey, user_id as "userId", created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE user_id = $1',
-    [userId],
+    'SELECT id, name, pubkey, name_duid, pubkey_duid, domain, is_active, created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE domain = $1 AND is_active = true',
+    [domain]
   );
 
   return result.rows;
@@ -69,7 +83,7 @@ export async function getNip05RecordsByUserId(
  */
 export async function updateNip05Record(
   id: string,
-  data: { name?: string; pubkey?: string },
+  data: { name?: string; pubkey?: string }
 ): Promise<Nip05Record> {
   const { name, pubkey } = data;
 
@@ -125,13 +139,16 @@ export async function deleteNip05Record(id: string): Promise<void> {
 }
 
 /**
- * Generate NIP-05 verification JSON for the domain
+ * Generate NIP-05 verification JSON for the domain (Privacy-First)
  * This is the JSON that will be served at /.well-known/nostr.json
  */
 export async function generateNip05Json(): Promise<{
   names: Record<string, string>;
 }> {
-  const result = await db.query("SELECT name, pubkey FROM nip05_records", []);
+  const result = await db.query(
+    "SELECT name, pubkey FROM nip05_records WHERE is_active = true",
+    []
+  );
 
   const names: Record<string, string> = {};
 

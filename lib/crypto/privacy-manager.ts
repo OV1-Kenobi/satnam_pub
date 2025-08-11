@@ -3,13 +3,13 @@
  * MASTER CONTEXT COMPLIANCE: Privacy-first architecture with enhanced type safety
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // Types for privacy management
 export interface PrivacyConfig {
   encryptionEnabled: boolean;
   dataRetentionDays: number;
-  anonymizationLevel: 'basic' | 'enhanced' | 'maximum';
+  anonymizationLevel: "basic" | "enhanced" | "maximum";
   auditLogging: boolean;
 }
 
@@ -29,7 +29,11 @@ export interface AnonymizedUser {
 }
 
 export interface PrivacyAudit {
-  eventType: 'data_access' | 'data_encryption' | 'data_deletion' | 'anonymization';
+  eventType:
+    | "data_access"
+    | "data_encryption"
+    | "data_deletion"
+    | "anonymization";
   userId?: string;
   anonymousId?: string;
   timestamp: string;
@@ -57,21 +61,43 @@ export class PrivacyManager {
   }
 
   /**
+   * Constant-time string comparison to prevent timing attacks
+   * SECURITY: Prevents information leakage through timing differences
+   * @param {string} a - First string to compare
+   * @param {string} b - Second string to compare
+   * @returns {Promise<boolean>} - True if strings match, false otherwise
+   */
+  static constantTimeCompare(a: string, b: string): boolean {
+    // Ensure we always compare the same number of characters
+    const maxLength = Math.max(a.length, b.length);
+    let result = a.length ^ b.length; // Include length difference in result
+    for (let i = 0; i < maxLength; i++) {
+      const aChar = i < a.length ? a.charCodeAt(i) : 0;
+      const bChar = i < b.length ? b.charCodeAt(i) : 0;
+      result |= aChar ^ bChar;
+    }
+    return result === 0;
+  }
+
+  /**
    * Decrypt user data with proper key management
    */
-  static async decryptUserData(encryptedData: string, userKey: string): Promise<any> {
+  static async decryptUserData(
+    encryptedData: string,
+    userKey: string
+  ): Promise<any> {
     try {
       // Use Web Crypto API for decryption
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
-      
+
       // Import the user key
       const keyMaterial = await crypto.subtle.importKey(
-        'raw',
+        "raw",
         encoder.encode(userKey),
-        { name: 'PBKDF2' },
+        { name: "PBKDF2" },
         false,
-        ['deriveBits', 'deriveKey']
+        ["deriveBits", "deriveKey"]
       );
 
       // For simplicity, we'll use base64 decoding
@@ -79,8 +105,8 @@ export class PrivacyManager {
       const decryptedData = atob(encryptedData);
       return JSON.parse(decryptedData);
     } catch (error) {
-      console.error('Error decrypting user data:', error);
-      throw new Error('Decryption failed');
+      console.error("Error decrypting user data:", error);
+      throw new Error("Decryption failed");
     }
   }
 
@@ -88,40 +114,68 @@ export class PrivacyManager {
    * Generate anonymous username for privacy
    */
   static generateAnonymousUsername(): string {
-    const adjectives = ['Swift', 'Bright', 'Calm', 'Bold', 'Wise', 'Kind', 'Pure', 'Free'];
-    const nouns = ['Eagle', 'River', 'Mountain', 'Star', 'Ocean', 'Forest', 'Dawn', 'Storm'];
-    
+    const adjectives = [
+      "Swift",
+      "Bright",
+      "Calm",
+      "Bold",
+      "Wise",
+      "Kind",
+      "Pure",
+      "Free",
+    ];
+    const nouns = [
+      "Eagle",
+      "River",
+      "Mountain",
+      "Star",
+      "Ocean",
+      "Forest",
+      "Dawn",
+      "Storm",
+    ];
+
     const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
     const noun = nouns[Math.floor(Math.random() * nouns.length)];
     const number = Math.floor(Math.random() * 1000);
-    
+
     return `${adjective}${noun}${number}`;
   }
 
   /**
    * Validate username format for privacy compliance
    */
-  static validateUsernameFormat(username: string): { valid: boolean; error?: string } {
+  static validateUsernameFormat(username: string): {
+    valid: boolean;
+    error?: string;
+  } {
     // Check length
     if (username.length < 3 || username.length > 20) {
-      return { valid: false, error: 'Username must be between 3 and 20 characters' };
+      return {
+        valid: false,
+        error: "Username must be between 3 and 20 characters",
+      };
     }
 
     // Check for allowed characters only
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-      return { valid: false, error: 'Username can only contain letters, numbers, underscores, and hyphens' };
+      return {
+        valid: false,
+        error:
+          "Username can only contain letters, numbers, underscores, and hyphens",
+      };
     }
 
     // Check for privacy-violating patterns
     const forbiddenPatterns = [
       /^(admin|root|system|test)/i,
       /\d{4,}/, // Long sequences of numbers (could be dates, SSNs, etc.)
-      /(email|phone|address)/i
+      /(email|phone|address)/i,
     ];
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(username)) {
-        return { valid: false, error: 'Username contains forbidden patterns' };
+        return { valid: false, error: "Username contains forbidden patterns" };
       }
     }
 
@@ -135,42 +189,44 @@ export class PrivacyManager {
     try {
       const jsonData = JSON.stringify(data);
       const encoder = new TextEncoder();
-      
+
       // Generate salt
       const salt = crypto.getRandomValues(new Uint8Array(16));
-      
+
       // Create key from userId and salt
       const keyMaterial = await crypto.subtle.importKey(
-        'raw',
+        "raw",
         encoder.encode(userId),
-        { name: 'PBKDF2' },
+        { name: "PBKDF2" },
         false,
-        ['deriveBits', 'deriveKey']
+        ["deriveBits", "deriveKey"]
       );
 
       const key = await crypto.subtle.deriveKey(
         {
-          name: 'PBKDF2',
+          name: "PBKDF2",
           salt: salt,
           iterations: 100000,
-          hash: 'SHA-256'
+          hash: "SHA-256",
         },
         keyMaterial,
-        { name: 'AES-GCM', length: 256 },
+        { name: "AES-GCM", length: 256 },
         true,
-        ['encrypt', 'decrypt']
+        ["encrypt", "decrypt"]
       );
 
       // Encrypt the data
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv },
+        { name: "AES-GCM", iv: iv },
         key,
         encoder.encode(jsonData)
       );
 
       // Combine salt, iv, and encrypted data
-      const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+      const combined = new Uint8Array(
+        salt.length + iv.length + encrypted.byteLength
+      );
       combined.set(salt);
       combined.set(iv, salt.length);
       combined.set(new Uint8Array(encrypted), salt.length + iv.length);
@@ -178,48 +234,53 @@ export class PrivacyManager {
       const encryptedData: EncryptedData = {
         data: btoa(String.fromCharCode(...combined)),
         salt: btoa(String.fromCharCode(...salt)),
-        algorithm: 'AES-GCM',
+        algorithm: "AES-GCM",
         keyId: await this.generateKeyId(userId),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
       // Log privacy audit if enabled
       if (this.config.auditLogging) {
         await this.logPrivacyEvent({
-          eventType: 'data_encryption',
+          eventType: "data_encryption",
           userId,
           timestamp: new Date().toISOString(),
-          details: { algorithm: 'AES-GCM', dataSize: jsonData.length }
+          details: { algorithm: "AES-GCM", dataSize: jsonData.length },
         });
       }
 
       return encryptedData;
     } catch (error) {
-      console.error('Error encrypting user data:', error);
-      throw new Error('Encryption failed');
+      console.error("Error encrypting user data:", error);
+      throw new Error("Encryption failed");
     }
   }
 
   /**
    * Create anonymized user record
    */
-  async anonymizeUser(userId: string, identifiers: string[]): Promise<AnonymizedUser> {
+  async anonymizeUser(
+    userId: string,
+    identifiers: string[]
+  ): Promise<AnonymizedUser> {
     try {
       const anonymousId = await this.generateAnonymousId();
       const hashedIdentifiers = await Promise.all(
-        identifiers.map(id => this.hashIdentifier(id))
+        identifiers.map((id) => this.hashIdentifier(id))
       );
 
       const anonymizedUser: AnonymizedUser = {
         anonymousId,
         hashedIdentifiers,
         createdAt: new Date().toISOString(),
-        retentionExpiry: new Date(Date.now() + (this.config.dataRetentionDays * 24 * 60 * 60 * 1000)).toISOString()
+        retentionExpiry: new Date(
+          Date.now() + this.config.dataRetentionDays * 24 * 60 * 60 * 1000
+        ).toISOString(),
       };
 
       // Store anonymized record
       const { error } = await this.supabase
-        .from('anonymized_users')
+        .from("anonymized_users")
         .insert([anonymizedUser]);
 
       if (error) {
@@ -229,18 +290,21 @@ export class PrivacyManager {
       // Log privacy audit
       if (this.config.auditLogging) {
         await this.logPrivacyEvent({
-          eventType: 'anonymization',
+          eventType: "anonymization",
           userId,
           anonymousId,
           timestamp: new Date().toISOString(),
-          details: { identifierCount: identifiers.length, retentionDays: this.config.dataRetentionDays }
+          details: {
+            identifierCount: identifiers.length,
+            retentionDays: this.config.dataRetentionDays,
+          },
         });
       }
 
       return anonymizedUser;
     } catch (error) {
-      console.error('Error anonymizing user:', error);
-      throw new Error('Anonymization failed');
+      console.error("Error anonymizing user:", error);
+      throw new Error("Anonymization failed");
     }
   }
 
@@ -250,13 +314,18 @@ export class PrivacyManager {
   async secureDelete(userId: string): Promise<boolean> {
     try {
       // Delete from all relevant tables
-      const tables = ['user_identities', 'user_sessions', 'user_credentials', 'otp_codes'];
-      
+      const tables = [
+        "user_identities",
+        "user_sessions",
+        "user_credentials",
+        "otp_codes",
+      ];
+
       for (const table of tables) {
         const { error } = await this.supabase
           .from(table)
           .delete()
-          .eq('user_id', userId);
+          .eq("user_id", userId);
 
         if (error) {
           console.error(`Error deleting from ${table}:`, error);
@@ -266,16 +335,16 @@ export class PrivacyManager {
       // Log privacy audit
       if (this.config.auditLogging) {
         await this.logPrivacyEvent({
-          eventType: 'data_deletion',
+          eventType: "data_deletion",
           userId,
           timestamp: new Date().toISOString(),
-          details: { deletionType: 'secure_delete', tablesAffected: tables }
+          details: { deletionType: "secure_delete", tablesAffected: tables },
         });
       }
 
       return true;
     } catch (error) {
-      console.error('Error in secure delete:', error);
+      console.error("Error in secure delete:", error);
       return false;
     }
   }
@@ -286,9 +355,15 @@ export class PrivacyManager {
   private async generateKeyId(userId: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(userId + Date.now());
-    const hash = await crypto.subtle.digest('SHA-256', data);
+    const hash = await crypto.subtle.digest("SHA-256", data);
     const hashArray = Array.from(new Uint8Array(hash));
-    return 'key_' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    return (
+      "key_" +
+      hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+        .slice(0, 16)
+    );
   }
 
   /**
@@ -296,7 +371,12 @@ export class PrivacyManager {
    */
   private async generateAnonymousId(): Promise<string> {
     const randomBytes = crypto.getRandomValues(new Uint8Array(16));
-    return 'anon_' + Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    return (
+      "anon_" +
+      Array.from(randomBytes, (byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join("")
+    );
   }
 
   /**
@@ -305,9 +385,9 @@ export class PrivacyManager {
   private async hashIdentifier(identifier: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(identifier);
-    const hash = await crypto.subtle.digest('SHA-256', data);
+    const hash = await crypto.subtle.digest("SHA-256", data);
     const hashArray = Array.from(new Uint8Array(hash));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   /**
@@ -315,11 +395,9 @@ export class PrivacyManager {
    */
   private async logPrivacyEvent(event: PrivacyAudit): Promise<void> {
     try {
-      await this.supabase
-        .from('privacy_audit_log')
-        .insert([event]);
+      await this.supabase.from("privacy_audit_log").insert([event]);
     } catch (error) {
-      console.error('Error logging privacy event:', error);
+      console.error("Error logging privacy event:", error);
     }
   }
 }
@@ -328,21 +406,26 @@ export class PrivacyManager {
 export function generatePrivacySalt(): string {
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
-  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
 }
 
-export async function hashWithPrivacySalt(data: string, salt: string): Promise<string> {
+export async function hashWithPrivacySalt(
+  data: string,
+  salt: string
+): Promise<string> {
   const encoder = new TextEncoder();
   const dataToHash = encoder.encode(data + salt);
-  const hash = await crypto.subtle.digest('SHA-256', dataToHash);
+  const hash = await crypto.subtle.digest("SHA-256", dataToHash);
   const hashArray = Array.from(new Uint8Array(hash));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // Default privacy configuration
 export const defaultPrivacyConfig: PrivacyConfig = {
   encryptionEnabled: true,
   dataRetentionDays: 90,
-  anonymizationLevel: 'enhanced',
-  auditLogging: true
+  anonymizationLevel: "enhanced",
+  auditLogging: true,
 };

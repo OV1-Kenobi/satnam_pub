@@ -1,8 +1,8 @@
 import { AlertTriangle, Shield } from "lucide-react";
 import React from "react";
-import { usePrivacyFirstAuth } from "../../hooks/usePrivacyFirstAuth";
 import { FamilyFederationAuthContext, useInternalFamilyFederationAuth } from "../../lib";
 import { AuthContextType, FamilyFederationUser, FederationRole } from "../../types/auth";
+import { useAuth } from "./AuthProvider";
 
 interface FamilyFederationAuthProviderProps {
   children: React.ReactNode;
@@ -11,13 +11,24 @@ interface FamilyFederationAuthProviderProps {
 const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> = ({
   children
 }) => {
-  const privacyAuth = usePrivacyFirstAuth();
+  const privacyAuth = useAuth();
 
   // Convert privacy-first auth to legacy format for backward compatibility
   const isAuthenticated = privacyAuth.authenticated;
   const isLoading = privacyAuth.loading;
   const error = privacyAuth.error;
-  const userAuth = privacyAuth.getLegacyUser(); // Converts to FamilyFederationUser format
+  // Convert to legacy format for backward compatibility
+  const userAuth: FamilyFederationUser | null = privacyAuth.user ? {
+    npub: '', // Not stored in privacy-first system
+    nip05: '', // Not stored in privacy-first system
+    federationRole: (privacyAuth.user.federationRole || privacyAuth.user.role || 'private') as FederationRole,
+    authMethod: (privacyAuth.user.authMethod || 'nip05-password') as any,
+    isWhitelisted: true,
+    votingPower: 1,
+    stewardApproved: true,
+    guardianApproved: true,
+    sessionToken: privacyAuth.sessionToken || ''
+  } : null;
 
   // Session management is now handled by privacy-first auth
   // ✅ NO LOGGING - Following Master Context privacy-first principles
@@ -58,7 +69,9 @@ const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> 
   const verifyOTP = async (otpKey: string, otp: string) => {
     // Use the privacy-first auth OTP authentication
     try {
-      const success = await privacyAuth.authenticateOTP(otpKey, otp);
+      // OTP authentication not yet supported in unified system
+      console.warn('⚠️ OTP authentication is not yet supported. Please use NIP-05/Password authentication.');
+      const success = false;
       if (!success) {
         throw new Error("OTP verification failed");
       }

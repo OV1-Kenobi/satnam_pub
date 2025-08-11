@@ -8,8 +8,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 import {
-    DEFAULT_UNIFIED_CONFIG,
-    UnifiedMessagingService,
+  DEFAULT_UNIFIED_CONFIG,
+  UnifiedMessagingService,
 } from "../../lib/unified-messaging-service.js";
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { decryptNsec } from "../../src/lib/privacy/encryption.js";
@@ -191,30 +191,61 @@ const getUnifiedMessagingConfig = () => ({
 
 /**
  * CRITICAL SECURITY: Initialize unified messaging service with zero-knowledge Nsec handling
- * @param {string} userNsec - User's private key
+ * Supports both traditional nsec and NIP-07 browser extension authentication
+ * @param {string} userNsecOrMarker - User's private key or 'nip07' marker
  * @param {string} operationId - Operation ID for logging
+ * @param {Object} user - User object (required for NIP-07 authentication)
  * @returns {Promise<UnifiedMessagingService>} Initialized messaging service
  */
-const initializeUnifiedMessaging = async (userNsec, operationId) => {
+const initializeUnifiedMessaging = async (userNsecOrMarker, operationId, user = null) => {
   try {
     const config = getUnifiedMessagingConfig();
     const messagingService = new UnifiedMessagingService(config);
 
-    // CRITICAL SECURITY: Initialize session with privacy-first approach
-    // The initializeSession method expects a string nsec, not ArrayBuffer
-    await messagingService.initializeSession(userNsec);
+    // CRITICAL SECURITY: Handle both nsec and NIP-07 authentication
+    const isNIP07 = userNsecOrMarker === 'nip07';
 
-    // Log secure initialization
-    await logGroupMessagingOperation({
-      operation: "messaging_service_initialized",
-      details: {
-        operationId,
-        hasNsec: !!userNsec,
-        sessionInitialized: true,
-        giftWrapEnabled: config.giftWrapEnabled,
-      },
-      timestamp: new Date(),
-    });
+    if (isNIP07) {
+      // For NIP-07, we need the user's npub from the database
+      if (!user || !user.npub) {
+        throw new Error('User npub is required for NIP-07 authentication');
+      }
+
+      // Initialize session with NIP-07 parameters
+      await messagingService.initializeSession('nip07', {
+        authMethod: 'nip07',
+        npub: user.npub,
+      });
+
+      // Log NIP-07 initialization
+      await logGroupMessagingOperation({
+        operation: "nip07_messaging_service_initialized",
+        details: {
+          operationId,
+          authMethod: 'nip07',
+          hasNpub: !!user.npub,
+          sessionInitialized: true,
+          giftWrapEnabled: config.giftWrapEnabled,
+        },
+        timestamp: new Date(),
+      });
+    } else {
+      // Traditional nsec authentication
+      await messagingService.initializeSession(userNsecOrMarker);
+
+      // Log traditional initialization
+      await logGroupMessagingOperation({
+        operation: "nsec_messaging_service_initialized",
+        details: {
+          operationId,
+          authMethod: 'nsec',
+          hasNsec: !!userNsecOrMarker,
+          sessionInitialized: true,
+          giftWrapEnabled: config.giftWrapEnabled,
+        },
+        timestamp: new Date(),
+      });
+    }
 
     return messagingService;
   } catch (error) {
@@ -414,8 +445,8 @@ export const handler = async (event, context) => {
       };
     }
 
-    // Initialize unified messaging service
-    const messagingService = await initializeUnifiedMessaging(userNsec, operationId);
+    // Initialize unified messaging service with proper NIP-07 support
+    const messagingService = await initializeUnifiedMessaging(userNsec, operationId, user);
 
     // Parse request body
     const body = event.body ? JSON.parse(event.body) : {};

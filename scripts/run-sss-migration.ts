@@ -269,56 +269,34 @@ async function runSSSMigration(): Promise<void> {
     console.log("   • 5-of-7 for large Family Federated Councils");
     console.log("");
 
-    // Import config with proper error handling
-    let config: any = {};
-    try {
-      const configModule = await import("../config");
-      config =
-        configModule.config || (configModule as any).default || configModule;
-    } catch {
-      console.log(
-        "ℹ️  No config file found, using environment variables directly"
-      );
-      config = {};
-    }
-
-    // Read Supabase configuration with robust fallback
-    const supabaseUrl =
-      config?.supabase?.url ||
-      getEnvVar("SUPABASE_URL") ||
-      getEnvVar("NEXT_PUBLIC_SUPABASE_URL");
-
-    const supabaseServiceKey =
-      config?.supabase?.serviceRoleKey ||
-      getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
-      getEnvVar("SUPABASE_SERVICE_KEY");
-
-    console.log("🔧 Supabase Configuration Check:");
-    console.log(`   URL: ${supabaseUrl ? "✅ Found" : "❌ Missing"}`);
-    console.log(
-      `   Service Key: ${supabaseServiceKey ? "✅ Found" : "❌ Missing"}`
+    // Security: Admin scripts should not programmatically access service role keys
+    console.error(
+      "❌ SECURITY NOTICE: This script contains DDL operations that require service role privileges."
     );
-    console.log("");
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("❌ Missing Supabase configuration!");
-      console.error("");
-      console.error("Please set one of the following environment variables:");
-      console.error("   SUPABASE_URL (your Supabase project URL)");
-      console.error("   SUPABASE_SERVICE_ROLE_KEY (your service role key)");
-      console.error("");
-      console.error("Alternative variable names supported:");
-      console.error("   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_KEY");
-      console.error("");
-      console.error("You can set these in:");
-      console.error("   1. .env file in project root");
-      console.error("   2. .env.local file");
-      console.error("   3. System environment variables");
-      console.error("   4. config.ts file (if using config-based setup)");
-      process.exit(1);
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.error("");
+    console.error("🔒 SECURE EXECUTION REQUIRED:");
+    console.error("   1. Copy the SQL content from the migration files");
+    console.error("   2. Execute it manually in Supabase SQL Editor");
+    console.error(
+      "   3. Use your admin dashboard access, not programmatic service role keys"
+    );
+    console.error("");
+    console.error(
+      "🚫 REASON: Service role keys should never be retrieved programmatically"
+    );
+    console.error(
+      "   in application code, even for admin scripts. This prevents"
+    );
+    console.error(
+      "   accidental exposure and follows security best practices."
+    );
+    console.error("");
+    console.error("📋 MANUAL STEPS:");
+    console.error("   1. Log into Supabase Dashboard");
+    console.error("   2. Navigate to SQL Editor");
+    console.error("   3. Copy/paste the SSS migration SQL");
+    console.error("   4. Execute with your admin privileges");
+    process.exit(1);
 
     // Split SQL into individual statements
     const statements = SSS_COMPLETE_SCHEMA.split(";")

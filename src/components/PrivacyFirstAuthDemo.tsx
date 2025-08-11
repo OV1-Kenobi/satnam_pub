@@ -11,7 +11,7 @@
 
 import { AlertTriangle, Check, Key, Lock, Shield, Smartphone, Wallet, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { usePrivacyFirstAuth } from '../hooks/usePrivacyFirstAuth';
+import { useAuth } from './auth/AuthProvider';
 
 interface PrivacyFirstAuthDemoProps {
   isOpen: boolean;
@@ -31,14 +31,14 @@ export function PrivacyFirstAuthDemo({
   const [nwcString, setNwcString] = useState('');
   const [otpIdentifier, setOtpIdentifier] = useState('');
   const [otpCode, setOtpCode] = useState('');
-  const [nip07Challenge, setNip07Challenge] = useState('');
+
 
   // UI state
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const privacyAuth = usePrivacyFirstAuth();
+  const privacyAuth = useAuth();
 
   // Privacy level descriptions
   const privacyLevels = [
@@ -65,7 +65,7 @@ export function PrivacyFirstAuthDemo({
     }
   ];
 
-  // Handle NWC Authentication
+  // Handle NWC Authentication (placeholder - not implemented in unified auth)
   const handleNWCAuth = async () => {
     if (!nwcString.trim()) {
       setError('Please enter a valid NWC connection string');
@@ -76,15 +76,8 @@ export function PrivacyFirstAuthDemo({
     setError(null);
 
     try {
-      const success = await privacyAuth.authenticateNWC(nwcString, privacyLevel);
-
-      if (success) {
-        setSuccess('NWC authentication successful! Your identity is now protected with hashed UUIDs.');
-        onAuthSuccess?.('nwc');
-        setTimeout(() => onClose(), 2000);
-      } else {
-        setError(privacyAuth.error || 'NWC authentication failed');
-      }
+      // NWC authentication not yet implemented in unified auth system
+      setError('NWC authentication is not yet implemented in the unified auth system');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'NWC authentication failed');
     } finally {
@@ -92,7 +85,7 @@ export function PrivacyFirstAuthDemo({
     }
   };
 
-  // Handle OTP Authentication
+  // Handle OTP Authentication (placeholder - not implemented in unified auth)
   const handleOTPAuth = async () => {
     if (!otpIdentifier.trim() || !otpCode.trim()) {
       setError('Please enter both identifier and OTP code');
@@ -103,15 +96,8 @@ export function PrivacyFirstAuthDemo({
     setError(null);
 
     try {
-      const success = await privacyAuth.authenticateOTP(otpIdentifier, otpCode, privacyLevel);
-
-      if (success) {
-        setSuccess('OTP authentication successful! Your identity is secured with privacy-first protocols.');
-        onAuthSuccess?.('otp');
-        setTimeout(() => onClose(), 2000);
-      } else {
-        setError(privacyAuth.error || 'OTP authentication failed');
-      }
+      // OTP authentication not yet implemented in unified auth system
+      setError('OTP authentication is not yet implemented in the unified auth system');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'OTP authentication failed');
     } finally {
@@ -145,23 +131,9 @@ export function PrivacyFirstAuthDemo({
         pubkey
       };
 
-      // Sign the event
-      const signedEvent = await window.nostr.signEvent(event);
-
-      const success = await privacyAuth.authenticateNIP07(
-        challenge,
-        signedEvent.sig,
-        pubkey,
-        privacyLevel
-      );
-
-      if (success) {
-        setSuccess('NIP-07 authentication successful! Your browser extension identity is now privacy-protected.');
-        onAuthSuccess?.('nip07');
-        setTimeout(() => onClose(), 2000);
-      } else {
-        setError(privacyAuth.error || 'NIP-07 authentication failed');
-      }
+      // NIP-07 authentication requires password in unified auth system
+      // For now, we'll show an error since password is required
+      setError('NIP-07 authentication requires a password in the unified auth system. Please use NIP-05/Password authentication instead.');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'NIP-07 authentication failed');
     } finally {
@@ -209,8 +181,8 @@ export function PrivacyFirstAuthDemo({
                   key={level.level}
                   onClick={() => setPrivacyLevel(level.level)}
                   className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${privacyLevel === level.level
-                      ? 'border-purple-400 bg-purple-500/20'
-                      : 'border-white/20 bg-white/5 hover:bg-white/10'
+                    ? 'border-purple-400 bg-purple-500/20'
+                    : 'border-white/20 bg-white/5 hover:bg-white/10'
                     }`}
                 >
                   <div className="flex items-center justify-between mb-2">

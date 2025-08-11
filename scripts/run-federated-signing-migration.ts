@@ -1,4 +1,3 @@
-
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -6,7 +5,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -19,7 +18,6 @@ function getEnvVar(key: string): string | undefined {
  * @description Executes SQL migration for federated family nostr signing functionality
  */
 
-import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -37,25 +35,32 @@ try {
   config = {};
 }
 
-const supabaseUrl =
-  config?.supabase?.url ||
-  getEnvVar("SUPABASE_URL") ||
-  getEnvVar("NEXT_PUBLIC_SUPABASE_URL");
-
-const supabaseServiceKey =
-  config?.supabase?.serviceRoleKey ||
-  getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
-  getEnvVar("SUPABASE_SERVICE_KEY");
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error("❌ Missing Supabase configuration!");
-  console.error(
-    "Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables",
-  );
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Security: Admin scripts should not programmatically access service role keys
+console.error(
+  "❌ SECURITY NOTICE: This script contains DDL operations that require service role privileges."
+);
+console.error("");
+console.error("🔒 SECURE EXECUTION REQUIRED:");
+console.error(
+  "   1. Copy the SQL content from: scripts/create-federated-signing-tables.sql"
+);
+console.error("   2. Execute it manually in Supabase SQL Editor");
+console.error(
+  "   3. Use your admin dashboard access, not programmatic service role keys"
+);
+console.error("");
+console.error(
+  "🚫 REASON: Service role keys should never be retrieved programmatically"
+);
+console.error("   in application code, even for admin scripts. This prevents");
+console.error("   accidental exposure and follows security best practices.");
+console.error("");
+console.error("📋 MANUAL STEPS:");
+console.error("   1. Log into Supabase Dashboard");
+console.error("   2. Navigate to SQL Editor");
+console.error("   3. Copy/paste the federated signing migration SQL");
+console.error("   4. Execute with your admin privileges");
+process.exit(1);
 
 async function runMigration() {
   try {
@@ -64,7 +69,7 @@ async function runMigration() {
     // Read migration SQL file
     const migrationPath = path.join(
       __dirname,
-      "create-federated-signing-tables.sql",
+      "create-federated-signing-tables.sql"
     );
     const migrationSQL = fs.readFileSync(migrationPath, "utf8");
 
@@ -104,7 +109,7 @@ async function runMigration() {
 
           // For Supabase, we might need to use the REST API or raw SQL execution
           console.warn(
-            `⚠️  RPC execution failed, trying alternative method...`,
+            `⚠️  RPC execution failed, trying alternative method...`
           );
           console.log(`   Error: ${error.message}`);
 
@@ -151,7 +156,7 @@ async function generateMigrationInstructions() {
 
     const migrationPath = path.join(
       __dirname,
-      "create-federated-signing-tables.sql",
+      "create-federated-signing-tables.sql"
     );
     const migrationSQL = fs.readFileSync(migrationPath, "utf8");
 
@@ -160,7 +165,7 @@ async function generateMigrationInstructions() {
     console.log("=".repeat(50));
     console.log("");
     console.log(
-      "If the automatic migration fails, please run the following SQL",
+      "If the automatic migration fails, please run the following SQL"
     );
     console.log("statements manually in your Supabase SQL Editor:");
     console.log("");
@@ -169,7 +174,7 @@ async function generateMigrationInstructions() {
     console.log("```");
     console.log("");
     console.log(
-      "Or copy the SQL from: scripts/create-federated-signing-tables.sql",
+      "Or copy the SQL from: scripts/create-federated-signing-tables.sql"
     );
     console.log("");
   } catch (error) {
@@ -185,7 +190,7 @@ async function main() {
     await generateMigrationInstructions();
   } else {
     console.log(
-      "🚨 IMPORTANT: This migration will create new database tables.",
+      "🚨 IMPORTANT: This migration will create new database tables."
     );
     console.log("   If you prefer to run the migration manually:");
     console.log("   npm run migrate:federated-signing -- --manual");

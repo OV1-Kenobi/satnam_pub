@@ -27,6 +27,52 @@ export async function optimizedImport<T = any>(modulePath: string): Promise<T> {
 }
 
 /**
+ * Robust two-step dynamic import with Netlify Dev bundler fallback
+ * 1) Try relative path import
+ * 2) If it fails, resolve an absolute file:// URL from process.cwd()
+ * Includes structured logging for easier debugging in Netlify Dev
+ */
+export async function robustDynamicImport<T = any>(
+  relativeModulePath: string,
+  absolutePathSegments: string[]
+): Promise<T> {
+  // Attempt 1: relative import (works when bundler preserves relative paths)
+  try {
+    const mod = await import(relativeModulePath);
+    return mod as T;
+  } catch (e1: any) {
+    console.warn(
+      "robustDynamicImport: Primary import failed; attempting absolute resolution",
+      {
+        module: relativeModulePath,
+        message: e1 instanceof Error ? e1.message : String(e1),
+      }
+    );
+
+    // Attempt 2: absolute file URL import (works around Netlify Dev duplicate path bug)
+    try {
+      const path = await import("node:path");
+      const url = await import("node:url");
+      const absPath = path.resolve(process.cwd(), ...absolutePathSegments);
+      const fileUrl = url.pathToFileURL(absPath).href;
+      const mod = await import(fileUrl);
+      return mod as T;
+    } catch (e2: any) {
+      console.error("robustDynamicImport: Fallback import failed", {
+        relative: relativeModulePath,
+        absoluteSegments: absolutePathSegments,
+        message: e2 instanceof Error ? e2.message : String(e2),
+      });
+      throw new Error(
+        `robustDynamicImport: Cannot load module '${relativeModulePath}'; fallback to ${absolutePathSegments.join(
+          "/"
+        )}: ` + (e2 instanceof Error ? e2.message : "Unknown error")
+      );
+    }
+  }
+}
+
+/**
  * Clear module cache to free memory
  * MEMORY OPTIMIZATION: Manual memory management
  */
@@ -43,15 +89,15 @@ export function getMemoryStats(): {
   total: number;
   percentage: number;
 } {
-  if (typeof process !== 'undefined' && process.memoryUsage) {
+  if (typeof process !== "undefined" && process.memoryUsage) {
     const usage = process.memoryUsage();
     return {
       used: Math.round(usage.heapUsed / 1024 / 1024), // MB
       total: Math.round(usage.heapTotal / 1024 / 1024), // MB
-      percentage: Math.round((usage.heapUsed / usage.heapTotal) * 100)
+      percentage: Math.round((usage.heapUsed / usage.heapTotal) * 100),
     };
   }
-  
+
   return { used: 0, total: 0, percentage: 0 };
 }
 
@@ -76,44 +122,44 @@ export class LazyLoader {
    * Load Supabase client
    */
   async getSupabase() {
-    if (!this.loadedModules.has('supabase')) {
-      const module = await optimizedImport('../supabase.js');
-      this.loadedModules.set('supabase', module.supabase);
+    if (!this.loadedModules.has("supabase")) {
+      const module = await optimizedImport("../supabase.js");
+      this.loadedModules.set("supabase", module.supabase);
     }
-    return this.loadedModules.get('supabase');
+    return this.loadedModules.get("supabase");
   }
 
   /**
    * Load security utilities
    */
   async getSecurity() {
-    if (!this.loadedModules.has('security')) {
-      const module = await optimizedImport('../../security.js');
-      this.loadedModules.set('security', module);
+    if (!this.loadedModules.has("security")) {
+      const module = await optimizedImport("../../security.js");
+      this.loadedModules.set("security", module);
     }
-    return this.loadedModules.get('security');
+    return this.loadedModules.get("security");
   }
 
   /**
    * Load Nostr utilities
    */
   async getNostr() {
-    if (!this.loadedModules.has('nostr')) {
-      const module = await optimizedImport('../../../src/lib/nostr-browser.js');
-      this.loadedModules.set('nostr', module);
+    if (!this.loadedModules.has("nostr")) {
+      const module = await optimizedImport("../../../src/lib/nostr-browser.js");
+      this.loadedModules.set("nostr", module);
     }
-    return this.loadedModules.get('nostr');
+    return this.loadedModules.get("nostr");
   }
 
   /**
    * Load environment utilities
    */
   async getEnv() {
-    if (!this.loadedModules.has('env')) {
-      const module = await optimizedImport('./env.js');
-      this.loadedModules.set('env', module);
+    if (!this.loadedModules.has("env")) {
+      const module = await optimizedImport("./env.js");
+      this.loadedModules.set("env", module);
     }
-    return this.loadedModules.get('env');
+    return this.loadedModules.get("env");
   }
 
   /**
@@ -134,17 +180,17 @@ export function createResponse(
   headers: Record<string, string> = {}
 ) {
   const defaultHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Content-Type': 'application/json',
-    ...headers
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Content-Type": "application/json",
+    ...headers,
   };
 
   return {
     statusCode,
     headers: defaultHeaders,
-    body: typeof data === 'string' ? data : JSON.stringify(data)
+    body: typeof data === "string" ? data : JSON.stringify(data),
   };
 }
 
@@ -159,7 +205,7 @@ export function createErrorResponse(
 ) {
   return createResponse(statusCode, {
     error: message,
-    ...(details && { details })
+    ...(details && { details }),
   });
 }
 
@@ -168,8 +214,8 @@ export function createErrorResponse(
  * MEMORY OPTIMIZATION: Lightweight CORS handling
  */
 export function handleCORS(event: any) {
-  if (event.httpMethod === 'OPTIONS') {
-    return createResponse(200, '');
+  if (event.httpMethod === "OPTIONS") {
+    return createResponse(200, "");
   }
   return null;
 }
@@ -184,21 +230,31 @@ export function withMemoryMonitoring<T extends (...args: any[]) => any>(
 ): T {
   return ((...args: any[]) => {
     const startStats = getMemoryStats();
-    console.log(`[${functionName}] Memory before: ${startStats.used}MB (${startStats.percentage}%)`);
-    
+    console.log(
+      `[${functionName}] Memory before: ${startStats.used}MB (${startStats.percentage}%)`
+    );
+
     const result = fn(...args);
-    
+
     // Handle both sync and async functions
     if (result instanceof Promise) {
       return result.finally(() => {
         const endStats = getMemoryStats();
-        console.log(`[${functionName}] Memory after: ${endStats.used}MB (${endStats.percentage}%)`);
-        console.log(`[${functionName}] Memory delta: ${endStats.used - startStats.used}MB`);
+        console.log(
+          `[${functionName}] Memory after: ${endStats.used}MB (${endStats.percentage}%)`
+        );
+        console.log(
+          `[${functionName}] Memory delta: ${endStats.used - startStats.used}MB`
+        );
       });
     } else {
       const endStats = getMemoryStats();
-      console.log(`[${functionName}] Memory after: ${endStats.used}MB (${endStats.percentage}%)`);
-      console.log(`[${functionName}] Memory delta: ${endStats.used - startStats.used}MB`);
+      console.log(
+        `[${functionName}] Memory after: ${endStats.used}MB (${endStats.percentage}%)`
+      );
+      console.log(
+        `[${functionName}] Memory delta: ${endStats.used - startStats.used}MB`
+      );
       return result;
     }
   }) as T;
@@ -209,15 +265,20 @@ export function withMemoryMonitoring<T extends (...args: any[]) => any>(
  * MEMORY OPTIMIZATION: Identify heavy imports
  */
 export function analyzeBundleSize() {
-  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') {
+  if (
+    typeof process !== "undefined" &&
+    process.env.NODE_ENV === "development"
+  ) {
     const stats = getMemoryStats();
-    console.log('📊 Bundle Analysis:');
-    console.log(`Memory Usage: ${stats.used}MB / ${stats.total}MB (${stats.percentage}%)`);
+    console.log("📊 Bundle Analysis:");
+    console.log(
+      `Memory Usage: ${stats.used}MB / ${stats.total}MB (${stats.percentage}%)`
+    );
     console.log(`Module Cache Size: ${moduleCache.size} modules`);
-    
+
     // List cached modules
     if (moduleCache.size > 0) {
-      console.log('Cached Modules:');
+      console.log("Cached Modules:");
       for (const [path] of moduleCache.entries()) {
         console.log(`  - ${path}`);
       }
@@ -232,9 +293,9 @@ export function analyzeBundleSize() {
 export function cleanup() {
   // Clear any temporary caches
   clearModuleCache();
-  
+
   // Force garbage collection if available
-  if (typeof global !== 'undefined' && global.gc) {
+  if (typeof global !== "undefined" && global.gc) {
     global.gc();
   }
 }

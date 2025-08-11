@@ -18,7 +18,7 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
-import { usePrivacyFirstAuth } from "../hooks/usePrivacyFirstAuth";
+import { useAuth } from "../components/auth/AuthProvider";
 
 interface MaxPrivacyAuthProps {
   isOpen: boolean;
@@ -39,7 +39,7 @@ export function MaxPrivacyAuth({
   title = 'Privacy-Protected Authentication',
   purpose = 'Maximum privacy protection with hashed UUIDs'
 }: MaxPrivacyAuthProps) {
-  const privacyAuth = usePrivacyFirstAuth();
+  const privacyAuth = useAuth();
 
   // UI State
   const [authMethod, setAuthMethod] = useState<AuthMethod>(null);
@@ -48,14 +48,16 @@ export function MaxPrivacyAuth({
   const [success, setSuccess] = useState<string | null>(null);
 
   // Form states
-  const [nsecKey, setNsecKey] = useState("");
   const [nipOrNpub, setNipOrNpub] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [showNsec, setShowNsec] = useState(false);
   // NIP-05/Password form states
   const [nip05Username, setNip05Username] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  // NIP-07 password state
+  const [nip07Password, setNip07Password] = useState("");
+  const [showNip07Password, setShowNip07Password] = useState(false);
 
   const handleClose = () => {
     setAuthMethod(null);
@@ -74,41 +76,7 @@ export function MaxPrivacyAuth({
     }, 1500);
   };
 
-  // Nsec Authentication (Maximum Privacy with Zero-Knowledge Protocol)
-  const handleNsecAuth = async () => {
-    if (!nsecKey.trim()) {
-      setError('Please enter your Nsec private key');
-      return;
-    }
 
-    if (!nsecKey.startsWith('nsec1')) {
-      setError('Invalid Nsec format. Must start with "nsec1"');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Zero-knowledge protocol: process in memory only, immediate cleanup
-      const success = await privacyAuth.authenticateNsec(nsecKey);
-
-      // Clear Nsec from memory immediately after use
-      setNsecKey('');
-
-      if (success) {
-        handleAuthSuccess('Nsec');
-      } else {
-        setError(privacyAuth.error || 'Nsec authentication failed');
-      }
-    } catch (error) {
-      // Clear Nsec from memory on error
-      setNsecKey('');
-      setError(error instanceof Error ? error.message : 'Nsec authentication failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Send OTP
   const handleSendOTP = async () => {
@@ -121,13 +89,21 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      // Generate secure OTP using Web Crypto API
+      // Generate secure OTP using Web Crypto API with rejection sampling to eliminate modulo bias
       const generateSecureOTP = async (): Promise<string> => {
+        const max = 900000;
         const array = new Uint32Array(1);
-        crypto.getRandomValues(array);
+        let randomNum: number;
+
+        // Rejection sampling to eliminate modulo bias
+        // This ensures uniform distribution across the entire OTP range
+        do {
+          crypto.getRandomValues(array);
+          randomNum = array[0];
+        } while (randomNum >= Math.floor(2 ** 32 / max) * max);
+
         // Generate number between 100000 and 999999
-        const randomNum = array[0] % 900000 + 100000;
-        return randomNum.toString();
+        return (randomNum % max + 100000).toString();
       };
 
       // Generate OTP and session ID
@@ -188,7 +164,9 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      const success = await privacyAuth.authenticateOTP(nipOrNpub, otpCode);
+      // OTP authentication not yet supported in unified system
+      console.warn('⚠️ OTP authentication is not yet supported. Please use NIP-05/Password authentication.');
+      const success = false;
       if (success) {
         handleAuthSuccess('OTP');
       } else {
@@ -201,10 +179,15 @@ export function MaxPrivacyAuth({
     }
   };
 
-  // NIP-07 Authentication (Maximum Privacy)
+  // NIP-07 Authentication (Maximum Privacy with Password)
   const handleNIP07Auth = async () => {
     if (!window.nostr) {
       setError('NIP-07 extension not found. Please install a Nostr browser extension.');
+      return;
+    }
+
+    if (!nip07Password.trim()) {
+      setError('Password is required for maximum security and privacy protection.');
       return;
     }
 
@@ -225,7 +208,8 @@ export function MaxPrivacyAuth({
 
       const signedEvent = await window.nostr.signEvent(event);
 
-      const success = await privacyAuth.authenticateNIP07(challenge, signedEvent.sig, pubkey);
+      // Use NIP-07 with password for DUID generation (same as NIP-05/Password)
+      const success = await privacyAuth.authenticateNIP07(challenge, signedEvent.sig, pubkey, nip07Password);
 
       if (success) {
         handleAuthSuccess('NIP-07');
@@ -323,19 +307,7 @@ export function MaxPrivacyAuth({
                 </div>
               </div>
 
-              {/* Nsec Method */}
-              <button
-                onClick={() => setAuthMethod('nsec')}
-                className="w-full p-4 bg-gradient-to-r from-orange-600/20 to-orange-500/20 border border-orange-500/30 rounded-xl hover:from-orange-600/30 hover:to-orange-500/30 transition-all duration-300 text-left"
-              >
-                <div className="flex items-center space-x-4">
-                  <Key className="h-6 w-6 text-orange-400" />
-                  <div>
-                    <h4 className="font-semibold text-white">Sign in with Nsec</h4>
-                    <p className="text-orange-200 text-sm">Direct private key authentication</p>
-                  </div>
-                </div>
-              </button>
+
 
               {/* OTP Method */}
               <button
@@ -381,66 +353,7 @@ export function MaxPrivacyAuth({
             </div>
           )}
 
-          {/* Nsec Form */}
-          {authMethod === 'nsec' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Nsec Authentication</h3>
-                <button onClick={() => setAuthMethod(null)} className="text-purple-300 hover:text-white text-sm">← Back</button>
-              </div>
 
-              {/* Security Warning */}
-              <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <AlertTriangle className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-orange-200 font-semibold text-sm mb-2">Security Notice</h4>
-                    <ul className="text-orange-200/80 text-xs space-y-1">
-                      <li>• Your Nsec is processed in local memory only</li>
-                      <li>• Never stored unencrypted in databases</li>
-                      <li>• Immediately cleared after authentication</li>
-                      <li>• Only enter on trusted devices and websites</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative">
-                <input
-                  type={showNsec ? "text" : "password"}
-                  value={nsecKey}
-                  onChange={(e) => setNsecKey(e.target.value)}
-                  placeholder="nsec1..."
-                  className="w-full px-4 py-3 pr-12 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNsec(!showNsec)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-300 hover:text-white"
-                >
-                  {showNsec ? "👁️‍🗨️" : "👁️"}
-                </button>
-              </div>
-
-              <button
-                onClick={handleNsecAuth}
-                disabled={isLoading || !nsecKey.trim()}
-                className="w-full bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-              >
-                {isLoading ? (
-                  <>
-                    <RefreshCw className="h-5 w-5 animate-spin" />
-                    <span>Authenticating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Key className="h-5 w-5" />
-                    <span>Sign In with Nsec</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
 
           {/* OTP Form */}
           {authMethod === 'otp' && (

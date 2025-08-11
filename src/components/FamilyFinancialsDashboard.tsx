@@ -15,7 +15,7 @@ import {
   Shield,
   Zap
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNWCWallet } from '../hooks/useNWCWallet';
 import NWCWalletSetupModal from './NWCWalletSetupModal';
@@ -41,12 +41,30 @@ import { CreditsBalance } from './CreditsBalance';
 // Import Payment Automation System
 import { PaymentSchedule } from '../lib/payment-automation.js';
 
-// Import NWC Wallet Integration
+// Import Privacy-First Family Federation API
+import {
+  checkFamilyPermissions,
+  getFamilyFederationMembers,
+  getPendingSpendingApprovals
+} from '../services/familyFederationApi';
 
 // Import enhanced types
 
 interface FamilyFinancialsDashboardProps {
-  familyData?: any;
+  familyFederationData?: {
+    id: string;
+    federationName: string;
+    federationDuid: string;
+    domain?: string;
+    relayUrl?: string;
+    members?: Array<{
+      id: string;
+      userDuid: string;
+      familyRole: 'offspring' | 'adult' | 'steward' | 'guardian';
+      spendingApprovalRequired: boolean;
+      votingPower: number;
+    }>;
+  };
   onBack: () => void;
 }
 
@@ -241,11 +259,11 @@ const EnhancedUnifiedPayments: React.FC<UnifiedPaymentProps> = ({
 
 // Main Family Financials Dashboard Component
 export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps> = ({
-  familyData,
+  familyFederationData,
   onBack
 }) => {
   // NWC Wallet Integration Hooks
-  const { userRole } = useAuth();
+  const { userRole, userDuid } = useAuth();
   const {
     connections: nwcConnections,
     primaryConnection,
@@ -253,10 +271,19 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     isConnected: nwcConnected
   } = useNWCWallet();
 
-  // State management
+  // State management - using privacy-first federation data
   const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd'>('overview');
-  const [familyName] = useState("Nakamoto");
-  const [familyId] = useState("nakamoto_family_001");
+  const [familyName] = useState(familyFederationData?.federationName || "Family Federation");
+  const [familyFederationId] = useState(familyFederationData?.id);
+  const [federationDuid] = useState(familyFederationData?.federationDuid);
+
+  // Family member data state
+  const [familyMembers, setFamilyMembers] = useState(familyFederationData?.members || []);
+  const [userPermissions, setUserPermissions] = useState({
+    canApproveSpending: false,
+    votingPower: 0,
+    familyRole: 'offspring' as 'offspring' | 'adult' | 'steward' | 'guardian'
+  });
   const [showPrivateBalances, setShowPrivateBalances] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -283,24 +310,37 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   // Enhanced treasury state
   const [lightningBalance, setLightningBalance] = useState(5435000);
   const [fedimintBalance, setFedimintBalance] = useState(3335000);
-  const [pendingApprovals, setPendingApprovals] = useState([
-    {
-      id: 'approval_1',
-      type: 'Allowance Distribution',
-      description: 'Weekly payment for Alice and Bob',
-      amount: 25000,
-      requiredSignatures: 3,
-      currentSignatures: 1,
-    },
-    {
-      id: 'approval_2',
-      type: 'Emergency Withdrawal',
-      description: 'Emergency fund access for medical expenses',
-      amount: 100000,
-      requiredSignatures: 3,
-      currentSignatures: 2,
-    },
-  ]);
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+
+  // Load family federation data on component mount
+  useEffect(() => {
+    const loadFamilyData = async () => {
+      if (!familyFederationId || !userDuid) return;
+
+      try {
+        setRefreshing(true);
+
+        // Fetch family members
+        const members = await getFamilyFederationMembers(familyFederationId);
+        setFamilyMembers(members);
+
+        // Check user permissions
+        const permissions = await checkFamilyPermissions(familyFederationId, userDuid);
+        setUserPermissions(permissions);
+
+        // Get pending spending approvals
+        const approvals = await getPendingSpendingApprovals(familyFederationId);
+        setPendingApprovals(approvals);
+
+      } catch (error) {
+        console.error('Error loading family federation data:', error);
+      } finally {
+        setRefreshing(false);
+      }
+    };
+
+    loadFamilyData();
+  }, [familyFederationId, userDuid]);
 
   const [phoenixdStatus, setPhoenixdStatus] = useState({
     connected: true,
@@ -312,74 +352,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
   const [showEducationalDashboard, setShowEducationalDashboard] = useState(false);
 
-  // Mock family members - Family Federation Trust Architecture roles
-  const familyMembers = [
-    {
-      id: "1",
-      username: "satoshi",
-      lightningAddress: "satoshi@satnam.pub",
-      role: "adult" as const, // Adults (Beneficiaries): Full control within federation scope
-      balance: 1250000,
-      nip05Verified: true,
-      avatar: "S", // Avatar support - first letter fallback, allows for future profile photos
-      spendingLimits: {
-        daily: 100000,
-        weekly: 500000
-      }
-    },
-    {
-      id: "2",
-      username: "hal",
-      lightningAddress: "hal@satnam.pub",
-      role: "adult" as const, // Adults (Beneficiaries): Full control within federation scope
-      balance: 850000,
-      nip05Verified: true,
-      avatar: "H",
-      spendingLimits: {
-        daily: 100000,
-        weekly: 500000
-      }
-    },
-    {
-      id: "3",
-      username: "alice",
-      lightningAddress: "alice@satnam.pub",
-      role: "offspring" as const, // Offspring (Minor Beneficiaries): Controlled accounts managed by Adults
-      balance: 125000,
-      nip05Verified: false,
-      avatar: "A",
-      spendingLimits: {
-        daily: 50000,
-        weekly: 200000,
-      },
-    },
-    {
-      id: "4",
-      username: "bob",
-      lightningAddress: "bob@satnam.pub",
-      role: "offspring" as const, // Offspring (Minor Beneficiaries): Controlled accounts managed by Adults
-      balance: 75000,
-      nip05Verified: true,
-      avatar: "B",
-      spendingLimits: {
-        daily: 25000,
-        weekly: 100000,
-      },
-    },
-    {
-      id: "5",
-      username: "guardian_eve",
-      lightningAddress: "eve@satnam.pub",
-      role: "guardian" as const, // Guardians (Trust Protectors): Oversight role, can remove Stewards
-      balance: 500000,
-      nip05Verified: true,
-      avatar: "E",
-      spendingLimits: {
-        daily: 75000,
-        weekly: 300000,
-      },
-    },
-  ];
+  // Privacy-first family members data loaded from API
 
   // Handlers
   const handleUnifiedPayment = (payment: any) => {

@@ -215,11 +215,9 @@ export class FamilyGuardianManager {
       }
 
       // Generate new Nostr key pair for the family
-      const privateKeyHex = await generateSecretKey.generate();
+      const privateKeyHex = generateSecretKey();
       const nsec = nip19.nsecEncode(privateKeyHex);
-      const npub = nip19.npubEncode(
-        await getPublicKey.fromPrivateKey(privateKeyHex)
-      );
+      const npub = nip19.npubEncode(getPublicKey(privateKeyHex));
 
       // Create guardians in database
       const familyGuardians: FamilyGuardian[] = [];
@@ -361,8 +359,10 @@ export class FamilyGuardianManager {
       await this.storeFamilyConfig(familyConfig);
 
       // Clear sensitive data from memory
-      PrivacyUtils.secureClearMemory(privateKeyHex);
-      PrivacyUtils.secureClearMemory(nsec);
+      PrivacyUtils.secureClearMemory([
+        { data: privateKeyHex, type: "string" },
+        { data: nsec, type: "string" },
+      ]);
 
       return {
         success: true,

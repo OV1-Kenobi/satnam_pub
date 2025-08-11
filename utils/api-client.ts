@@ -268,52 +268,9 @@ export interface OtpVerificationData {
   otp: string;
 }
 
-/**
- * User data storage interface
- *
- * @interface UserDataStorage
- * @description Defines the structure for user data storage requests
- */
-export interface UserDataStorage {
-  /** User's Nostr public key */
-  npub: string;
-  /** User's NIP-05 identifier */
-  nip05?: string;
-  /** User profile data */
-  profile?: {
-    name?: string;
-    about?: string;
-    picture?: string;
-    banner?: string;
-    website?: string;
-    lud16?: string;
-  };
-  /** User preferences */
-  preferences?: {
-    theme?: string;
-    language?: string;
-    notifications?: boolean;
-  };
-}
-
-/**
- * User data storage response interface
- *
- * @interface UserDataStorageResponse
- * @description Defines the structure for user data storage responses
- */
-export interface UserDataStorageResponse {
-  success: boolean;
-  data?: {
-    message: string;
-    userId: string;
-    stored: boolean;
-  };
-  error?: string;
-  meta: {
-    timestamp: string;
-  };
-}
+// REMOVED: Duplicate UserDataStorage interfaces
+// These were causing confusion with the canonical implementation in src/utils/api-client.ts
+// The canonical interfaces are defined in the Identity Forge implementation
 
 /**
  * Gift-wrapped message data interface
@@ -1286,58 +1243,10 @@ export class ApiClient {
     }
   }
 
-  /**
-   * Store user data with comprehensive validation and error handling
-   *
-   * @param {UserDataStorage} userData - User data to store
-   * @returns {Promise<UserDataStorageResponse>} Promise resolving to storage response
-   * @throws {ApiError} Enhanced error with detailed information
-   */
-  async storeUserData(
-    userData: UserDataStorage
-  ): Promise<UserDataStorageResponse> {
-    if (!userData || typeof userData !== "object") {
-      throw this.createApiError("User data must be a valid object", 400);
-    }
-
-    if (!userData.npub || typeof userData.npub !== "string") {
-      throw this.createApiError("User npub is required", 400);
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/register-identity`, {
-        method: "POST",
-        headers: this.getStandardHeaders(),
-        body: JSON.stringify(userData),
-        signal: AbortSignal.timeout(30000),
-      });
-
-      const responseData =
-        await this.safeParseResponse<UserDataStorageResponse>(response);
-
-      if (!response.ok) {
-        throw this.createApiError(
-          responseData.error ||
-            `HTTP ${response.status}: ${response.statusText}`,
-          response.status,
-          { serverResponse: responseData }
-        );
-      }
-
-      return responseData;
-    } catch (error) {
-      if (error && typeof error === "object" && "status" in error) {
-        throw error;
-      }
-      throw this.createApiError(
-        `Unexpected user data storage error: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-        0,
-        { originalError: error }
-      );
-    }
-  }
+  // REMOVED: Duplicate storeUserData method
+  // This method was causing confusion with the canonical implementation in src/utils/api-client.ts
+  // All user data storage should use the Identity Forge implementation which properly handles
+  // the register-identity endpoint with the correct interface (username, password, npub, etc.)
 
   /**
    * Send gift-wrapped message with comprehensive validation and error handling
@@ -1614,9 +1523,9 @@ export class ApiClient {
     if (data.recipientPubkey) {
       if (typeof data.recipientPubkey !== "string") {
         errors.push("Recipient pubkey must be a string");
-      } else if (!/^[0-9a-fA-F]{66}$/.test(data.recipientPubkey)) {
+      } else if (!/^[0-9a-fA-F]{64}$/.test(data.recipientPubkey)) {
         errors.push(
-          "Invalid recipient pubkey format - must be 66 character hex string"
+          "Invalid recipient pubkey format - must be 64 character hex string"
         );
       }
     }

@@ -1,58 +1,71 @@
-import { familyConfig } from "../config/index";
 import { db } from "../lib";
 
-interface Family {
+interface FamilyFederation {
   id: string;
-  name: string;
-  description?: string;
-  adminId: string;
+  federationName: string;
+  domain?: string;
+  relayUrl?: string;
+  federationDuid: string;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 interface FamilyMember {
   id: string;
-  familyId: string;
-  userId: string;
-  role: "admin" | "member";
+  familyFederationId: string;
+  userDuid: string;
+  familyRole: "offspring" | "adult" | "steward" | "guardian";
+  spendingApprovalRequired: boolean;
+  votingPower: number;
+  joinedAt: Date;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
- * Create a new family
+ * Create a new family federation
  */
-export async function createFamily(
-  name: string,
-  adminId: string,
-  description?: string
-): Promise<Family> {
+export async function createFamilyFederation(
+  federationName: string,
+  guardianUserDuid: string,
+  domain?: string,
+  relayUrl?: string
+): Promise<FamilyFederation> {
   // Start a transaction
   const client = await db.getClient();
 
   try {
     await client.query("BEGIN");
 
-    // Insert family record
-    const familyResult = await client.query(
-      `INSERT INTO families (name, description, admin_id, created_at, updated_at) 
-       VALUES ($1, $2, $3, NOW(), NOW()) 
-       RETURNING id, name, description, admin_id as "adminId", created_at as "createdAt", updated_at as "updatedAt"`,
-      [name, description, adminId]
+    // Generate federation DUID
+    const federationDuid = `fed_${crypto.randomUUID()}`;
+
+    // Insert family federation record
+    const federationResult = await client.query(
+      `INSERT INTO family_federations (federation_name, domain, relay_url, federation_duid, is_active, created_at, updated_at) 
+       VALUES ($1, $2, $3, $4, true, NOW(), NOW()) 
+       RETURNING id, federation_name as "federationName", domain, relay_url as "relayUrl", 
+                 federation_duid as "federationDuid", is_active as "isActive", 
+                 created_at as "createdAt", updated_at as "updatedAt"`,
+      [federationName, domain || "satnam.pub", relayUrl, federationDuid]
     );
 
-    const family = familyResult.rows[0];
+    const federation = federationResult.rows[0];
 
-    // Add admin as a family member with admin role
+    // Add guardian as the first family member with guardian role
     await client.query(
-      `INSERT INTO family_members (family_id, user_id, role, created_at, updated_at) 
-       VALUES ($1, $2, $3, NOW(), NOW())`,
-      [family.id, adminId, "admin"]
+      `INSERT INTO family_members (family_federation_id, user_duid, family_role, 
+                                   spending_approval_required, voting_power, joined_at, 
+                                   is_active, created_at, updated_at) 
+       VALUES ($1, $2, $3, $4, $5, NOW(), true, NOW(), NOW())`,
+      [federation.id, guardianUserDuid, "guardian", false, 10]
     );
 
     await client.query("COMMIT");
 
-    return family;
+    return federation;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -62,11 +75,16 @@ export async function createFamily(
 }
 
 /**
- * Get family by ID
+ * Get family federation by ID
  */
-export async function getFamilyById(id: string): Promise<Family | null> {
+export async function getFamilyFederationById(
+  id: string
+): Promise<FamilyFederation | null> {
   const result = await db.query(
-    'SELECT id, name, description, admin_id as "adminId", created_at as "createdAt", updated_at as "updatedAt" FROM families WHERE id = $1',
+    `SELECT id, federation_name as "federationName", domain, relay_url as "relayUrl", 
+            federation_duid as "federationDuid", is_active as "isActive", 
+            created_at as "createdAt", updated_at as "updatedAt" 
+     FROM family_federations WHERE id = $1`,
     [id]
   );
 
@@ -74,91 +92,129 @@ export async function getFamilyById(id: string): Promise<Family | null> {
 }
 
 /**
- * Get all families administered by a user
+ * Get family federation by DUID
  */
-export async function getFamiliesByAdminId(adminId: string): Promise<Family[]> {
+export async function getFamilyFederationByDuid(
+  federationDuid: string
+): Promise<FamilyFederation | null> {
   const result = await db.query(
-    'SELECT id, name, description, admin_id as "adminId", created_at as "createdAt", updated_at as "updatedAt" FROM families WHERE admin_id = $1',
-    [adminId]
+    `SELECT id, federation_name as "federationName", domain, relay_url as "relayUrl", 
+            federation_duid as "federationDuid", is_active as "isActive", 
+            created_at as "createdAt", updated_at as "updatedAt" 
+     FROM family_federations WHERE federation_duid = $1`,
+    [federationDuid]
+  );
+
+  return result.rows.length > 0 ? result.rows[0] : null;
+}
+
+/**
+ * Get all family federations a user is a guardian/steward of
+ */
+export async function getFamilyFederationsByGuardian(
+  userDuid: string
+): Promise<FamilyFederation[]> {
+  const result = await db.query(
+    `SELECT ff.id, ff.federation_name as "federationName", ff.domain, ff.relay_url as "relayUrl", 
+            ff.federation_duid as "federationDuid", ff.is_active as "isActive", 
+            ff.created_at as "createdAt", ff.updated_at as "updatedAt"
+     FROM family_federations ff
+     JOIN family_members fm ON ff.id = fm.family_federation_id
+     WHERE fm.user_duid = $1 AND fm.family_role IN ('guardian', 'steward')`,
+    [userDuid]
   );
 
   return result.rows;
 }
 
 /**
- * Get all families a user is a member of
+ * Get all family federations a user is a member of
  */
-export async function getFamiliesByMemberId(userId: string): Promise<Family[]> {
+export async function getFamilyFederationsByMember(
+  userDuid: string
+): Promise<FamilyFederation[]> {
   const result = await db.query(
-    `SELECT f.id, f.name, f.description, f.admin_id as "adminId", f.created_at as "createdAt", f.updated_at as "updatedAt" 
-     FROM families f
-     JOIN family_members fm ON f.id = fm.family_id
-     WHERE fm.user_id = $1`,
-    [userId]
+    `SELECT ff.id, ff.federation_name as "federationName", ff.domain, ff.relay_url as "relayUrl", 
+            ff.federation_duid as "federationDuid", ff.is_active as "isActive", 
+            ff.created_at as "createdAt", ff.updated_at as "updatedAt"
+     FROM family_federations ff
+     JOIN family_members fm ON ff.id = fm.family_federation_id
+     WHERE fm.user_duid = $1 AND fm.is_active = true`,
+    [userDuid]
   );
 
   return result.rows;
 }
 
 /**
- * Update a family
+ * Update a family federation
  */
-export async function updateFamily(
+export async function updateFamilyFederation(
   id: string,
-  data: { name?: string; description?: string }
-): Promise<Family> {
-  const { name, description } = data;
+  data: { federationName?: string; domain?: string; relayUrl?: string }
+): Promise<FamilyFederation> {
+  const { federationName, domain, relayUrl } = data;
 
   // Build update query
-  let updateQuery = "UPDATE families SET updated_at = NOW()";
+  let updateQuery = "UPDATE family_federations SET updated_at = NOW()";
   const queryParams: (string | null)[] = [];
   let paramIndex = 1;
 
-  if (name) {
-    updateQuery += `, name = $${paramIndex}`;
-    queryParams.push(name);
+  if (federationName) {
+    updateQuery += `, federation_name = $${paramIndex}`;
+    queryParams.push(federationName);
     paramIndex++;
   }
 
-  if (description !== undefined) {
-    updateQuery += `, description = $${paramIndex}`;
-    queryParams.push(description);
+  if (domain !== undefined) {
+    updateQuery += `, domain = $${paramIndex}`;
+    queryParams.push(domain);
     paramIndex++;
   }
 
-  updateQuery += ` WHERE id = $${paramIndex} RETURNING id, name, description, admin_id as "adminId", created_at as "createdAt", updated_at as "updatedAt"`;
+  if (relayUrl !== undefined) {
+    updateQuery += `, relay_url = $${paramIndex}`;
+    queryParams.push(relayUrl);
+    paramIndex++;
+  }
+
+  updateQuery += ` WHERE id = $${paramIndex} RETURNING id, federation_name as "federationName", domain, relay_url as "relayUrl", federation_duid as "federationDuid", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"`;
   queryParams.push(id);
 
   // Execute update
   const result = await db.query(updateQuery, queryParams);
 
   if (result.rows.length === 0) {
-    throw new Error("Family not found");
+    throw new Error("Family federation not found");
   }
 
   return result.rows[0];
 }
 
 /**
- * Delete a family
+ * Delete a family federation
  */
-export async function deleteFamily(id: string): Promise<void> {
+export async function deleteFamilyFederation(id: string): Promise<void> {
   // Start a transaction
   const client = await db.getClient();
 
   try {
     await client.query("BEGIN");
 
-    // Delete family members
-    await client.query("DELETE FROM family_members WHERE family_id = $1", [id]);
+    // Delete family members (CASCADE should handle this)
+    await client.query(
+      "DELETE FROM family_members WHERE family_federation_id = $1",
+      [id]
+    );
 
-    // Delete family
-    const result = await client.query("DELETE FROM families WHERE id = $1", [
-      id,
-    ]);
+    // Delete family federation
+    const result = await client.query(
+      "DELETE FROM family_federations WHERE id = $1",
+      [id]
+    );
 
     if (result.rowCount === 0) {
-      throw new Error("Family not found");
+      throw new Error("Family federation not found");
     }
 
     await client.query("COMMIT");
@@ -171,96 +227,141 @@ export async function deleteFamily(id: string): Promise<void> {
 }
 
 /**
- * Add a member to a family
+ * Add a member to a family federation
  */
 export async function addFamilyMember(
-  familyId: string,
-  userId: string,
-  role: "admin" | "member" = "member"
+  familyFederationId: string,
+  userDuid: string,
+  familyRole: "offspring" | "adult" | "steward" | "guardian" = "offspring",
+  spendingApprovalRequired: boolean = true,
+  votingPower: number = 1
 ): Promise<FamilyMember> {
   // Check if user is already a member
   const existingMember = await db.query(
-    "SELECT * FROM family_members WHERE family_id = $1 AND user_id = $2",
-    [familyId, userId]
+    "SELECT * FROM family_members WHERE family_federation_id = $1 AND user_duid = $2",
+    [familyFederationId, userDuid]
   );
 
   if (existingMember.rows.length > 0) {
-    throw new Error("User is already a member of this family");
+    throw new Error("User is already a member of this family federation");
   }
 
   // Add member
   const result = await db.query(
-    `INSERT INTO family_members (family_id, user_id, role, created_at, updated_at) 
-     VALUES ($1, $2, $3, NOW(), NOW()) 
-     RETURNING id, family_id as "familyId", user_id as "userId", role, created_at as "createdAt", updated_at as "updatedAt"`,
-    [familyId, userId, role]
+    `INSERT INTO family_members (family_federation_id, user_duid, family_role, 
+                                 spending_approval_required, voting_power, joined_at, 
+                                 is_active, created_at, updated_at) 
+     VALUES ($1, $2, $3, $4, $5, NOW(), true, NOW(), NOW()) 
+     RETURNING id, family_federation_id as "familyFederationId", user_duid as "userDuid", 
+               family_role as "familyRole", spending_approval_required as "spendingApprovalRequired", 
+               voting_power as "votingPower", joined_at as "joinedAt", is_active as "isActive", 
+               created_at as "createdAt", updated_at as "updatedAt"`,
+    [
+      familyFederationId,
+      userDuid,
+      familyRole,
+      spendingApprovalRequired,
+      votingPower,
+    ]
   );
 
   return result.rows[0];
 }
 
 /**
- * Remove a member from a family
+ * Remove a member from a family federation
  */
 export async function removeFamilyMember(
-  familyId: string,
-  userId: string
+  familyFederationId: string,
+  userDuid: string
 ): Promise<void> {
-  // Check if user is the admin
-  const family = await getFamilyById(familyId);
+  // Check if user is the last guardian
+  const guardianCount = await db.query(
+    "SELECT COUNT(*) as count FROM family_members WHERE family_federation_id = $1 AND family_role = 'guardian' AND is_active = true",
+    [familyFederationId]
+  );
 
-  if (!family) {
-    throw new Error("Family not found");
-  }
+  const member = await db.query(
+    "SELECT family_role FROM family_members WHERE family_federation_id = $1 AND user_duid = $2",
+    [familyFederationId, userDuid]
+  );
 
-  if (family.adminId === userId) {
+  if (
+    member.rows.length > 0 &&
+    member.rows[0].family_role === "guardian" &&
+    guardianCount.rows[0].count <= 1
+  ) {
     throw new Error(
-      "Cannot remove the family admin. Transfer admin role first or delete the family."
+      "Cannot remove the last guardian. Add another guardian first or delete the federation."
     );
   }
 
-  // Remove member
+  // Remove member (set inactive instead of deleting for audit trail)
   const result = await db.query(
-    "DELETE FROM family_members WHERE family_id = $1 AND user_id = $2",
-    [familyId, userId]
+    "UPDATE family_members SET is_active = false, updated_at = NOW() WHERE family_federation_id = $1 AND user_duid = $2",
+    [familyFederationId, userDuid]
   );
 
   if (result.rowCount === 0) {
-    throw new Error("User is not a member of this family");
+    throw new Error("User is not a member of this family federation");
   }
 }
 
 /**
- * Get all members of a family
+ * Get all members of a family federation
  */
 export async function getFamilyMembers(
-  familyId: string
+  familyFederationId: string
 ): Promise<FamilyMember[]> {
   const result = await db.query(
-    `SELECT id, family_id as "familyId", user_id as "userId", role, created_at as "createdAt", updated_at as "updatedAt" 
+    `SELECT id, family_federation_id as "familyFederationId", user_duid as "userDuid", 
+            family_role as "familyRole", spending_approval_required as "spendingApprovalRequired",
+            voting_power as "votingPower", joined_at as "joinedAt", is_active as "isActive",
+            created_at as "createdAt", updated_at as "updatedAt" 
      FROM family_members 
-     WHERE family_id = $1`,
-    [familyId]
+     WHERE family_federation_id = $1 AND is_active = true`,
+    [familyFederationId]
   );
 
   return result.rows;
 }
 
 /**
- * Update a family member's role
+ * Update a family member's role and permissions
  */
 export async function updateFamilyMemberRole(
-  familyId: string,
-  userId: string,
-  role: "admin" | "member"
+  familyFederationId: string,
+  userDuid: string,
+  familyRole: "offspring" | "adult" | "steward" | "guardian",
+  spendingApprovalRequired?: boolean,
+  votingPower?: number
 ): Promise<FamilyMember> {
-  const result = await db.query(
-    `UPDATE family_members 
-     SET role = $1, updated_at = NOW() 
-     WHERE family_id = $2 AND user_id = $3 
-     RETURNING id, family_id as "familyId", user_id as "userId", role, created_at as "createdAt", updated_at as "updatedAt"`,
-    [role, familyId, userId]
-  );
+  let updateQuery = `UPDATE family_members SET family_role = $1, updated_at = NOW()`;
+  const queryParams: any[] = [familyRole];
+  let paramIndex = 2;
+
+  if (spendingApprovalRequired !== undefined) {
+    updateQuery += `, spending_approval_required = $${paramIndex}`;
+    queryParams.push(spendingApprovalRequired);
+    paramIndex++;
+  }
+
+  if (votingPower !== undefined) {
+    updateQuery += `, voting_power = $${paramIndex}`;
+    queryParams.push(votingPower);
+    paramIndex++;
+  }
+
+  updateQuery += ` WHERE family_federation_id = $${paramIndex} AND user_duid = $${
+    paramIndex + 1
+  } 
+                   RETURNING id, family_federation_id as "familyFederationId", user_duid as "userDuid", 
+                             family_role as "familyRole", spending_approval_required as "spendingApprovalRequired",
+                             voting_power as "votingPower", joined_at as "joinedAt", is_active as "isActive",
+                             created_at as "createdAt", updated_at as "updatedAt"`;
+  queryParams.push(familyFederationId, userDuid);
+
+  const result = await db.query(updateQuery, queryParams);
 
   if (result.rows.length === 0) {
     throw new Error("Family member not found");
@@ -270,56 +371,47 @@ export async function updateFamilyMemberRole(
 }
 
 /**
- * Transfer family admin role to another member
+ * Transfer guardian role to another member (promote to guardian)
  */
-export async function transferFamilyAdmin(
-  familyId: string,
-  newAdminId: string
-): Promise<Family> {
+export async function promoteToGuardian(
+  familyFederationId: string,
+  userDuid: string
+): Promise<FamilyMember> {
   // Start a transaction
   const client = await db.getClient();
 
   try {
     await client.query("BEGIN");
 
-    // Check if new admin is a member
+    // Check if user is a member
     const memberResult = await client.query(
-      "SELECT * FROM family_members WHERE family_id = $1 AND user_id = $2",
-      [familyId, newAdminId]
+      "SELECT * FROM family_members WHERE family_federation_id = $1 AND user_duid = $2 AND is_active = true",
+      [familyFederationId, userDuid]
     );
 
     if (memberResult.rows.length === 0) {
-      throw new Error("New admin must be a family member");
+      throw new Error("User must be an active family member");
     }
 
-    // Update family admin
-    const familyResult = await client.query(
-      `UPDATE families 
-       SET admin_id = $1, updated_at = NOW() 
-       WHERE id = $2 
-       RETURNING id, name, description, admin_id as "adminId", created_at as "createdAt", updated_at as "updatedAt"`,
-      [newAdminId, familyId]
+    // Promote member to guardian role
+    const updateResult = await client.query(
+      `UPDATE family_members 
+       SET family_role = 'guardian', voting_power = 10, spending_approval_required = false, updated_at = NOW() 
+       WHERE family_federation_id = $1 AND user_duid = $2 
+       RETURNING id, family_federation_id as "familyFederationId", user_duid as "userDuid", 
+                 family_role as "familyRole", spending_approval_required as "spendingApprovalRequired",
+                 voting_power as "votingPower", joined_at as "joinedAt", is_active as "isActive",
+                 created_at as "createdAt", updated_at as "updatedAt"`,
+      [familyFederationId, userDuid]
     );
 
-    if (familyResult.rows.length === 0) {
-      throw new Error("Family not found");
+    if (updateResult.rows.length === 0) {
+      throw new Error("Failed to promote member to guardian");
     }
-
-    // Update member roles
-    await client.query(
-      "UPDATE family_members SET role = $1 WHERE family_id = $2 AND user_id = $3",
-      ["admin", familyId, newAdminId]
-    );
-
-    // Demote previous admin
-    await client.query(
-      "UPDATE family_members SET role = $1 WHERE family_id = $2 AND user_id != $3 AND role = 'admin'",
-      ["member", familyId, newAdminId]
-    );
 
     await client.query("COMMIT");
 
-    return familyResult.rows[0];
+    return updateResult.rows[0];
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -329,36 +421,20 @@ export async function transferFamilyAdmin(
 }
 
 /**
- * Check if a user identifier represents a family member
- * This function uses database verification to determine if the identifier
+ * Check if a user DUID represents a family member
+ * This function uses database verification to determine if the DUID
  * belongs to a family member for internal transfer eligibility
  */
-export async function isFamilyMember(identifier: string): Promise<boolean> {
+export async function isFamilyMember(userDuid: string): Promise<boolean> {
   try {
     // Validate input
-    if (!identifier || typeof identifier !== "string") {
+    if (!userDuid || typeof userDuid !== "string") {
       return false;
     }
 
-    // Check if identifier matches family domain pattern
-    if (identifier.includes(`@${familyConfig.domain}`)) {
-      // Still verify in database even if domain matches
-      const member = await getFamilyMemberByIdentifier(identifier);
-      return member !== null;
-    }
-
-    // Check if identifier is a short username (likely internal)
-    // But exclude email addresses from other domains
-    if (
-      identifier.length <= familyConfig.usernameMaxLength &&
-      !identifier.includes("@")
-    ) {
-      // Query database to verify family member status
-      const member = await getFamilyMemberByIdentifier(identifier);
-      return member !== null;
-    }
-
-    return false;
+    // Query database to verify family member status using DUID
+    const member = await getFamilyMemberByUserDuid(userDuid);
+    return member !== null;
   } catch (error) {
     console.error("Error checking family member status:", error);
     // Fail closed - if we can't verify, assume not a family member
@@ -367,25 +443,52 @@ export async function isFamilyMember(identifier: string): Promise<boolean> {
 }
 
 /**
- * Get family member by identifier (username or email)
- * This is a helper function for more detailed family member validation
+ * Get family member by user DUID
+ * This is a helper function for family member validation using privacy-first identifiers
  */
-export async function getFamilyMemberByIdentifier(
-  identifier: string
+export async function getFamilyMemberByUserDuid(
+  userDuid: string
 ): Promise<FamilyMember | null> {
   try {
     const result = await db.query(
-      `SELECT fm.id, fm.family_id as "familyId", fm.user_id as "userId", fm.role, 
-              fm.created_at as "createdAt", fm.updated_at as "updatedAt"
-       FROM family_members fm 
-       JOIN users u ON fm.user_id = u.id 
-       WHERE u.username = $1 OR u.email = $1`,
-      [identifier]
+      `SELECT id, family_federation_id as "familyFederationId", user_duid as "userDuid", 
+              family_role as "familyRole", spending_approval_required as "spendingApprovalRequired",
+              voting_power as "votingPower", joined_at as "joinedAt", is_active as "isActive",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM family_members 
+       WHERE user_duid = $1 AND is_active = true`,
+      [userDuid]
     );
 
     return result.rows.length > 0 ? result.rows[0] : null;
   } catch (error) {
-    console.error("Error getting family member by identifier:", error);
+    console.error("Error getting family member by user DUID:", error);
     return null;
+  }
+}
+
+/**
+ * Get family members with specific role
+ */
+export async function getFamilyMembersByRole(
+  familyFederationId: string,
+  familyRole: "offspring" | "adult" | "steward" | "guardian"
+): Promise<FamilyMember[]> {
+  try {
+    const result = await db.query(
+      `SELECT id, family_federation_id as "familyFederationId", user_duid as "userDuid", 
+              family_role as "familyRole", spending_approval_required as "spendingApprovalRequired",
+              voting_power as "votingPower", joined_at as "joinedAt", is_active as "isActive",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM family_members 
+       WHERE family_federation_id = $1 AND family_role = $2 AND is_active = true
+       ORDER BY voting_power DESC, joined_at ASC`,
+      [familyFederationId, familyRole]
+    );
+
+    return result.rows;
+  } catch (error) {
+    console.error("Error getting family members by role:", error);
+    return [];
   }
 }

@@ -22,16 +22,18 @@ export async function loadBipCrypto() {
   const bip39 = {
     generateMnemonic: async (strength: number = 128): Promise<string> => {
       // Simplified mnemonic generation for browser
-      const words = Array(12).fill(0).map(() => Math.random().toString(36).slice(2, 8));
-      return words.join(' ');
+      const words = Array(12)
+        .fill(0)
+        .map(() => Math.random().toString(36).slice(2, 8));
+      return words.join(" ");
     },
     mnemonicToSeed: async (mnemonic: string): Promise<Uint8Array> => {
       // Simplified seed generation
       const encoder = new TextEncoder();
       const data = encoder.encode(mnemonic);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
       return new Uint8Array(hashBuffer);
-    }
+    },
   };
 
   return {
@@ -52,11 +54,11 @@ export async function loadHashCrypto() {
     // Browser-compatible hash functions using Web Crypto API
     const nobleHashes = {
       sha256: async (data: Uint8Array): Promise<Uint8Array> => {
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
         return new Uint8Array(hashBuffer);
       },
       sha512: async (data: Uint8Array): Promise<Uint8Array> => {
-        const hashBuffer = await crypto.subtle.digest('SHA-512', data);
+        const hashBuffer = await crypto.subtle.digest("SHA-512", data);
         return new Uint8Array(hashBuffer);
       },
     };
@@ -68,7 +70,7 @@ export async function loadHashCrypto() {
   } catch (error) {
     console.warn(
       "⚠️ Hash crypto module loading failed, using minimal implementation:",
-      error instanceof Error ? error.message : 'Unknown error'
+      error instanceof Error ? error.message : "Unknown error"
     );
     return {
       noble: null,
@@ -84,14 +86,18 @@ export async function loadHashCrypto() {
 export async function loadAdvancedCrypto() {
   // Browser-compatible implementations
   const shamirs = {
-    share: async (secret: Uint8Array, shares: number, threshold: number): Promise<Uint8Array[]> => {
+    share: async (
+      secret: Uint8Array,
+      shares: number,
+      threshold: number
+    ): Promise<Uint8Array[]> => {
       // Simplified secret sharing for browser
       return Array(shares).fill(secret);
     },
     combine: async (shares: Uint8Array[]): Promise<Uint8Array> => {
       // Simplified secret combining for browser
       return shares[0] || new Uint8Array();
-    }
+    },
   };
 
   const z32 = {
@@ -101,8 +107,8 @@ export async function loadAdvancedCrypto() {
     },
     decode: (str: string): Uint8Array => {
       // Simplified z32 decoding
-      return Uint8Array.from(atob(str), c => c.charCodeAt(0));
-    }
+      return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+    },
   };
 
   return {
@@ -118,25 +124,39 @@ export async function loadAdvancedCrypto() {
 export async function loadPasswordCrypto() {
   // Browser-compatible password hashing using Web Crypto API
   const bcrypt = {
-    hash: async (password: string, saltRounds: number = 10): Promise<string> => {
+    hash: async (
+      password: string,
+      saltRounds: number = 10
+    ): Promise<string> => {
       // Simplified password hashing for browser
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
       return Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
     },
     compare: async (password: string, hash: string): Promise<boolean> => {
-      // Simplified password comparison for browser
+      // Simplified password comparison for browser with constant-time comparison
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
       const computedHash = Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      return computedHash === hash;
-    }
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // Use constant-time comparison to prevent timing attacks
+      if (computedHash.length !== hash.length) {
+        return false;
+      }
+
+      let result = 0;
+      for (let i = 0; i < computedHash.length; i++) {
+        result |= computedHash.charCodeAt(i) ^ hash.charCodeAt(i);
+      }
+
+      return result === 0;
+    },
   };
 
   return {
@@ -153,12 +173,12 @@ export async function loadLightningCrypto() {
   const bolt11 = {
     decode: (invoice: string): any => {
       // Simplified BOLT11 decoding for browser
-      return { amount: 0, description: 'Browser-compatible invoice' };
+      return { amount: 0, description: "Browser-compatible invoice" };
     },
     encode: (params: any): string => {
       // Simplified BOLT11 encoding for browser
-      return 'lnbc1qwe';
-    }
+      return "lnbc1qwe";
+    },
   };
 
   const bech32 = {
@@ -168,8 +188,8 @@ export async function loadLightningCrypto() {
     },
     decode: (str: string): { prefix: string; data: Uint8Array } => {
       // Simplified bech32 decoding for browser
-      return { prefix: 'bc', data: new Uint8Array() };
-    }
+      return { prefix: "bc", data: new Uint8Array() };
+    },
   };
 
   return {

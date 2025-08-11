@@ -87,17 +87,40 @@ export interface AuthResult {
 
 export interface UserIdentity {
   id: string;
-  username: string;
-  npub: string;
-  nip05: string;
-  role: string;
-  is_active: boolean;
-  lightning_address?: string;
+  user_salt: string; // Unique salt for this user
+
+  // MAXIMUM ENCRYPTION: Hashed columns only - no plaintext storage
+  hashed_username?: string;
+  hashed_npub?: string;
+  hashed_nip05?: string;
+  hashed_lightning_address?: string;
+  hashed_encrypted_nsec?: string;
+
+  // Password security
+  password_hash: string;
+  password_salt: string;
+  password_created_at?: string;
+  password_updated_at?: string;
   failed_attempts: number;
   locked_until?: string;
+  requires_password_change?: boolean;
+
+  // Metadata (non-sensitive)
+  role: string;
+  spending_limits?: Record<string, any>;
+  privacy_settings?: {
+    privacy_level: "maximum";
+    zero_knowledge_enabled: true;
+    over_encryption: true;
+    is_imported_account?: boolean;
+    detected_profile_data?: any;
+  };
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
   last_successful_auth?: string;
+
   // Additional properties for compatibility
-  password_salt?: string;
   federationRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   hashedUUID?: string;
   authMethod?: "nip05-password" | "nip07" | "otp" | "nsec";
@@ -264,6 +287,94 @@ export class UserIdentitiesAuth {
   private static readonly LOCKOUT_MINUTES = 30;
 
   /**
+   * Authenticate user with NIP-07 browser extension + password
+   * Uses DUID generation with npub + password for O(1) lookup (same as NIP-05/Password)
+   */
+  async authenticateNIP07(credentials: AuthCredentials): Promise<AuthResult> {
+    try {
+      if (
+        !credentials.pubkey ||
+        !credentials.signature ||
+        !credentials.password
+      ) {
+        return {
+          success: false,
+          error: "Missing pubkey, signature, or password",
+        };
+      }
+
+      // Import DUID generation utilities
+      const { generateDUID } = await import(
+        "../../../lib/security/duid-generator"
+      );
+
+      // Convert hex pubkey to npub format if needed
+      let npub = credentials.pubkey;
+      if (!npub.startsWith("npub1")) {
+        const { nip19 } = await import("nostr-tools");
+        npub = nip19.npubEncode(credentials.pubkey);
+      }
+
+      // Generate DUID using npub + password (same method as NIP-05/Password)
+      // This ensures identical DUIDs for the same user regardless of auth method
+      const deterministicUserId = await generateDUID(
+        npub,
+        credentials.password
+      );
+
+      // Direct O(1) database lookup using DUID
+      const { data: user, error: userError } = await supabase
+        .from("user_identities")
+        .select("*")
+        .eq("id", deterministicUserId)
+        .eq("is_active", true)
+        .single();
+
+      if (userError || !user) {
+        await this.logAuthAttempt({
+          user_id: deterministicUserId,
+          attempt_result: "invalid_nip05", // Using existing type
+        });
+        return { success: false, error: "Invalid NIP-07 credentials" };
+      }
+
+      // Check if account is locked
+      if (user.locked_until && new Date(user.locked_until) > new Date()) {
+        await this.logAuthAttempt({
+          user_id: user.id,
+          attempt_result: "account_locked",
+        });
+        return {
+          success: false,
+          error:
+            "Account is temporarily locked due to too many failed attempts",
+        };
+      }
+
+      // NIP-07 authentication successful - reset failed attempts
+      await this.handleSuccessfulAuth(
+        user.id,
+        credentials.pubkey || "nip07_auth"
+      );
+
+      // Generate new JWT session token
+      const sessionToken = await this.generateSessionToken(user);
+
+      // Store session information
+      await this.storeSessionInfo(user.id, sessionToken);
+
+      return {
+        success: true,
+        user: user as UserIdentity,
+        sessionToken,
+      };
+    } catch (error) {
+      console.error("NIP-07 authentication error:", error);
+      return { success: false, error: "NIP-07 authentication failed" };
+    }
+  }
+
+  /**
    * Authenticate user with NIP-05 and password
    */
   async authenticateNIP05Password(
@@ -287,15 +398,43 @@ export class UserIdentitiesAuth {
         };
       }
 
-      // Find user by NIP-05
+      // DETERMINISTIC USER ID: O(1) authentication lookup using DUID
+      // Import DUID generation utilities
+      const { generateDUIDFromNIP05 } = await import(
+        "../../../lib/security/duid-generator"
+      );
+
+      // Generate DUID from NIP-05 + password for direct database lookup
+      const deterministicUserId = await generateDUIDFromNIP05(
+        credentials.nip05.trim().toLowerCase(),
+        credentials.password
+      );
+
+      if (!deterministicUserId) {
+        await this.logAuthAttempt({
+          nip05: credentials.nip05,
+          attempt_result: "invalid_nip05",
+        });
+        return { success: false, error: "Failed to resolve NIP-05 identifier" };
+      }
+
+      // Direct O(1) database lookup using DUID
       const { data: user, error: userError } = await supabase
         .from("user_identities")
         .select("*")
-        .eq("nip05", credentials.nip05.trim().toLowerCase())
+        .eq("id", deterministicUserId)
         .eq("is_active", true)
         .single();
 
       if (userError || !user) {
+        await this.logAuthAttempt({
+          nip05: credentials.nip05,
+          attempt_result: "invalid_nip05",
+        });
+        return { success: false, error: "Invalid credentials" };
+      }
+
+      if (!user) {
         await this.logAuthAttempt({
           nip05: credentials.nip05,
           attempt_result: "invalid_nip05",
@@ -357,11 +496,12 @@ export class UserIdentitiesAuth {
     nip05: string
   ): Promise<void> {
     try {
-      // Get current user data
+      // MAXIMUM ENCRYPTION: Use user ID instead of plaintext nip05
+      // Get current user data by ID (which is already hashed)
       const { data: user } = await supabase
         .from("user_identities")
         .select("failed_attempts")
-        .eq("nip05", nip05)
+        .eq("id", userId)
         .single();
 
       if (user) {
@@ -369,7 +509,7 @@ export class UserIdentitiesAuth {
         const shouldLock =
           newFailedAttempts >= UserIdentitiesAuth.MAX_FAILED_ATTEMPTS;
 
-        // Update failed attempts and potentially lock account
+        // Update failed attempts and potentially lock account using user ID
         await supabase
           .from("user_identities")
           .update({
@@ -381,7 +521,7 @@ export class UserIdentitiesAuth {
                 ).toISOString()
               : null,
           })
-          .eq("nip05", nip05);
+          .eq("id", userId);
       }
 
       // Log the attempt
@@ -411,7 +551,7 @@ export class UserIdentitiesAuth {
           locked_until: null,
           last_successful_auth: new Date().toISOString(),
         })
-        .eq("nip05", nip05);
+        .eq("id", userId); // MAXIMUM ENCRYPTION: Use user ID instead of plaintext nip05
 
       // Log successful attempt
       await this.logAuthAttempt({
@@ -447,7 +587,7 @@ export class UserIdentitiesAuth {
   /**
    * Generate secure JWT session token with proper signing
    */
-  private async generateSessionToken(user: UserIdentity): Promise<string> {
+  public async generateSessionToken(user: UserIdentity): Promise<string> {
     try {
       // Get JWT secret from Vault (secure credential storage)
       const { getJwtSecret } = await import("../../../lib/vault-config");
@@ -457,16 +597,16 @@ export class UserIdentitiesAuth {
         throw new Error("JWT secret not available from Vault");
       }
 
-      // Create JWT payload with essential user data
+      // Create JWT payload with essential user data (hashed fields only)
       const payload = {
-        sub: user.id, // Subject (user ID)
-        username: user.username,
-        nip05: user.nip05,
+        sub: user.id, // Subject (user ID - already hashed)
+        userId: user.id, // For backward compatibility
         role: user.role,
         iat: Math.floor(Date.now() / 1000), // Issued at
         exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // Expires in 24 hours
         iss: "satnam-identity-system", // Issuer
         aud: "satnam-users", // Audience
+        // Note: No plaintext username/nip05 in JWT for maximum encryption compliance
       };
 
       // Create JWT header
@@ -536,18 +676,22 @@ export class UserIdentitiesAuth {
   private async generateFallbackToken(user: UserIdentity): Promise<string> {
     try {
       const tokenData = {
-        userId: user.id,
-        username: user.username,
-        nip05: user.nip05,
+        userId: user.id, // Already hashed user ID
         role: user.role,
         timestamp: Date.now(),
         expires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
         type: "fallback-session",
+        // Note: No plaintext username/nip05 for maximum encryption compliance
       };
 
       // Browser-only serverless architecture - use Web Crypto API for secure random bytes
       const randomBytes = CryptoUtils.getRandomBytes(32);
-      const randomString = CryptoUtils.arrayBufferToBase64(randomBytes.buffer);
+      // Fix ArrayBuffer type compatibility
+      const arrayBuffer =
+        randomBytes.buffer instanceof ArrayBuffer
+          ? randomBytes.buffer
+          : new ArrayBuffer(randomBytes.buffer.byteLength);
+      const randomString = CryptoUtils.arrayBufferToBase64(arrayBuffer);
       return `${btoa(JSON.stringify(tokenData))}.${randomString}`;
     } catch (error) {
       console.error("Fallback token generation failed:", error);
@@ -563,21 +707,17 @@ export class UserIdentitiesAuth {
     sessionToken: string
   ): Promise<void> {
     try {
-      // Extract JWT payload to get expiration
-      const parts = sessionToken.split(".");
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]));
-        const expiresAt = new Date(payload.exp * 1000);
+      // JWT token validation is handled in verifySessionToken method
+      // Store session for tracking purposes
 
-        // Store session in user_auth_attempts table for tracking
-        await supabase.from("user_auth_attempts").insert({
-          user_id: userId,
-          attempt_result: "session_created",
-          attempted_at: new Date().toISOString(),
-          // Store session hash for rotation tracking (not the full token)
-          client_info_hash: await this.hashSessionToken(sessionToken),
-        });
-      }
+      // Store session in user_auth_attempts table for tracking
+      await supabase.from("user_auth_attempts").insert({
+        user_id: userId,
+        attempt_result: "session_created",
+        attempted_at: new Date().toISOString(),
+        // Store session hash for rotation tracking (not the full token)
+        client_info_hash: await this.hashSessionToken(sessionToken),
+      });
     } catch (error) {
       console.error("Failed to store session info:", error);
       // Don't fail authentication if session storage fails
@@ -629,9 +769,6 @@ export class UserIdentitiesAuth {
       // Generate new session token
       const newToken = await this.generateSessionToken(user as UserIdentity);
 
-      // Store new session info
-      await this.storeSessionInfo(user.id, newToken);
-
       return { success: true, newToken };
     } catch (error) {
       console.error("Session rotation failed:", error);
@@ -640,7 +777,7 @@ export class UserIdentitiesAuth {
   }
 
   /**
-   * Verify JWT session token
+   * Verify JWT session token with production-ready signature verification
    */
   private async verifySessionToken(token: string): Promise<any> {
     try {
@@ -649,20 +786,86 @@ export class UserIdentitiesAuth {
         return null;
       }
 
-      // Decode payload
-      const payload = JSON.parse(atob(parts[1]));
+      const [headerB64, payloadB64, signatureB64] = parts;
+
+      // Decode payload (header not needed for verification)
+      const payload = JSON.parse(atob(payloadB64));
 
       // Check expiration
       if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
         return null; // Token expired
       }
 
-      // Verify signature (simplified - in production you'd verify against the secret)
-      return payload;
+      // PRODUCTION-READY: Verify signature using Web Crypto API
+      try {
+        // Get JWT secret from Vault (secure credential storage)
+        const { getJwtSecret } = await import("../../../lib/vault-config");
+        const jwtSecret = await getJwtSecret();
+
+        if (!jwtSecret) {
+          console.error("JWT secret not available from Vault");
+          return null;
+        }
+
+        // Create signing input (header.payload)
+        const signingInput = `${headerB64}.${payloadB64}`;
+
+        // Convert secret to key for HMAC
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(jwtSecret);
+
+        // Import the key for HMAC-SHA256
+        const cryptoKey = await crypto.subtle.importKey(
+          "raw",
+          keyData,
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["verify"]
+        );
+
+        // Convert base64url signature to ArrayBuffer
+        const signatureBytes = this.base64UrlToArrayBuffer(signatureB64);
+
+        // Verify the signature
+        const isValid = await crypto.subtle.verify(
+          "HMAC",
+          cryptoKey,
+          signatureBytes,
+          encoder.encode(signingInput)
+        );
+
+        if (!isValid) {
+          console.error("JWT signature verification failed");
+          return null;
+        }
+
+        // Signature is valid, return payload
+        return payload;
+      } catch (signatureError) {
+        console.error("JWT signature verification error:", signatureError);
+        return null;
+      }
     } catch (error) {
       console.error("Token verification failed:", error);
       return null;
     }
+  }
+
+  /**
+   * Convert base64url string to ArrayBuffer
+   */
+  private base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
+    // Convert base64url to base64
+    const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+    // Add padding if needed
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    // Convert to binary string then to ArrayBuffer
+    const binaryString = atob(padded);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
   }
 
   /**
@@ -681,10 +884,11 @@ export class UserIdentitiesAuth {
       }
 
       // Get user data from database
+      // FIX: Use payload.sub (standard JWT subject) instead of payload.userId
       const { data: user, error } = await supabase
         .from("user_identities")
         .select("*")
-        .eq("id", payload.userId)
+        .eq("id", payload.sub || payload.userId) // Fallback to userId for backward compatibility
         .single();
 
       if (error || !user) {
@@ -704,6 +908,30 @@ export class UserIdentitiesAuth {
     } catch (error) {
       console.error("Session validation failed:", error);
       return { success: false, error: "Session validation failed" };
+    }
+  }
+
+  /**
+   * Get user by ID for secure operations (like nsec retrieval)
+   */
+  async getUserById(userId: string): Promise<UserIdentity | null> {
+    try {
+      const { data: user, error } = await supabase
+        .from("user_identities")
+        .select("*")
+        .eq("id", userId)
+        .eq("is_active", true)
+        .single();
+
+      if (error || !user) {
+        console.error("Failed to retrieve user:", error);
+        return null;
+      }
+
+      return user as UserIdentity;
+    } catch (error) {
+      console.error("Error retrieving user:", error);
+      return null;
     }
   }
 }

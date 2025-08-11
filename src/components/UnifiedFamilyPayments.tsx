@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { FamilyPaymentRouting } from '../../types/family';
-import { FamilyMember } from '../../types/shared';
+import { FamilyMember } from '../types/shared';
 
 interface UnifiedFamilyPaymentsProps {
   familyId: string;

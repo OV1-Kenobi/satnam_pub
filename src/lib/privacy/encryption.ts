@@ -90,9 +90,7 @@ async function getPrivacyMasterKeyFromVault(): Promise<string | null> {
   if (typeof window !== "undefined") {
     try {
       // Browser environment: Use VaultConfigManager
-      const { getPrivacyMasterKey } = await import(
-        "../../../lib/vault-config.js"
-      );
+      const { getPrivacyMasterKey } = await import("../../../lib/vault-config");
       return await getPrivacyMasterKey();
     } catch (error) {
       console.warn("Browser vault access failed:", error);
@@ -450,7 +448,7 @@ export async function encryptNsec(nsec: string): Promise<{
 }
 
 /**
- * Decrypt Nostr private key (nsec)
+ * Decrypt Nostr private key (nsec) - Complex format
  */
 export async function decryptNsec(encryptedData: {
   encryptedNsec: string;
@@ -464,6 +462,143 @@ export async function decryptNsec(encryptedData: {
     iv: encryptedData.iv,
     tag: encryptedData.tag,
   });
+}
+
+/**
+ * Decrypt Nostr private key (nsec) - Simple format for database storage
+ * Uses user's unique salt for decryption
+ */
+export async function decryptNsecSimple(
+  encryptedNsec: string,
+  userSalt: string
+): Promise<string> {
+  try {
+    // For simple encrypted nsec format, we'll use the user salt as the decryption key
+    // This assumes the nsec was encrypted with the user's unique salt
+
+    // Get master key for decryption
+    const masterKey = await getMasterKey();
+
+    // Derive decryption key from user salt and master key
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(masterKey + userSalt),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+
+    // Generate salt for key derivation
+    const salt = new TextEncoder().encode(userSalt);
+
+    const decryptionKey = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: ENCRYPTION_CONFIG.iterations,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      {
+        name: ENCRYPTION_CONFIG.algorithm,
+        length: ENCRYPTION_CONFIG.keyLength,
+      },
+      false,
+      ["decrypt"]
+    );
+
+    // Decode the encrypted data (assuming base64 format)
+    const encryptedBuffer = Uint8Array.from(atob(encryptedNsec), (c) =>
+      c.charCodeAt(0)
+    );
+
+    // Extract IV (first 12 bytes for GCM)
+    const iv = encryptedBuffer.slice(0, ENCRYPTION_CONFIG.ivLength);
+    const ciphertext = encryptedBuffer.slice(ENCRYPTION_CONFIG.ivLength);
+
+    // Decrypt the data
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: ENCRYPTION_CONFIG.algorithm,
+        iv: iv,
+      },
+      decryptionKey,
+      ciphertext
+    );
+
+    return new TextDecoder().decode(decryptedBuffer);
+  } catch (error) {
+    console.error("Failed to decrypt nsec:", error);
+    throw new Error("Failed to decrypt nsec");
+  }
+}
+
+/**
+ * Encrypt Nostr private key (nsec) - Simple format for database storage
+ * Uses user's unique salt for encryption
+ */
+export async function encryptNsecSimple(
+  nsec: string,
+  userSalt: string
+): Promise<string> {
+  try {
+    // Get master key for encryption
+    const masterKey = await getMasterKey();
+
+    // Derive encryption key from user salt and master key
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(masterKey + userSalt),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+
+    // Generate salt for key derivation
+    const salt = new TextEncoder().encode(userSalt);
+
+    const encryptionKey = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: ENCRYPTION_CONFIG.iterations,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      {
+        name: ENCRYPTION_CONFIG.algorithm,
+        length: ENCRYPTION_CONFIG.keyLength,
+      },
+      false,
+      ["encrypt"]
+    );
+
+    // Generate random IV
+    const iv = crypto.getRandomValues(
+      new Uint8Array(ENCRYPTION_CONFIG.ivLength)
+    );
+
+    // Encrypt the nsec
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      {
+        name: ENCRYPTION_CONFIG.algorithm,
+        iv: iv,
+      },
+      encryptionKey,
+      new TextEncoder().encode(nsec)
+    );
+
+    // Combine IV and ciphertext
+    const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encryptedBuffer), iv.length);
+
+    // Return as base64
+    return btoa(String.fromCharCode(...combined));
+  } catch (error) {
+    console.error("Failed to encrypt nsec:", error);
+    throw new Error("Failed to encrypt nsec");
+  }
 }
 
 /**
@@ -871,6 +1006,8 @@ export const PrivacyUtils = {
   verifyUsername,
   encryptNsec,
   decryptNsec,
+  decryptNsecSimple,
+  encryptNsecSimple,
   encryptNpub,
   decryptNpub,
   generateSecureFamilyId,

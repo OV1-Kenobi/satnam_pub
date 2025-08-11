@@ -20,11 +20,11 @@ import {
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { ApiClient } from '../../utils/api-client.js';
 import { useCryptoOperations } from "../hooks/useCrypto";
 import { NostrProfileService } from "../lib/nostr-profile-service";
 import { IdentityRegistrationResult } from "../types/auth";
-import { SessionInfo } from '../utils/secureSession.js';
+import { apiClient } from '../utils/api-client';
+import { SessionInfo } from '../utils/secureSession';
 import { PostAuthInvitationModal } from "./PostAuthInvitationModal";
 
 interface FormData {
@@ -34,6 +34,7 @@ interface FormData {
   pubkey: string;
   lightningEnabled: boolean;
   agreedToTerms: boolean;
+  deterministicUserId?: string; // DUID generated during key creation
 }
 
 interface IdentityForgeProps {
@@ -709,10 +710,54 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
 
 
+      setGenerationProgress(70);
+      setGenerationStep("Generating secure deterministic user ID...");
+
+      // STEP 5: Generate secure DUID for O(1) authentication performance - FAIL-SAFE REQUIRED
+      let deterministicUserId = null;
+      if (keyPair.npub) {
+        try {
+          // Import secure DUID generation utilities
+          const { generateDUID } = await import('../../lib/security/duid-generator');
+
+          // Generate secure DUID from npub only (stable across password changes)
+          deterministicUserId = await generateDUID(keyPair.npub);
+
+          console.log('🔑 Secure DUID Generated during Identity Forge:', {
+            npubPrefix: keyPair.npub.substring(0, 10) + '...',
+            duidPrefix: deterministicUserId.substring(0, 10) + '...',
+            timestamp: new Date().toISOString(),
+            stable: true // DUID survives password changes
+          });
+
+        } catch (error) {
+          console.error('❌ Secure DUID generation failed during Identity Forge:', error);
+
+          // FAIL-SAFE ERROR HANDLING: Stop the process instead of continuing without DUID
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          setErrorMessage(`Secure DUID Generation Failed: ${errorMsg}. This is required for secure authentication. Please try again.`);
+          setIsGenerating(false);
+          setGenerationProgress(0);
+          setGenerationStep("");
+          return; // Stop the identity forge process
+        }
+      }
+
+      // FAIL-SAFE VALIDATION: Ensure secure DUID was generated successfully
+      if (!deterministicUserId) {
+        const errorMessage = 'Secure DUID generation failed: Missing npub or generation error. This is required for secure authentication.';
+        console.error('❌', errorMessage);
+        setErrorMessage(errorMessage);
+        setIsGenerating(false);
+        setGenerationProgress(0);
+        setGenerationStep("");
+        return; // Stop the identity forge process
+      }
+
       setGenerationProgress(90);
       setGenerationStep("Finalizing secure identity...");
 
-      // STEP 5: Update state with cryptographically secure keys
+      // STEP 6: Update state with cryptographically secure keys and DUID
       // CRITICAL FIX: Use flushSync to prevent React state batching timing issues
       flushSync(() => {
         // Set ephemeralNsec FIRST to ensure it's available when pubkey triggers re-render
@@ -720,10 +765,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       });
 
       flushSync(() => {
-        // Set pubkey SECOND to trigger the key display section render
+        // Set pubkey and DUID SECOND to trigger the key display section render
         setFormData((prev) => ({
           ...prev,
-          pubkey: keyPair.npub
+          pubkey: keyPair.npub,
+          deterministicUserId: deterministicUserId || undefined
         }));
       });
 
@@ -782,9 +828,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       // Encrypt the nsec using user's password (Zero-Knowledge Protocol)
       const encryptedNsec = await encryptData(ephemeralNsec, formData.password);
 
-
-
-      const apiClient = new ApiClient();
       const requestData = {
         username: formData.username,
         password: formData.password,
@@ -795,10 +838,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         lightningAddress: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined,
         generateInviteToken: true,
         // Include invitation token if user was invited
-        invitationToken: invitationToken,
+        invitationToken: invitationToken || undefined,
         // Include import account information
         isImportedAccount: migrationMode === 'import',
         detectedProfile: detectedProfile,
+        // Include pre-generated DUID for O(1) authentication performance
+        deterministicUserId: formData.deterministicUserId,
       };
 
 
@@ -1591,8 +1636,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 </div>
               ) : formData.pubkey ? (
                 <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-green-500/20 border border-green-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <div className="text-center space-y-4">
+                    <div className="w-16 h-16 bg-green-500/20 border border-green-500/50 rounded-full flex items-center justify-center mx-auto">
                       <Check className="h-8 w-8 text-green-400" />
                     </div>
                     <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
@@ -1600,6 +1645,21 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         Keys generated successfully!
                       </p>
                     </div>
+
+                    {/* DUID Generation Status */}
+                    {formData.deterministicUserId && (
+                      <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3">
+                        <div className="flex items-center justify-center space-x-2">
+                          <Key className="h-4 w-4 text-blue-400" />
+                          <p className="text-blue-200 text-sm font-medium">
+                            Secure Account ID Generated
+                          </p>
+                        </div>
+                        <p className="text-blue-200/70 text-xs mt-1">
+                          Enables lightning-fast authentication while maintaining maximum privacy
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Critical Security Notice */}

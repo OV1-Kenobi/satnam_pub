@@ -436,7 +436,7 @@ export class NTAG424ProductionManager {
   }
 
   /**
-   * Verify PIN using PBKDF2
+   * Verify PIN using PBKDF2 with constant-time comparison
    */
   private verifyPIN(pin: string, storedHash: string): boolean {
     try {
@@ -446,7 +446,18 @@ export class NTAG424ProductionManager {
         keySize: 256 / 32,
         iterations: 10000,
       }).toString();
-      return computedHash === hash;
+
+      // Use constant-time comparison to prevent timing attacks
+      if (computedHash.length !== hash.length) {
+        return false;
+      }
+
+      let result = 0;
+      for (let i = 0; i < computedHash.length; i++) {
+        result |= computedHash.charCodeAt(i) ^ hash.charCodeAt(i);
+      }
+
+      return result === 0;
     } catch (error) {
       console.error("❌ PIN verification failed:", error);
       return false;

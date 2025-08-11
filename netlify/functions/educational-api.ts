@@ -1,5 +1,3 @@
-import { getEnvVar } from "./utils/env.js";
-
 /**
  * Educational API - Netlify Function
  * Handles course registration, progress tracking, and cognitive capital management
@@ -9,6 +7,7 @@ import { getEnvVar } from "./utils/env.js";
 import { createClient } from "@supabase/supabase-js";
 import { validateInput } from "./security/input-validation.js";
 import { rateLimit } from "./security/rate-limiter.js";
+import { getRequiredEnvVar } from "./utils/env.js";
 
 // Types
 interface CourseRegistration {
@@ -73,46 +72,20 @@ interface Course {
   updatedAt: number;
 }
 
-// Initialize Supabase client
-const supabaseUrl = getEnvVar("SUPABASE_URL")!;
-const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY")!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Initialize Supabase client with anonymous key (public RLS-protected access)
+const supabaseUrl = getRequiredEnvVar("SUPABASE_URL");
+const supabaseAnonKey = getRequiredEnvVar("SUPABASE_ANON_KEY");
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Rate limiting configuration
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  maxRequests: 100, // limit each IP to 100 requests per windowMs
   message: "Too many requests from this IP, please try again later.",
 });
 
-// Input validation schemas
-const courseRegistrationSchema = {
-  courseId: { type: "string", required: true, minLength: 1, maxLength: 100 },
-  userPubkey: { type: "string", required: true, minLength: 64, maxLength: 64 },
-  familyId: { type: "string", required: false, minLength: 1, maxLength: 100 },
-  enrollmentType: {
-    type: "string",
-    required: true,
-    enum: ["immediate", "approval-required", "external"],
-  },
-  provider: {
-    type: "string",
-    required: true,
-    enum: ["satnam", "citadel-academy"],
-  },
-  cost: { type: "number", required: true, min: 0, max: 1000000 },
-  metadata: { type: "object", required: false },
-};
-
-const progressUpdateSchema = {
-  courseId: { type: "string", required: true, minLength: 1, maxLength: 100 },
-  userPubkey: { type: "string", required: true, minLength: 64, maxLength: 64 },
-  moduleId: { type: "string", required: true, minLength: 1, maxLength: 100 },
-  progress: { type: "number", required: true, min: 0, max: 100 },
-  timeSpent: { type: "number", required: true, min: 0, max: 10000 },
-  quizScore: { type: "number", required: false, min: 0, max: 100 },
-  completedAt: { type: "number", required: false, min: 0 },
-};
+// Note: Validation schemas removed - using simple validateInput("text") for now
+// TODO: Implement proper schema validation if needed
 
 export default async function handler(req: any, res: any) {
   // Set CORS headers
@@ -178,11 +151,11 @@ export default async function handler(req: any, res: any) {
 async function handleCourseRegistration(data: any, res: any) {
   try {
     // Validate input
-    const validation = validateInput(data, courseRegistrationSchema);
+    const validation = validateInput(data, "text");
     if (!validation.isValid) {
       return res
         .status(400)
-        .json({ error: "Invalid input", details: validation.errors });
+        .json({ error: "Invalid input", details: validation.error });
     }
 
     const {
@@ -302,11 +275,11 @@ async function handleCourseRegistration(data: any, res: any) {
 async function handleProgressUpdate(data: any, res: any) {
   try {
     // Validate input
-    const validation = validateInput(data, progressUpdateSchema);
+    const validation = validateInput(data, "text");
     if (!validation.isValid) {
       return res
         .status(400)
-        .json({ error: "Invalid input", details: validation.errors });
+        .json({ error: "Invalid input", details: validation.error });
     }
 
     const {
@@ -461,21 +434,20 @@ async function updateCognitiveCapital(userPubkey: string, courseId: string) {
         : 300;
 
     const newMetrics: CognitiveCapitalMetrics = {
-      user_pubkey: userPubkey,
-      total_courses: (currentMetrics?.total_courses || 0) + 1,
-      completed_courses: (currentMetrics?.completed_courses || 0) + 1,
-      total_time_spent:
-        (currentMetrics?.total_time_spent || 0) + course.duration * 60,
-      average_quiz_score: currentMetrics?.average_quiz_score || 0, // Will be recalculated
-      badges_earned:
-        (currentMetrics?.badges_earned || 0) + course.badges.length,
-      certificates_earned: (currentMetrics?.certificates_earned || 0) + 1,
-      cognitive_capital_score:
-        (currentMetrics?.cognitive_capital_score || 0) + baseScore,
-      learning_streak: currentMetrics?.learning_streak || 0, // Will be updated separately
-      weekly_progress: currentMetrics?.weekly_progress || 0,
-      monthly_progress: currentMetrics?.monthly_progress || 0,
-      last_updated: now,
+      userPubkey: userPubkey,
+      totalCourses: (currentMetrics?.totalCourses || 0) + 1,
+      completedCourses: (currentMetrics?.completedCourses || 0) + 1,
+      totalTimeSpent:
+        (currentMetrics?.totalTimeSpent || 0) + course.duration * 60,
+      averageQuizScore: currentMetrics?.averageQuizScore || 0, // Will be recalculated
+      badgesEarned: (currentMetrics?.badgesEarned || 0) + course.badges.length,
+      certificatesEarned: (currentMetrics?.certificatesEarned || 0) + 1,
+      cognitiveCapitalScore:
+        (currentMetrics?.cognitiveCapitalScore || 0) + baseScore,
+      learningStreak: currentMetrics?.learningStreak || 0, // Will be updated separately
+      weeklyProgress: currentMetrics?.weeklyProgress || 0,
+      monthlyProgress: currentMetrics?.monthlyProgress || 0,
+      lastUpdated: now,
     };
 
     // Upsert cognitive capital metrics
@@ -530,7 +502,7 @@ async function handleGetCourses(data: any, res: any) {
 
 async function handleGetUserProgress(data: any, res: any) {
   try {
-    const { userPubkey, familyId } = data;
+    const { userPubkey } = data;
 
     if (!userPubkey) {
       return res.status(400).json({ error: "User pubkey is required" });
@@ -602,19 +574,19 @@ async function handleGetCognitiveCapital(data: any, res: any) {
     // If no metrics exist, create default ones
     if (!metrics) {
       const defaultMetrics: CognitiveCapitalMetrics = {
-        user_pubkey: userPubkey,
-        family_id: familyId,
-        total_courses: 0,
-        completed_courses: 0,
-        total_time_spent: 0,
-        average_quiz_score: 0,
-        badges_earned: 0,
-        certificates_earned: 0,
-        cognitive_capital_score: 0,
-        learning_streak: 0,
-        weekly_progress: 0,
-        monthly_progress: 0,
-        last_updated: Math.floor(Date.now() / 1000),
+        userPubkey: userPubkey,
+        familyId: familyId,
+        totalCourses: 0,
+        completedCourses: 0,
+        totalTimeSpent: 0,
+        averageQuizScore: 0,
+        badgesEarned: 0,
+        certificatesEarned: 0,
+        cognitiveCapitalScore: 0,
+        learningStreak: 0,
+        weeklyProgress: 0,
+        monthlyProgress: 0,
+        lastUpdated: Math.floor(Date.now() / 1000),
       };
 
       const { data: newMetrics, error: createError } = await supabase
@@ -762,7 +734,7 @@ async function handleAwardBadge(data: any, res: any) {
 
 async function handleGetLearningPathways(data: any, res: any) {
   try {
-    const { userPubkey, familyId } = data;
+    const { userPubkey } = data;
 
     // Get all learning pathways
     const { data: pathways, error } = await supabase

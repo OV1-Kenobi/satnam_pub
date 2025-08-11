@@ -20,6 +20,81 @@ let nostrBrowser: any = null;
 let securityModule: any = null;
 let supabaseClient: any = null;
 
+// Privacy-aware logger
+let privacyLogger: any = null;
+async function getLogger() {
+  if (!privacyLogger) {
+    privacyLogger = await import("../../utils/privacy-logger.js");
+  }
+  return privacyLogger;
+}
+
+// Timeout utilities
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label = "op"
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms
+    );
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+// Route heavy workflows to Background Function
+async function routeToBackground(
+  userId: string,
+  oldPassword: string,
+  newPassword: string
+): Promise<boolean> {
+  const { log, error } = await getLogger();
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 5000);
+    const base =
+      typeof process !== "undefined" && process.env && process.env.URL
+        ? process.env.URL
+        : "";
+    const url = `${base}/.netlify/functions/secure-storage-background`;
+    const res = await withTimeout(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, oldPassword, newPassword }),
+        signal: ctrl.signal as any,
+      }),
+      5000,
+      "route_background"
+    );
+    clearTimeout(timeout);
+    log("🔁 Routed password re-encryption to background function", {
+      timestamp: new Date().toISOString(),
+      status: (res as Response).ok ? "ok" : "failed",
+    });
+    return (res as Response).ok;
+  } catch (e) {
+    error("Failed to invoke background function", {
+      timestamp: new Date().toISOString(),
+      error: e instanceof Error ? e.message : "Unknown error",
+    });
+    return false;
+  }
+}
+
 /**
  * Lazy load Nostr browser utilities
  */
@@ -140,7 +215,11 @@ export class SecureStorage {
       const supabase = await getSupabaseClient();
 
       // Try to begin transaction
-      const { error: beginError } = await supabase.rpc("begin_transaction");
+      const { error: beginError } = (await withTimeout(
+        supabase.rpc("begin_transaction"),
+        10000,
+        "begin_transaction"
+      )) as any;
 
       if (beginError) {
         // Transaction not available, use fallback or regular operation
@@ -308,37 +387,86 @@ export class SecureStorage {
     oldPassword: string,
     newPassword: string
   ): Promise<boolean> {
+    const { log, error: logError } = await getLogger();
+    const start = Date.now();
     try {
       // MEMORY OPTIMIZATION: Load Supabase client dynamically
       const supabase = await getSupabaseClient();
 
       // Try database-level transaction first (if available)
       try {
-        const { data, error } = await supabase.rpc(
-          "update_password_and_reencrypt",
-          {
-            p_user_id: userId,
-            p_old_password: oldPassword,
-            p_new_password: newPassword,
-          }
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 10000); // 10s per transaction attempt
+        const rpcResult = await withTimeout(
+          supabase.rpc(
+            "update_password_and_reencrypt",
+            {
+              p_user_id: userId,
+              p_old_password: oldPassword,
+              p_new_password: newPassword,
+            },
+            { signal: ctrl.signal } as any
+          ),
+          15000,
+          "rpc_update_password_and_reencrypt"
         );
-
+        clearTimeout(timeout);
+        const { data, error } = rpcResult as { data: any; error: any };
         if (!error && data === true) {
+          log("✅ Password re-encryption (RPC) complete", {
+            timestamp: new Date().toISOString(),
+            operation: "reencrypt_nsec",
+            duration_ms: Date.now() - start,
+          });
           return true;
         }
       } catch (rpcError) {
-        // Fall back to atomic application-level transaction
-        console.log("Database RPC not available, using atomic fallback method");
+        const { warn } = await getLogger();
+        warn("RPC not available or timed out, using atomic fallback method", {
+          timestamp: new Date().toISOString(),
+          operation: "reencrypt_nsec",
+        });
       }
 
       // Use atomic application-level transaction as fallback
-      return await this.updatePasswordAndReencryptNsecAtomic(
+      const ok = await this.updatePasswordAndReencryptNsecAtomic(
         userId,
         oldPassword,
         newPassword
       );
+      if (!ok) {
+        // Route to background if the fast-path fails
+        const routed = await routeToBackground(
+          userId,
+          oldPassword,
+          newPassword
+        );
+        if (routed) {
+          log("🔁 Routed to background function due to conflicts/timeout", {
+            timestamp: new Date().toISOString(),
+            operation: "reencrypt_nsec",
+            duration_ms: Date.now() - start,
+          });
+        } else {
+          logError("Failed to route to background function", {
+            timestamp: new Date().toISOString(),
+            operation: "reencrypt_nsec",
+            duration_ms: Date.now() - start,
+          });
+        }
+        return routed;
+      }
+      log("✅ Password re-encryption (atomic) complete", {
+        timestamp: new Date().toISOString(),
+        operation: "reencrypt_nsec",
+        duration_ms: Date.now() - start,
+      });
+      return ok;
     } catch (error) {
-      console.error("Error updating password and re-encrypting nsec:", error);
+      logError("Error updating password and re-encrypting nsec", {
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       return false;
     }
   }

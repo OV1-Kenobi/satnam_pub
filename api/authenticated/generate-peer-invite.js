@@ -239,18 +239,18 @@ This invitation is privacy-first and secure. Click the link to get started!`;
  * @param {string} giftWrappedContent - Message content
  * @param {string} recipientPubkey - Recipient's public key
  * @param {string} inviterNip05 - Inviter's NIP-05 identifier
- * @returns {Promise<{success: boolean, method: string, error?: string}>} Delivery result
+ * @returns {Promise<{success: boolean, method: string, error: string}>} Delivery result
  */
 async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip05) {
   try {
     // Import required modules
     const { SimplePool, nip04, nip59, finalizeEvent, getPublicKey } = await import('nostr-tools');
-    const { bytesToHex } = await import('@noble/hashes/utils');
+    const { bytesToHex, hexToBytes } = await import('@noble/hashes/utils');
 
     // Generate ephemeral key for invitation sending
     const ephemeralPrivateKey = crypto.getRandomValues(new Uint8Array(32));
     const ephemeralPrivateKeyHex = bytesToHex(ephemeralPrivateKey);
-    const ephemeralPublicKey = getPublicKey(ephemeralPrivateKeyHex);
+    const ephemeralPublicKey = getPublicKey(ephemeralPrivateKey);
 
     // Configure relays
     const relays = [
@@ -279,9 +279,11 @@ async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip
       };
 
       // Create gift-wrapped event using NIP-59
+      // Convert hex pubkey to bytes for nip59.wrapEvent
+      const recipientPubkeyBytes = hexToBytes(recipientPubkey);
       const giftWrappedEvent = await nip59.wrapEvent(
         baseEvent,
-        recipientPubkey,
+        recipientPubkeyBytes,
         ephemeralPrivateKeyHex
       );
 
@@ -300,7 +302,7 @@ async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip
       const successCount = results.filter(Boolean).length;
 
       if (successCount > 0) {
-        deliveryResult = { success: true, method: 'gift-wrap' };
+        deliveryResult = { success: true, method: 'gift-wrap', error: '' };
         console.log(`Gift-wrapped invitation sent successfully to ${successCount}/${relays.length} relays`);
       } else {
         throw new Error('All gift-wrap relay publishes failed');
@@ -347,7 +349,7 @@ async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip
         const fallbackSuccessCount = fallbackResults.filter(Boolean).length;
 
         if (fallbackSuccessCount > 0) {
-          deliveryResult = { success: true, method: 'nip04' };
+          deliveryResult = { success: true, method: 'nip04', error: '' };
           console.log(`NIP-04 invitation sent successfully to ${fallbackSuccessCount}/${relays.length} relays`);
         } else {
           deliveryResult = { success: false, method: 'failed', error: 'All relay publishes failed' };

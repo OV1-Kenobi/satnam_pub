@@ -19,6 +19,7 @@ const getSupabaseClient = async () => {
 
 export interface SessionInfo {
   isAuthenticated: boolean;
+  sessionToken?: string; // JWT session token for authentication
   user?: {
     npub: string;
     nip05?: string;

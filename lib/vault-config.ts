@@ -243,6 +243,15 @@ const VAULT_SECRETS: Record<string, VaultSecret> = {
     rotationRequired: true,
     guardianApprovalRequired: true,
   },
+  global_salt: {
+    name: "global_salt",
+    description:
+      "Global salt for deterministic user ID generation (DUID) - enables O(1) authentication lookups",
+    required: true,
+    fallbackEnvVar: "GLOBAL_SALT",
+    rotationRequired: true,
+    guardianApprovalRequired: true,
+  },
   encryption_iv: {
     name: "encryption_iv",
     description: "Initialization vector for encryption operations",
@@ -791,6 +800,9 @@ export async function getCsrfSecret(): Promise<string> {
   }
   return secret;
 }
+
+// REMOVED: getGlobalSalt() function - secure DUID architecture doesn't use global salt
+// Use server-side secret indexing with DUID_SERVER_SECRET instead
 
 export async function getMasterEncryptionKey(): Promise<string> {
   const secret = await getVaultConfig().getSecret("master_encryption_key");

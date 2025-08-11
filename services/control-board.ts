@@ -229,9 +229,12 @@ export class ControlBoardService {
         "satnam_control_board_history",
         JSON.stringify(paymentHistory)
       );
-      console.log(
-        `⚡ Control board operation logged to user's local history: ${paymentData.operation}`
-      );
+      const { log } = await import("../utils/privacy-logger.js");
+      log("⚡ Control board operation logged to user's local history", {
+        timestamp: new Date().toISOString(),
+        operation: paymentData.operation,
+        status: "ok",
+      });
     } catch (error) {
       console.error("Failed to log operation to user history:", error);
     }

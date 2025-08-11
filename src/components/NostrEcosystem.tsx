@@ -20,6 +20,7 @@ import {
   Zap
 } from "lucide-react";
 import React from "react";
+import { useAuth } from "../hooks/useAuth";
 
 interface NostrEcosystemProps {
   onBack: () => void;
@@ -38,12 +39,16 @@ interface NostrApp {
 
 const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
   onBack,
-  userIdentity = "yourname@satnam.pub",
+  userIdentity,
 }) => {
+  const { user } = useAuth();
   const [copiedIdentity, setCopiedIdentity] = React.useState(false);
 
+  // Use actual user NIP-05 from authentication state, fallback to prop, then default
+  const actualUserIdentity = user?.nip05 || userIdentity || "yourname@satnam.pub";
+
   const copyIdentity = () => {
-    navigator.clipboard.writeText(userIdentity);
+    navigator.clipboard.writeText(actualUserIdentity);
     setCopiedIdentity(true);
     setTimeout(() => setCopiedIdentity(false), 2000);
   };
@@ -272,7 +277,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
                 Your NIP-05 Identity:
               </p>
               <p className="text-yellow-400 font-mono text-lg">
-                {userIdentity}
+                {actualUserIdentity}
               </p>
             </div>
             <button
@@ -413,7 +418,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
           </h2>
           <p className="text-purple-100 text-lg mb-6 max-w-3xl mx-auto">
             Already have a favorite Nostr client? Just add your new{" "}
-            <span className="font-mono text-yellow-400">{userIdentity}</span>{" "}
+            <span className="font-mono text-yellow-400">{actualUserIdentity}</span>{" "}
             reusable human-readable ID to your profile (into the NIP-05
             settings for your profile). Set yourself up to start receiving
             'Zapped\' LN bitcoin payments into your new wallet and begin

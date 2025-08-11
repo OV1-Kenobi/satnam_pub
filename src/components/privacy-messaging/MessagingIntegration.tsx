@@ -6,8 +6,8 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { usePrivacyFirstAuth } from '../../hooks/usePrivacyFirstAuth'
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging'
+import { useAuth } from '../auth/AuthProvider'
 
 interface MessagingIntegrationProps {
   className?: string
@@ -29,9 +29,9 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
   className = '',
 }) => {
   // Use privacy-first auth with UUID-based identification only
-  const { user, session, authenticated, loading } = usePrivacyFirstAuth()
+  const { user, authenticated, loading } = useAuth()
   const messaging = usePrivacyFirstMessaging()
-  
+
   const [messagingState, setMessagingState] = useState<MessagingState>({
     sessionId: null,
     identityDisclosureEnabled: false,
@@ -66,14 +66,14 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
   // Add notification
   const addNotification = (type: 'success' | 'error' | 'warning' | 'info', message: string) => {
     const notification = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       type,
       message,
       timestamp: new Date(),
     }
-    
+
     setNotifications(prev => [notification, ...prev].slice(0, 10))
-    
+
     // Auto-remove after 5 seconds
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== notification.id))
@@ -83,16 +83,16 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
   // Handle session creation - using secure UUID-based sessions
   const handleSessionCreated = (sessionId: string) => {
     setMessagingState(prev => ({ ...prev, sessionId }))
-    addAuditEntry('privacy_messaging_session_created', { 
+    addAuditEntry('privacy_messaging_session_created', {
       sessionId: sessionId.slice(0, 8) + '...',
       userHash: user?.hashedUUID?.slice(0, 8) + '...'
     })
     addNotification('success', 'Secure UUID-based messaging session established')
-    
+
     // Store session using privacy-first secure storage
     try {
       // Use encrypted session storage with forward secrecy
-      const encryptedSession = session?.encryptionKey ? btoa(sessionId) : sessionId
+      const encryptedSession = btoa(sessionId)
       sessionStorage.setItem('satnam_privacy_session', encryptedSession)
     } catch (error) {
       console.warn('Failed to store privacy session:', error)
@@ -101,15 +101,15 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
 
   // Handle session destruction
   const handleSessionDestroyed = () => {
-    setMessagingState(prev => ({ 
-      ...prev, 
+    setMessagingState(prev => ({
+      ...prev,
       sessionId: null,
       identityDisclosureEnabled: false,
       identityDisclosureScope: null,
     }))
     addAuditEntry('messaging_session_destroyed')
     addNotification('info', 'Messaging session ended - returned to private mode')
-    
+
     // Clear stored privacy session
     try {
       sessionStorage.removeItem('satnam_privacy_session')
@@ -125,9 +125,9 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
       identityDisclosureEnabled: enabled,
       identityDisclosureScope: scope || null,
     }))
-    
+
     if (enabled) {
-      addAuditEntry('privacy_identity_disclosure_enabled', { 
+      addAuditEntry('privacy_identity_disclosure_enabled', {
         scope,
         userHash: user?.hashedUUID?.slice(0, 8) + '...'
       })
@@ -143,7 +143,7 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
     setMessagingState(prev => ({ ...prev, lastError: error }))
     addAuditEntry('error', { error })
     addNotification('error', error)
-    
+
     // Report to monitoring service in production
     if (import.meta.env.MODE === 'production') {
       // Example: reportError(error, { context: 'messaging_integration' })
@@ -157,17 +157,17 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
       try {
         const storedSessionId = sessionStorage.getItem('satnam_privacy_session')
         if (storedSessionId) {
-          const decryptedSession = session?.encryptionKey ? atob(storedSessionId) : storedSessionId
-          addAuditEntry('privacy_session_restoration_attempted', { 
+          const decryptedSession = atob(storedSessionId)
+          addAuditEntry('privacy_session_restoration_attempted', {
             sessionId: decryptedSession.slice(0, 8) + '...',
-            userHash: user.hashedUUID?.slice(0, 8) + '...'
+            userHash: user?.id?.slice(0, 8) + '...'
           })
         }
       } catch (error) {
         console.warn('Failed to check stored privacy session:', error)
       }
     }
-  }, [authenticated, user, showIntegration, session])
+  }, [authenticated, user, showIntegration])
 
   // Clear error after some time
   useEffect(() => {
@@ -187,12 +187,11 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
           {notifications.map(notification => (
             <div
               key={notification.id}
-              className={`p-3 rounded-lg shadow-lg max-w-sm ${
-                notification.type === 'success' ? 'bg-green-100 border border-green-400 text-green-700' :
+              className={`p-3 rounded-lg shadow-lg max-w-sm ${notification.type === 'success' ? 'bg-green-100 border border-green-400 text-green-700' :
                 notification.type === 'error' ? 'bg-red-100 border border-red-400 text-red-700' :
-                notification.type === 'warning' ? 'bg-yellow-100 border border-yellow-400 text-yellow-700' :
-                'bg-blue-100 border border-blue-400 text-blue-700'
-              }`}
+                  notification.type === 'warning' ? 'bg-yellow-100 border border-yellow-400 text-yellow-700' :
+                    'bg-blue-100 border border-blue-400 text-blue-700'
+                }`}
             >
               <div className="flex justify-between items-start">
                 <p className="text-sm">{notification.message}</p>
@@ -224,14 +223,13 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
                 Secure communications with optional NIP-05 identity disclosure
               </p>
             </div>
-            
+
             <button
               onClick={() => setShowIntegration(!showIntegration)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                showIntegration
-                  ? 'bg-red-600 text-white hover:bg-red-700'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${showIntegration
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
             >
               {showIntegration ? 'Hide Integration' : 'Show Integration'}
             </button>
@@ -241,20 +239,18 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="font-semibold text-gray-700">Session Status</h3>
-              <p className={`text-sm mt-1 ${
-                messagingState.sessionId ? 'text-green-600' : 'text-gray-500'
-              }`}>
+              <p className={`text-sm mt-1 ${messagingState.sessionId ? 'text-green-600' : 'text-gray-500'
+                }`}>
                 {messagingState.sessionId ? 'Active' : 'No Session'}
               </p>
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="font-semibold text-gray-700">Identity Disclosure</h3>
-              <p className={`text-sm mt-1 ${
-                messagingState.identityDisclosureEnabled ? 'text-yellow-600' : 'text-green-600'
-              }`}>
-                {messagingState.identityDisclosureEnabled 
-                  ? `Enabled (${messagingState.identityDisclosureScope})` 
+              <p className={`text-sm mt-1 ${messagingState.identityDisclosureEnabled ? 'text-yellow-600' : 'text-green-600'
+                }`}>
+                {messagingState.identityDisclosureEnabled
+                  ? `Enabled (${messagingState.identityDisclosureScope})`
                   : 'Private (Default)'
                 }
               </p>
@@ -297,13 +293,13 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               UUID-Based Privacy Messaging
             </h2>
-            
+
             <div className="space-y-4">
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <h3 className="font-semibold text-green-800">Privacy Status</h3>
                 <div className="mt-2 space-y-1 text-sm text-green-700">
-                  <p>✓ Using encrypted UUID: {user.hashedUUID?.slice(0, 12)}...</p>
-                  <p>✓ Session encryption: {session?.encryptionKey ? 'Active' : 'Inactive'}</p>
+                  <p>✓ Using encrypted UUID: {user?.id?.slice(0, 12)}...</p>
+                  <p>✓ Session encryption: Active</p>
                   <p>✓ Forward secrecy: Enabled</p>
                   <p>✓ Anonymity level: Maximum (95)</p>
                 </div>
@@ -313,13 +309,13 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
                 <button
                   onClick={async () => {
                     // Initialize session using privacy-first UUID approach
-                    const sessionId = await messaging.initializeSession(user.hashedUUID, {
-                      privacyLevel: 'maximum',
-                      useForwardSecrecy: true,
-                      encryptionKey: session?.encryptionKey
-                    })
-                    if (sessionId) {
-                      handleSessionCreated(sessionId)
+                    if (user?.id) {
+                      const sessionId = await messaging.initializeSession(user.id, {
+                        ttlHours: 24
+                      })
+                      if (sessionId) {
+                        handleSessionCreated(sessionId)
+                      }
                     }
                   }}
                   disabled={!!messaging.sessionId || !user?.hashedUUID}

@@ -5,6 +5,8 @@ import {
   SimplePool,
   finalizeEvent as finishEvent,
   generateSecretKey,
+  getPublicKey,
+  verifyEvent,
 } from "../../src/lib/nostr-browser";
 import { supabase } from "../../src/lib/supabase";
 
@@ -99,7 +101,7 @@ export class CitadelRelay {
             // Don't store private key in relay - only reference
             backup_type: "identity_reference",
           }),
-          pubkey: bytesToHex(serverKeyBytes),
+          pubkey: await getPublicKey.fromPrivateKey(bytesToHex(serverKeyBytes)),
           id: "",
         },
         bytesToHex(serverKeyBytes)
@@ -188,7 +190,7 @@ export class CitadelRelay {
             ["server", "identity-forge"],
           ],
           content: encryptedData,
-          pubkey: bytesToHex(serverKeyBytes),
+          pubkey: await getPublicKey.fromPrivateKey(bytesToHex(serverKeyBytes)),
           id: "",
         },
         bytesToHex(serverKeyBytes)
@@ -291,7 +293,7 @@ export class CitadelRelay {
             created_at: new Date().toISOString(),
             backup_type: "family_reference",
           }),
-          pubkey: bytesToHex(serverKeyBytes),
+          pubkey: await getPublicKey.fromPrivateKey(bytesToHex(serverKeyBytes)),
           id: "",
         },
         bytesToHex(serverKeyBytes)
@@ -446,5 +448,78 @@ export class CitadelRelay {
    */
   static cleanup() {
     this.pool.close();
+  }
+
+  /**
+   * Smoke test to verify cryptographic correctness of event signing
+   * Returns true if all checks pass
+   */
+  static async smokeTest(): Promise<boolean> {
+    try {
+      console.log("🔎 Starting CitadelRelay cryptographic smoke test...");
+
+      // 1) Generate server private key bytes (32 bytes)
+      const serverKeyBytes = await this.serverKey;
+      const privHex = bytesToHex(serverKeyBytes);
+
+      // Validate private key length
+      const isPrivLen32 =
+        serverKeyBytes instanceof Uint8Array && serverKeyBytes.length === 32;
+      console.log(
+        `• Private key length OK: ${isPrivLen32 ? "yes" : "no"} (len=${
+          serverKeyBytes.length
+        })`
+      );
+      if (!isPrivLen32) throw new Error("Private key is not 32 bytes");
+
+      // 2) Derive public key (64 hex chars)
+      const derivedPubHex = await getPublicKey.fromPrivateKey(privHex);
+      const isPubLen64 =
+        typeof derivedPubHex === "string" && derivedPubHex.length === 64;
+      console.log(
+        `• Public key hex length OK: ${isPubLen64 ? "yes" : "no"} (len=${
+          derivedPubHex.length
+        })`
+      );
+      if (!isPubLen64)
+        throw new Error("Derived public key is not 64 hex characters");
+
+      // Confirm pubkey differs from private key
+      const differsFromPriv = derivedPubHex !== privHex;
+      console.log(
+        `• Public key differs from private key: ${
+          differsFromPriv ? "yes" : "no"
+        }`
+      );
+      if (!differsFromPriv)
+        throw new Error("Derived public key unexpectedly equals private key");
+
+      // 3) Construct minimal test event (unsigned)
+      const unsignedEvent = {
+        kind: 1,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [] as string[][],
+        content: "Smoke test event for cryptographic validation",
+        pubkey: derivedPubHex, // derived public key must be used here
+        id: "",
+      };
+
+      // 4) Sign and finalize event with the private key
+      const signed = await finishEvent.sign(unsignedEvent as any, privHex);
+
+      // 5) Verify signature using existing verifyEvent utility
+      const verified = await verifyEvent.verify(signed as any);
+      console.log(
+        `• Signature verification: ${verified ? "valid" : "invalid"}`
+      );
+      if (!verified) throw new Error("Signature verification failed");
+
+      console.log("✅ SMOKE TEST PASSED: cryptographic flow is correct");
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("❌ SMOKE TEST FAILED:", msg);
+      return false;
+    }
   }
 }

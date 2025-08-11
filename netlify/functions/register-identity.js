@@ -35,41 +35,62 @@ export const handler = async (event) => {
     timestamp: new Date().toISOString()
   });
 
-  // DEBUG: Check environment variables with actual values (masked)
-  console.log("🔍 Environment variables check:", {
-    hasSupabaseUrl: !!process.env.VITE_SUPABASE_URL,
-    supabaseUrlLength: process.env.VITE_SUPABASE_URL?.length || 0,
-    hasSupabaseKey: !!process.env.VITE_SUPABASE_ANON_KEY,
-    supabaseKeyLength: process.env.VITE_SUPABASE_ANON_KEY?.length || 0,
-    nodeEnv: process.env.NODE_ENV,
-    allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
-  });
-
-  // Import Supabase client at function scope
-  console.log("🔍 Testing Supabase import...");
+  // CRITICAL: Wrap initialization code in try-catch to prevent unhandled exceptions
   let supabase;
-
   try {
-    const supabaseModule = await import("./supabase.js");
-    supabase = supabaseModule.supabase;
-    console.log("✅ Supabase import successful");
+    // DEBUG: Check environment variables with actual values (masked)
+    console.log("🔍 Environment variables check:", {
+      hasSupabaseUrl: !!process.env.VITE_SUPABASE_URL,
+      supabaseUrlLength: process.env.VITE_SUPABASE_URL?.length || 0,
+      hasSupabaseKey: !!process.env.VITE_SUPABASE_ANON_KEY,
+      supabaseKeyLength: process.env.VITE_SUPABASE_ANON_KEY?.length || 0,
+      nodeEnv: process.env.NODE_ENV,
+      allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
+    });
 
-    // Test basic Supabase connection using correct table
-    console.log("🔍 Testing Supabase connection...");
-    const { error } = await supabase.from('user_identities').select('count').limit(1);
-    if (error) {
-      console.error("❌ Supabase connection test failed:", error);
-    } else {
-      console.log("✅ Supabase connection test successful");
+    // Import Supabase client at function scope
+    console.log("🔍 Testing Supabase import...");
+
+    try {
+      const supabaseModule = await import("./supabase.js");
+      supabase = supabaseModule.supabase;
+      console.log("✅ Supabase import successful");
+
+      // Test basic Supabase connection using correct table
+      console.log("🔍 Testing Supabase connection...");
+      const { error } = await supabase.from('user_identities').select('count').limit(1);
+      if (error) {
+        console.error("❌ Supabase connection test failed:", error);
+      } else {
+        console.log("✅ Supabase connection test successful");
+      }
+    } catch (supabaseError) {
+      console.error("❌ Supabase import/connection failed:", supabaseError);
+      throw new Error(`Supabase setup failed: ${supabaseError.message}`);
     }
-  } catch (supabaseError) {
-    console.error("❌ Supabase import/connection failed:", supabaseError);
-    throw new Error(`Supabase setup failed: ${supabaseError.message}`);
-  }
 
-  // Validate supabase client is available
-  if (!supabase) {
-    throw new Error('Supabase client not available');
+    // Validate supabase client is available
+    if (!supabase) {
+      throw new Error('Supabase client not available');
+    }
+  } catch (initError) {
+    console.error("❌ Function initialization failed:", initError);
+    return {
+      statusCode: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        success: false,
+        error: "Service initialization failed",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      }),
+    };
   }
 
   // CORS headers following established codebase pattern
@@ -158,11 +179,40 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
-    // Generate proper UUID for user ID using established pattern
-    const userId = crypto.randomUUID();
 
-    console.log('🔐 Generated user ID:', {
-      userId,
+    // Self-contained robust dynamic import helper to avoid utility imports
+    async function robustImport(rel, segs) {
+      try {
+        return await import(rel);
+      } catch (_e1) {
+        const path = await import('node:path');
+        const url = await import('node:url');
+        const fileUrl = url.pathToFileURL(path.resolve(process.cwd(), ...segs)).href;
+        return await import(fileUrl);
+      }
+    }
+
+    // Generate secure DUID index for database storage (Phase 2 implementation)
+    console.log('🔐 Generating secure DUID index...');
+
+    // Import server-side DUID indexing using self-contained robust import
+    const { generateDUIDIndexFromNpub, auditDUIDOperation } = await robustImport(
+      './security/duid-index-generator.js',
+      ['netlify', 'functions', 'security', 'duid-index-generator.js']
+    );
+
+    // Generate DUID index from npub (server-side secret indexing)
+    const duid_index = generateDUIDIndexFromNpub(userData.npub);
+
+    // Audit the DUID generation for security monitoring
+    auditDUIDOperation('REGISTRATION_DUID_GENERATION', {
+      npubPrefix: userData.npub.substring(0, 10) + '...',
+      indexPrefix: duid_index.substring(0, 10) + '...',
+      username: userData.username
+    });
+
+    console.log('🔐 Generated secure DUID index:', {
+      indexPrefix: duid_index.substring(0, 10) + '...',
       timestamp: new Date().toISOString()
     });
 
@@ -244,7 +294,7 @@ export const handler = async (event) => {
       // Prepare insert payload with detailed logging
       const insertPayload = {
         // UNENCRYPTED: Only essential system operation fields
-        id: userId, // System identifier (required)
+        id: duid_index, // DUID index identifier (Phase 2 secure architecture)
         role: 'private', // User role (required for authorization)
         is_active: true, // Active status (required for system operation)
         created_at: new Date().toISOString(), // System timestamp
@@ -310,7 +360,7 @@ export const handler = async (event) => {
       console.log("✅ Consolidated user data created successfully in user_identities table");
 
     console.log('✅ Successfully stored user identity data:', {
-      userId: userId,
+      duid_index: duid_index.substring(0, 10) + '...',
       username: userData.username,
       npub: userData.npub,
       timestamp: new Date().toISOString()
@@ -342,7 +392,7 @@ export const handler = async (event) => {
       console.error('Failed to create NIP-05 record:', nip05Error);
 
       // Cleanup: Remove user identity record if NIP-05 creation failed
-      await supabase.from('user_identities').delete().eq('id', userId);
+      await supabase.from('user_identities').delete().eq('id', duid_index);
 
       throw new Error('Failed to create NIP-05 record');
     }
@@ -355,11 +405,12 @@ export const handler = async (event) => {
     }
     console.log('✅ Privacy compliance verified - all sensitive data properly hashed');
 
-    console.log('✅ User registered successfully with privacy-first hashing:', {
-      userId: userId,
+    console.log('✅ User registered successfully with secure DUID indexing:', {
+      duid_index: duid_index.substring(0, 10) + '...',
       username: userData.username,
       hasHashedData: true,
       table: 'user_identities',
+      secureIndexing: true,
       timestamp: new Date().toISOString()
     });
 
@@ -368,7 +419,7 @@ export const handler = async (event) => {
       success: true,
       message: "Identity registered successfully with privacy-first protection",
       user: {
-        id: userId, // Standard UUID identifier
+        id: duid_index, // Secure DUID index identifier (Phase 2)
         username: userData.username, // Only unencrypted field
         nip05: userData.nip05 || `${userData.username}@satnam.pub`, // Public identifier
         lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null),

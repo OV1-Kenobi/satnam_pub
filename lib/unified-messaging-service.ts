@@ -309,16 +309,94 @@ export class UnifiedMessagingService {
     if (!this.userSession) {
       throw new Error("No active session");
     }
-    return await PrivacyUtils.decryptWithSessionKey(
+
+    const decryptedValue = await PrivacyUtils.decryptWithSessionKey(
       this.userSession.encryptedNsec,
       this.userSession.sessionKey
     );
+
+    // Check if this is a NIP-07 session
+    if (decryptedValue === "NIP07_BROWSER_EXTENSION_AUTH") {
+      throw new Error("NIP-07 sessions require browser extension for signing");
+    }
+
+    return decryptedValue;
+  }
+
+  /**
+   * Check if current session is using NIP-07 authentication
+   */
+  private async isNIP07Session(): Promise<boolean> {
+    if (!this.userSession) {
+      return false;
+    }
+
+    const decryptedValue = await PrivacyUtils.decryptWithSessionKey(
+      this.userSession.encryptedNsec,
+      this.userSession.sessionKey
+    );
+
+    return decryptedValue === "NIP07_BROWSER_EXTENSION_AUTH";
+  }
+
+  /**
+   * Sign event using appropriate method (nsec or NIP-07)
+   */
+  private async signEvent(event: any): Promise<any> {
+    const isNIP07 = await this.isNIP07Session();
+
+    if (isNIP07) {
+      // For NIP-07, we would need to use the browser extension
+      // In a server environment, this would require a different approach
+      // For now, we'll throw an error indicating this needs client-side handling
+      throw new Error(
+        "NIP-07 signing requires client-side browser extension access"
+      );
+    } else {
+      // Traditional nsec signing
+      const nsec = await this.getNsec();
+      const nsecBytes = hexToBytes(nsec);
+      return finalizeEvent(event, nsecBytes);
+    }
   }
 
   /**
    * MASTER CONTEXT COMPLIANCE: Initialize unified messaging session
+   * Supports both traditional nsec and NIP-07 browser extension authentication
    */
   async initializeSession(
+    nsecOrMarker: string,
+    options?: {
+      ipAddress?: string;
+      userAgent?: string;
+      ttlHours?: number;
+      npub?: string; // Required for NIP-07 authentication
+      authMethod?: "nsec" | "nip07";
+    }
+  ): Promise<string> {
+    try {
+      // Detect NIP-07 authentication marker
+      const isNIP07 =
+        nsecOrMarker === "nip07" || options?.authMethod === "nip07";
+
+      if (isNIP07) {
+        return await this.initializeNIP07Session(options);
+      } else {
+        return await this.initializeNsecSession(nsecOrMarker, options);
+      }
+    } catch (error) {
+      throw new Error(
+        `Failed to initialize unified messaging session: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }
+
+  /**
+   * MASTER CONTEXT COMPLIANCE: Initialize session with traditional nsec
+   */
+  private async initializeNsecSession(
     nsec: string,
     options?: {
       ipAddress?: string;
@@ -326,37 +404,78 @@ export class UnifiedMessagingService {
       ttlHours?: number;
     }
   ): Promise<string> {
-    try {
-      this.userNsec = nsec;
-      const userNsecBytes = hexToBytes(nsec);
-      this.userNpub = getPublicKey(userNsecBytes);
+    this.userNsec = nsec;
+    const userNsecBytes = hexToBytes(nsec);
+    this.userNpub = getPublicKey(userNsecBytes);
 
-      const sessionId = await PrivacyUtils.generateEncryptedUUID();
-      const sessionKey = await PrivacyUtils.generateSessionKey();
-      const userHash = await PrivacyUtils.hashIdentifier(this.userNpub);
-      const encryptedNsec = await PrivacyUtils.encryptWithSessionKey(
-        nsec,
-        sessionKey
-      );
+    const sessionId = await PrivacyUtils.generateEncryptedUUID();
+    const sessionKey = await PrivacyUtils.generateSessionKey();
+    const userHash = await PrivacyUtils.hashIdentifier(this.userNpub);
+    const encryptedNsec = await PrivacyUtils.encryptWithSessionKey(
+      nsec,
+      sessionKey
+    );
 
-      const ttlHours = options?.ttlHours || this.config.session.ttlHours;
-      const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+    const ttlHours = options?.ttlHours || this.config.session.ttlHours;
+    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
-      this.userSession = {
-        sessionId,
-        userHash,
-        encryptedNsec,
-        sessionKey,
-        expiresAt,
-        ipAddress: options?.ipAddress,
-        userAgent: options?.userAgent,
-      };
+    this.userSession = {
+      sessionId,
+      userHash,
+      encryptedNsec,
+      sessionKey,
+      expiresAt,
+      ipAddress: options?.ipAddress,
+      userAgent: options?.userAgent,
+    };
 
-      await this.storeSessionInDatabase(this.userSession);
-      return sessionId;
-    } catch (error) {
-      throw new Error("Failed to initialize unified messaging session");
+    await this.storeSessionInDatabase(this.userSession);
+    return sessionId;
+  }
+
+  /**
+   * MASTER CONTEXT COMPLIANCE: Initialize session with NIP-07 browser extension
+   * For NIP-07, we don't store the nsec but rely on browser extension for signing
+   */
+  private async initializeNIP07Session(options?: {
+    ipAddress?: string;
+    userAgent?: string;
+    ttlHours?: number;
+    npub?: string;
+  }): Promise<string> {
+    if (!options?.npub) {
+      throw new Error("npub is required for NIP-07 authentication");
     }
+
+    // For NIP-07, we don't have access to the nsec
+    this.userNsec = ""; // Empty - will use browser extension for signing
+    this.userNpub = options.npub;
+
+    const sessionId = await PrivacyUtils.generateEncryptedUUID();
+    const sessionKey = await PrivacyUtils.generateSessionKey();
+    const userHash = await PrivacyUtils.hashIdentifier(this.userNpub);
+
+    // For NIP-07, we store a special marker instead of encrypted nsec
+    const encryptedNsec = await PrivacyUtils.encryptWithSessionKey(
+      "NIP07_BROWSER_EXTENSION_AUTH",
+      sessionKey
+    );
+
+    const ttlHours = options?.ttlHours || this.config.session.ttlHours;
+    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+
+    this.userSession = {
+      sessionId,
+      userHash,
+      encryptedNsec,
+      sessionKey,
+      expiresAt,
+      ipAddress: options?.ipAddress,
+      userAgent: options?.userAgent,
+    };
+
+    await this.storeSessionInDatabase(this.userSession);
+    return sessionId;
   }
 
   /**
@@ -1005,18 +1124,35 @@ export class UnifiedMessagingService {
 
   /**
    * MASTER CONTEXT COMPLIANCE: Get current session status
+   * Now includes authentication method information for NIP-07 compatibility
    */
-  getSessionStatus(): {
+  async getSessionStatus(): Promise<{
     active: boolean;
     sessionId: string | null;
     contactCount: number;
     groupCount: number;
-  } {
-    return {
+    authMethod?: "nsec" | "nip07";
+    userHash?: string;
+    expiresAt?: Date;
+  }> {
+    const baseStatus = {
       active: this.userSession !== null,
       sessionId: this.userSession?.sessionId || null,
       contactCount: this.contactSessions.size,
       groupCount: this.groupSessions.size,
+    };
+
+    if (!this.userSession) {
+      return baseStatus;
+    }
+
+    const isNIP07 = await this.isNIP07Session();
+
+    return {
+      ...baseStatus,
+      authMethod: isNIP07 ? "nip07" : "nsec",
+      userHash: this.userSession.userHash,
+      expiresAt: this.userSession.expiresAt,
     };
   }
 

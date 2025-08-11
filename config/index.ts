@@ -787,9 +787,7 @@ export function validateConfig(): { valid: boolean; missing: string[] } {
   if (!supabaseConfig.url) {
     missing.push("SUPABASE_URL");
   }
-  if (!supabaseConfig.serviceRoleKey) {
-    missing.push("SUPABASE_SERVICE_ROLE_KEY");
-  }
+  // Service role key must never be required in app/runtime config
 
   // Check Bitcoin security requirements in production
   const serverConf = getServerConfig();
@@ -887,7 +885,7 @@ export const pkarrConfig: PkarrConfig = {
  */
 export const supabaseConfig: SupabaseConfig = {
   url: getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || getEnvVar("SUPABASE_URL"),
-  serviceRoleKey: getEnvVar("SUPABASE_SERVICE_ROLE_KEY"),
+  serviceRoleKey: undefined, // Do not expose service role in app runtime config
   anonKey:
     getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
     getEnvVar("SUPABASE_ANON_KEY"),

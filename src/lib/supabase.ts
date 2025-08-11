@@ -18,19 +18,7 @@ function getEnvVar(key: string, defaultValue: string = ""): string {
     return process.env[key] || defaultValue;
   }
 
-  // Fallback to import.meta.env for browser environments (if Vite injection fails)
-  if (typeof window !== "undefined") {
-    try {
-      const env = (import.meta as any).env;
-      if (env && env[key]) {
-        return env[key] || defaultValue;
-      }
-    } catch (error) {
-      console.warn(`Failed to access import.meta.env for ${key}:`, error);
-    }
-  }
-
-  // Final fallback
+  // Fallback
   console.warn(
     `Environment variable ${key} not accessible in current environment`
   );

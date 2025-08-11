@@ -38,10 +38,19 @@ export function PostAuthInvitationModal({
     setLoading(true);
     setError(null); // Clear any previous errors
     try {
+      // Get authentication token from session
+      const authToken = sessionInfo.sessionToken;
+
+      if (!authToken) {
+        throw new Error('Authentication token not found. Please sign in again.');
+      }
+
       const response = await fetch('/api/authenticated/generate-peer-invite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // Include HttpOnly cookies
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}` // Use JWT token authentication
+        },
         body: JSON.stringify({
           // Privacy-first: Only send NIP05 for spam prevention in gift-wrapped messages
           inviterNip05: sessionInfo.user?.nip05,

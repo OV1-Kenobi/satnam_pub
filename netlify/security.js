@@ -84,7 +84,18 @@ export async function hashPassword(password) {
 
 export async function verifyPassword(password, hash) {
   const computedHash = await hashPassword(password);
-  return computedHash === hash;
+
+  // Use constant-time comparison to prevent timing attacks
+  if (computedHash.length !== hash.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < computedHash.length; i++) {
+    result |= computedHash.charCodeAt(i) ^ hash.charCodeAt(i);
+  }
+
+  return result === 0;
 }
 
 export function generateSecureToken(length = 32) {
