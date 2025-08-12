@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Zap, Shield, Users, Crown, User, Baby, ArrowLeft, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Baby, CheckCircle, Crown, Loader, Shield, User, Users, Zap } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface FederationSetupType {
   id: string;
@@ -33,13 +33,13 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
   onComplete
 }) => {
   const [selectedSetupType, setSelectedSetupType] = useState<string>('');
-  const [selectedRoles, setSelectedRoles] = useState<{[key: string]: string[]}>({
+  const [selectedRoles, setSelectedRoles] = useState<{ [key: string]: string[] }>({
     guardian: [],
     steward: [],
     adult: [],
     offspring: []
   });
-  const [thresholds, setThresholds] = useState<{[key: string]: {m: number, n: number}}>({
+  const [thresholds, setThresholds] = useState<{ [key: string]: { m: number, n: number } }>({
     guardian: { m: 1, n: 1 },
     steward: { m: 1, n: 1 },
     adult: { m: 1, n: 1 },
@@ -49,6 +49,20 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Guards for async work
+  const mountedRef = useRef(true);
+  const stepAbortRef = useRef<AbortController | null>(null);
+  const completionTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (stepAbortRef.current) { stepAbortRef.current.abort(); stepAbortRef.current = null; }
+      if (completionTimerRef.current !== null) { clearTimeout(completionTimerRef.current); completionTimerRef.current = null; }
+    };
+  }, []);
 
   const setupTypes: FederationSetupType[] = [
     {
@@ -116,7 +130,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
       const setupType = setupTypes.find(type => type.id === selectedSetupType);
       if (setupType) {
         // Auto-select peers based on setup type
-        const newSelectedRoles: {[key: string]: string[]} = {
+        const newSelectedRoles: { [key: string]: string[] } = {
           guardian: [],
           steward: [],
           adult: [],
@@ -133,7 +147,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
         setSelectedRoles(newSelectedRoles);
 
         // Set default thresholds
-        const newThresholds: {[key: string]: {m: number, n: number}} = {
+        const newThresholds: { [key: string]: { m: number, n: number } } = {
           guardian: { m: Math.ceil(setupType.guardianCount / 2), n: setupType.guardianCount },
           steward: { m: Math.ceil(setupType.stewardCount / 2), n: setupType.stewardCount },
           adult: { m: Math.ceil(setupType.adultCount / 2), n: setupType.adultCount },
@@ -153,10 +167,15 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
       // Step 1: Nsec protection setup
       setStatus('Setting up Nsec protection...');
       setProgress(25);
-      
+
+      if (stepAbortRef.current) { stepAbortRef.current.abort(); }
+      const controller = new AbortController();
+      stepAbortRef.current = controller;
+
       const nsecResponse = await fetch('/api/federationnostrprotect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           charterId: charter.id,
           selectedRoles,
@@ -164,6 +183,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
         })
       });
 
+      if (!mountedRef.current) return;
       if (!nsecResponse.ok) {
         throw new Error('Failed to setup Nsec protection');
       }
@@ -175,6 +195,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
       const ecashResponse = await fetch('/api/federationecashfamily-mint-setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           charterId: charter.id,
           selectedRoles,
@@ -182,6 +203,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
         })
       });
 
+      if (!mountedRef.current) return;
       if (!ecashResponse.ok) {
         throw new Error('Failed to setup eCash mint');
       }
@@ -193,6 +215,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
       const federationResponse = await fetch('/api/family/foundry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           charter,
           rbac,
@@ -204,23 +227,27 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
         })
       });
 
+      if (!mountedRef.current) return;
       if (!federationResponse.ok) {
         throw new Error('Failed to create federation');
       }
 
       const federationData = await federationResponse.json();
-      
+      if (!mountedRef.current) return;
+
       setStatus('Federation created successfully!');
       setProgress(100);
 
       // Complete the process
-      setTimeout(() => {
+      completionTimerRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) return;
         onComplete(federationData.data.federationId);
         onClose();
       }, 2000);
 
     } catch (error) {
       console.error('Federation creation error:', error);
+      if (!mountedRef.current) return;
       setError(error instanceof Error ? error.message : 'Unknown error occurred');
       setIsCreating(false);
     }
@@ -233,7 +260,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
   const togglePeerSelection = (role: string, peerId: string) => {
     const currentSelected = selectedRoles[role] || [];
     const isSelected = currentSelected.includes(peerId);
-    
+
     if (isSelected) {
       setSelectedRoles({
         ...selectedRoles,
@@ -242,7 +269,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
     } else {
       const setupType = setupTypes.find(type => type.id === selectedSetupType);
       const maxCount = setupType ? setupType[`${role}Count` as keyof FederationSetupType] : 0;
-      
+
       if (currentSelected.length < maxCount) {
         setSelectedRoles({
           ...selectedRoles,
@@ -273,7 +300,7 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
               <Loader className="h-12 w-12 mx-auto mb-4 text-purple-400 animate-spin" />
               <h4 className="text-xl font-bold text-white mb-2">{status}</h4>
               <div className="w-full bg-white/10 rounded-full h-3 mb-4">
-                <div 
+                <div
                   className="bg-gradient-to-r from-purple-600 to-blue-600 h-3 rounded-full transition-all duration-500"
                   style={{ width: `${progress}%` }}
                 />
@@ -307,11 +334,10 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
                     <div
                       key={type.id}
                       onClick={() => setSelectedSetupType(type.id)}
-                      className={`border rounded-lg p-4 cursor-pointer transition-all duration-300 ${
-                        selectedSetupType === type.id
+                      className={`border rounded-lg p-4 cursor-pointer transition-all duration-300 ${selectedSetupType === type.id
                           ? 'border-purple-500 bg-purple-500/20'
                           : 'border-white/20 bg-white/5 hover:bg-white/10'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3 mb-3">
                         <div className={`inline-flex items-center justify-center w-10 h-10 bg-gradient-to-br ${type.color} rounded-full`}>
@@ -380,15 +406,13 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
                               <div
                                 key={peer.id}
                                 onClick={() => togglePeerSelection(role, peer.id)}
-                                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 ${
-                                  isSelected
+                                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 ${isSelected
                                     ? 'bg-purple-600/20 border border-purple-400/50'
                                     : 'bg-white/5 border border-white/10 hover:bg-white/10'
-                                }`}
+                                  }`}
                               >
-                                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                                  isSelected ? 'bg-purple-600 border-purple-600' : 'border-white/30'
-                                }`}>
+                                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-white/30'
+                                  }`}>
                                   {isSelected && <CheckCircle className="h-3 w-3 text-white" />}
                                 </div>
                                 <div>

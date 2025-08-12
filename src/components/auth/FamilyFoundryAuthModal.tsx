@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Crown, Shield, Users, Key } from 'lucide-react';
+import { ArrowLeft, Crown, Key, Shield, Users } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import IdentityForge from '../IdentityForge';
 
 interface FamilyFoundryAuthModalProps {
@@ -16,6 +16,19 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
   onExistingUserSignIn
 }) => {
   const [currentStep, setCurrentStep] = useState<'intro' | 'identity-forge'>('intro');
+  const mountedRef = useRef(true);
+  const transitionTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (transitionTimerRef.current !== null) {
+        clearTimeout(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -27,10 +40,12 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
 
 
   const handleReturnToIntro = () => {
+    if (!mountedRef.current) return;
     setCurrentStep('intro');
   };
 
   const handleStartIdentityForge = () => {
+    if (!mountedRef.current) return;
     setCurrentStep('identity-forge');
   };
 
@@ -40,6 +55,7 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
   };
 
   const handleNewUserSignUp = () => {
+    if (!mountedRef.current) return;
     setCurrentStep('identity-forge');
   };
 
@@ -127,8 +143,8 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
                     <div>
                       <h3 className="text-xl font-bold text-white mb-2">Why Authentication?</h3>
                       <p className="text-purple-200">
-                        Family Foundry requires authentication to ensure secure family federation creation, 
-                        protect sensitive family data, and enable collaborative features like role-based access control 
+                        Family Foundry requires authentication to ensure secure family federation creation,
+                        protect sensitive family data, and enable collaborative features like role-based access control
                         and family treasury management.
                       </p>
                     </div>

@@ -19,7 +19,7 @@ import {
   User,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from './AuthProvider';
 
 interface NIP05PasswordAuthProps {
@@ -51,6 +51,20 @@ export function NIP05PasswordAuth({
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  const mountedRef = useRef(true);
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleClose = () => {
     // Clear sensitive data
     setPassword("");
@@ -64,7 +78,8 @@ export function NIP05PasswordAuth({
   const handleAuthSuccess = () => {
     setSuccess('NIP-05/Password authentication successful! Maximum privacy protection active.');
 
-    setTimeout(() => {
+    closeTimerRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) return;
       onAuthSuccess(destination);
       handleClose();
     }, 1500);
@@ -115,6 +130,7 @@ export function NIP05PasswordAuth({
       // Use the unified authentication system
       const success = await auth.authenticateNIP05Password(nip05.trim(), password);
 
+      if (!mountedRef.current) return;
       if (success) {
         if (process.env.NODE_ENV !== 'production') {
           console.debug('✅ Authentication successful');
@@ -129,6 +145,7 @@ export function NIP05PasswordAuth({
       }
       setError(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
+      if (!mountedRef.current) return;
       setIsLoading(false);
       // Clear password immediately after attempt
       setPassword("");

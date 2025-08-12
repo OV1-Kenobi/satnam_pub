@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, Eye, EyeOff, Info, Wallet, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface NWCModalProps {
   isOpen: boolean;
@@ -21,6 +21,12 @@ const NWCModal: React.FC<NWCModalProps> = ({
   isLoading = false
 }) => {
   const [nwcUri, setNwcUri] = useState('');
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [showUri, setShowUri] = useState(false);
   const [validation, setValidation] = useState<ValidationResult>({
     isValid: false,
@@ -136,9 +142,10 @@ const NWCModal: React.FC<NWCModalProps> = ({
   const handleUriChange = (value: string) => {
     setNwcUri(value);
     setHasInteracted(true);
-    
+
     // Validate in real-time
     const validationResult = validateNWCUri(value);
+    if (!mountedRef.current) return;
     setValidation(validationResult);
   };
 
@@ -158,11 +165,11 @@ const NWCModal: React.FC<NWCModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         className="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-lg w-full mx-4 relative max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -220,15 +227,14 @@ const NWCModal: React.FC<NWCModalProps> = ({
                 onChange={(e) => handleUriChange(e.target.value)}
                 placeholder="nostr+walletconnect://..."
                 disabled={isLoading}
-                className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  hasInteracted
+                className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${hasInteracted
                     ? validation.isValid
                       ? 'border-green-300 focus:border-green-500 focus:ring-green-200'
                       : validation.errors.length > 0
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-200'
-                      : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
+                        ? 'border-red-300 focus:border-red-500 focus:ring-red-200'
+                        : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
                     : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
-                }`}
+                  }`}
               />
               <button
                 type="button"
@@ -240,7 +246,7 @@ const NWCModal: React.FC<NWCModalProps> = ({
                 {showUri ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
-            
+
             {/* Validation Messages */}
             {hasInteracted && (
               <div className="mt-2 space-y-1">
@@ -275,7 +281,7 @@ const NWCModal: React.FC<NWCModalProps> = ({
                   Security Notice
                 </h4>
                 <p className="text-sm text-yellow-700">
-                  Your NWC URI contains sensitive information. Never share it with untrusted parties. 
+                  Your NWC URI contains sensitive information. Never share it with untrusted parties.
                   This connection will be used only for authentication purposes.
                 </p>
               </div>

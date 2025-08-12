@@ -18,7 +18,7 @@ import {
   Users,
   X
 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { usePrivacyFirstMessaging } from '../hooks/usePrivacyFirstMessaging'
 import { Contact, CreateContactInput, UpdateContactInput } from '../types/contacts'
 import AddContactForm from './AddContactForm'
@@ -135,6 +135,15 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
     }
   };
 
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // CRITICAL SECURITY: Initialize session with zero-knowledge Nsec handling
   useEffect(() => {
     if (isOpen && userNsec && !messaging.connected) {
@@ -143,6 +152,7 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
           // CRITICAL SECURITY: Direct nsec string passing to messaging service
           // The messaging service handles secure nsec processing internally
           await messaging.initializeSession(userNsec);
+          if (!mountedRef.current) return;
 
           // Log secure Nsec processing (metadata only)
           await logContactManagerOperation({
@@ -175,6 +185,7 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
   // Load contacts when connected
   useEffect(() => {
     if (messaging.connected) {
+      if (!mountedRef.current) return;
       loadContacts()
     }
   }, [messaging.connected])
@@ -213,6 +224,7 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
       // CRITICAL SECURITY: Privacy-first contact loading from messaging service
       // In production, this would load from the messaging service
       // For now, we'll simulate with empty array
+      if (!mountedRef.current) return;
       setContacts([])
 
       // Log successful contact load for user transparency
@@ -235,8 +247,10 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
         },
         timestamp: new Date(),
       });
+      if (!mountedRef.current) return;
       setError('Failed to load contacts')
     } finally {
+      if (!mountedRef.current) return;
       setLoading(false)
     }
   }
@@ -296,6 +310,7 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
           timestamp: new Date(),
         });
 
+        if (!mountedRef.current) return;
         setModalStep('contacts-list')
         await loadContacts()
       } else {
@@ -312,9 +327,11 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
         },
         timestamp: new Date(),
       });
+      if (!mountedRef.current) return;
       setError(error instanceof Error ? error.message : 'Failed to add contact')
       throw error; // Re-throw to let form handle it
     } finally {
+      if (!mountedRef.current) return;
       setLoading(false)
     }
   }
@@ -366,6 +383,7 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
         timestamp: new Date(),
       });
 
+      if (!mountedRef.current) return;
       setModalStep('contacts-list')
       setSelectedContact(null)
 
@@ -379,9 +397,11 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
         },
         timestamp: new Date(),
       });
+      if (!mountedRef.current) return;
       setError(error instanceof Error ? error.message : 'Failed to update contact')
       throw error;
     } finally {
+      if (!mountedRef.current) return;
       setLoading(false)
     }
   }
@@ -421,8 +441,10 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
         },
         timestamp: new Date(),
       });
+      if (!mountedRef.current) return;
       setError(error instanceof Error ? error.message : 'Failed to delete contact')
     } finally {
+      if (!mountedRef.current) return;
       setLoading(false)
     }
   }

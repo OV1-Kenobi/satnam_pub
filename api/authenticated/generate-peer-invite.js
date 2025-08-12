@@ -281,7 +281,7 @@ async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip
       // Create gift-wrapped event using NIP-59
       const giftWrappedEvent = await nip59.wrapEvent(
         baseEvent,
-        recipientPubkey,
+        hexToBytes(recipientPubkey),
         ephemeralPrivateKeyHex
       );
 

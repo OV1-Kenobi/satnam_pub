@@ -25,7 +25,7 @@ import {
   X,
   Zap
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEmergencyRecovery } from '../hooks/useEmergencyRecovery';
 import { FederationRole } from '../types/auth';
 
@@ -79,6 +79,19 @@ export function EmergencyRecoveryModal({
   familyId
 }: EmergencyRecoveryModalProps) {
   const [currentStep, setCurrentStep] = useState<'request' | 'approval' | 'execution' | 'complete'>('request');
+  const mountedRef = useRef(true);
+  const statusIntervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (statusIntervalRef.current !== null) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
+    };
+  }, []);
   const [recoveryRequest, setRecoveryRequest] = useState<RecoveryRequest>({
     requestType: 'nsec_recovery',
     reason: 'lost_key',
@@ -135,16 +148,23 @@ export function EmergencyRecoveryModal({
   // Auto-refresh status if request is pending
   useEffect(() => {
     if (recoveryStatus?.status === 'pending') {
-      const interval = setInterval(() => {
+      const interval = window.setInterval(() => {
         checkRecoveryStatus();
       }, 5000); // Check every 5 seconds
-      return () => clearInterval(interval);
+      statusIntervalRef.current = interval;
+      return () => {
+        if (statusIntervalRef.current !== null) {
+          clearInterval(statusIntervalRef.current);
+          statusIntervalRef.current = null;
+        }
+      };
     }
   }, [recoveryStatus?.status, getRecoveryStatus]);
 
   const loadGuardians = async () => {
     try {
       const result = await getFamilyGuardians();
+      if (!mountedRef.current) return;
       if (result.success && result.data) {
         setGuardians(result.data);
       }
@@ -157,6 +177,7 @@ export function EmergencyRecoveryModal({
     try {
       const result = await initiateRecovery(recoveryRequest);
 
+      if (!mountedRef.current) return;
       if (result.success && result.data) {
         setRecoveryStatus({
           requestId: result.data.requestId,
@@ -180,6 +201,7 @@ export function EmergencyRecoveryModal({
     try {
       const result = await getRecoveryStatus();
 
+      if (!mountedRef.current) return;
       if (result.success && result.data && result.data.activeRequests.length > 0) {
         const request = result.data.activeRequests[0];
         setRecoveryStatus({
@@ -208,6 +230,7 @@ export function EmergencyRecoveryModal({
 
     // Note: Recovery execution would need to be implemented in the EmergencyRecoveryLib
     // For now, we simulate successful execution
+    if (!mountedRef.current) return;
     setCurrentStep('complete');
     console.log('Recovery execution would be implemented here');
   };

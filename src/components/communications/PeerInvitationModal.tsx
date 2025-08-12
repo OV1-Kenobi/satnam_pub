@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MessageSendResult, nostrMessageService } from '../../lib/nostr-message-service';
 import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 
@@ -31,6 +31,24 @@ export function PeerInvitationModal({
   const [personalMessage, setPersonalMessage] = useState('');
   const [privacyLevel, setPrivacyLevel] = useState<PrivacyLevel>(getDefaultPrivacyLevel());
   const [isSending, setIsSending] = useState(false);
+  const mountedRef = useRef(true);
+  const sendAbortRef = useRef<AbortController | null>(null);
+  const successAlertTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (sendAbortRef.current) {
+        sendAbortRef.current.abort();
+        sendAbortRef.current = null;
+      }
+      if (successAlertTimerRef.current !== null) {
+        clearTimeout(successAlertTimerRef.current);
+        successAlertTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Enhanced message sending function using authenticated user's keys
   const sendMessage = async (content: string, recipient: string, privacyLevel: PrivacyLevel): Promise<MessageSendResult> => {
@@ -85,14 +103,21 @@ export function PeerInvitationModal({
           result.method === 'encrypted' ? 'Encrypted DM (Selective Privacy)' :
             'Public Note (Minimal Privacy)';
 
-        alert(`Peer invitation sent successfully!\n\nMethod: ${privacyMethod}\nMessage ID: ${result.messageId || 'N/A'}\nRelay: ${result.relayUrl || 'Multiple relays'}`);
+        // Delay alert slightly to allow modal unmount sequence to finish, guard with mount
+        successAlertTimerRef.current = window.setTimeout(() => {
+          if (!mountedRef.current) return;
+          alert(`Peer invitation sent successfully!\n\nMethod: ${privacyMethod}\nMessage ID: ${result.messageId || 'N/A'}\nRelay: ${result.relayUrl || 'Multiple relays'}`);
+        }, 50);
       } else {
         throw new Error(result.error || 'Failed to send invitation');
       }
     } catch (error) {
       console.error('Invitation sending failed:', error);
-      alert(`Failed to send invitation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (mountedRef.current) {
+        alert(`Failed to send invitation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     } finally {
+      if (!mountedRef.current) return;
       setIsSending(false);
     }
   };

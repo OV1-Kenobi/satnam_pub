@@ -4,7 +4,7 @@
  */
 
 import { ArrowRightLeft, CheckCircle, Clock, Info, Loader2, Shield, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { ApiError, paymentsClient } from '../../lib/api/paymentsClient.js';
 
@@ -130,6 +130,16 @@ export function ECashBridgeModal({ isOpen, onClose, onSuccess }: ECashBridgeModa
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const submitAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (submitAbortRef.current) { submitAbortRef.current.abort(); submitAbortRef.current = null; }
+    };
+  }, []);
   const [conversionPreview, setConversionPreview] = useState<ConversionPreview | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [detectedTokenType, setDetectedTokenType] = useState<'fedimint' | 'cashu' | 'unknown'>('unknown');
@@ -310,8 +320,13 @@ export function ECashBridgeModal({ isOpen, onClose, onSuccess }: ECashBridgeModa
         enablePrivacy: formData.enablePrivacy,
       };
 
-      const result = await paymentsClient.executeECashBridge(bridgeRequest);
+      if (submitAbortRef.current) { submitAbortRef.current.abort(); }
+      const controller = new AbortController();
+      submitAbortRef.current = controller;
 
+      const result = await paymentsClient.executeECashBridge(bridgeRequest, controller.signal);
+
+      if (!mountedRef.current) return;
       if (result.success) {
         toast({
           title: 'eCash Bridge Operation Successful',
@@ -326,6 +341,10 @@ export function ECashBridgeModal({ isOpen, onClose, onSuccess }: ECashBridgeModa
     } catch (error) {
       console.error('Bridge operation error:', error);
 
+      if ((error as any)?.name === 'AbortError') {
+        return;
+      }
+
       let errorMessage = 'Bridge operation failed. Please try again.';
       if (error instanceof ApiError) {
         errorMessage = error.getUserFriendlyMessage();
@@ -337,6 +356,7 @@ export function ECashBridgeModal({ isOpen, onClose, onSuccess }: ECashBridgeModa
         variant: 'destructive',
       });
     } finally {
+      if (!mountedRef.current) return;
       setIsLoading(false);
     }
   };

@@ -2,7 +2,7 @@
 // File: src/components/PostAuthInvitationModal.tsx
 
 import { X } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SessionInfo } from '../utils/secureSession.js';
 
 interface PostAuthInvitationModalProps {
@@ -28,6 +28,20 @@ export function PostAuthInvitationModal({
     recipientNostrPubkey: '',
     sendAsGiftWrappedDM: false
   });
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+    };
+  }, []);
+
   const [generatedInvite, setGeneratedInvite] = useState<{
     qrImage: string;
     inviteUrl: string;
@@ -48,12 +62,20 @@ export function PostAuthInvitationModal({
         throw new Error('Authentication token not found. Please sign in again.');
       }
 
+      // Abort any in-flight request before starting a new one
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       const response = await fetch('/api/authenticated/generate-peer-invite', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}` // Use JWT token authentication
         },
+        signal: controller.signal,
         body: JSON.stringify({
           // Privacy-first: Only send NIP05 for spam prevention in gift-wrapped messages
           inviterNip05: sessionInfo.user?.nip05,
@@ -65,6 +87,9 @@ export function PostAuthInvitationModal({
         })
       });
 
+      // If unmounted or aborted, stop processing
+      if (!mountedRef.current) return;
+
       const result = await response.json();
       if (result.success) {
         setGeneratedInvite({
@@ -75,6 +100,10 @@ export function PostAuthInvitationModal({
         });
       }
     } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        // Swallow abort errors from closing the modal or re-triggering
+        return;
+      }
       console.error('Failed to generate invite:', error);
       setError('Failed to generate invitation. Please try again.');
     } finally {

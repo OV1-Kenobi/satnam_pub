@@ -19,6 +19,21 @@
   command = "npm run dev"
 
 # Redirects for SPA and API endpoints - API only
+# Specific auth pepper endpoint mapping to avoid invalid ":splat" function naming with slashes
+[[redirects]]
+  from = "/api/auth/get-pepper"
+  to = "/.netlify/functions/auth-get-pepper"
+  status = 200
+  force = true
+
+# Back-compat: if something calls the function path with a slash in name, redirect it
+[[redirects]]
+  from = "/.netlify/functions/auth/get-pepper"
+  to = "/.netlify/functions/auth-get-pepper"
+  status = 200
+  force = true
+
+# Generic mapping for other API endpoints
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"

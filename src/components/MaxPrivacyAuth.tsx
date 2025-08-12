@@ -17,7 +17,7 @@ import {
   Smartphone,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../components/auth/AuthProvider";
 
 interface MaxPrivacyAuthProps {
@@ -59,6 +59,20 @@ export function MaxPrivacyAuth({
   const [nip07Password, setNip07Password] = useState("");
   const [showNip07Password, setShowNip07Password] = useState(false);
 
+  const mountedRef = useRef(true);
+  const successTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleClose = () => {
     setAuthMethod(null);
     setError(null);
@@ -70,7 +84,8 @@ export function MaxPrivacyAuth({
   const handleAuthSuccess = (method: string) => {
     setSuccess(`${method.toUpperCase()} authentication successful! Maximum privacy protection active.`);
 
-    setTimeout(() => {
+    successTimerRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) return;
       onAuthSuccess(destination);
       handleClose();
     }, 1500);
@@ -91,6 +106,7 @@ export function MaxPrivacyAuth({
     try {
       const result = await auth.initiateOTP(nipOrNpub);
 
+      if (!mountedRef.current) return;
       if (result.success) {
         setOtpSent(true);
         setSuccess('OTP sent via encrypted Nostr DM! Check your Nostr client.');
@@ -100,6 +116,7 @@ export function MaxPrivacyAuth({
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to send OTP');
     } finally {
+      if (!mountedRef.current) return;
       setIsLoading(false);
     }
   };
@@ -117,6 +134,7 @@ export function MaxPrivacyAuth({
     try {
       const success = await auth.authenticateOTP(nipOrNpub, otpCode);
 
+      if (!mountedRef.current) return;
       if (success) {
         handleAuthSuccess('OTP');
       } else {
@@ -125,6 +143,7 @@ export function MaxPrivacyAuth({
     } catch (error) {
       setError(error instanceof Error ? error.message : 'OTP verification failed');
     } finally {
+      if (!mountedRef.current) return;
       setIsLoading(false);
     }
   };
@@ -161,6 +180,7 @@ export function MaxPrivacyAuth({
       // Use NIP-07 with password for DUID generation (same as NIP-05/Password)
       const success = await auth.authenticateNIP07(challenge, signedEvent.sig, pubkey, nip07Password);
 
+      if (!mountedRef.current) return;
       if (success) {
         handleAuthSuccess('NIP-07');
       } else {
@@ -169,6 +189,7 @@ export function MaxPrivacyAuth({
     } catch (error) {
       setError(error instanceof Error ? error.message : 'NIP-07 authentication failed');
     } finally {
+      if (!mountedRef.current) return;
       setIsLoading(false);
     }
   };
@@ -186,6 +207,7 @@ export function MaxPrivacyAuth({
     try {
       const success = await auth.authenticateNIP05Password(nip05Username, password);
 
+      if (!mountedRef.current) return;
       if (success) {
         handleAuthSuccess('NIP-05/Password');
       } else {
@@ -194,6 +216,7 @@ export function MaxPrivacyAuth({
     } catch (error) {
       setError(error instanceof Error ? error.message : 'NIP-05/Password authentication failed');
     } finally {
+      if (!mountedRef.current) return;
       setIsLoading(false);
     }
   };

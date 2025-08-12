@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS nip05_credentials (
     password_iv TEXT NOT NULL UNIQUE, -- Unique IV for password encryption
     password_tag TEXT NOT NULL, -- Authentication tag for password encryption
     
-    -- Password Security Metadata
-    password_algorithm TEXT NOT NULL DEFAULT 'SHA256' CHECK (password_algorithm IN ('SHA256')),
-    salt_rounds INTEGER NOT NULL DEFAULT 12, -- For future PBKDF2 implementation if needed
+    -- Password Security Metadata  
+    password_algorithm TEXT NOT NULL DEFAULT 'PBKDF2' CHECK (password_algorithm IN ('PBKDF2')),
+    salt_rounds INTEGER NOT NULL DEFAULT 10, -- PBKDF2 cost factor (2^10 = 1024 iterations)
     
     -- Account Security
     failed_attempts INTEGER NOT NULL DEFAULT 0,

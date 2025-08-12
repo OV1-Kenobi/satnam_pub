@@ -25,7 +25,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
 import { FederationRole } from '../types/auth';
 
@@ -71,6 +71,20 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   // NTAG424 hook
   const { authState, isProcessing, authenticateWithNFC, registerNewTag, resetAuthState } = useProductionNTAG424();
 
+  const mountedRef = useRef(true);
+  const successTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -88,7 +102,8 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   useEffect(() => {
     if (authState.isAuthenticated && currentStep === 'processing') {
       setCurrentStep('success');
-      setTimeout(() => {
+      successTimerRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) return;
         onAuthSuccess?.(authState);
         onClose();
       }, 2000);
@@ -152,6 +167,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
     try {
       const result = await authenticateWithNFC(pin);
       if (result.success) {
+        if (!mountedRef.current) return;
         setCurrentStep('processing');
       } else {
         setCurrentStep('error');

@@ -15,7 +15,7 @@ import {
   X
 } from 'lucide-react';
 import { nip19 } from 'nostr-tools';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NIP07AuthChallenge } from '../types/auth';
 
 // Lazy import to prevent client creation on page load
@@ -84,6 +84,21 @@ const SignInModal: React.FC<SignInModalProps> = ({
     step: 'connecting',
     message: 'Connecting to extension...'
   });
+
+  // Track mounted state and pending timers to avoid race conditions
+  const mountedRef = useRef(true);
+  const postAuthTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (postAuthTimerRef.current !== null) {
+        clearTimeout(postAuthTimerRef.current);
+        postAuthTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -188,6 +203,11 @@ const SignInModal: React.FC<SignInModalProps> = ({
     setTimeout(() => {
       setIsClosing(false);
       onClose();
+      // Ensure any pending post-auth timer is cleared when closing
+      if (postAuthTimerRef.current !== null) {
+        clearTimeout(postAuthTimerRef.current);
+        postAuthTimerRef.current = null;
+      }
     }, 150);
   };
 
@@ -284,14 +304,18 @@ const SignInModal: React.FC<SignInModalProps> = ({
       });
 
       // Get session info and show invitation modal
-      const timer = setTimeout(() => {
+      // Schedule showing the invitation modal slightly after success
+      // Store timer so it can be cancelled on unmount/close
+      postAuthTimerRef.current = window.setTimeout(() => {
         const loadSessionInfo = async () => {
           try {
             const session = await getSessionInfo();
+            if (!mountedRef.current) return;
             setSessionInfo(session);
             setShowPostAuthInvitation(true);
           } catch (error) {
             console.error('Failed to get session info:', error);
+            if (!mountedRef.current) return;
             onSignInSuccess(destination);
             handleClose();
           }
@@ -299,8 +323,6 @@ const SignInModal: React.FC<SignInModalProps> = ({
         loadSessionInfo();
       }, 1000);
 
-      // Cleanup timer if component unmounts
-      return () => clearTimeout(timer);
 
     } catch (error) {
       console.error('NIP-07 authentication error:', error);

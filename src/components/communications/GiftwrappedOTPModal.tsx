@@ -16,7 +16,7 @@ import {
   X,
   Zap
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { calculatePrivacyMetrics } from '../../types/privacy'
 import { PrivacyLevel, PrivacyLevelSelector, getDefaultPrivacyLevel } from './PrivacyLevelSelector.tsx'
 
@@ -56,17 +56,42 @@ export function GiftwrappedOTPModal({
   userProfile,
   preSelectedPrivacyLevel
 }: GiftwrappedOTPModalProps) {
+  // Lifecycle guards
+  const mountedRef = useRef(true)
+  const otpSendAbortRef = useRef<AbortController | null>(null)
+  const otpVerifyAbortRef = useRef<AbortController | null>(null)
+  const successTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (otpSendAbortRef.current) {
+        otpSendAbortRef.current.abort()
+        otpSendAbortRef.current = null
+      }
+      if (otpVerifyAbortRef.current) {
+        otpVerifyAbortRef.current.abort()
+        otpVerifyAbortRef.current = null
+      }
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current)
+        successTimerRef.current = null
+      }
+    }
+  }, [])
+
   // Modal state management
   const [isClosing, setIsClosing] = useState(false)
   const [currentStep, setCurrentStep] = useState<'privacy' | 'otp' | 'verification'>('privacy')
-  
+
   // OTP state
   const [otpCode, setOtpCode] = useState('')
   const [otpMethod, setOtpMethod] = useState<'sms' | 'email' | 'totp' | 'hardware'>('totp')
   const [isVerifying, setIsVerifying] = useState(false)
   const [verificationAttempts, setVerificationAttempts] = useState(0)
   const [timeRemaining, setTimeRemaining] = useState(300) // 5 minutes
-  
+
   // Privacy settings
   const [privacyLevel, setPrivacyLevel] = useState<PrivacyLevel>(
     preSelectedPrivacyLevel || getDefaultPrivacyLevel()
@@ -77,7 +102,7 @@ export function GiftwrappedOTPModal({
     metadataProtection: 0,
     anonymityLevel: 0
   })
-  
+
   // UI state
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -110,6 +135,9 @@ export function GiftwrappedOTPModal({
       setIsOTPSent(false)
       setVerificationAttempts(0)
       setTimeRemaining(300)
+      if (otpSendAbortRef.current) { otpSendAbortRef.current.abort(); otpSendAbortRef.current = null }
+      if (otpVerifyAbortRef.current) { otpVerifyAbortRef.current.abort(); otpVerifyAbortRef.current = null }
+      if (successTimerRef.current !== null) { clearTimeout(successTimerRef.current); successTimerRef.current = null }
       onClose()
     }, 150)
   }
@@ -118,12 +146,18 @@ export function GiftwrappedOTPModal({
   const handleSendOTP = async () => {
     setError(null)
     setIsVerifying(true)
-    
+
     try {
-      // Simulate OTP sending based on method
+      if (otpSendAbortRef.current) {
+        otpSendAbortRef.current.abort()
+      }
+      const controller = new AbortController()
+      otpSendAbortRef.current = controller
+
       const response = await fetch('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           method: otpMethod,
           userNpub: userProfile.npub,
@@ -132,19 +166,26 @@ export function GiftwrappedOTPModal({
         })
       })
 
+      if (!mountedRef.current) return
+
       if (response.ok) {
         setIsOTPSent(true)
         setCurrentStep('otp')
         setSuccess(`OTP sent to your ${otpMethod.toUpperCase()} device`)
         setTimeRemaining(300) // Reset timer
       } else {
-        const error = await response.json()
-        setError(`Failed to send OTP: ${error.message}`)
+        const errorResp = await response.json()
+        setError(`Failed to send OTP: ${errorResp.message}`)
       }
     } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        return
+      }
       console.error('OTP send error:', error)
+      if (!mountedRef.current) return
       setError('Failed to send OTP. Please check your connection and try again.')
     } finally {
+      if (!mountedRef.current) return
       setIsVerifying(false)
     }
   }
@@ -160,9 +201,16 @@ export function GiftwrappedOTPModal({
     setError(null)
 
     try {
+      if (otpVerifyAbortRef.current) {
+        otpVerifyAbortRef.current.abort()
+      }
+      const controller = new AbortController()
+      otpVerifyAbortRef.current = controller
+
       const response = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           code: otpCode,
           method: otpMethod,
@@ -172,13 +220,14 @@ export function GiftwrappedOTPModal({
         })
       })
 
+      if (!mountedRef.current) return
+
       const result = await response.json()
 
       if (response.ok && result.success) {
         setCurrentStep('verification')
         setSuccess('OTP verified successfully! Giftwrapped communications are now enabled.')
-        
-        // Call parent callback with verification result
+
         const verificationResult: OTPVerificationResult = {
           success: true,
           privacyLevel: privacyLevel,
@@ -186,15 +235,16 @@ export function GiftwrappedOTPModal({
           sessionToken: result.sessionToken,
           expiresAt: new Date(result.expiresAt)
         }
-        
-        setTimeout(() => {
+
+        successTimerRef.current = window.setTimeout(() => {
+          if (!mountedRef.current) return
           onOTPVerified(verificationResult)
           handleClose()
         }, 2000)
       } else {
         setVerificationAttempts(prev => prev + 1)
         setError(result.error || 'Invalid OTP code. Please try again.')
-        
+
         if (verificationAttempts >= 2) {
           setError('Too many failed attempts. Please request a new OTP code.')
           setIsOTPSent(false)
@@ -202,9 +252,14 @@ export function GiftwrappedOTPModal({
         }
       }
     } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        return
+      }
       console.error('OTP verification error:', error)
+      if (!mountedRef.current) return
       setError('Verification failed. Please check your connection and try again.')
     } finally {
+      if (!mountedRef.current) return
       setIsVerifying(false)
     }
   }
@@ -226,7 +281,7 @@ export function GiftwrappedOTPModal({
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${isClosing ? 'animate-fadeOut' : 'animate-fadeIn'}`}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
-      
+
       <div className={`relative w-full max-w-2xl max-h-[90vh] bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl shadow-2xl overflow-hidden ${isClosing ? 'animate-scaleOut' : 'animate-scaleIn'}`}>
         {/* Header */}
         <div className="bg-white/10 backdrop-blur-sm border-b border-white/20 p-6">
@@ -258,23 +313,20 @@ export function GiftwrappedOTPModal({
           {/* Step Indicator */}
           <div className="flex items-center justify-center mb-8">
             <div className="flex items-center space-x-4">
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                currentStep === 'privacy' ? 'bg-indigo-500 text-white' : 
-                currentStep === 'otp' || currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
-              }`}>
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full ${currentStep === 'privacy' ? 'bg-indigo-500 text-white' :
+                  currentStep === 'otp' || currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
+                }`}>
                 <Shield className="h-4 w-4" />
               </div>
               <div className={`w-12 h-0.5 ${currentStep === 'otp' || currentStep === 'verification' ? 'bg-green-500' : 'bg-white/20'}`} />
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                currentStep === 'otp' ? 'bg-indigo-500 text-white' : 
-                currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
-              }`}>
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full ${currentStep === 'otp' ? 'bg-indigo-500 text-white' :
+                  currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
+                }`}>
                 <Key className="h-4 w-4" />
               </div>
               <div className={`w-12 h-0.5 ${currentStep === 'verification' ? 'bg-green-500' : 'bg-white/20'}`} />
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
-              }`}>
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full ${currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
+                }`}>
                 <Check className="h-4 w-4" />
               </div>
             </div>
@@ -360,11 +412,10 @@ export function GiftwrappedOTPModal({
                     <button
                       key={method.value}
                       onClick={() => setOtpMethod(method.value as any)}
-                      className={`p-3 rounded-lg border transition-all duration-300 ${
-                        otpMethod === method.value
+                      className={`p-3 rounded-lg border transition-all duration-300 ${otpMethod === method.value
                           ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
                           : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center space-x-2">
                         {method.icon}
@@ -435,7 +486,7 @@ export function GiftwrappedOTPModal({
               <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto">
                 <Check className="h-10 w-10 text-green-400" />
               </div>
-              
+
               <div>
                 <h3 className="text-xl font-semibold text-white mb-2">
                   Authentication Successful!
