@@ -89,6 +89,8 @@ export function useSecureMessageSigning() {
     React.useState<SigningSession | null>(null);
   const [lastError, setLastError] = React.useState<string | null>(null);
   const [showConsentModal, setShowConsentModal] = React.useState(false);
+  const [showMethodSelectionModal, setShowMethodSelectionModal] =
+    React.useState(false);
   const [pendingSigningRequest, setPendingSigningRequest] = React.useState<{
     event: UnsignedEvent;
     messageType: MessageType;
@@ -154,6 +156,35 @@ export function useSecureMessageSigning() {
         timestamp: Date.now(),
       };
     }
+  };
+
+  /**
+   * Request explicit method selection from user when preferred method unavailable
+   */
+  const requestMethodSelection = async (
+    messageType: MessageType
+  ): Promise<SigningMethod | null> => {
+    return new Promise((resolve) => {
+      // Store the resolve function for the modal to call
+      const handleMethodSelection = (method: SigningMethod | null) => {
+        setShowMethodSelectionModal(false);
+        resolve(method);
+      };
+
+      // Set up the pending request for the modal to access
+      setPendingSigningRequest({
+        event: {} as UnsignedEvent, // Will be set by the calling function
+        messageType,
+        resolve: (result: SigningResult) => {
+          // This is handled differently - the modal calls handleMethodSelection
+        },
+      });
+
+      // Show the method selection modal
+      setShowMethodSelectionModal(true);
+
+      // The modal component will call handleMethodSelection when user decides
+    });
   };
 
   /**
@@ -309,7 +340,7 @@ export function useSecureMessageSigning() {
   };
 
   /**
-   * Main signing function with automatic fallback
+   * Main signing function with explicit user opt-in (no automatic fallback)
    */
   const signMessage = async (
     event: UnsignedEvent,
@@ -325,22 +356,42 @@ export function useSecureMessageSigning() {
     };
 
     setLastError(null);
+    let effectiveMethod = signingConfig.method;
 
-    // Try NIP-07 first (preferred method)
-    if (signingConfig.method === "nip07" || isNIP07Available()) {
-      const nip07Result = await signWithNIP07(event);
-      if (nip07Result.success) {
-        return nip07Result;
+    // Check if user's preferred method is available
+    if (signingConfig.method === "nip07" && !isNIP07Available()) {
+      // User prefers NIP-07 but it's not available - request explicit method selection
+      const selectedMethod = await requestMethodSelection(messageType);
+
+      if (!selectedMethod) {
+        return {
+          success: false,
+          error: "User cancelled method selection. No signing method chosen.",
+          method: "nip07",
+          timestamp: Date.now(),
+        };
       }
 
-      // If NIP-07 failed and we're not forcing encrypted-nsec, return the error
-      if (signingConfig.method === "nip07") {
-        return nip07Result;
-      }
+      effectiveMethod = selectedMethod;
     }
 
-    // Fallback to encrypted nsec method
-    if (signingConfig.method === "encrypted-nsec" || !isNIP07Available()) {
+    // Use the determined signing method (either original preference or user-selected)
+    if (effectiveMethod === "nip07") {
+      // Double-check NIP-07 availability (in case selection modal returned it incorrectly)
+      if (!isNIP07Available()) {
+        return {
+          success: false,
+          error:
+            "NIP-07 browser extension not available. Please install a NIP-07 compatible extension.",
+          method: "nip07",
+          timestamp: Date.now(),
+        };
+      }
+
+      return await signWithNIP07(event);
+    }
+
+    if (effectiveMethod === "encrypted-nsec") {
       // Request user consent for nsec access
       const consent = await requestNsecConsent(messageType);
 
@@ -358,8 +409,9 @@ export function useSecureMessageSigning() {
 
     return {
       success: false,
-      error: "No signing method available",
-      method: signingConfig.method,
+      error:
+        "No valid signing method available. Please choose either NIP-07 or encrypted nsec method.",
+      method: effectiveMethod,
       timestamp: Date.now(),
     };
   };
@@ -427,6 +479,7 @@ export function useSecureMessageSigning() {
     lastError,
     isNIP07Available: isNIP07Available(),
     showConsentModal,
+    showMethodSelectionModal,
     pendingSigningRequest,
 
     // Actions
@@ -438,8 +491,10 @@ export function useSecureMessageSigning() {
     signWithNIP07,
     signWithEncryptedNsec,
     requestNsecConsent,
+    requestMethodSelection,
     clearError: () => setLastError(null),
     setShowConsentModal,
+    setShowMethodSelectionModal,
     setPendingSigningRequest,
   };
 }

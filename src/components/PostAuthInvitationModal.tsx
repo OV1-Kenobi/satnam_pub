@@ -18,6 +18,9 @@ export function PostAuthInvitationModal({
   onSkip,
   sessionInfo
 }: PostAuthInvitationModalProps) {
+  // Do not render when closed to avoid full-screen overlay blocking navigation
+  if (!isOpen) return null;
+
   const [inviteConfig, setInviteConfig] = useState({
     personalMessage: '',
     courseCredits: 1,

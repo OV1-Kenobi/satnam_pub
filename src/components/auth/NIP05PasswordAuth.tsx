@@ -20,7 +20,6 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
-import { UserIdentitiesAuth } from '../../lib/auth/user-identities-auth';
 import { useAuth } from './AuthProvider';
 
 interface NIP05PasswordAuthProps {
@@ -40,8 +39,7 @@ export function NIP05PasswordAuth({
   title = 'NIP-05/Password Authentication',
   purpose = 'Sign in with your NIP-05 identifier and password'
 }: NIP05PasswordAuthProps) {
-  const privacyAuth = useAuth();
-  const userIdentitiesAuth = new UserIdentitiesAuth();
+  const auth = useAuth();
 
   // UI State
   const [isLoading, setIsLoading] = useState(false);
@@ -114,32 +112,21 @@ export function NIP05PasswordAuth({
     setError(null);
 
     try {
-      // Use the new user_identities authentication system directly
-      const result = await userIdentitiesAuth.authenticateNIP05Password({
-        nip05: nip05.trim(),
-        password: password
-      });
+      // Use the unified authentication system
+      const success = await auth.authenticateNIP05Password(nip05.trim(), password);
 
-      if (result.success && result.user) {
-        console.log('✅ Authentication successful:', result.user.id);
-
-        // Store session information for the app
-        if (result.sessionToken) {
-          // You might want to store this in localStorage or a global state
-          localStorage.setItem('auth_session', result.sessionToken);
-          localStorage.setItem('user_data', JSON.stringify({
-            id: result.user.id,
-            role: result.user.role,
-            isActive: result.user.is_active
-          }));
+      if (success) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('✅ Authentication successful');
         }
-
         handleAuthSuccess();
       } else {
-        setError(result.error || 'Authentication failed. Please check your credentials.');
+        setError('Authentication failed. Please check your credentials.');
       }
     } catch (error) {
-      console.error('Authentication error:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Authentication error:', error);
+      }
       setError(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
       setIsLoading(false);

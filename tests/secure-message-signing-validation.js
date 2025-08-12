@@ -42,7 +42,7 @@ describe('Secure Message Signing System', () => {
         
         console.log('✅ Dual Authentication Pathways:');
         console.log('   - NIP-07 Browser Extension (PREFERRED) ✅');
-        console.log('   - Encrypted Nsec Retrieval (FALLBACK) ✅');
+        console.log('   - Encrypted Nsec Retrieval (EXPLICIT ALTERNATIVE) ✅');
         console.log('   - User Consent System ✅');
       }
       
@@ -337,7 +337,7 @@ describe('Secure Message Signing System', () => {
     console.log('===============================================');
     console.log('✅ Dual Authentication Pathways:');
     console.log('   - NIP-07 Browser Extension (PREFERRED) - Zero-knowledge signing');
-    console.log('   - Encrypted Nsec Retrieval (FALLBACK) - Secure database with consent');
+    console.log('   - Encrypted Nsec Retrieval (EXPLICIT ALTERNATIVE) - Secure database with consent');
     console.log('');
     console.log('✅ Message Type Support:');
     console.log('   - Group messaging (NIP-58) with proper event kinds');
@@ -356,7 +356,7 @@ describe('Secure Message Signing System', () => {
     console.log('   - Clear choice between signing methods');
     console.log('   - Security status visualization');
     console.log('   - Preference storage and management');
-    console.log('   - Graceful fallback handling');
+    console.log('   - Explicit method selection handling (no automatic fallback)');
     console.log('   - NIP-07 extension recommendations');
     console.log('');
     console.log('✅ Integration Points:');

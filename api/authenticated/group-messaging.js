@@ -231,6 +231,13 @@ const initializeUnifiedMessaging = async (userNsecOrMarker, operationId, user = 
       });
     } else {
       // Traditional nsec authentication
+      if (
+        !userNsecOrMarker ||
+        typeof userNsecOrMarker !== 'string' ||
+        !userNsecOrMarker.startsWith('nsec')
+      ) {
+        throw new Error('Valid nsec is required for traditional authentication');
+      }
       await messagingService.initializeSession(userNsecOrMarker);
 
       // Log traditional initialization

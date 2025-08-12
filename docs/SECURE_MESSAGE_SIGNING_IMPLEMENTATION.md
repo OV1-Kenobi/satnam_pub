@@ -9,14 +9,16 @@ This document describes the comprehensive secure message signing system implemen
 ### Dual Authentication Pathways
 
 1. **NIP-07 Browser Extension (PREFERRED)**
+
    - Zero-knowledge approach with no private key exposure
    - Uses `window.nostr.signEvent()` for secure signing
-   - Automatic fallback when extension unavailable
+   - Explicit user choice when extension unavailable
 
-2. **Encrypted Nsec Retrieval (FALLBACK)**
+2. **Encrypted Nsec Retrieval (EXPLICIT ALTERNATIVE)**
    - Secure database retrieval with user consent
    - Temporary memory-only nsec access
    - Immediate cleanup after signing
+   - Requires explicit user opt-in (no automatic fallback)
 
 ### Message Type Support
 
@@ -27,7 +29,9 @@ This document describes the comprehensive secure message signing system implemen
 
 ### Security Features
 
-- **User Consent System** - Explicit consent for nsec access
+- **Explicit User Opt-in** - No automatic fallback, user must explicitly choose methods
+- **Method Selection Modal** - Clear choice interface when preferred method unavailable
+- **User Consent System** - Explicit consent for nsec access with comprehensive warnings
 - **Zero-Content Storage** - No message content stored in database
 - **Session Management** - Automatic timeout and cleanup
 - **Memory Protection** - Immediate nsec clearing after use
@@ -39,9 +43,10 @@ This document describes the comprehensive secure message signing system implemen
 ```
 src/lib/messaging/
 ├── secure-message-signing.ts          # Main signing service
-└── 
+└──
 
 src/components/messaging/
+├── MethodSelectionModal.tsx           # Method selection interface (explicit opt-in)
 ├── NsecConsentModal.tsx               # User consent interface
 ├── SecureMessageSigningProvider.tsx   # React context provider
 ├── MessagingIntegrationWrapper.tsx    # App wrapper component
@@ -58,15 +63,17 @@ src/lib/auth/
 
 ```
 1. User initiates message signing
-2. Check NIP-07 availability
-3. If available: Use browser extension
-4. If unavailable: Request user consent
-5. Show consent modal with warnings
-6. If granted: Retrieve encrypted nsec
-7. Decrypt nsec in memory only
-8. Sign message with appropriate method
-9. Clear nsec from memory immediately
-10. Return signed event
+2. Check user's preferred method vs availability
+3. If NIP-07 preferred AND available: Use browser extension
+4. If NIP-07 preferred BUT unavailable: Show method selection modal
+5. User explicitly chooses alternative method (no automatic fallback)
+6. If user selects encrypted nsec: Request explicit user consent
+7. Show consent modal with comprehensive warnings
+8. If consent granted: Retrieve encrypted nsec
+9. Decrypt nsec in memory only
+10. Sign message with user-selected method
+11. Clear nsec from memory immediately
+12. Return signed event
 ```
 
 ## 🚀 Usage
@@ -74,7 +81,7 @@ src/lib/auth/
 ### Basic Setup
 
 ```tsx
-import { MessagingIntegrationWrapper } from './components/messaging/MessagingIntegrationWrapper';
+import { MessagingIntegrationWrapper } from "./components/messaging/MessagingIntegrationWrapper";
 
 function App() {
   return (
@@ -88,7 +95,7 @@ function App() {
 ### Signing Messages
 
 ```tsx
-import { useDirectMessageSigning } from './components/messaging/MessagingIntegrationWrapper';
+import { useDirectMessageSigning } from "./components/messaging/MessagingIntegrationWrapper";
 
 function MessageComponent() {
   const { signDirectMessage } = useDirectMessageSigning();
@@ -98,11 +105,11 @@ function MessageComponent() {
       "Hello, this is a secure message!",
       "npub1recipient..."
     );
-    
+
     if (result.success) {
-      console.log('Message signed:', result.signedEvent);
+      console.log("Message signed:", result.signedEvent);
     } else {
-      console.error('Signing failed:', result.error);
+      console.error("Signing failed:", result.error);
     }
   };
 }
@@ -111,16 +118,13 @@ function MessageComponent() {
 ### Group Messages
 
 ```tsx
-import { useGroupMessageSigning } from './components/messaging/MessagingIntegrationWrapper';
+import { useGroupMessageSigning } from "./components/messaging/MessagingIntegrationWrapper";
 
 function GroupComponent() {
   const { signGroupMessage } = useGroupMessageSigning();
 
   const sendGroupMessage = async () => {
-    const result = await signGroupMessage(
-      "Group announcement",
-      "group-id-123"
-    );
+    const result = await signGroupMessage("Group announcement", "group-id-123");
   };
 }
 ```
@@ -128,7 +132,7 @@ function GroupComponent() {
 ### Invitation Messages
 
 ```tsx
-import { useInvitationMessageSigning } from './components/messaging/MessagingIntegrationWrapper';
+import { useInvitationMessageSigning } from "./components/messaging/MessagingIntegrationWrapper";
 
 function InviteComponent() {
   const { signInvitationMessage } = useInvitationMessageSigning();
@@ -145,13 +149,23 @@ function InviteComponent() {
 
 ## 🛡️ Security Measures
 
-### User Consent Process
+### Method Selection Process (No Automatic Fallback)
 
-1. **Security Warnings** - Clear explanation of nsec access
-2. **Zero-Content Notice** - Explanation of privacy policy
-3. **Session Information** - Timeout and cleanup details
-4. **Required Acknowledgments** - Multiple consent checkboxes
-5. **NIP-07 Recommendations** - Encourage extension use
+1. **Preference Check** - System checks user's preferred signing method
+2. **Availability Validation** - Verifies if preferred method is available
+3. **Explicit User Choice** - When preferred method unavailable, user must explicitly select alternative
+4. **Method Selection Modal** - Clear interface showing all available options with security implications
+5. **No Silent Fallback** - System never automatically chooses fallback without user consent
+6. **User Confirmation** - User must acknowledge they understand they're choosing the method
+
+### User Consent Process (for Encrypted Nsec)
+
+1. **Explicit Choice Context** - Clear explanation that this is user-selected, not automatic
+2. **Security Warnings** - Clear explanation of nsec access implications
+3. **Zero-Content Notice** - Explanation of privacy policy
+4. **Session Information** - Timeout and cleanup details
+5. **Required Acknowledgments** - Multiple consent checkboxes
+6. **NIP-07 Recommendations** - Encourage extension use for future signing
 
 ### Memory Protection
 
@@ -161,7 +175,7 @@ finally {
   if (nsecKey) {
     nsecKey = '';
     nsecKey = null;
-    
+
     // Force garbage collection if available
     if (global.gc) {
       global.gc();
@@ -182,18 +196,15 @@ finally {
 ### Signing Preferences
 
 ```tsx
-import { useSigningPreferences } from './components/messaging/MessagingIntegrationWrapper';
+import { useSigningPreferences } from "./components/messaging/MessagingIntegrationWrapper";
 
 function SettingsComponent() {
-  const { 
-    signingPreference, 
-    setSigningPreference, 
-    availableMethods 
-  } = useSigningPreferences();
+  const { signingPreference, setSigningPreference, availableMethods } =
+    useSigningPreferences();
 
   return (
     <div>
-      {availableMethods.map(method => (
+      {availableMethods.map((method) => (
         <label key={method.method}>
           <input
             type="radio"
@@ -202,7 +213,7 @@ function SettingsComponent() {
             onChange={(e) => setSigningPreference(e.target.value)}
             disabled={!method.available}
           />
-          {method.name} {method.recommended && '(Recommended)'}
+          {method.name} {method.recommended && "(Recommended)"}
         </label>
       ))}
     </div>
@@ -213,7 +224,7 @@ function SettingsComponent() {
 ### Security Status
 
 ```tsx
-import { useSigningSecurity } from './components/messaging/MessagingIntegrationWrapper';
+import { useSigningSecurity } from "./components/messaging/MessagingIntegrationWrapper";
 
 function SecurityStatus() {
   const { securityStatus } = useSigningSecurity();
@@ -267,7 +278,7 @@ npm test secure-message-signing-validation.js
 Requires `encrypted_nsec` field in `user_identities` table:
 
 ```sql
-ALTER TABLE user_identities 
+ALTER TABLE user_identities
 ADD COLUMN encrypted_nsec TEXT;
 ```
 
@@ -291,11 +302,14 @@ Compatible with existing privacy infrastructure:
 
 ### Security Considerations
 
-1. **NIP-07 Preferred** - Always recommend browser extensions
-2. **User Consent Required** - Never access nsec without explicit consent
-3. **Memory Cleanup Critical** - Always clear nsec after use
-4. **Session Timeouts** - Enforce automatic expiration
-5. **Error Handling** - Provide clear feedback to users
+1. **NIP-07 Preferred** - Always recommend browser extensions as first choice
+2. **No Automatic Fallback** - Never automatically switch methods without explicit user choice
+3. **Explicit User Opt-in** - User must consciously select alternative methods when preferred unavailable
+4. **User Consent Required** - Never access nsec without explicit consent and comprehensive warnings
+5. **Method Selection Transparency** - Always show user what method they're choosing and why
+6. **Memory Cleanup Critical** - Always clear nsec after use
+7. **Session Timeouts** - Enforce automatic expiration
+8. **Error Handling** - Provide clear feedback to users about method availability
 
 ### External Dependencies
 

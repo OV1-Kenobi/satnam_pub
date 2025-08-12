@@ -72,10 +72,21 @@ interface Course {
   updatedAt: number;
 }
 
-// Initialize Supabase client with anonymous key (public RLS-protected access)
+// Initialize Supabase configuration
 const supabaseUrl = getRequiredEnvVar("SUPABASE_URL");
 const supabaseAnonKey = getRequiredEnvVar("SUPABASE_ANON_KEY");
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Create per-request Supabase client with proper authentication context
+function getSupabaseForRequest(req: any) {
+  const authHeader = req.headers?.authorization ?? "";
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: authHeader,
+      },
+    },
+  });
+}
 
 // Rate limiting configuration
 const limiter = rateLimit({
@@ -112,32 +123,35 @@ export default async function handler(req: any, res: any) {
       });
     });
 
+    // Create authenticated Supabase client for this request
+    const supabase = getSupabaseForRequest(req);
+
     const { action, ...data } = req.body;
 
     switch (action) {
       case "register-course":
-        return await handleCourseRegistration(data, res);
+        return await handleCourseRegistration(supabase, data, res);
 
       case "update-progress":
-        return await handleProgressUpdate(data, res);
+        return await handleProgressUpdate(supabase, data, res);
 
       case "get-courses":
-        return await handleGetCourses(data, res);
+        return await handleGetCourses(supabase, data, res);
 
       case "get-user-progress":
-        return await handleGetUserProgress(data, res);
+        return await handleGetUserProgress(supabase, data, res);
 
       case "get-cognitive-capital":
-        return await handleGetCognitiveCapital(data, res);
+        return await handleGetCognitiveCapital(supabase, data, res);
 
       case "complete-course":
-        return await handleCompleteCourse(data, res);
+        return await handleCompleteCourse(supabase, data, res);
 
       case "award-badge":
-        return await handleAwardBadge(data, res);
+        return await handleAwardBadge(supabase, data, res);
 
       case "get-learning-pathways":
-        return await handleGetLearningPathways(data, res);
+        return await handleGetLearningPathways(supabase, data, res);
 
       default:
         return res.status(400).json({ error: "Invalid action" });
@@ -148,7 +162,7 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-async function handleCourseRegistration(data: any, res: any) {
+async function handleCourseRegistration(supabase: any, data: any, res: any) {
   try {
     // Validate input
     const validation = validateInput(data, "text");
@@ -158,15 +172,25 @@ async function handleCourseRegistration(data: any, res: any) {
         .json({ error: "Invalid input", details: validation.error });
     }
 
+    const { courseId, familyId, enrollmentType, provider, cost, metadata } =
+      data;
+
+    // Get authenticated user from RLS context (no longer trust userPubkey from body)
     const {
-      courseId,
-      userPubkey,
-      familyId,
-      enrollmentType,
-      provider,
-      cost,
-      metadata,
-    } = data;
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const userPubkey = user.user_metadata?.pubkey;
+    if (!userPubkey) {
+      return res
+        .status(400)
+        .json({ error: "User pubkey not found in profile" });
+    }
 
     // Check if course exists and is active
     const { data: course, error: courseError } = await supabase
@@ -272,7 +296,7 @@ async function handleCourseRegistration(data: any, res: any) {
   }
 }
 
-async function handleProgressUpdate(data: any, res: any) {
+async function handleProgressUpdate(supabase: any, data: any, res: any) {
   try {
     // Validate input
     const validation = validateInput(data, "text");
@@ -282,15 +306,25 @@ async function handleProgressUpdate(data: any, res: any) {
         .json({ error: "Invalid input", details: validation.error });
     }
 
+    const { courseId, moduleId, progress, timeSpent, quizScore, completedAt } =
+      data;
+
+    // Get authenticated user from RLS context (no longer trust userPubkey from body)
     const {
-      courseId,
-      userPubkey,
-      moduleId,
-      progress,
-      timeSpent,
-      quizScore,
-      completedAt,
-    } = data;
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const userPubkey = user.user_metadata?.pubkey;
+    if (!userPubkey) {
+      return res
+        .status(400)
+        .json({ error: "User pubkey not found in profile" });
+    }
 
     // Check if user is enrolled
     const { data: enrollment } = await supabase
@@ -333,7 +367,7 @@ async function handleProgressUpdate(data: any, res: any) {
     }
 
     // Update overall course progress
-    await updateOverallProgress(courseId, userPubkey);
+    await updateOverallProgress(supabase, courseId, userPubkey);
 
     return res.status(200).json({
       success: true,
@@ -345,7 +379,11 @@ async function handleProgressUpdate(data: any, res: any) {
   }
 }
 
-async function updateOverallProgress(courseId: string, userPubkey: string) {
+async function updateOverallProgress(
+  supabase: any,
+  courseId: string,
+  userPubkey: string
+) {
   try {
     // Get all module progress for this course and user
     const { data: moduleProgress } = await supabase
@@ -400,14 +438,18 @@ async function updateOverallProgress(courseId: string, userPubkey: string) {
 
     // Update cognitive capital if course is completed
     if (overallProgress === 100) {
-      await updateCognitiveCapital(userPubkey, courseId);
+      await updateCognitiveCapital(supabase, userPubkey, courseId);
     }
   } catch (error) {
     console.error("Update overall progress error:", error);
   }
 }
 
-async function updateCognitiveCapital(userPubkey: string, courseId: string) {
+async function updateCognitiveCapital(
+  supabase: any,
+  userPubkey: string,
+  courseId: string
+) {
   try {
     // Get course details
     const { data: course } = await supabase
@@ -463,7 +505,7 @@ async function updateCognitiveCapital(userPubkey: string, courseId: string) {
   }
 }
 
-async function handleGetCourses(data: any, res: any) {
+async function handleGetCourses(supabase: any, data: any, res: any) {
   try {
     const { category, provider, difficulty, isActive = true } = data;
 
@@ -500,12 +542,23 @@ async function handleGetCourses(data: any, res: any) {
   }
 }
 
-async function handleGetUserProgress(data: any, res: any) {
+async function handleGetUserProgress(supabase: any, data: any, res: any) {
   try {
-    const { userPubkey } = data;
+    // Get authenticated user from RLS context (no longer trust userPubkey from body)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
+    if (authError || !user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const userPubkey = user.user_metadata?.pubkey;
     if (!userPubkey) {
-      return res.status(400).json({ error: "User pubkey is required" });
+      return res
+        .status(400)
+        .json({ error: "User pubkey not found in profile" });
     }
 
     // Get user's course enrollments and progress
@@ -548,12 +601,25 @@ async function handleGetUserProgress(data: any, res: any) {
   }
 }
 
-async function handleGetCognitiveCapital(data: any, res: any) {
+async function handleGetCognitiveCapital(supabase: any, data: any, res: any) {
   try {
-    const { userPubkey, familyId } = data;
+    const { familyId } = data;
 
+    // Get authenticated user from RLS context (no longer trust userPubkey from body)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const userPubkey = user.user_metadata?.pubkey;
     if (!userPubkey) {
-      return res.status(400).json({ error: "User pubkey is required" });
+      return res
+        .status(400)
+        .json({ error: "User pubkey not found in profile" });
     }
 
     // Get cognitive capital metrics
@@ -620,14 +686,29 @@ async function handleGetCognitiveCapital(data: any, res: any) {
   }
 }
 
-async function handleCompleteCourse(data: any, res: any) {
+async function handleCompleteCourse(supabase: any, data: any, res: any) {
   try {
-    const { courseId, userPubkey, finalScore } = data;
+    const { courseId, finalScore } = data;
 
-    if (!courseId || !userPubkey) {
+    if (!courseId) {
+      return res.status(400).json({ error: "Course ID is required" });
+    }
+
+    // Get authenticated user from RLS context (no longer trust userPubkey from body)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const userPubkey = user.user_metadata?.pubkey;
+    if (!userPubkey) {
       return res
         .status(400)
-        .json({ error: "Course ID and user pubkey are required" });
+        .json({ error: "User pubkey not found in profile" });
     }
 
     // Update enrollment status
@@ -667,7 +748,7 @@ async function handleCompleteCourse(data: any, res: any) {
     }
 
     // Update cognitive capital
-    await updateCognitiveCapital(userPubkey, courseId);
+    await updateCognitiveCapital(supabase, userPubkey, courseId);
 
     return res.status(200).json({
       success: true,
@@ -679,21 +760,39 @@ async function handleCompleteCourse(data: any, res: any) {
   }
 }
 
-async function handleAwardBadge(data: any, res: any) {
+async function handleAwardBadge(supabase: any, data: any, res: any) {
   try {
-    const { userPubkey, badgeId, courseId, awardedBy } = data;
+    const { badgeId, courseId, awardedBy, targetUserPubkey } = data;
 
-    if (!userPubkey || !badgeId) {
+    if (!badgeId) {
+      return res.status(400).json({ error: "Badge ID is required" });
+    }
+
+    // Get authenticated user from RLS context
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const userPubkey = user.user_metadata?.pubkey;
+    if (!userPubkey) {
       return res
         .status(400)
-        .json({ error: "User pubkey and badge ID are required" });
+        .json({ error: "User pubkey not found in profile" });
     }
+
+    // Determine the target user (self-award or admin awarding to another user)
+    const targetUser = targetUserPubkey || userPubkey;
 
     // Check if badge already awarded
     const { data: existingBadge } = await supabase
       .from("user_badges")
       .select("*")
-      .eq("user_pubkey", userPubkey)
+      .eq("user_pubkey", targetUser)
       .eq("badge_id", badgeId)
       .single();
 
@@ -703,10 +802,10 @@ async function handleAwardBadge(data: any, res: any) {
 
     // Award badge
     const badgeData = {
-      user_pubkey: userPubkey,
+      user_pubkey: targetUser,
       badge_id: badgeId,
       course_id: courseId,
-      awarded_by: awardedBy,
+      awarded_by: awardedBy || userPubkey,
       awarded_at: Math.floor(Date.now() / 1000),
     };
 
@@ -732,9 +831,14 @@ async function handleAwardBadge(data: any, res: any) {
   }
 }
 
-async function handleGetLearningPathways(data: any, res: any) {
+async function handleGetLearningPathways(supabase: any, data: any, res: any) {
   try {
-    const { userPubkey } = data;
+    // Get authenticated user if available (this endpoint can work for both authenticated and anonymous users)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    const userPubkey = user?.user_metadata?.pubkey;
 
     // Get all learning pathways
     const { data: pathways, error } = await supabase
@@ -750,7 +854,7 @@ async function handleGetLearningPathways(data: any, res: any) {
         .json({ error: "Failed to fetch learning pathways" });
     }
 
-    // Calculate progress for each pathway if user is provided
+    // Calculate progress for each pathway if user is authenticated
     if (userPubkey && pathways) {
       for (const pathway of pathways) {
         const { data: pathwayCourses } = await supabase

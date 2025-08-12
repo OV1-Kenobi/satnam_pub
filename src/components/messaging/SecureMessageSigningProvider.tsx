@@ -5,9 +5,10 @@
  * Wraps the useSecureMessageSigning hook with UI components for user consent.
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
-import { useSecureMessageSigning, SigningResult, MessageType, UnsignedEvent } from '../../lib/messaging/secure-message-signing';
-import { NsecConsentModal, NsecConsentData } from './NsecConsentModal';
+import React, { createContext, ReactNode, useContext } from 'react';
+import { MessageType, SigningMethod, SigningResult, UnsignedEvent, useSecureMessageSigning } from '../../lib/messaging/secure-message-signing';
+import { MethodSelectionData, MethodSelectionModal } from './MethodSelectionModal';
+import { NsecConsentData, NsecConsentModal } from './NsecConsentModal';
 
 // Context for secure message signing
 interface SecureMessageSigningContextType {
@@ -31,6 +32,7 @@ interface SecureMessageSigningProviderProps {
 export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProviderProps> = ({ children }) => {
   const signing = useSecureMessageSigning();
   const [consentResolver, setConsentResolver] = React.useState<((consent: NsecConsentData) => void) | null>(null);
+  const [methodSelectionResolver, setMethodSelectionResolver] = React.useState<((method: SigningMethod | null) => void) | null>(null);
 
   // Handle consent modal response
   const handleConsentResponse = (consent: NsecConsentData) => {
@@ -41,24 +43,43 @@ export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProvider
     signing.setShowConsentModal(false);
   };
 
-  // Enhanced signing functions that handle consent modal
+  // Handle method selection modal response
+  const handleMethodSelectionResponse = (selection: MethodSelectionData) => {
+    if (methodSelectionResolver) {
+      methodSelectionResolver(selection.userConfirmed ? selection.selectedMethod : null);
+      setMethodSelectionResolver(null);
+    }
+    signing.setShowMethodSelectionModal(false);
+  };
+
+  // Enhanced signing functions that handle consent and method selection modals
   const enhancedSignMessage = async (event: UnsignedEvent, messageType: MessageType): Promise<SigningResult> => {
-    // Override the requestNsecConsent to use our modal
+    // Override both requestNsecConsent and requestMethodSelection to use our modals
     const originalRequestConsent = signing.requestNsecConsent;
-    
-    // Create a promise that will be resolved by the modal
+    const originalRequestMethodSelection = signing.requestMethodSelection;
+
+    // Create promises that will be resolved by the modals
     const consentPromise = new Promise<NsecConsentData>((resolve) => {
       setConsentResolver(() => resolve);
       signing.setShowConsentModal(true);
     });
 
-    // Temporarily replace the consent function
+    const methodSelectionPromise = new Promise<SigningMethod | null>((resolve) => {
+      setMethodSelectionResolver(() => resolve);
+      signing.setShowMethodSelectionModal(true);
+    });
+
+    // Temporarily replace the functions to use our modal handlers
     const mockRequestConsent = async (messageType: MessageType): Promise<NsecConsentData> => {
       return consentPromise;
     };
 
+    const mockRequestMethodSelection = async (messageType: MessageType): Promise<SigningMethod | null> => {
+      return methodSelectionPromise;
+    };
+
     try {
-      // Call the original sign message with our consent handler
+      // Call the original sign message with our modal handlers
       return await signing.signMessage(event, messageType);
     } catch (error) {
       return {
@@ -71,8 +92,8 @@ export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProvider
   };
 
   const enhancedSignGroupMessage = async (
-    content: string, 
-    groupId: string, 
+    content: string,
+    groupId: string,
     tags: string[][] = []
   ): Promise<SigningResult> => {
     const event: UnsignedEvent = {
@@ -88,8 +109,8 @@ export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProvider
   };
 
   const enhancedSignDirectMessage = async (
-    content: string, 
-    recipientPubkey: string, 
+    content: string,
+    recipientPubkey: string,
     tags: string[][] = []
   ): Promise<SigningResult> => {
     const event: UnsignedEvent = {
@@ -105,8 +126,8 @@ export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProvider
   };
 
   const enhancedSignInvitationMessage = async (
-    content: string, 
-    recipientPubkey: string, 
+    content: string,
+    recipientPubkey: string,
     invitationType: string = 'peer'
   ): Promise<SigningResult> => {
     const event: UnsignedEvent = {
@@ -138,7 +159,23 @@ export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProvider
   return (
     <SecureMessageSigningContext.Provider value={contextValue}>
       {children}
-      
+
+      {/* Method Selection Modal */}
+      <MethodSelectionModal
+        isOpen={signing.showMethodSelectionModal}
+        onClose={() => {
+          signing.setShowMethodSelectionModal(false);
+          if (methodSelectionResolver) {
+            methodSelectionResolver(null);
+            setMethodSelectionResolver(null);
+          }
+        }}
+        onMethodSelect={handleMethodSelectionResponse}
+        messageType={signing.pendingSigningRequest?.messageType || 'general-event'}
+        isNIP07Available={signing.isNIP07Available}
+        currentPreference={signing.signingPreference}
+      />
+
       {/* Consent Modal */}
       <NsecConsentModal
         isOpen={signing.showConsentModal}
@@ -190,12 +227,12 @@ export const useInvitationMessageSigning = () => {
 
 // Signing preference management hook
 export const useSigningPreferences = () => {
-  const { 
-    signingPreference, 
-    setSigningPreference, 
-    isNIP07Available 
+  const {
+    signingPreference,
+    setSigningPreference,
+    isNIP07Available
   } = useSecureMessageSigningContext();
-  
+
   return {
     signingPreference,
     setSigningPreference,
@@ -222,7 +259,7 @@ export const useSigningPreferences = () => {
 // Security status hook
 export const useSigningSecurity = () => {
   const { isNIP07Available, signingPreference } = useSecureMessageSigningContext();
-  
+
   const getSecurityLevel = () => {
     if (signingPreference === 'nip07' && isNIP07Available) {
       return {

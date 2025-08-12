@@ -66,7 +66,7 @@ CREATE TRIGGER update_courses_updated_at
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS course_registrations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     user_pubkey TEXT NOT NULL,
     family_id UUID, -- Optional family reference

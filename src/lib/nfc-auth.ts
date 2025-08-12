@@ -1,8 +1,8 @@
 /**
- * @fileoverview NFC Authentication Module for NTAG424 DNA
- * @description Hardware security integration for tap-to-sign, tap-to-spend, and guardian approval
+ * @fileoverview N424 NFC Authentication Module for NTAG424 DNA
+ * @description NFC signing method using N424 tag bearer instruments to authenticate payments and messages
  * @compliance Master Context - Privacy-first, Bitcoin-only, browser-compatible
- * @roadmap Future implementation with NTAG424 DNA chips
+ * @security Hardware-backed authentication with encrypted bearer instruments
  */
 
 // NFC Web API types

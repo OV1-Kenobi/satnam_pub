@@ -39,7 +39,7 @@ export function MaxPrivacyAuth({
   title = 'Privacy-Protected Authentication',
   purpose = 'Maximum privacy protection with hashed UUIDs'
 }: MaxPrivacyAuthProps) {
-  const privacyAuth = useAuth();
+  const auth = useAuth();
 
   // UI State
   const [authMethod, setAuthMethod] = useState<AuthMethod>(null);
@@ -89,62 +89,13 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      // Generate secure OTP using Web Crypto API with rejection sampling to eliminate modulo bias
-      const generateSecureOTP = async (): Promise<string> => {
-        const max = 900000;
-        const array = new Uint32Array(1);
-        let randomNum: number;
+      const result = await auth.initiateOTP(nipOrNpub);
 
-        // Rejection sampling to eliminate modulo bias
-        // This ensures uniform distribution across the entire OTP range
-        do {
-          crypto.getRandomValues(array);
-          randomNum = array[0];
-        } while (randomNum >= Math.floor(2 ** 32 / max) * max);
-
-        // Generate number between 100000 and 999999
-        return (randomNum % max + 100000).toString();
-      };
-
-      // Generate OTP and session ID
-      const otp = await generateSecureOTP();
-      const sessionId = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-
-      // Send OTP via privacy-first messaging system
-      try {
-        // Import communication service dynamically
-        const { CommunicationServiceFactory } = await import('../../utils/communication-service');
-        const communicationService = await CommunicationServiceFactory.getDefaultService();
-
-        const sendResult = await communicationService.sendOTP(
-          nipOrNpub,
-          otp,
-          sessionId,
-          expiresAt
-        );
-
-        if (sendResult.success) {
-          setOtpSent(true);
-          setSuccess('OTP sent via encrypted Nostr DM! Check your Nostr client.');
-
-          // Store session info for verification (in development, show OTP)
-          if (import.meta.env.DEV) {
-            console.log(`🔐 [DEV] OTP for testing: ${otp}`);
-            setSuccess(`OTP sent! For development: ${otp}`);
-          }
-        } else {
-          throw new Error(sendResult.error || 'Failed to send OTP via messaging service');
-        }
-      } catch (communicationError) {
-        console.error('Communication service error:', communicationError);
-        // Fallback: In development mode, show the OTP directly
-        if (import.meta.env.DEV) {
-          setOtpSent(true);
-          setSuccess(`Development mode - OTP: ${otp} (expires in 5 minutes)`);
-        } else {
-          throw new Error('Failed to send OTP. Please check your Nostr connection.');
-        }
+      if (result.success) {
+        setOtpSent(true);
+        setSuccess('OTP sent via encrypted Nostr DM! Check your Nostr client.');
+      } else {
+        throw new Error(result.error || 'Failed to send OTP');
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to send OTP');
@@ -164,13 +115,12 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      // OTP authentication not yet supported in unified system
-      console.warn('⚠️ OTP authentication is not yet supported. Please use NIP-05/Password authentication.');
-      const success = false;
+      const success = await auth.authenticateOTP(nipOrNpub, otpCode);
+
       if (success) {
         handleAuthSuccess('OTP');
       } else {
-        setError(privacyAuth.error || 'OTP verification failed');
+        setError(auth.error || 'OTP verification failed. Please check your code and try again.');
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'OTP verification failed');
@@ -209,12 +159,12 @@ export function MaxPrivacyAuth({
       const signedEvent = await window.nostr.signEvent(event);
 
       // Use NIP-07 with password for DUID generation (same as NIP-05/Password)
-      const success = await privacyAuth.authenticateNIP07(challenge, signedEvent.sig, pubkey, nip07Password);
+      const success = await auth.authenticateNIP07(challenge, signedEvent.sig, pubkey, nip07Password);
 
       if (success) {
         handleAuthSuccess('NIP-07');
       } else {
-        setError(privacyAuth.error || 'NIP-07 authentication failed');
+        setError(auth.error || 'NIP-07 authentication failed');
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'NIP-07 authentication failed');
@@ -234,12 +184,12 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      const success = await privacyAuth.authenticateNIP05Password(nip05Username, password);
+      const success = await auth.authenticateNIP05Password(nip05Username, password);
 
       if (success) {
         handleAuthSuccess('NIP-05/Password');
       } else {
-        setError(privacyAuth.error || 'NIP-05/Password authentication failed');
+        setError(auth.error || 'NIP-05/Password authentication failed');
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'NIP-05/Password authentication failed');
@@ -433,9 +383,29 @@ export function MaxPrivacyAuth({
                 <p className="text-green-300 text-sm">This will request a signature from your Nostr browser extension.</p>
               </div>
 
+              <div className="space-y-2">
+                <label className="block text-sm text-green-200">Password (required)</label>
+                <div className="relative">
+                  <input
+                    type={showNip07Password ? "text" : "password"}
+                    value={nip07Password}
+                    onChange={(e) => setNip07Password(e.target.value)}
+                    placeholder="Password"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 pr-24"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNip07Password((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-green-300 hover:text-white px-2 py-1 rounded"
+                  >
+                    {showNip07Password ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
               <button
                 onClick={handleNIP07Auth}
-                disabled={isLoading}
+                disabled={isLoading || !nip07Password.trim()}
                 className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
               >
                 {isLoading ? (

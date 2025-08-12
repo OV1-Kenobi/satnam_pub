@@ -123,6 +123,7 @@ export interface UserIdentity {
   // Additional properties for compatibility
   federationRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
   hashedUUID?: string;
+  hashedId?: string; // HMAC-SHA256 protected identifier for secure tokens
   authMethod?: "nip05-password" | "nip07" | "otp" | "nsec";
   isWhitelisted?: boolean;
   votingPower?: number;

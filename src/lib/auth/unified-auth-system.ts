@@ -6,7 +6,7 @@
  *
  * Features:
  * - Privacy-first architecture with hashed UUIDs
- * - Multiple authentication methods (NIP-05/Password, NIP-07)
+ * - Multiple authentication methods (NIP-05/Password, NIP-07, OTP)
  * - Protected route guards for sensitive areas
  * - Active session validation and token management
  * - Account status verification
@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import SecureTokenManager from "./secure-token-manager";
 import {
   AuthCredentials,
   AuthResult,
@@ -30,6 +31,7 @@ export const PROTECTED_AREAS = {
   USER_SOVEREIGNTY: "/sovereignty",
   LN_NODE_MANAGEMENT: "/lightning",
   N424_FEATURES: "/n424",
+  NFC_AUTH: "/nfc-auth",
   PROFILE_SETTINGS: "/profile",
   FAMILY_FOUNDRY: "/family/foundry",
   PEER_INVITATIONS: "/invitations",
@@ -64,6 +66,12 @@ export interface UnifiedAuthActions {
     password: string
   ) => Promise<boolean>;
 
+  // OTP authentication methods
+  initiateOTP: (
+    identifier: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  authenticateOTP: (identifier: string, otpCode: string) => Promise<boolean>;
+
   // Session management
   validateSession: () => Promise<boolean>;
   refreshSession: () => Promise<boolean>;
@@ -83,9 +91,8 @@ export interface UnifiedAuthActions {
 // Session validation interval (5 minutes)
 const SESSION_VALIDATION_INTERVAL = 5 * 60 * 1000;
 
-// Session storage keys
+// User data storage in sessionStorage (safe for page reload, cleared on tab close)
 const SESSION_STORAGE_KEYS = {
-  TOKEN: "satnam_session_token",
   USER: "satnam_user_data",
   LAST_VALIDATED: "satnam_last_validated",
 } as const;
@@ -106,79 +113,104 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     lastValidated: null,
   });
 
-  // Initialize authentication state from storage
-  useEffect(() => {
-    initializeAuthState();
+  /**
+   * Clear stored session data
+   */
+  const clearStoredSession = useCallback(async () => {
+    await SecureTokenManager.logout();
+    sessionStorage.removeItem(SESSION_STORAGE_KEYS.USER);
+    sessionStorage.removeItem(SESSION_STORAGE_KEYS.LAST_VALIDATED);
   }, []);
 
-  // Set up session validation interval
-  useEffect(() => {
-    if (state.authenticated && state.sessionToken) {
-      const interval = setInterval(() => {
-        validateSession();
-      }, SESSION_VALIDATION_INTERVAL);
-
-      return () => clearInterval(interval);
-    }
-  }, [state.authenticated, state.sessionToken]);
-
   /**
-   * Initialize authentication state from stored session
+   * Load and validate stored session on mount
    */
-  const initializeAuthState = useCallback(async () => {
+  const initializeAuth = useCallback(async () => {
     try {
-      setState((prev) => ({ ...prev, loading: true }));
+      const accessToken = SecureTokenManager.getAccessToken();
 
-      const storedToken = localStorage.getItem(SESSION_STORAGE_KEYS.TOKEN);
-      const storedUser = localStorage.getItem(SESSION_STORAGE_KEYS.USER);
-      const lastValidated = localStorage.getItem(
-        SESSION_STORAGE_KEYS.LAST_VALIDATED
-      );
+      if (accessToken) {
+        const tokenPayload = SecureTokenManager.parseTokenPayload(accessToken);
 
-      if (storedToken && storedUser) {
-        try {
-          const user = JSON.parse(storedUser) as UserIdentity;
+        if (tokenPayload) {
+          // Check if token is expired
+          const now = Date.now() / 1000;
+          if (tokenPayload.exp > now) {
+            // Token is valid, check for stored user data
+            const storedUser = sessionStorage.getItem(
+              SESSION_STORAGE_KEYS.USER
+            );
 
-          // Validate the stored session
-          const validationResult = await userIdentitiesAuth.validateSession(
-            storedToken
-          );
+            if (storedUser) {
+              try {
+                const user = JSON.parse(storedUser) as UserIdentity;
+                const lastValidated = sessionStorage.getItem(
+                  SESSION_STORAGE_KEYS.LAST_VALIDATED
+                );
 
-          if (validationResult.success && validationResult.user) {
-            setState((prev) => ({
-              ...prev,
-              user: validationResult.user!,
-              sessionToken: storedToken,
-              authenticated: true,
-              accountActive: validationResult.user!.is_active,
-              sessionValid: true,
-              lastValidated: lastValidated
-                ? parseInt(lastValidated)
-                : Date.now(),
-              loading: false,
-              error: null,
-            }));
+                // Check if session needs revalidation (older than 5 minutes)
+                const lastValidatedTime = lastValidated
+                  ? parseInt(lastValidated, 10)
+                  : 0;
+                const timeSinceValidation = Date.now() - lastValidatedTime;
+
+                if (timeSinceValidation > SESSION_VALIDATION_INTERVAL) {
+                  // Revalidate session
+                  const isValid = await validateSession();
+                  if (!isValid) {
+                    await clearStoredSession();
+                    setState((prev) => ({ ...prev, loading: false }));
+                    return;
+                  }
+                }
+
+                setState((prev) => ({
+                  ...prev,
+                  user,
+                  sessionToken: accessToken,
+                  authenticated: true,
+                  accountActive: user.is_active,
+                  sessionValid: true,
+                  lastValidated: lastValidatedTime,
+                  loading: false,
+                  error: null,
+                }));
+              } catch (parseError) {
+                console.error("Failed to parse stored user data:", parseError);
+                await clearStoredSession();
+                setState((prev) => ({ ...prev, loading: false }));
+              }
+            } else {
+              // No stored user data - token exists but user info missing
+              // This can happen if sessionStorage was cleared but refresh cookie remains
+              await SecureTokenManager.logout();
+              setState((prev) => ({ ...prev, loading: false }));
+            }
           } else {
-            // Invalid session - clear storage
-            clearStoredSession();
-            setState((prev) => ({
-              ...prev,
-              user: null,
-              sessionToken: null,
-              authenticated: false,
-              accountActive: false,
-              sessionValid: false,
-              lastValidated: null,
-              loading: false,
-              error: null,
-            }));
+            // Token exists but is expired - attempt refresh
+            const refreshed = await SecureTokenManager.refreshSession();
+            if (!refreshed) {
+              await clearStoredSession();
+              setState((prev) => ({
+                ...prev,
+                user: null,
+                sessionToken: null,
+                authenticated: false,
+                accountActive: false,
+                sessionValid: false,
+                lastValidated: null,
+                loading: false,
+                error: null,
+              }));
+            }
           }
-        } catch (parseError) {
-          console.error("Failed to parse stored user data:", parseError);
-          clearStoredSession();
+        } else {
+          // Invalid token format
+          await SecureTokenManager.logout();
           setState((prev) => ({ ...prev, loading: false }));
         }
       } else {
+        // No tokens available
         setState((prev) => ({ ...prev, loading: false }));
       }
     } catch (error) {
@@ -189,29 +221,50 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         error: "Failed to initialize authentication",
       }));
     }
-  }, []);
+  }, [clearStoredSession]);
 
   /**
    * Handle successful authentication result
    */
-  const handleAuthSuccess = useCallback((result: AuthResult) => {
+  const handleAuthSuccess = useCallback(async (result: AuthResult) => {
     if (result.success && result.user && result.sessionToken) {
       const now = Date.now();
 
-      // Store session data
-      localStorage.setItem(SESSION_STORAGE_KEYS.TOKEN, result.sessionToken);
-      localStorage.setItem(
+      // Parse token to get expiry information
+      const tokenPayload = SecureTokenManager.parseTokenPayload(
+        result.sessionToken
+      );
+      if (!tokenPayload) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: "Invalid token format received",
+        }));
+        return false;
+      }
+
+      // Store access token securely (in memory)
+      SecureTokenManager.setAccessToken(
+        result.sessionToken,
+        tokenPayload.exp * 1000
+      );
+
+      // Store user data in sessionStorage (survives page reload, cleared on tab close)
+      sessionStorage.setItem(
         SESSION_STORAGE_KEYS.USER,
         JSON.stringify(result.user)
       );
-      localStorage.setItem(SESSION_STORAGE_KEYS.LAST_VALIDATED, now.toString());
+      sessionStorage.setItem(
+        SESSION_STORAGE_KEYS.LAST_VALIDATED,
+        now.toString()
+      );
 
       setState((prev) => ({
         ...prev,
-        user: result.user!,
-        sessionToken: result.sessionToken!,
+        user: result.user,
+        sessionToken: result.sessionToken,
         authenticated: true,
-        accountActive: result.user!.is_active,
+        accountActive: result.user.is_active,
         sessionValid: true,
         lastValidated: now,
         loading: false,
@@ -230,12 +283,27 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
   }, []);
 
   /**
-   * Clear stored session data
+   * Logout user and clear all session data
    */
-  const clearStoredSession = useCallback(() => {
-    localStorage.removeItem(SESSION_STORAGE_KEYS.TOKEN);
-    localStorage.removeItem(SESSION_STORAGE_KEYS.USER);
-    localStorage.removeItem(SESSION_STORAGE_KEYS.LAST_VALIDATED);
+  const logout = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true }));
+
+    try {
+      // Call logout endpoint to clear HttpOnly refresh cookie
+      await SecureTokenManager.logout();
+    } catch (error) {
+      // Continue with local cleanup even if server logout fails
+      console.error("Server logout failed:", error);
+    }
+
+    // Clear access token from memory
+    SecureTokenManager.clearAccessToken();
+
+    // Clear user data from sessionStorage
+    sessionStorage.removeItem(SESSION_STORAGE_KEYS.USER);
+    sessionStorage.removeItem(SESSION_STORAGE_KEYS.LAST_VALIDATED);
+
+    // Note: HttpOnly refresh cookie is cleared by the logout endpoint
   }, []);
 
   /**
@@ -305,36 +373,175 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
   );
 
   /**
+   * Initiate OTP authentication
+   */
+  const initiateOTP = useCallback(
+    async (
+      identifier: string
+    ): Promise<{ success: boolean; error?: string }> => {
+      try {
+        setState((prev) => ({ ...prev, loading: true, error: null }));
+
+        const { authAPI } = await import("../api");
+
+        // Determine the correct field based on input format
+        let otpRequestData;
+        if (identifier.startsWith("npub")) {
+          otpRequestData = { npub: identifier };
+        } else if (identifier.includes("@")) {
+          otpRequestData = { nip05: identifier };
+        } else {
+          // Assume it's a pubkey if not npub or nip05 format
+          otpRequestData = { pubkey: identifier };
+        }
+
+        const response = await authAPI.initiateOTP(otpRequestData);
+
+        if (response.success) {
+          // Store session ID for verification
+          localStorage.setItem("otp_session_id", response.data.sessionId);
+          setState((prev) => ({ ...prev, loading: false }));
+          return { success: true };
+        } else {
+          const errorMessage = response.error || "Failed to send OTP";
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: errorMessage,
+          }));
+          return { success: false, error: errorMessage };
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to initiate OTP";
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: errorMessage,
+        }));
+        return { success: false, error: errorMessage };
+      }
+    },
+    []
+  );
+
+  /**
+   * Authenticate with OTP
+   */
+  const authenticateOTP = useCallback(
+    async (identifier: string, otpCode: string): Promise<boolean> => {
+      try {
+        setState((prev) => ({ ...prev, loading: true, error: null }));
+
+        const storedSessionId = localStorage.getItem("otp_session_id");
+        if (!storedSessionId) {
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: "No OTP session found. Please initiate OTP first.",
+          }));
+          return false;
+        }
+
+        const { authAPI } = await import("../api");
+        const verifyData = {
+          sessionId: storedSessionId,
+          otp: otpCode,
+        };
+
+        const response = await authAPI.verifyOTP(verifyData);
+
+        if (response.success) {
+          // Clean up session ID after successful verification
+          localStorage.removeItem("otp_session_id");
+
+          // Create a result compatible with handleAuthSuccess
+          const authResult = {
+            success: true,
+            user: response.data?.user || {
+              id: identifier,
+              hashedId: identifier,
+              nip05: identifier.includes("@") ? identifier : undefined,
+              is_active: true,
+            },
+            sessionToken: response.data?.sessionToken,
+          };
+
+          return handleAuthSuccess(authResult);
+        } else {
+          const errorMessage = response.error || "OTP verification failed";
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: errorMessage,
+          }));
+          return false;
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "OTP authentication failed";
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: errorMessage,
+        }));
+        return false;
+      }
+    },
+    [handleAuthSuccess]
+  );
+
+  /**
    * Validate current session
    */
   const validateSession = useCallback(async (): Promise<boolean> => {
-    if (!state.sessionToken) {
-      return false;
-    }
-
     try {
-      const result = await userIdentitiesAuth.validateSession(
-        state.sessionToken
-      );
+      const accessToken = SecureTokenManager.getAccessToken();
+      if (!accessToken) {
+        return false;
+      }
 
-      if (result.success && result.user) {
+      const tokenPayload = SecureTokenManager.parseTokenPayload(accessToken);
+      if (!tokenPayload) {
+        await logout();
+        return false;
+      }
+
+      // Get stored user data and validate it matches the token
+      const storedUser = sessionStorage.getItem(SESSION_STORAGE_KEYS.USER);
+      if (!storedUser) {
+        await logout();
+        return false;
+      }
+
+      try {
+        const user = JSON.parse(storedUser) as UserIdentity;
+
+        // Validate user matches token
+        if (user.hashedId !== tokenPayload.hashedId) {
+          await logout();
+          return false;
+        }
+
         const now = Date.now();
-        localStorage.setItem(
+        sessionStorage.setItem(
           SESSION_STORAGE_KEYS.LAST_VALIDATED,
           now.toString()
         );
 
         setState((prev) => ({
           ...prev,
-          user: result.user!,
-          accountActive: result.user!.is_active,
+          user,
+          sessionToken: accessToken,
+          accountActive: user.is_active,
           sessionValid: true,
           lastValidated: now,
           error: null,
         }));
+
         return true;
-      } else {
-        // Session invalid - logout
+      } catch (parseError) {
+        console.error("Failed to parse stored user data:", parseError);
         await logout();
         return false;
       }
@@ -347,59 +554,37 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
       }));
       return false;
     }
-  }, [state.sessionToken]);
+  }, [logout]);
 
   /**
-   * Refresh session token
+   * Refresh authentication session
    */
   const refreshSession = useCallback(async (): Promise<boolean> => {
-    if (!state.user) {
-      return false;
-    }
-
     try {
-      // Generate new session token
-      const newToken = await userIdentitiesAuth.generateSessionToken(
-        state.user
-      );
+      setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      if (newToken) {
-        localStorage.setItem(SESSION_STORAGE_KEYS.TOKEN, newToken);
-        setState((prev) => ({
-          ...prev,
-          sessionToken: newToken,
-          sessionValid: true,
-          lastValidated: Date.now(),
-        }));
-        return true;
+      const refreshed = await SecureTokenManager.refreshSession();
+
+      if (refreshed) {
+        // Validate the refreshed session
+        const isValid = await validateSession();
+        setState((prev) => ({ ...prev, loading: false }));
+        return isValid;
+      } else {
+        // Refresh failed - logout user
+        await logout();
+        return false;
       }
-      return false;
     } catch (error) {
       console.error("Session refresh failed:", error);
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Session refresh failed",
+      }));
       return false;
     }
-  }, [state.user]);
-
-  /**
-   * Logout user and clear session
-   */
-  const logout = useCallback(async (): Promise<void> => {
-    try {
-      clearStoredSession();
-      setState({
-        user: null,
-        sessionToken: null,
-        authenticated: false,
-        loading: false,
-        error: null,
-        accountActive: false,
-        sessionValid: false,
-        lastValidated: null,
-      });
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  }, [clearStoredSession]);
+  }, [validateSession, logout]);
 
   /**
    * Check if user can access a protected area
@@ -425,22 +610,14 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         return true;
       }
 
-      // If we have a session token, try to validate it
-      if (state.sessionToken) {
-        const isValid = await validateSession();
-        if (isValid && canAccessProtectedArea(area)) {
-          return true;
-        }
+      // If not authenticated, check if we can refresh session
+      if (state.user && !state.sessionValid) {
+        return await refreshSession();
       }
 
-      // Authentication required
-      setState((prev) => ({
-        ...prev,
-        error: `Authentication required to access ${area}`,
-      }));
       return false;
     },
-    [canAccessProtectedArea, state.sessionToken, validateSession]
+    [canAccessProtectedArea, state.user, state.sessionValid, refreshSession]
   );
 
   /**
@@ -467,6 +644,11 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     setState((prev) => ({ ...prev, error: null }));
   }, []);
 
+  // Initialize authentication state on mount
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
   return {
     // State
     ...state,
@@ -474,6 +656,8 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     // Actions
     authenticateNIP05Password,
     authenticateNIP07,
+    initiateOTP,
+    authenticateOTP,
     validateSession,
     refreshSession,
     logout,

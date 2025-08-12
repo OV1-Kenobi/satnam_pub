@@ -3,7 +3,7 @@
  * @description Centralized API client for communicating with the backend server
  */
 
-import { authManager } from '../utils/authManager.js';
+import { authManager } from "../utils/authManager.js";
 
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -169,7 +169,7 @@ export function getApiClient(): ApiClient {
 export const apiClient = new Proxy({} as ApiClient, {
   get(target, prop) {
     return getApiClient()[prop as keyof ApiClient];
-  }
+  },
 });
 
 // ===========================================
@@ -187,11 +187,12 @@ export interface NWCAuthData {
 export interface OTPInitiateData {
   npub?: string;
   pubkey?: string;
+  nip05?: string;
 }
 
 export interface OTPVerifyData {
-  pubkey: string;
-  otp_code: string;
+  sessionId: string;
+  otp: string;
 }
 
 export interface SessionData {
@@ -214,10 +215,10 @@ export const authAPI = {
 
   // OTP authentication
   initiateOTP: (data: OTPInitiateData) =>
-    apiClient.post("/auth/otp/initiate", data),
+    apiClient.post("/auth/otp-initiate", data),
 
   verifyOTP: (data: OTPVerifyData) =>
-    apiClient.post<SessionData>("/auth/otp/verify", data),
+    apiClient.post<SessionData>("/auth/otp-verify", data),
 
   // Session management
   getSession: () => apiClient.get<SessionData>("/auth/session"),

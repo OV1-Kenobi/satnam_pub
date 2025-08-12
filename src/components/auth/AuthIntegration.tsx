@@ -3,14 +3,20 @@
  *
  * Provides seamless integration between the unified authentication system
  * and existing Identity Forge (registration) and Nostrich Signin (login) components.
- * Now includes secure message signing capabilities for Nostr messaging.
+ * 
+ * SECURITY ARCHITECTURE:
+ * - Uses zero-knowledge DUID-based authentication (no plaintext credential storage)
+ * - Credentials are passed to auth system which immediately generates DUIDs and hashes
+ * - Database stores only hashed identities (hashed_nip05, password_hash with salts)
+ * - O(1) authentication using deterministic DUIDs generated from npub + password
+ * - Browser-only Web Crypto API for all cryptographic operations
+ * - No plaintext credentials ever stored or logged anywhere in the system
  */
 
 import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, useIdentityForge, useNostrichSignin } from './AuthProvider';
-import { RecoveryAndRotationInterface } from './RecoveryAndRotationInterface';
 
 interface AuthIntegrationProps {
   children: React.ReactNode;
@@ -30,11 +36,6 @@ export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
   const auth = useAuth();
   const identityForge = useIdentityForge();
   const navigate = useNavigate();
-  const [registrationData, setRegistrationData] = useState<{
-    nip05: string;
-    password: string;
-  } | null>(null);
-
   // Set registration flow when component mounts
   useEffect(() => {
     identityForge.setRegistrationFlow(true);
@@ -51,13 +52,8 @@ export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
     [key: string]: any;
   }) => {
     try {
-      // Store registration data for authentication
-      setRegistrationData({
-        nip05: userData.nip05,
-        password: userData.password
-      });
-
-      // Attempt to authenticate the newly registered user
+      // Authenticate the newly registered user using zero-knowledge auth system
+      // The unified auth system will handle DUID generation and secure hashing internally
       const authSuccess = await identityForge.authenticateAfterRegistration(
         userData.nip05,
         userData.password
@@ -173,6 +169,10 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
   // Handle NIP-05/Password authentication
   const handleNIP05Auth = async (nip05: string, password: string) => {
     try {
+      // SECURITY: Credentials are immediately processed by unified auth system
+      // - Generates DUID from nip05 for O(1) database lookup
+      // - Uses PBKDF2-SHA512 for password verification with timing-safe comparison
+      // - No plaintext credentials stored - all processing in zero-knowledge architecture
       const success = await nostrichSignin.authenticateNIP05Password(nip05, password);
 
       if (success) {
@@ -189,6 +189,11 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
   // Handle NIP-07 authentication
   const handleNIP07Auth = async (challenge: string, signature: string, pubkey: string, password: string) => {
     try {
+      // SECURITY: NIP-07 + password hybrid authentication
+      // - Converts pubkey to npub and generates same DUID as NIP-05/Password method
+      // - Cryptographic signature verification ensures key ownership
+      // - Password still required for database lookup consistency
+      // - Zero-knowledge: no browser extension keys ever stored server-side
       const success = await nostrichSignin.authenticateNIP07(challenge, signature, pubkey, password);
 
       if (success) {
