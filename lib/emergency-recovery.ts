@@ -14,7 +14,15 @@
  * ✅ Privacy-preserving emergency recovery procedures
  */
 
-import { supabase } from "../src/lib/supabase.js";
+// Use server-side Supabase client via Netlify functions helper
+let supabaseClient: any = null;
+async function getServerSupabase() {
+  if (!supabaseClient) {
+    const { supabase } = await import("../netlify/functions/supabase.js");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+}
 import { FederationRole } from "../src/types/auth";
 
 /**
@@ -856,6 +864,7 @@ export class EmergencyRecoveryLib {
    */
   private static async logEmergencyEvent(event: EmergencyLog): Promise<void> {
     try {
+      const supabase = await getServerSupabase();
       const { error } = await supabase.from("emergency_logs").insert({
         id: event.id,
         event_type: event.eventType,

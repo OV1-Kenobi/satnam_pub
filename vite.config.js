@@ -124,10 +124,11 @@ export default defineConfig({
             return 'api-modules';
           }
 
-          // Supabase and database (browser-only)
-          if (id.includes('src/lib/supabase')) {
-            return 'database';
-          }
+          // Supabase and database: allow Vite to chunk automatically to prevent evaluation-order issues
+          // Intentionally do not force a separate 'database' chunk to avoid cross-chunk cycles
+          // if (id.includes('src/lib/supabase')) {
+          //   return 'database';
+          // }
 
           // Authentication - keep together (including recent auth-adapter changes)
           if (id.includes('src/lib/auth/') ||
@@ -139,15 +140,14 @@ export default defineConfig({
             return 'auth';
           }
 
-          // Nostr functionality - merge with crypto-vendor since they're related
-          if (id.includes('src/lib/nostr-browser') ||
-              id.includes('lib/nostr.ts') ||
-              id.includes('lib/nostr.js') ||
-              id.includes('src/lib/nip05-verification') ||
-              id.includes('lib/nip05-verification') ||
-              id.includes('netlify/functions/nostr') ||
-              (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))) {
-            return 'crypto-vendor'; // Merge with crypto since they use similar dependencies
+          // Nostr functionality (browser-only) - merge with crypto-vendor since they're related
+          // IMPORTANT: Only include code under src/ (client). Exclude server files under lib/ and netlify/functions.
+          if (
+            id.includes('src/lib/nostr-browser') ||
+            id.includes('src/lib/nip05-verification') ||
+            (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))
+          ) {
+            return 'crypto-vendor';
           }
 
           // Lightning and payments

@@ -4,7 +4,15 @@
  * Maintains all security features while using the correct database schema
  */
 
-import { supabase } from "../supabase";
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 /**
  * Web Crypto API utilities for browser-only serverless architecture
@@ -570,7 +578,7 @@ export class UserIdentitiesAuth {
    */
   private async logAuthAttempt(attempt: AuthAttempt): Promise<void> {
     try {
-      await supabase.from("user_auth_attempts").insert([
+      await (await getSupabaseClient()).from("user_auth_attempts").insert([
         {
           user_id: attempt.user_id || null,
           nip05: attempt.nip05 || null,
@@ -712,7 +720,7 @@ export class UserIdentitiesAuth {
       // Store session for tracking purposes
 
       // Store session in user_auth_attempts table for tracking
-      await supabase.from("user_auth_attempts").insert({
+      await (await getSupabaseClient()).from("user_auth_attempts").insert({
         user_id: userId,
         attempt_result: "session_created",
         attempted_at: new Date().toISOString(),
