@@ -362,3 +362,29 @@ export const cryptoProfileInstaller = new CryptoProfileInstaller();
 
 // Export for compatibility
 export default cryptoProfileInstaller;
+
+
+// Netlify Function handler: returns minimal info and allows health checks
+export async function handler(event) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
+  }
+
+  if (event.httpMethod !== 'GET') {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+  }
+
+  try {
+    const profiles = cryptoProfileInstaller.getAvailableProfiles();
+    return { statusCode: 200, headers, body: JSON.stringify({ profiles }) };
+  } catch (error) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }) };
+  }
+}

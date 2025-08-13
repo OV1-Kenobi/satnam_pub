@@ -109,6 +109,7 @@ export function setCorsHeaders(
  * @param req - API request object
  * @param res - API response object
  * @param options - CORS options
+ * @throws Will log errors but not throw to prevent endpoint failures
  */
 export function setCorsHeadersFromShared(
   req: NetlifyRequest,
@@ -118,14 +119,78 @@ export function setCorsHeadersFromShared(
     credentials?: boolean;
   } = {}
 ): void {
-  const { methods = "POST, GET, OPTIONS", credentials = true } = options;
+  try {
+    const { methods = "POST, GET, OPTIONS", credentials = true } = options;
 
-  const origin = req.headers.origin;
-  const headers = getCorsHeaders(origin, methods, credentials);
+    const origin = req.headers.origin;
 
-  Object.entries(headers).forEach(([key, value]) => {
-    res.setHeader(key, value);
-  });
+    // Safely call getCorsHeaders with error handling
+    let headers: Record<string, string>;
+    try {
+      headers = getCorsHeaders(origin, methods, credentials);
+    } catch (error) {
+      console.error(
+        "[CORS] Failed to get CORS headers from shared utility:",
+        error
+      );
+      // Fallback to basic CORS headers
+      headers = {
+        "Access-Control-Allow-Methods": methods,
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        Vary: "Origin",
+      };
+
+      if (credentials) {
+        headers["Access-Control-Allow-Credentials"] = "true";
+      }
+
+      // Only set origin if it's from allowed list
+      const allowedOrigins = getAllowedOrigins();
+      if (origin && allowedOrigins.includes(origin)) {
+        headers["Access-Control-Allow-Origin"] = origin;
+      }
+    }
+
+    // Validate headers object before processing
+    if (!headers || typeof headers !== "object") {
+      console.error(
+        "[CORS] Invalid headers object received from getCorsHeaders"
+      );
+      return;
+    }
+
+    // Safely set each header
+    Object.entries(headers).forEach(([key, value]) => {
+      try {
+        if (
+          typeof key === "string" &&
+          (typeof value === "string" || typeof value === "number")
+        ) {
+          res.setHeader(key, String(value));
+        } else {
+          console.warn(`[CORS] Skipping invalid header: ${key}=${value}`);
+        }
+      } catch (headerError) {
+        console.error(`[CORS] Failed to set header ${key}:`, headerError);
+      }
+    });
+  } catch (error) {
+    console.error("[CORS] Critical error in setCorsHeadersFromShared:", error);
+    // Set minimal safe CORS headers as fallback
+    try {
+      res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization"
+      );
+      res.setHeader("Vary", "Origin");
+    } catch (fallbackError) {
+      console.error(
+        "[CORS] Failed to set fallback CORS headers:",
+        fallbackError
+      );
+    }
+  }
 }
 
 /**

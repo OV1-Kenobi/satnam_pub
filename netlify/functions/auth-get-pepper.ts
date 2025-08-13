@@ -11,16 +11,33 @@ function corsHeaders(origin?: string) {
   } as const;
 }
 
+let DEV_PEPPER_CACHE: string | null = null;
+
 function getSecurePepper(): string {
   const pepper =
     process.env.DUID_SERVER_SECRET ||
     process.env.GLOBAL_SALT ||
-    process.env.VITE_DUID_SERVER_SECRET; // dev fallback if provided
+    process.env.VITE_DUID_SERVER_SECRET || // dev fallback if provided
+    process.env.DEV_DUID_SERVER_SECRET; // explicit dev-only override
 
-  if (!pepper) {
-    throw new Error("No secure pepper configured in environment");
+  if (pepper) return pepper;
+
+  // Development-only safe fallback to keep local dev server running
+  const isLocal =
+    process.env.NETLIFY_LOCAL === "true" ||
+    process.env.NODE_ENV === "development";
+  if (isLocal) {
+    if (!DEV_PEPPER_CACHE) {
+      DEV_PEPPER_CACHE = "dev-only-unsafe-pepper";
+      // Note: do not log the actual pepper
+      console.warn(
+        "[auth-get-pepper] Using development fallback pepper. Set DUID_SERVER_SECRET in your env for parity."
+      );
+    }
+    return DEV_PEPPER_CACHE;
   }
-  return pepper;
+
+  throw new Error("No secure pepper configured in environment");
 }
 
 export const handler: Handler = async (event) => {
@@ -64,4 +81,3 @@ export const handler: Handler = async (event) => {
     };
   }
 };
-

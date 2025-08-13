@@ -373,7 +373,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       {/* Click overlay to close menu when clicking outside */}
       {showMenu && (
         <div
-          className="fixed inset-0 z-5"
+          className="fixed inset-0 z-10"
           onClick={(e) => {
             e.stopPropagation();
             setShowMenu(false);

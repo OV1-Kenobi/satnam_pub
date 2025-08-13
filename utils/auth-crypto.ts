@@ -145,14 +145,8 @@ export function getClientIP(
 
 /**
  * Rate limiting store for in-memory tracking
- * @deprecated This in-memory implementation has critical production limitations:
- * - Not shared across server instances (each Netlify Function maintains separate counters)
- * - Lost on server restart (rate limit data disappears on cold-start)
- * - Memory leaks possible (Map grows indefinitely without cleanup)
- * - No persistence (cannot track rate limits across deployments)
- * - Inconsistent enforcement (users can bypass limits by hitting different instances)
- *
- * Use checkRateLimitDB() for production-ready database-backed rate limiting.
+ * Used as fallback when database-backed rate limiting is unavailable.
+ * Primary rate limiting uses checkRateLimitDB() with database persistence.
  */
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
@@ -167,10 +161,10 @@ export interface RateLimitResult {
 }
 
 /**
- * Check rate limiting for an IP address (IN-MEMORY - DEPRECATED)
+ * Check rate limiting for an IP address (IN-MEMORY FALLBACK)
  *
- * @deprecated This function uses in-memory storage with critical production limitations.
- * Use checkRateLimitDB() instead for production-ready database-backed rate limiting.
+ * This function serves as a fallback when database-backed rate limiting is unavailable.
+ * Primary rate limiting should use checkRateLimitDB() for production reliability.
  *
  * @param ip - Client IP address
  * @param maxRequests - Maximum requests allowed (default: 30)
@@ -182,15 +176,6 @@ export function checkRateLimit(
   maxRequests: number = AUTH_CRYPTO_CONFIG.RATE_LIMIT.CHALLENGE_MAX_REQUESTS,
   windowMs: number = AUTH_CRYPTO_CONFIG.RATE_LIMIT.WINDOW_MS
 ): RateLimitResult {
-  // Production warning
-  if (typeof process !== "undefined" && process.env.NODE_ENV === "production") {
-    console.warn(
-      "⚠️  PRODUCTION WARNING: Using deprecated in-memory rate limiting. " +
-        "This has critical limitations in serverless environments. " +
-        "Use checkRateLimitDB() for production-ready database-backed rate limiting."
-    );
-  }
-
   const now = Date.now();
   const record = rateLimitStore.get(ip);
 
@@ -229,8 +214,7 @@ export function checkRateLimit(
 
 /**
  * Clean up expired rate limit entries from memory
- * Should be called periodically to prevent memory leaks
- * @deprecated Use database-backed rate limiting instead
+ * Should be called periodically to prevent memory leaks when using in-memory fallback
  *
  * @param currentTime - Current timestamp (default: Date.now())
  */
@@ -264,11 +248,7 @@ async function hashForPrivacy(data: string): Promise<string> {
  */
 function getSupabaseUrl(): string | undefined {
   if (typeof process !== "undefined" && process.env) {
-    return process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  }
-  if (typeof import.meta !== "undefined" && (import.meta as any).env) {
-    const env = (import.meta as any).env;
-    return env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+    return process.env.VITE_SUPABASE_URL;
   }
   return undefined;
 }
@@ -278,13 +258,7 @@ function getSupabaseUrl(): string | undefined {
  */
 function getSupabaseAnonKey(): string | undefined {
   if (typeof process !== "undefined" && process.env) {
-    return (
-      process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    );
-  }
-  if (typeof import.meta !== "undefined" && (import.meta as any).env) {
-    const env = (import.meta as any).env;
-    return env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    return process.env.VITE_SUPABASE_ANON_KEY;
   }
   return undefined;
 }
@@ -344,7 +318,12 @@ export async function checkRateLimitDB(
       return checkRateLimit(ip, maxRequests, windowMs);
     }
 
-    // Parse database response
+    // Validate the response structure
+    if (!data || typeof data !== "object") {
+      console.error("Invalid response structure from rate limit function");
+      return checkRateLimit(ip, maxRequests, windowMs);
+    }
+
     const result = data as {
       allowed: boolean;
       current_count: number;
@@ -353,6 +332,17 @@ export async function checkRateLimitDB(
       window_ms: number;
       error?: string;
     };
+
+    // Validate required fields
+    if (
+      typeof result.allowed !== "boolean" ||
+      typeof result.current_count !== "number" ||
+      typeof result.rate_limit !== "number" ||
+      typeof result.reset_time !== "number"
+    ) {
+      console.error("Invalid response data from rate limit function");
+      return checkRateLimit(ip, maxRequests, windowMs);
+    }
 
     if (result.error) {
       console.error("Database rate limit function error:", result.error);
@@ -417,7 +407,7 @@ export const validators = {
     return (
       typeof pubkey === "string" &&
       pubkey.length === 64 &&
-      this.isValidHex(pubkey)
+      validators.isValidHex(pubkey)
     );
   },
 
@@ -482,7 +472,7 @@ export function getCorsHeaders(
     "Access-Control-Allow-Methods": methods,
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
-    "Access-Control-Allow-Origin": corsAllowed ? origin || "*" : "null",
+    "Access-Control-Allow-Origin": corsAllowed && origin ? origin : "null",
   };
 
   if (credentials) {

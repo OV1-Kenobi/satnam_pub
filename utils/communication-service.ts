@@ -132,7 +132,7 @@ export class DevelopmentCommunicationService extends CommunicationService {
     console.log(`Content: ${message.content}`);
 
     if (message.metadata?.otp) {
-      console.log(`🔐 [DEV] OTP: ${message.metadata.otp}`);
+      console.log(`🔐 [DEV] OTP sent (length: ${message.metadata.otp.length})`);
     }
 
     // Simulate network delay
@@ -142,7 +142,7 @@ export class DevelopmentCommunicationService extends CommunicationService {
 
     return {
       success: true,
-      messageId: `dev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      messageId: `dev_${Date.now()}_${crypto.randomUUID()}`,
       deliveryStatus: "sent",
     };
   }
@@ -177,8 +177,10 @@ export class NostrCommunicationService extends CommunicationService {
       // 4. Wait for confirmation
 
       // For now, simulate the process
-      if (typeof window !== 'undefined' && (window as any).__DEV__) {
-        console.log(`🔐 [DEV] OTP: ${message.metadata?.otp}`);
+      if (typeof window !== "undefined" && (window as any).__DEV__) {
+        console.log(
+          `🔐 [DEV] OTP sent (length: ${message.metadata?.otp?.length || 0})`
+        );
       }
 
       // Simulate network delay
@@ -188,7 +190,7 @@ export class NostrCommunicationService extends CommunicationService {
 
       return {
         success: true,
-        messageId: `nostr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        messageId: `nostr_${Date.now()}_${crypto.randomUUID()}`,
         deliveryStatus: "sent",
       };
     } catch (error) {
@@ -267,13 +269,21 @@ export class CommunicationServiceFactory {
         const nostrConfig: CommunicationServiceConfig = {
           serviceType: "nostr",
           relayUrls: config.relayUrls || [
-            "wss://relay.satnam.pub",
-            "wss://relay.damus.io",
-            "wss://nos.lol",
+            process.env.VITE_NOSTR_RELAY_1 || "wss://relay.satnam.pub",
+            process.env.VITE_NOSTR_RELAY_2 || "wss://relay.damus.io",
+            process.env.VITE_NOSTR_RELAY_3 || "wss://nos.lol",
           ],
           senderIdentity: config.senderIdentity || {
-            npub: "npub1rebuilding_camelot_public_key",
-            nip05: "RebuildingCamelot@satnam.pub",
+            npub:
+              process.env.VITE_NOSTR_SENDER_NPUB ||
+              (() => {
+                throw new Error("VITE_NOSTR_SENDER_NPUB not configured");
+              })(),
+            nip05:
+              process.env.VITE_NOSTR_SENDER_NIP05 ||
+              (() => {
+                throw new Error("VITE_NOSTR_SENDER_NIP05 not configured");
+              })(),
           },
           encryption: config.encryption || {
             enabled: true,
@@ -292,13 +302,21 @@ export class CommunicationServiceFactory {
         const giftwrapConfig: CommunicationServiceConfig = {
           serviceType: "nostr-giftwrap",
           relayUrls: config.relayUrls || [
-            "wss://relay.satnam.pub",
-            "wss://relay.damus.io",
-            "wss://nos.lol",
+            process.env.VITE_NOSTR_RELAY_1 || "wss://relay.satnam.pub",
+            process.env.VITE_NOSTR_RELAY_2 || "wss://relay.damus.io",
+            process.env.VITE_NOSTR_RELAY_3 || "wss://nos.lol",
           ],
           senderIdentity: config.senderIdentity || {
-            npub: "npub1rebuilding_camelot_public_key",
-            nip05: "RebuildingCamelot@satnam.pub",
+            npub:
+              process.env.VITE_NOSTR_SENDER_NPUB ||
+              (() => {
+                throw new Error("VITE_NOSTR_SENDER_NPUB not configured");
+              })(),
+            nip05:
+              process.env.VITE_NOSTR_SENDER_NIP05 ||
+              (() => {
+                throw new Error("VITE_NOSTR_SENDER_NIP05 not configured");
+              })(),
           },
           encryption: {
             enabled: true,
@@ -324,7 +342,9 @@ export class CommunicationServiceFactory {
   static async getDefaultService(): Promise<CommunicationService> {
     // Use development service in development, Nostr in production
     const serviceType =
-      (typeof window !== 'undefined' && (window as any).__DEV__) ? "development" : "nostr";
+      typeof window !== "undefined" && (window as any).__DEV__
+        ? "development"
+        : "nostr";
     return this.createService(serviceType);
   }
 

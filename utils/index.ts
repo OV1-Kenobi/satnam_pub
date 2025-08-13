@@ -1,13 +1,13 @@
 import * as validation from "./validation";
 
+export { createLogger, defaultLogger } from "./logger";
+
 export type {
   LogContext,
   LogEntry,
-  LogLevel,
   Logger,
   LoggerConfig,
-  createLogger,
-  defaultLogger,
+  LogLevel,
 } from "./logger";
 
 // Export browser-compatible crypto functions from crypto-factory
@@ -46,17 +46,17 @@ export { validation };
 
 // Export authentication crypto utilities
 export {
-  AUTH_CRYPTO_CONFIG, // @deprecated - not needed with database-backed rate limiting
-  CORS_HEADERS,
-  SECURITY_HEADERS,
+  AUTH_CRYPTO_CONFIG,
   checkRateLimit, // @deprecated - use checkRateLimitDB for production
   checkRateLimitDB, // Production-ready database-backed rate limiting
-  cleanupRateLimitStore,
+  cleanupRateLimitStore, // @deprecated - not needed with database-backed rate limiting
+  CORS_HEADERS,
   generateSecureChallenge,
   generateSessionToken,
   getClientIP,
   getCorsHeaders,
   getSecurityHeaders,
+  SECURITY_HEADERS,
   validateOrigin,
   validators,
 } from "./auth-crypto";

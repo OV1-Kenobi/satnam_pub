@@ -26,12 +26,7 @@
   status = 200
   force = true
 
-# Back-compat: if something calls the function path with a slash in name, redirect it
-[[redirects]]
-  from = "/.netlify/functions/auth/get-pepper"
-  to = "/.netlify/functions/auth-get-pepper"
-  status = 200
-  force = true
+
 
 # Generic mapping for other API endpoints
 [[redirects]]
@@ -252,6 +247,8 @@
 
 # Functions configuration - Optimized for memory and storage efficiency
 [functions]
+  # Deploy only functions from the minimized active directory to avoid storage exhaustion
+  directory = "netlify/functions_active"
   # Node.js version for functions
   node_bundler = "esbuild"
   # MEMORY OPTIMIZATION: Externalize heavy dependencies to reduce bundle size
@@ -269,7 +266,7 @@
     "@scure/base",
     "phoenix-server-js"
   ]
-  # CRITICAL: Exclude more files to reduce storage usage
+  # CRITICAL: Exclude more files to reduce storage usage in bundles
   included_files = [
     "!**/__tests__/**",
     "!**/*.test.*",
@@ -279,13 +276,7 @@
     "!**/*.map",
     "!**/*.d.ts",
     "!**/coverage/**",
-    "!**/docs/**",
-    "!netlify/functions/crypto/**",
-    "!netlify/functions/examples/**",
-    "!netlify/functions/privacy/**",
-    "!netlify/functions/services/**",
-    "!netlify/functions/utils/**",
-    "!netlify/functions/middleware/**"
+    "!**/docs/**"
   ]
 
 # Essential functions with memory optimization

@@ -91,27 +91,46 @@ declare module "./redis" {
 // Fix missing crypto modules
 declare module "../crypto/privacy-manager.js" {
   export class PrivacyManager {
-    static createAuthHash(pubkey: string): string;
-    static constantTimeCompare(a: string, b: string): boolean;
+    // Authentication methods
+    static createAuthHash(pubkey: string, salt?: string): Promise<string>;
+    static verifyAuthHash(pubkey: string, storedHash: string): Promise<boolean>;
+    /** Constant‑time equality over raw bytes. */
+    static constantTimeCompare(a: Uint8Array, b: Uint8Array): boolean;
+    static createPlatformId(pubkey: string): Promise<string>;
+
+    // Data encryption methods
+    static encryptUserData(data: any, userKey: string): Promise<string>;
     static decryptUserData(
       encryptedData: string,
       userKey: string
     ): Promise<any>;
-    static generateAnonymousUsername(): string;
-    static validateUsernameFormat(username: string): {
-      valid: boolean;
-      error?: string;
-    };
-    static encryptUserData(data: any, key: string): Promise<string>;
+
+    // Private key methods
     static encryptPrivateKey(
       privateKey: string,
       password: string
     ): Promise<string>;
-    static encryptServiceConfig(config: any, key: string): Promise<string>;
     static decryptPrivateKey(
       encryptedKey: string,
       password: string
     ): Promise<string>;
+
+    // Service configuration methods
+    static encryptServiceConfig(config: any, key: string): Promise<string>;
+    static decryptServiceConfig(
+      encryptedConfig: string,
+      key: string
+    ): Promise<any>;
+
+    // Username methods
+    static generateAnonymousUsername(): string;
+    static generateUsernameOptions(count?: number): string[];
+    static validateUsernameFormat(username: string): {
+      valid?: boolean;
+      isValid: boolean;
+      error?: string;
+      errors?: string[];
+    };
   }
 }
 

@@ -395,7 +395,12 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
 
 
-  if (!isOpen) return null;
+  console.log('🎯 SignInModal render:', { isOpen, authStep, showMaxPrivacyAuth, showNIP05PasswordAuth, showPostAuthInvitation });
+
+  if (!isOpen) {
+    console.log('🎯 SignInModal not rendering - isOpen is false');
+    return null;
+  }
 
 
 
@@ -410,6 +415,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
       />
     );
   }
+
+  console.log('🎯 SignInModal rendering overlay and content');
 
   return (
     <ErrorBoundary>
@@ -432,11 +439,20 @@ const SignInModal: React.FC<SignInModalProps> = ({
             <X className="h-5 w-5 text-white" />
           </button>
 
+          {/* Back to Home Button */}
+          <button
+            onClick={handleClose}
+            className="absolute top-4 left-4 px-3 py-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all duration-300 z-10 flex items-center space-x-2 text-white text-sm"
+            aria-label="Back to home"
+          >
+            <span>← Back to Home</span>
+          </button>
+
           {/* Header */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
               <img
-                src="/SatNam.Pub logo.png"
+                src="/SatNam-logo.png"
                 alt="SatNam.Pub"
                 className="h-10 w-10 rounded-full"
               />

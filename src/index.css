@@ -84,6 +84,7 @@
   /* Modal content for Bitcoin Citadel background */
   .modal-content-bitcoin-citadel {
     position: relative !important;
+    z-index: 10000 !important;
     background: linear-gradient(
       135deg,
       rgba(88, 28, 135, 0.95),

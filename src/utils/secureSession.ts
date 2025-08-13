@@ -19,7 +19,7 @@ const getSupabaseClient = async () => {
 
 export interface SessionInfo {
   isAuthenticated: boolean;
-  sessionToken?: string; // JWT session token for authentication
+  sessionToken?: string; // Supabase JWT - SECURITY: Must never be persisted, logged, or sent to third-party services
   user?: {
     npub: string;
     nip05?: string;
@@ -39,8 +39,22 @@ export interface SessionInfo {
 export async function getSessionInfo(): Promise<SessionInfo> {
   try {
     const result = await authManager.getAuthStatus();
+
+    // Supabase JWT lives only in memory; extract it once if caller explicitly needs it
+    let sessionToken: string | undefined;
+    try {
+      const client = await getSupabaseClient();
+      const {
+        data: { session },
+      } = await client.auth.getSession();
+      sessionToken = session?.access_token;
+    } catch {
+      /* ignore — token remains undefined */
+    }
+
     return {
       isAuthenticated: result.authenticated,
+      sessionToken,
       user: result.user,
     };
   } catch (error) {
@@ -120,7 +134,7 @@ export async function refreshSession(): Promise<SessionInfo> {
     // Clear auth manager cache to force fresh check
     authManager.clearCache();
 
-    // Get updated session info through auth manager
+    // Get updated session info through auth manager (includes sessionToken)
     return await getSessionInfo();
   } catch (error) {
     console.error("Session refresh error:", error);

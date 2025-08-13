@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import AppWithErrorBoundary from './App';
+import { AuthProvider } from "./components/auth/AuthProvider";
 import { CryptoPreloader } from "./components/CryptoPreloader";
 import "./index.css";
 
@@ -39,6 +40,8 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {/* Preload crypto modules immediately to avoid late dynamic import failures */}
     <CryptoPreloader immediate />
-    <AppWithErrorBoundary />
+    <AuthProvider>
+      <AppWithErrorBoundary />
+    </AuthProvider>
   </StrictMode>,
 );

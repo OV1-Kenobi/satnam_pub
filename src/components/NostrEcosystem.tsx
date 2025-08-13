@@ -235,7 +235,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
 
           <div className="flex items-center space-x-4">
             <img
-              src="/SatNam.Pub logo.png"
+              src="/SatNam-logo.png"
               alt="SatNam.Pub"
               className="h-10 w-10 rounded-full"
             />
@@ -248,7 +248,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <img
-              src="/SatNam.Pub logo.png"
+              src="/SatNam-logo.png"
               alt="SatNam.Pub"
               className="h-12 w-12 rounded-full"
             />
@@ -457,7 +457,7 @@ const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
         <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200">
           <span className="flex items-center space-x-2">
             <img
-              src="/SatNam.Pub logo.png"
+              src="/SatNam-logo.png"
               alt="SatNam.Pub"
               className="h-4 w-4 rounded-full"
             />

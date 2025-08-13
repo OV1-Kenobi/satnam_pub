@@ -4,6 +4,22 @@
  */
 
 /**
+ * Nominal type for NIP-05 identifiers to prevent mixing with arbitrary strings
+ */
+export type Nip05 = string & { readonly __brand: unique symbol };
+
+/**
+ * Validates and normalizes a NIP-05 identifier
+ * @param value - The string to validate as a NIP-05 identifier
+ * @returns The validated and normalized NIP-05 identifier, or undefined if invalid
+ */
+export function asNip05(value: string): Nip05 | undefined {
+  // RFC-5322 local-part is overkill; this keeps it simple and pragmatic.
+  const re = /^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+  return re.test(value) ? (value.toLowerCase() as Nip05) : undefined;
+}
+
+/**
  * User status for multi-user onboarding flow
  */
 export type UserStatus = "pending" | "active" | "returning";
@@ -29,7 +45,7 @@ export interface User {
   created_at: number; // Unix timestamp to match NostrEvent
   last_login?: number; // Unix timestamp
   npub?: string; // Optional Nostr public key for backward compatibility
-  nip05?: string; // NIP-05 identifier (username@domain.com)
+  nip05?: Nip05; // Validated NIP-05 identifier
 }
 
 /**

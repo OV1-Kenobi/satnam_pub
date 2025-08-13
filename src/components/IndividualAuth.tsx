@@ -289,7 +289,7 @@ const AuthContent = React.memo<AuthContentProps>(({
 
       <div className="text-center mb-8">
         <img
-          src="/SatNam.Pub logo.png"
+          src="/SatNam-logo.png"
           alt="SatNam.Pub"
           className="h-12 w-12 mx-auto mb-4 rounded-full"
         />
@@ -364,7 +364,7 @@ const IndividualAuth: React.FC<IndividualAuthProps> = ({
 
       setMessage('Lightning wallet connected successfully!');
       setAuthStep('authenticated');
-      
+
       if (onSuccess) {
         onSuccess(mockUser);
       }
@@ -406,7 +406,7 @@ const IndividualAuth: React.FC<IndividualAuthProps> = ({
 
       setMessage('Cashu bearer token verified successfully!');
       setAuthStep('authenticated');
-      
+
       if (onSuccess) {
         onSuccess(mockUser);
       }
@@ -417,11 +417,11 @@ const IndividualAuth: React.FC<IndividualAuthProps> = ({
     }
   }, [cashuToken, onSuccess]);
 
-  const containerClasses = mode === 'modal' 
+  const containerClasses = mode === 'modal'
     ? "bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700 rounded-xl shadow-2xl border border-white/20 p-8 max-w-lg w-full mx-4 relative min-h-[400px] backdrop-blur-sm"
     : "min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700 flex items-center justify-center p-4";
 
-  const contentClasses = mode === 'modal' 
+  const contentClasses = mode === 'modal'
     ? ""
     : "bg-white/10 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 p-8 max-w-lg w-full";
 

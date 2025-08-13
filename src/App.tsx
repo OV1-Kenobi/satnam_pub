@@ -22,7 +22,6 @@ import IndividualFinancesDashboard from "./components/IndividualFinancesDashboar
 import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
-import { FamilyFederationAuthProvider, FamilyFederationAuthWrapper } from "./components/auth/FamilyFederationAuth";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import Navigation from "./components/shared/Navigation";
@@ -121,6 +120,18 @@ function App() {
     checkForInvitationToken();
   }, []); // Run only once on mount
 
+  // Auto-close transient modals when navigating to new views
+  useEffect(() => {
+    // Close communications overlay if navigating elsewhere
+    if (showCommunications && currentView !== 'communications') {
+      setShowCommunications(false);
+    }
+    // Close contacts modal when leaving landing
+    if (showContactsModal && currentView !== 'landing' && currentView !== 'contacts') {
+      setShowContactsModal(false);
+    }
+  }, [currentView, showCommunications, showContactsModal]);
+
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
     if (!authenticated) {
@@ -172,30 +183,21 @@ function App() {
       case 'contacts':
         setShowContactsModal(true);
         break;
+      case 'sovereignty-controls':
+        setCurrentView('sovereignty-controls');
+        break;
+      case 'privacy-preferences':
+        setCurrentView('privacy-preferences');
+        break;
+      case 'atomic-swaps':
+        setCurrentView('atomic-swaps');
+        break;
       default:
         setCurrentView('landing');
     }
   };
 
-  // New handler for automated payments flow
-  const handleAutomatedPayments = () => {
-    if (!authenticated) {
-      setSignInModalOpen(true);
-      setPendingDestination('automated-payments');
-      return;
-    }
 
-    // Check if user is part of a family federation
-    const isFamilyMember = familyId && familyId !== 'family-123'; // family-123 is the mock value
-
-    if (isFamilyMember) {
-      // User is part of a family federation - show family payment modal
-      setCurrentView('family-payment-automation');
-    } else {
-      // User is individual - show individual payment modal
-      setCurrentView('individual-payment-automation');
-    }
-  };
 
   // Handle successful authentication
   const handleAuthSuccess = () => {
@@ -219,8 +221,8 @@ function App() {
         setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
       } else if (pendingDestination === 'payment-cascade') {
         setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
-      } else if (pendingDestination === 'automated-payments') {
-        handleAutomatedPayments();
+      } else if (pendingDestination === 'payment-automation') {
+        setCurrentView('family-payment-automation');
       } else if (pendingDestination === 'contacts') {
         setShowContactsModal(true);
       } else if (pendingDestination === 'ln-node-management') {
@@ -267,11 +269,7 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <FamilyDashboard onBack={() => setCurrentView("landing")} />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <FamilyDashboard onBack={() => setCurrentView("landing")} />
       </PageWrapper>
     );
   }
@@ -288,23 +286,19 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <IndividualFinancesDashboard
-              memberId="current-user"
-              memberData={{
-                id: "current-user",
-                username: "Current User",
-                auth_hash: "mock-auth-hash",
-                lightningAddress: "user@satnam.pub",
-                role: "adult",
-                is_discoverable: false,
-                created_at: Date.now()
-              }}
-              onBack={() => setCurrentView("landing")}
-            />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <IndividualFinancesDashboard
+          memberId="current-user"
+          memberData={{
+            id: "current-user",
+            username: "Current User",
+            auth_hash: "mock-auth-hash",
+            lightningAddress: "user@satnam.pub",
+            role: "adult",
+            is_discoverable: false,
+            created_at: Date.now()
+          }}
+          onBack={() => setCurrentView("landing")}
+        />
       </PageWrapper>
     );
   }
@@ -321,14 +315,10 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <FamilyFoundryWizard
-              onComplete={() => setCurrentView("dashboard")}
-              onBack={() => setCurrentView("landing")}
-            />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <FamilyFoundryWizard
+          onComplete={() => setCurrentView("dashboard")}
+          onBack={() => setCurrentView("landing")}
+        />
       </PageWrapper>
     );
   }
@@ -362,11 +352,7 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <FamilyCoordination onBack={() => setCurrentView("landing")} />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <FamilyCoordination onBack={() => setCurrentView("landing")} />
       </PageWrapper>
     );
   }
@@ -400,11 +386,7 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <EmergencyRecoveryPage onBack={() => setCurrentView("landing")} />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <EmergencyRecoveryPage onBack={() => setCurrentView("landing")} />
       </PageWrapper>
     );
   }
@@ -448,18 +430,14 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <GiftwrappedMessaging
-              familyMember={{
-                id: "current-user",
-                npub: "npub1placeholder",
-                username: "Current User",
-                role: "adult"
-              }}
-            />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <GiftwrappedMessaging
+          familyMember={{
+            id: "current-user",
+            npub: "npub1placeholder",
+            username: "Current User",
+            role: "adult"
+          }}
+        />
       </PageWrapper>
     );
   }
@@ -476,36 +454,32 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <FamilyPaymentAutomationModal
-              isOpen={true}
-              onClose={() => setCurrentView("landing")}
-              onSave={(schedule) => {
-                console.log("Family payment schedule saved:", schedule);
-                setCurrentView("landing");
-              }}
-              familyId={familyId || "family-123"}
-              familyMembers={[
-                {
-                  id: "member-1",
-                  name: "Guardian",
-                  role: "guardian",
-                  avatar: "👑",
-                  lightningAddress: "guardian@satnam.pub"
-                },
-                {
-                  id: "member-2",
-                  name: "Steward",
-                  role: "steward",
-                  avatar: "🛡️",
-                  lightningAddress: "steward@satnam.pub"
-                }
-              ]}
-              currentUserRole="adult"
-            />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <FamilyPaymentAutomationModal
+          isOpen={true}
+          onClose={() => setCurrentView("landing")}
+          onSave={(schedule) => {
+            console.log("Family payment schedule saved:", schedule);
+            setCurrentView("landing");
+          }}
+          familyId={familyId || "family-123"}
+          familyMembers={[
+            {
+              id: "member-1",
+              name: "Guardian",
+              role: "guardian",
+              avatar: "👑",
+              lightningAddress: "guardian@satnam.pub"
+            },
+            {
+              id: "member-2",
+              name: "Steward",
+              role: "steward",
+              avatar: "🛡️",
+              lightningAddress: "steward@satnam.pub"
+            }
+          ]}
+          currentUserRole="adult"
+        />
       </PageWrapper>
     );
   }
@@ -522,19 +496,15 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <IndividualPaymentAutomationModal
-              isOpen={true}
-              onClose={() => setCurrentView("landing")}
-              onSave={(schedule) => {
-                console.log("Individual payment schedule saved:", schedule);
-                setCurrentView("landing");
-              }}
-              userId="user-123"
-            />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <IndividualPaymentAutomationModal
+          isOpen={true}
+          onClose={() => setCurrentView("landing")}
+          onSave={(schedule) => {
+            console.log("Individual payment schedule saved:", schedule);
+            setCurrentView("landing");
+          }}
+          userId="user-123"
+        />
       </PageWrapper>
     );
   }
@@ -551,268 +521,264 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="mb-8">
-                <h1 className="text-4xl font-bold text-white mb-4">PhoenixD Manager</h1>
-                <p className="text-lg text-purple-100">
-                  Manage your Lightning Network channels, liquidity, and routing capabilities.
-                </p>
-              </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-white mb-4">PhoenixD Manager</h1>
+            <p className="text-lg text-purple-100">
+              Manage your Lightning Network channels, liquidity, and routing capabilities.
+            </p>
+          </div>
 
-              {/* Node Status Overview */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Node Status</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Status:</span>
-                      <span className="text-green-400 font-semibold">Online</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Version:</span>
-                      <span className="text-white">PhoenixD 0.12.1</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Uptime:</span>
-                      <span className="text-white">99.9%</span>
-                    </div>
-                  </div>
+          {/* Node Status Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Node Status</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Status:</span>
+                  <span className="text-green-400 font-semibold">Online</span>
                 </div>
-
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Channel Summary</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Total Channels:</span>
-                      <span className="text-white">12</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Total Capacity:</span>
-                      <span className="text-white">2.5 BTC</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Available Liquidity:</span>
-                      <span className="text-white">1.8 BTC</span>
-                    </div>
-                  </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Version:</span>
+                  <span className="text-white">PhoenixD 0.12.1</span>
                 </div>
-
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Routing Stats</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Routes:</span>
-                      <span className="text-white">1,247</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Fees Earned:</span>
-                      <span className="text-white">0.0023 BTC</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-200">Success Rate:</span>
-                      <span className="text-white">98.7%</span>
-                    </div>
-                  </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Uptime:</span>
+                  <span className="text-white">99.9%</span>
                 </div>
               </div>
+            </div>
 
-              {/* Channel Management Controls */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                {/* Add Channel */}
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Add Channel</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Node Pubkey
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="03a507... (64 characters)"
-                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Channel Capacity (BTC)
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0.1"
-                        step="0.01"
-                        min="0.01"
-                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Push Amount (BTC)
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0.05"
-                        step="0.01"
-                        min="0"
-                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      />
-                    </div>
-                    <button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                      Open Channel
-                    </button>
-                  </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Channel Summary</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Total Channels:</span>
+                  <span className="text-white">12</span>
                 </div>
-
-                {/* Rebalance Channels */}
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Rebalance Channels</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Source Channel ID
-                      </label>
-                      <select className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent">
-                        <option value="">Select channel...</option>
-                        <option value="channel1">Channel 1 (0.5 BTC)</option>
-                        <option value="channel2">Channel 2 (0.3 BTC)</option>
-                        <option value="channel3">Channel 3 (0.2 BTC)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Target Channel ID
-                      </label>
-                      <select className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent">
-                        <option value="">Select channel...</option>
-                        <option value="channel4">Channel 4 (0.1 BTC)</option>
-                        <option value="channel5">Channel 5 (0.4 BTC)</option>
-                        <option value="channel6">Channel 6 (0.15 BTC)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Amount to Move (BTC)
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0.05"
-                        step="0.01"
-                        min="0.001"
-                        className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      />
-                    </div>
-                    <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                      Rebalance
-                    </button>
-                  </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Total Capacity:</span>
+                  <span className="text-white">2.5 BTC</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Available Liquidity:</span>
+                  <span className="text-white">1.8 BTC</span>
                 </div>
               </div>
+            </div>
 
-              {/* Active Channels */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 mb-8">
-                <h3 className="text-xl font-bold text-white mb-4">Active Channels</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-purple-300">
-                        <th className="py-2 text-purple-200 font-medium">Channel ID</th>
-                        <th className="py-2 text-purple-200 font-medium">Peer</th>
-                        <th className="py-2 text-purple-200 font-medium">Capacity</th>
-                        <th className="py-2 text-purple-200 font-medium">Local Balance</th>
-                        <th className="py-2 text-purple-200 font-medium">Remote Balance</th>
-                        <th className="py-2 text-purple-200 font-medium">Status</th>
-                        <th className="py-2 text-purple-200 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-white">
-                      <tr className="border-b border-purple-200/20">
-                        <td className="py-3">1234567890</td>
-                        <td className="py-3">03a507...abc123</td>
-                        <td className="py-3">0.5 BTC</td>
-                        <td className="py-3">0.3 BTC</td>
-                        <td className="py-3">0.2 BTC</td>
-                        <td className="py-3"><span className="text-green-400">Active</span></td>
-                        <td className="py-3">
-                          <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-purple-200/20">
-                        <td className="py-3">0987654321</td>
-                        <td className="py-3">02b608...def456</td>
-                        <td className="py-3">0.3 BTC</td>
-                        <td className="py-3">0.1 BTC</td>
-                        <td className="py-3">0.2 BTC</td>
-                        <td className="py-3"><span className="text-green-400">Active</span></td>
-                        <td className="py-3">
-                          <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-purple-200/20">
-                        <td className="py-3">1122334455</td>
-                        <td className="py-3">01c709...ghi789</td>
-                        <td className="py-3">0.2 BTC</td>
-                        <td className="py-3">0.15 BTC</td>
-                        <td className="py-3">0.05 BTC</td>
-                        <td className="py-3"><span className="text-green-400">Active</span></td>
-                        <td className="py-3">
-                          <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Routing Stats</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Routes:</span>
+                  <span className="text-white">1,247</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Fees Earned:</span>
+                  <span className="text-white">0.0023 BTC</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200">Success Rate:</span>
+                  <span className="text-white">98.7%</span>
                 </div>
               </div>
+            </div>
+          </div>
 
-              {/* Recent Transactions */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 mb-8">
-                <h3 className="text-xl font-bold text-white mb-4">Recent Transactions</h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center py-3 border-b border-purple-200/20">
-                    <div>
-                      <div className="text-white font-medium">Payment Received</div>
-                      <div className="text-purple-200 text-sm">Channel: 1234567890</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-green-400 font-medium">+0.001 BTC</div>
-                      <div className="text-purple-200 text-sm">2 hours ago</div>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center py-3 border-b border-purple-200/20">
-                    <div>
-                      <div className="text-white font-medium">Payment Sent</div>
-                      <div className="text-purple-200 text-sm">Channel: 0987654321</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-red-400 font-medium">-0.0005 BTC</div>
-                      <div className="text-purple-200 text-sm">4 hours ago</div>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center py-3">
-                    <div>
-                      <div className="text-white font-medium">Channel Opened</div>
-                      <div className="text-purple-200 text-sm">New channel with 01c709...ghi789</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-blue-400 font-medium">+0.2 BTC</div>
-                      <div className="text-purple-200 text-sm">1 day ago</div>
-                    </div>
-                  </div>
+          {/* Channel Management Controls */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            {/* Add Channel */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Add Channel</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Node Pubkey
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="03a507... (64 characters)"
+                    className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
                 </div>
-              </div>
-
-              {/* Back Button */}
-              <div className="flex justify-center">
-                <button
-                  onClick={() => setCurrentView("landing")}
-                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
-                >
-                  <span>Back to Dashboard</span>
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Channel Capacity (BTC)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0.1"
+                    step="0.01"
+                    min="0.01"
+                    className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Push Amount (BTC)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0.05"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+                <button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                  Open Channel
                 </button>
               </div>
             </div>
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+
+            {/* Rebalance Channels */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Rebalance Channels</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Source Channel ID
+                  </label>
+                  <select className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                    <option value="">Select channel...</option>
+                    <option value="channel1">Channel 1 (0.5 BTC)</option>
+                    <option value="channel2">Channel 2 (0.3 BTC)</option>
+                    <option value="channel3">Channel 3 (0.2 BTC)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Target Channel ID
+                  </label>
+                  <select className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                    <option value="">Select channel...</option>
+                    <option value="channel4">Channel 4 (0.1 BTC)</option>
+                    <option value="channel5">Channel 5 (0.4 BTC)</option>
+                    <option value="channel6">Channel 6 (0.15 BTC)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Amount to Move (BTC)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0.05"
+                    step="0.01"
+                    min="0.001"
+                    className="w-full px-4 py-2 bg-white/20 border border-purple-300 rounded-lg text-white placeholder-purple-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+                <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                  Rebalance
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Channels */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 mb-8">
+            <h3 className="text-xl font-bold text-white mb-4">Active Channels</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-purple-300">
+                    <th className="py-2 text-purple-200 font-medium">Channel ID</th>
+                    <th className="py-2 text-purple-200 font-medium">Peer</th>
+                    <th className="py-2 text-purple-200 font-medium">Capacity</th>
+                    <th className="py-2 text-purple-200 font-medium">Local Balance</th>
+                    <th className="py-2 text-purple-200 font-medium">Remote Balance</th>
+                    <th className="py-2 text-purple-200 font-medium">Status</th>
+                    <th className="py-2 text-purple-200 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="text-white">
+                  <tr className="border-b border-purple-200/20">
+                    <td className="py-3">1234567890</td>
+                    <td className="py-3">03a507...abc123</td>
+                    <td className="py-3">0.5 BTC</td>
+                    <td className="py-3">0.3 BTC</td>
+                    <td className="py-3">0.2 BTC</td>
+                    <td className="py-3"><span className="text-green-400">Active</span></td>
+                    <td className="py-3">
+                      <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-purple-200/20">
+                    <td className="py-3">0987654321</td>
+                    <td className="py-3">02b608...def456</td>
+                    <td className="py-3">0.3 BTC</td>
+                    <td className="py-3">0.1 BTC</td>
+                    <td className="py-3">0.2 BTC</td>
+                    <td className="py-3"><span className="text-green-400">Active</span></td>
+                    <td className="py-3">
+                      <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-purple-200/20">
+                    <td className="py-3">1122334455</td>
+                    <td className="py-3">01c709...ghi789</td>
+                    <td className="py-3">0.2 BTC</td>
+                    <td className="py-3">0.15 BTC</td>
+                    <td className="py-3">0.05 BTC</td>
+                    <td className="py-3"><span className="text-green-400">Active</span></td>
+                    <td className="py-3">
+                      <button className="text-orange-400 hover:text-orange-300 text-sm">Close</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Recent Transactions */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 mb-8">
+            <h3 className="text-xl font-bold text-white mb-4">Recent Transactions</h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-3 border-b border-purple-200/20">
+                <div>
+                  <div className="text-white font-medium">Payment Received</div>
+                  <div className="text-purple-200 text-sm">Channel: 1234567890</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-green-400 font-medium">+0.001 BTC</div>
+                  <div className="text-purple-200 text-sm">2 hours ago</div>
+                </div>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-purple-200/20">
+                <div>
+                  <div className="text-white font-medium">Payment Sent</div>
+                  <div className="text-purple-200 text-sm">Channel: 0987654321</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-red-400 font-medium">-0.0005 BTC</div>
+                  <div className="text-purple-200 text-sm">4 hours ago</div>
+                </div>
+              </div>
+              <div className="flex justify-between items-center py-3">
+                <div>
+                  <div className="text-white font-medium">Channel Opened</div>
+                  <div className="text-purple-200 text-sm">New channel with 01c709...ghi789</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-blue-400 font-medium">+0.2 BTC</div>
+                  <div className="text-purple-200 text-sm">1 day ago</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Back Button */}
+          <div className="flex justify-center">
+            <button
+              onClick={() => setCurrentView("landing")}
+              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
+            >
+              <span>Back to Dashboard</span>
+            </button>
+          </div>
+        </div>
       </PageWrapper>
     );
   }
@@ -829,18 +795,14 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyFederationAuthProvider>
-          <FamilyFederationAuthWrapper requireAuth={true} allowedRoles={["adult", "offspring", "steward", "guardian"]}>
-            <GiftwrappedMessaging
-              familyMember={{
-                id: "current-user",
-                npub: "npub1placeholder",
-                username: "Current User",
-                role: "adult"
-              }}
-            />
-          </FamilyFederationAuthWrapper>
-        </FamilyFederationAuthProvider>
+        <GiftwrappedMessaging
+          familyMember={{
+            id: "current-user",
+            npub: "npub1placeholder",
+            username: "Current User",
+            role: "adult"
+          }}
+        />
       </PageWrapper>
     );
   }
@@ -1175,7 +1137,7 @@ function App() {
                   Individual Finances
                 </button>
                 <button
-                  onClick={() => handleAutomatedPayments()}
+                  onClick={() => handleProtectedRoute("payment-automation")}
                   className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200"
                 >
                   Automated Payments
@@ -1401,6 +1363,7 @@ function App() {
             role: "adult"
           }}
           isModal={true}
+          onClose={() => setShowCommunications(false)}
         />
       )}
 

@@ -538,3 +538,59 @@ If you didn't request this code, please ignore this message.
 
 export { RebuildingCamelotOTPService };
 
+
+
+// Netlify Function handler wrapper
+export async function handler(event) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+  }
+
+  try {
+    const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
+    const action = body.action;
+    const service = new RebuildingCamelotOTPService();
+
+    if (action === 'send') {
+      const { recipientNpub, userNip05 } = body;
+      if (!recipientNpub) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'recipientNpub is required' }) };
+      }
+      const result = await service.sendOTPDM(recipientNpub, userNip05);
+      return { statusCode: 200, headers, body: JSON.stringify(result) };
+    }
+
+    if (action === 'verify') {
+      const { recipientNpub, otp } = body;
+      if (!recipientNpub || !otp) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'recipientNpub and otp are required' }) };
+      }
+      const result = await service.verifyOTP(recipientNpub, otp);
+      return { statusCode: 200, headers, body: JSON.stringify(result) };
+    }
+
+    if (action === 'cleanup') {
+      const ok = await service.cleanupExpiredOTPs();
+      return { statusCode: 200, headers, body: JSON.stringify({ success: ok }) };
+    }
+
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Unknown action. Use send, verify, or cleanup.' }) };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })
+    };
+  }
+}

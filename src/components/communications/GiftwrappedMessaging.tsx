@@ -27,9 +27,10 @@ interface Contact {
 interface GiftwrappedMessagingProps {
   familyMember: FamilyMember;
   isModal?: boolean;
+  onClose?: () => void;
 }
 
-export function GiftwrappedMessaging({ familyMember, isModal = false }: GiftwrappedMessagingProps) {
+export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }: GiftwrappedMessagingProps) {
   const [messages, setMessages] = useState<GiftWrappedMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -101,8 +102,25 @@ export function GiftwrappedMessaging({ familyMember, isModal = false }: Giftwrap
   };
 
   if (isModal) {
+    // Modal-specific behaviors: body scroll lock + ESC to close
+    useEffect(() => {
+      document.body.classList.add('modal-open');
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') onClose?.();
+      };
+      document.addEventListener('keydown', onKey);
+      return () => {
+        document.body.classList.remove('modal-open');
+        document.removeEventListener('keydown', onKey);
+      };
+    }, []);
+
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target === e.currentTarget) onClose?.();
+    };
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick} aria-modal="true" role="dialog">
         {/* Background Image with Overlay */}
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -117,7 +135,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false }: Giftwrap
         </div>
 
         {/* Modal Content */}
-        <div className="relative z-10 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="relative z-10 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-white">
               Private Family Communications
@@ -127,6 +145,15 @@ export function GiftwrappedMessaging({ familyMember, isModal = false }: Giftwrap
               <span className="text-xs text-purple-200">End-to-End Encrypted</span>
             </div>
           </div>
+
+          {/* Close Button */}
+          <button
+            onClick={() => onClose?.()}
+            className="absolute top-4 right-4 p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
+            aria-label="Close communications"
+          >
+            ✕
+          </button>
 
           {error && (
             <div className="mb-4 p-3 bg-red-900/50 border border-red-500/50 rounded-lg">

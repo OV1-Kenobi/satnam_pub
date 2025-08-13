@@ -1,5 +1,6 @@
 import { bytesToHex } from "@noble/hashes/utils";
 import { getPublicKey, utils } from "@noble/secp256k1";
+import * as CryptoJS from "crypto-js";
 
 // Import proper NIP-19 encoding functions from nostr-tools
 import { nip19 } from "nostr-tools";
@@ -36,8 +37,22 @@ export class CryptoUnified {
   }
 
   static decrypt(encryptedData: string, password: string): string {
-    const bytes = CryptoJS.AES.decrypt(encryptedData, password);
-    return bytes.toString(CryptoJS.enc.Utf8);
+    try {
+      const bytes = CryptoJS.AES.decrypt(encryptedData, password);
+      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+      if (!decrypted) {
+        throw new Error(
+          "Decryption failed - invalid password or corrupted data"
+        );
+      }
+      return decrypted;
+    } catch (error) {
+      throw new Error(
+        `Decryption failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   // Browser-compatible hashing
@@ -48,7 +63,13 @@ export class CryptoUnified {
   // Browser-compatible random bytes
   static randomBytes(length: number): Uint8Array {
     const array = new Uint8Array(length);
-    window.crypto.getRandomValues(array);
+    if (typeof window !== "undefined" && window.crypto) {
+      window.crypto.getRandomValues(array);
+    } else if (typeof globalThis !== "undefined" && globalThis.crypto) {
+      globalThis.crypto.getRandomValues(array);
+    } else {
+      throw new Error("Crypto API not available in this environment");
+    }
     return array;
   }
 

@@ -1,10 +1,13 @@
 declare module "bolt11" {
+  export type Network = "bitcoin" | "testnet" | "regtest" | "simnet";
+  export type TagData = string | number | Uint8Array;
+
   export interface PaymentRequest {
     paymentRequest: string;
     complete: boolean;
     prefix: string;
     wordsTemp: string;
-    network: any;
+    network: Network;
     amount: number | null;
     timestamp?: number;
     timestampString?: string;
@@ -13,7 +16,7 @@ declare module "bolt11" {
     recoveryFlag?: number;
     tags: Array<{
       tagName: string;
-      data: any;
+      data: TagData;
     }>;
   }
 
@@ -22,7 +25,7 @@ declare module "bolt11" {
     complete?: boolean;
     prefix?: string;
     wordsTemp?: string;
-    network?: any;
+    network?: Network;
     amount?: number | null;
     timestamp?: number;
     timestampString?: string;
@@ -31,7 +34,7 @@ declare module "bolt11" {
     recoveryFlag?: number;
     tags?: Array<{
       tagName?: string;
-      data?: any;
+      data?: TagData;
     }>;
   }
 
