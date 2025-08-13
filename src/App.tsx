@@ -183,15 +183,6 @@ function App() {
       case 'contacts':
         setShowContactsModal(true);
         break;
-      case 'sovereignty-controls':
-        setCurrentView('sovereignty-controls');
-        break;
-      case 'privacy-preferences':
-        setCurrentView('privacy-preferences');
-        break;
-      case 'atomic-swaps':
-        setCurrentView('atomic-swaps');
-        break;
       default:
         setCurrentView('landing');
     }

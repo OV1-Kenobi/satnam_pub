@@ -1247,12 +1247,6 @@ export class ApiClient {
       );
     }
   }
-
-  // REMOVED: Duplicate storeUserData method
-  // This method was causing confusion with the canonical implementation in src/utils/api-client.ts
-  // All user data storage should use the Identity Forge implementation which properly handles
-  // the register-identity endpoint with the correct interface (username, password, npub, etc.)
-
   /**
    * Send gift-wrapped message with comprehensive validation and error handling
    *

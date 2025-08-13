@@ -124,8 +124,8 @@ export default defineConfig({
             return 'api-modules';
           }
 
-          // Supabase and database
-          if (id.includes('src/lib/supabase') || id.includes('lib/supabase')) {
+          // Supabase and database (browser-only)
+          if (id.includes('src/lib/supabase')) {
             return 'database';
           }
 
