@@ -95,7 +95,7 @@
             
             try {
                 const response = await fetch('/api/auth/nip07-challenge', {
-                    method: 'POST',
+                    method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
                     }
@@ -145,7 +145,7 @@
                 
                 // Step 2: Generate challenge
                 const challengeResponse = await fetch('/api/auth/nip07-challenge', {
-                    method: 'POST',
+                    method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
                     }

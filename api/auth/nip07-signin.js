@@ -130,21 +130,21 @@ function secureHexToBytes(hex) {
 /**
  * Secure memory cleanup for sensitive signature data
  * SECURITY: Clears sensitive data from memory after use
+ * @param {any[]} sensitiveData
  */
 async function secureCleanup(sensitiveData) {
   try {
-    // Basic memory clearing for Node.js environment
-    sensitiveData.forEach(data => {
-      if (typeof data === 'string') {
-        // Overwrite string memory (limited effectiveness in JS)
-        for (let i = 0; i < data.length; i++) {
-          try {
-            data[i] = '0';
-          } catch (e) {
-            // Strings are immutable, this is best effort
+    // Best-effort cleanup: zero-out byte buffers; strings are immutable in JS
+    sensitiveData.forEach((/** @type {any} */ d) => {
+      try {
+        if (d && typeof d === 'object') {
+          if (d instanceof Uint8Array) {
+            d.fill(0);
+          } else if (typeof ArrayBuffer !== 'undefined' && d instanceof ArrayBuffer) {
+            new Uint8Array(d).fill(0);
           }
         }
-      }
+      } catch {}
     });
   } catch (cleanupError) {
     console.warn('Memory cleanup failed:', cleanupError);
@@ -157,12 +157,6 @@ async function secureCleanup(sensitiveData) {
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
   return process.env[key];
 }
 
@@ -312,14 +306,18 @@ async function generateSecureSessionToken(length = 32) {
 }
 
 /**
- * Convert public key to npub format (simplified for now)
+ * Convert public key to npub format using bech32 encoding (dynamic import for ESM)
  * @param {string} pubkey - Public key hex string
- * @returns {string} npub formatted public key
+ * @returns {Promise<string>} npub formatted public key
  */
-function convertToNpub(pubkey) {
-  // For now, return the pubkey as-is with npub prefix
-  // In production, this would use proper bech32 encoding
-  return `npub${pubkey.substring(0, 16)}...`;
+async function convertToNpub(pubkey) {
+  try {
+    const { nip19 } = await import('nostr-tools');
+    return nip19.npubEncode(pubkey);
+  } catch (_e) {
+    // Fallback to recognizable prefix if encoding fails
+    return `npub${pubkey.substring(0, 16)}...`;
+  }
 }
 
 /**
@@ -414,9 +412,24 @@ function validateSigninRequest(requestBody) {
  * @returns {Promise<Object>} Netlify Functions response object
  */
 export default async function handler(event, context) {
-  // CORS headers for browser compatibility
+  // CORS headers for browser compatibility (env-aware)
+  function getAllowedOrigin(origin) {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) return 'https://satnam.pub';
+    if (!origin) return '*';
+    try {
+      const u = new URL(origin);
+      if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && (u.protocol === 'http:')) {
+        return origin;
+      }
+    } catch {}
+    return '*';
+  }
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+  const allowedOrigin = getAllowedOrigin(requestOrigin);
   const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    ...(allowedOrigin !== "*" ? { "Access-Control-Allow-Credentials": "true" } : {}),
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
@@ -440,11 +453,20 @@ export default async function handler(event, context) {
   }
 
   try {
-    // Parse request body
-    const requestBody = JSON.parse(event.body || '{}');
+    // Parse request body with proper error handling for malformed JSON
+    let parsedBody;
+    try {
+      parsedBody = JSON.parse(event.body || '{}');
+    } catch {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ success: false, error: 'Invalid JSON body' }),
+      };
+    }
 
     // Validate signin request parameters
-    const validation = validateSigninRequest(requestBody);
+    const validation = validateSigninRequest(parsedBody);
 
     if (!validation.valid) {
       return {
@@ -472,57 +494,136 @@ export default async function handler(event, context) {
       };
     }
 
-    // Validate Nostr event structure and timing
-    const eventValidation = validateNostrEvent(validation.signedEvent, validation.challenge);
+    // Load and validate persisted challenge
+    const { supabase } = await import("../../netlify/functions/supabase.js");
+    const { generateDUIDIndexFromNpub } = await import("../../netlify/functions/security/duid-index-generator.js");
+    const { SecureSessionManager } = await import("../../netlify/functions/security/session-manager.js");
 
+    const sessionId = parsedBody.sessionId;
+    const nonce = parsedBody.nonce;
+
+    if (!sessionId || !nonce) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ success: false, error: 'Missing sessionId or nonce' }),
+      };
+    }
+
+    // Basic rate limiting by IP (60s window, 30 attempts)
+    const xfwd = event.headers["x-forwarded-for"] || event.headers["X-Forwarded-For"];
+    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+    try { await incrementRateLimit(supabase, { identifier: clientIp, scope: 'ip', limit: 30, windowSec: 60 }); } catch (e) {
+      // If incrementRateLimit throws a response-like object, return it
+      if (e && typeof e === 'object' && 'statusCode' in e) {
+        return /** @type {any} */ (e);
+      }
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    }
+
+    const { data: chRows, error: chErr } = await supabase
+      .from('auth_challenges')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('nonce', nonce)
+      .limit(1);
+
+    if (chErr || !chRows || chRows.length === 0) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Challenge not found' }) };
+    }
+
+    const ch = chRows[0];
+    if (ch.is_used) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Challenge already used' }) };
+    }
+    if (Date.now() > new Date(ch.expires_at).getTime()) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Challenge expired' }) };
+    }
+    if (validation.domain !== ch.domain) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Domain mismatch' }) };
+    }
+
+    // Validate Nostr event structure and timing against stored challenge
+    const eventValidation = validateNostrEvent(validation.signedEvent, ch.challenge);
     if (!eventValidation.valid) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: eventValidation.error
-        }),
-      };
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:eventValidation.error }) };
     }
 
-    // Verify the event signature using nostr-browser
-    const isValidSignature = verifyEvent(validation.signedEvent);
+    // Verify the event signature
+    const isValidSignature = await verifyEvent(validation.signedEvent);
     if (!isValidSignature) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Invalid event signature' }) };
+    }
+
+    // Compute npub and DUID index
+    const npub = await convertToNpub(eventValidation.pubkey);
+    let duid_index;
+    try { duid_index = await generateDUIDIndexFromNpub(npub); } catch { duid_index = null; }
+    if (!duid_index) {
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Failed to derive user identifier' }) };
+    }
+
+    // Rate limit per user (60s window, 10 attempts)
+    try { await incrementRateLimit(supabase, { identifier: duid_index, scope: 'duid', limit: 10, windowSec: 60 }); } catch (e) {
+      return e.response || { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    }
+
+    // Lookup user by DUID index
+    const { data: user, error: userErr } = await supabase
+      .from('user_identities')
+      .select('*')
+      .eq('id', duid_index)
+      .eq('is_active', true)
+      .single();
+
+    if (userErr || !user) {
       return {
-        statusCode: 401,
+        statusCode: 404,
         headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Invalid event signature"
-        }),
+        body: JSON.stringify({ success:false, error:'User not found. Please register.', registerEndpoint: '/api/auth/register-identity' })
       };
     }
 
-    // Generate secure session token using Web Crypto API
-    const sessionToken = await generateSecureSessionToken(32);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    const npub = convertToNpub(eventValidation.pubkey);
+    // Mark challenge as used and record event for replay protection
+    {
+      const { error: markErr } = await supabase
+        .from('auth_challenges')
+        .update({ is_used: true, event_id: validation.signedEvent.id })
+        .eq('id', ch.id);
+      if (markErr) {
+        return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Failed to persist challenge state' }) };
+      }
+    }
 
-    // Create user authentication data
+    // Create session using SecureSessionManager (same pattern as OTP flow)
     const userData = {
       npub: npub,
-      authenticated: true,
-      authMethod: "nip07",
-      permissions: sovereigntyValidation.permissions,
-      role: validation.userRole,
-      hasUnlimitedAccess: sovereigntyValidation.hasUnlimitedAccess,
-      requiresApproval: sovereigntyValidation.requiresApproval,
+      nip05: user.nip05 || null,
+      federationRole: user.role || 'private',
+      authMethod: /** @type {const} */('nip07'),
+      isWhitelisted: true,
+      votingPower: user.voting_power || 0,
+      guardianApproved: false,
+      stewardApproved: false,
+      sessionToken: ''
     };
 
-    // Create Master Context compliant response
+    // Create session JWTs (Netlify response object unused in current implementation)
+    const jwtToken = await SecureSessionManager.createSession(null, userData);
+    const refreshToken = await SecureSessionManager.createRefreshToken({ userId: duid_index, npub });
+
+    // Response
     const response = {
       success: true,
       data: {
-        sessionToken,
-        npub: npub,
-        expiresAt: expiresAt.toISOString(),
-        user: userData,
+        token: jwtToken,
+        refreshToken,
+        npub,
+        user: {
+          npub,
+          role: user.role || 'private',
+          authMethod: 'nip07'
+        }
       },
       sovereigntyStatus: {
         role: validation.userRole,
@@ -535,6 +636,22 @@ export default async function handler(event, context) {
         privacyCompliant: true,
       },
     };
+
+    // Helper: atomic rate limiter via PostgreSQL RPC
+    async function incrementRateLimit(supabaseClient, { identifier, scope, limit, windowSec }) {
+      const now = new Date();
+      const windowStart = new Date(Math.floor(now.getTime() / (windowSec*1000)) * (windowSec*1000)).toISOString();
+      const { data, error } = await supabaseClient.rpc('increment_auth_rate', {
+        p_identifier: identifier,
+        p_scope: scope,
+        p_window_start: windowStart,
+        p_limit: limit,
+      });
+      if (error || (data && Array.isArray(data) && data[0]?.limited)) {
+        const resp = { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts. Please try later.' }) };
+        throw resp;
+      }
+    }
 
     return {
       statusCode: 200,
@@ -626,29 +743,7 @@ export function validateNIP07SigninCompatibility(operation, data) {
   };
 }
 
-/**
- * Generate JWT token for session management (placeholder for production implementation)
- * @param {Object} userData - User authentication data
- * @param {string} sessionToken - Session token
- * @returns {Promise<string>} JWT token
- */
-export async function generateJWTToken(userData, sessionToken) {
-  // Placeholder implementation - in production, use proper JWT library
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payload = btoa(JSON.stringify({
-    sub: userData.npub,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
-    role: userData.role,
-    permissions: userData.permissions,
-    sessionToken: sessionToken.substring(0, 16), // Partial session token for verification
-  }));
 
-  // In production, use proper HMAC signing with secret key
-  const signature = btoa("placeholder-signature");
-
-  return `${header}.${payload}.${signature}`;
-}
 
 /**
  * Validate session token format and structure

@@ -30,12 +30,6 @@
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
   return process.env[key];
 }
 
@@ -218,11 +212,25 @@ function validateChallengeRequest(queryParams) {
  * @returns {Promise<Object>} Netlify Functions response object
  */
 export default async function handler(event, context) {
-  // CORS headers for browser compatibility
+  // CORS headers for browser compatibility (env-aware)
+  function getAllowedOrigin(origin) {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) return 'https://satnam.pub';
+    if (!origin) return '*';
+    try {
+      const u = new URL(origin);
+      if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && (u.protocol === 'http:')) {
+        return origin;
+      }
+    } catch {}
+    return '*';
+  }
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
   const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": getAllowedOrigin(requestOrigin),
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
 
   // Handle preflight requests
@@ -234,8 +242,8 @@ export default async function handler(event, context) {
     };
   }
 
-  // Only allow GET requests
-  if (event.httpMethod !== "GET") {
+  // Allow GET and POST for challenge retrieval (POST ignored body)
+  if (event.httpMethod !== "GET" && event.httpMethod !== "POST") {
     return {
       statusCode: 405,
       headers: corsHeaders,
@@ -275,6 +283,28 @@ export default async function handler(event, context) {
     const domain = event.headers.host || getEnvVar("VITE_APP_DOMAIN") || "localhost:3000";
     const timestamp = Date.now();
     const expiresAt = timestamp + 5 * 60 * 1000; // 5 minutes
+
+    // Persist challenge for replay protection and validation
+    try {
+      const { supabase } = await import("../../netlify/functions/supabase.js");
+      const sessionId = (event.queryStringParameters && event.queryStringParameters.sessionId) || undefined;
+
+      // Cleanup expired challenges (best-effort)
+      await supabase.from('auth_challenges').delete().lt('expires_at', new Date().toISOString());
+
+      await supabase.from('auth_challenges').insert({
+        session_id: sessionId || nonce, // fallback to nonce if no sessionId provided
+        nonce,
+        challenge,
+        domain,
+        issued_at: new Date(timestamp).toISOString(),
+        expires_at: new Date(expiresAt).toISOString(),
+        is_used: false
+      });
+    } catch (persistError) {
+      // Do not leak sensitive info; log minimal context
+      console.error('Challenge persistence failed');
+    }
 
     // Create challenge data structure
     const challengeData = {

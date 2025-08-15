@@ -26,7 +26,25 @@
   status = 200
   force = true
 
+# Explicit NIP-07 endpoints mapping to avoid ":splat" issues
+[[redirects]]
+  from = "/api/auth/nip07-challenge"
+  to = "/.netlify/functions/auth-nip07-challenge"
+  status = 200
+  force = true
 
+[[redirects]]
+  from = "/api/auth/nip07-signin"
+  to = "/.netlify/functions/auth-nip07-signin"
+  status = 200
+  force = true
+
+# Canonical registration endpoint mapping
+[[redirects]]
+  from = "/api/auth/register-identity"
+  to = "/.netlify/functions/auth-register-identity"
+  status = 200
+  force = true
 
 # Generic mapping for other API endpoints
 [[redirects]]

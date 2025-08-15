@@ -219,8 +219,8 @@ export class ApiClient {
     detectedProfile?: any;
   }): Promise<any> {
     try {
-      // Always use API endpoint - no development mode bypasses
-      const fullUrl = `${this.apiBaseUrl}/register-identity`;
+      // Always use API endpoint - canonical auth route
+      const fullUrl = `${this.apiBaseUrl}/auth/register-identity`;
       console.log("🔍 API CLIENT: Calling register-identity endpoint", {
         apiBaseUrl: this.apiBaseUrl,
         fullUrl: fullUrl,

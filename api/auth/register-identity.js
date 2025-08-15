@@ -454,9 +454,23 @@ async function createUserIdentity(userData, spendingLimits) {
  * @returns {Promise<Object>} Netlify Functions response object
  */
 export default async function handler(event, context) {
-  // CORS headers for browser compatibility
+  // CORS headers for browser compatibility (env-aware)
+  function getAllowedOrigin(origin) {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) return 'https://satnam.pub';
+    if (!origin) return '*';
+    try {
+      const u = new URL(origin);
+      if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && (u.protocol === 'http:')) {
+        return origin;
+      }
+    } catch {}
+    return '*';
+  }
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
   const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': getAllowedOrigin(requestOrigin),
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS'
   };

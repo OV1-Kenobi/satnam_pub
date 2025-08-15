@@ -7,12 +7,14 @@ This guide covers the comprehensive Nostr key recovery and rotation system imple
 ## 🎯 Key Features
 
 ### Recovery System
+
 - **Private Individual Recovery**: Direct authentication-based nsec recovery
 - **Family Federation Recovery**: Guardian consensus-based recovery
-- **Dual Credential Support**: NIP-05/Password and NIP-07/Password methods
+- **Dual Credential Support**: NIP-05/Password and NIP-07 methods
 - **Secure Display**: Memory-only decryption with copy/download options
 
 ### Rotation System
+
 - **Identity Preservation**: Maintains NIP-05 and Lightning Address continuity
 - **Profile Migration**: Transfers username, bio, and profile picture
 - **Deprecation Management**: Automatic notices for old and new profiles
@@ -81,16 +83,16 @@ Run the migration to create required tables:
 Add to your app routing:
 
 ```tsx
-import { RecoveryAndRotationPage } from './components/auth/RecoveryAndRotationPage';
+import { RecoveryAndRotationPage } from "./components/auth/RecoveryAndRotationPage";
 
 // Add route
-<Route path="/key-management" element={<RecoveryAndRotationPage />} />
+<Route path="/key-management" element={<RecoveryAndRotationPage />} />;
 ```
 
 Or integrate into existing auth flows:
 
 ```tsx
-import { RecoveryAndRotationInterface } from './components/auth/RecoveryAndRotationInterface';
+import { RecoveryAndRotationInterface } from "./components/auth/RecoveryAndRotationInterface";
 
 function AuthPage() {
   return (
@@ -153,28 +155,32 @@ function AuthPage() {
 ```typescript
 // Recovery only when logged out
 if (auth.authenticated) {
-  return 'You must be logged out to access recovery';
+  return "You must be logged out to access recovery";
 }
 
 // Rotation only when logged in
 if (!auth.authenticated) {
-  return 'You must be logged in to rotate keys';
+  return "You must be logged in to rotate keys";
 }
 ```
 
 ### Memory Protection
 
 ```typescript
-// Immediate cleanup after nsec use
+// Immediate cleanup after nsec use (browser-compatible)
 finally {
-  if (nsecKey) {
-    nsecKey = '';
-    nsecKey = null;
-    
-    // Force garbage collection if available
-    if (global.gc) {
-      global.gc();
+  try {
+    if (nsecKey) {
+      // Convert to a typed array and wipe using Web Crypto API
+      const encoder = new TextEncoder();
+      const buf = encoder.encode(nsecKey);
+      const { secureClearMemory } = await import("../src/lib/privacy/encryption.js");
+      secureClearMemory([{ data: buf, type: "uint8array" } as any]);
     }
+  } catch {}
+  finally {
+    // Drop the string reference so it can be GC'd
+    nsecKey = null;
   }
 }
 ```
@@ -183,10 +189,10 @@ finally {
 
 ```typescript
 // All operations logged
-await this.logRecoveryAttempt(requestId, 'recovery_successful', {
+await this.logRecoveryAttempt(requestId, "recovery_successful", {
   method: recoveryMethod,
   userRole: userRole,
-  timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
 });
 ```
 
@@ -207,11 +213,11 @@ await this.updateNIP05Record(
 ```typescript
 // Preserve user identity data
 const preserveIdentity = {
-  nip05: 'username@satnam.pub',        // Unchanged
-  lightningAddress: 'username@satnam.pub', // Unchanged
-  username: 'Display Name',            // Migrated
-  bio: 'User bio content',             // Migrated
-  profilePicture: 'https://...'        // Migrated
+  nip05: "username@satnam.pub", // Unchanged
+  lightningAddress: "username@satnam.pub", // Unchanged
+  username: "Display Name", // Migrated
+  bio: "User bio content", // Migrated
+  profilePicture: "https://...", // Migrated
 };
 ```
 

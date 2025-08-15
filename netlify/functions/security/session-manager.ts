@@ -21,7 +21,7 @@ export interface SessionData {
   npub: string;
   nip05?: string;
   federationRole: FederationRole; // Updated to use correct Master Context roles
-  authMethod: "otp" | "nwc";
+  authMethod: "otp" | "nwc" | "nip05-password" | "nip07" | "nsec";
   isWhitelisted: boolean;
   votingPower: number;
   guardianApproved: boolean;
@@ -112,6 +112,64 @@ export class SecureSessionManager {
     crypto.getRandomValues(defaultSalt);
     return defaultSalt;
   }
+  /**
+   * Identifier pepper for HMAC-based protected IDs
+   */
+  private static async getIdentifierPepper(): Promise<string> {
+    // Prioritize Netlify environment variables (no longer using Vault for this)
+    const duidSecret = getEnvVar("DUID_SERVER_SECRET");
+    if (duidSecret) return duidSecret;
+
+    const globalSalt = getEnvVar("GLOBAL_SALT");
+    if (globalSalt) return globalSalt;
+
+    const jwt = getEnvVar("JWT_SECRET");
+    if (jwt) return jwt;
+
+    // Enforce configuration in production
+    if (getEnvVar("NODE_ENV") === "production") {
+      throw new Error(
+        "Identifier pepper must be configured via env 'DUID_SERVER_SECRET' (primary) or 'GLOBAL_SALT' in production"
+      );
+    }
+
+    // Development-only fallback
+    return "dev-only-identifier-pepper-change-in-production";
+  }
+
+  /** Generate a cryptographically secure random session ID (hex) */
+  private static generateRandomSessionIdHex(): string {
+    const bytes = new Uint8Array(32); // Use 32 bytes for 256-bit entropy
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /** Compute HMAC-SHA256(pepper, message) and return hex */
+  private static async hmacSha256Hex(
+    key: string,
+    message: string
+  ): Promise<string> {
+    const enc = new TextEncoder();
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(key),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      cryptoKey,
+      enc.encode(message)
+    );
+    const bytes = new Uint8Array(sig);
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
 
   /**
    * MASTER CONTEXT COMPLIANCE: PBKDF2 with SHA-512 authentication hashing
@@ -186,7 +244,9 @@ export class SecureSessionManager {
 
     const signature = await crypto.subtle.sign("HMAC", cryptoKey, data);
     const encodedSignature = btoa(
-      String.fromCharCode(...new Uint8Array(signature))
+      Array.from(new Uint8Array(signature))
+        .map((c) => String.fromCharCode(c))
+        .join("")
     )
       .replace(/=/g, "")
       .replace(/\+/g, "-")
@@ -284,9 +344,28 @@ export class SecureSessionManager {
       isAuthenticated: true,
     };
 
+    // Standardized TokenPayload augmentation
     const jwtSecret = await this.getJWTSecret();
+    const sessionId = this.generateRandomSessionIdHex();
+    const pepper = await this.getIdentifierPepper();
+    const hashedId = await this.hmacSha256Hex(
+      pepper,
+      `${sessionData.userId}|${sessionId}`
+    );
+
+    const payload = {
+      // Required TokenPayload fields
+      userId: sessionData.userId,
+      hashedId,
+      nip05: sessionData.nip05,
+      type: "access" as const,
+      sessionId,
+      // Backward-compat: include original session fields used by server endpoints
+      ...sessionData,
+    };
+
     const sessionToken = await this.createJWTToken(
-      sessionData,
+      payload,
       jwtSecret,
       this.SESSION_EXPIRY
     );
@@ -320,20 +399,31 @@ export class SecureSessionManager {
       const refreshSecret = await this.getRefreshSecret();
       const decoded = await this.verifyJWTToken(refreshToken, refreshSecret);
 
-      if (!decoded || !decoded.userId || !decoded.npub) return null;
+      if (!decoded || !decoded.userId) return null;
+      if (decoded.type !== "refresh") return null;
 
-      const sessionData: Partial<SessionData> = {
+      const jwtSecret = await this.getJWTSecret();
+
+      // Preserve same sessionId if present, otherwise generate a new one
+      const sessionId = decoded.sessionId || this.generateRandomSessionIdHex();
+      const pepper = await this.getIdentifierPepper();
+      const hashedId = await this.hmacSha256Hex(
+        pepper,
+        `${decoded.userId}|${sessionId}`
+      );
+
+      const payload = {
         userId: decoded.userId,
+        hashedId,
+        nip05: decoded.nip05,
+        type: "access" as const,
+        sessionId,
+        // Keep minimal fields for backward compatibility
         npub: decoded.npub,
         isAuthenticated: true,
       };
 
-      const jwtSecret = await this.getJWTSecret();
-      return await this.createJWTToken(
-        sessionData,
-        jwtSecret,
-        this.SESSION_EXPIRY
-      );
+      return await this.createJWTToken(payload, jwtSecret, this.SESSION_EXPIRY);
     } catch (error) {
       return null;
     }
@@ -342,10 +432,29 @@ export class SecureSessionManager {
   static async createRefreshToken(userData: {
     userId: string;
     npub: string;
+    nip05?: string;
   }): Promise<string> {
     const refreshSecret = await this.getRefreshSecret();
+
+    const sessionId = this.generateRandomSessionIdHex();
+    const pepper = await this.getIdentifierPepper();
+    const hashedId = await this.hmacSha256Hex(
+      pepper,
+      `${userData.userId}|${sessionId}`
+    );
+
+    const payload = {
+      userId: userData.userId,
+      hashedId,
+      nip05: userData.nip05,
+      type: "refresh" as const,
+      sessionId,
+      // Minimal backward-compatible fields
+      npub: userData.npub,
+    };
+
     return await this.createJWTToken(
-      userData,
+      payload,
       refreshSecret,
       this.REFRESH_EXPIRY
     );

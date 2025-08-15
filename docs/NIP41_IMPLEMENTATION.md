@@ -9,6 +9,7 @@ This document describes the implementation of NIP-41 compliant key rotation func
 ### **Event Types Implemented**
 
 #### **Kind 1776 - Pubkey Whitelisting Event**
+
 - **Purpose**: Whitelist a pubkey for future migration
 - **Must be created ahead of time** (at least 60 days before migration)
 - **Content**: Empty (ignored per specification)
@@ -17,6 +18,7 @@ This document describes the implementation of NIP-41 compliant key rotation func
   - `["alt", "pubkey whitelisting event"]` - Alternative description
 
 #### **Kind 1777 - Migration Event**
+
 - **Purpose**: Announce key migration to the Nostr network
 - **Content**: Optional migration reason/message
 - **Tags**:
@@ -27,6 +29,7 @@ This document describes the implementation of NIP-41 compliant key rotation func
   - `["relays", ...relay_urls]` - Relays where whitelist/proof events can be found
 
 ### **60-Day Waiting Period**
+
 - **Compliance**: Enforced through `checkWhitelistStatus()` function
 - **Purpose**: Prevents immediate key rotation attacks
 - **Implementation**: Calculates days since whitelist event creation
@@ -37,6 +40,7 @@ This document describes the implementation of NIP-41 compliant key rotation func
 ### **Core Functions**
 
 #### **1. createWhitelistEvent()**
+
 ```typescript
 async createWhitelistEvent(
   currentNsec: string,
@@ -44,11 +48,13 @@ async createWhitelistEvent(
   relays: string[] = []
 ): Promise<NIP41EventPublishResult>
 ```
+
 - Creates and signs kind 1776 events
 - Publishes to multiple Nostr relays
 - Returns event ID and relay publish results
 
 #### **2. createMigrationEvent()**
+
 ```typescript
 async createMigrationEvent(
   newNsec: string,
@@ -59,11 +65,13 @@ async createMigrationEvent(
   relays: string[] = []
 ): Promise<NIP41EventPublishResult>
 ```
+
 - Creates and signs kind 1777 events
 - References whitelist and proof events
 - Publishes migration announcement to relays
 
 #### **3. checkWhitelistStatus()**
+
 ```typescript
 async checkWhitelistStatus(
   currentPubkey: string,
@@ -76,11 +84,13 @@ async checkWhitelistStatus(
   error?: string;
 }>
 ```
+
 - Queries relays for existing whitelist events
 - Validates 60-day waiting period
 - Returns whitelist status and remaining days
 
 #### **4. performNIP41KeyRotation()**
+
 ```typescript
 async performNIP41KeyRotation(
   userId: string,
@@ -90,6 +100,7 @@ async performNIP41KeyRotation(
   relays: string[] = []
 ): Promise<{...}>
 ```
+
 - **Complete NIP-41 workflow implementation**
 - Handles entire key rotation process
 - Enforces NIP-41 compliance requirements
@@ -98,41 +109,65 @@ async performNIP41KeyRotation(
 ### **Event Publishing System**
 
 #### **publishEventToRelays()**
+
 - Uses correct `nostr-tools` SimplePool API
 - Publishes to multiple relays individually: `pool.publish([relayUrl], event)`
 - Handles relay failures gracefully
 - Returns detailed success/failure results per relay
 
 #### **Default Relays**
+
 ```typescript
 const defaultRelays = [
   "wss://relay.damus.io",
-  "wss://nos.lol", 
+  "wss://nos.lol",
   "wss://relay.snort.social",
-  "wss://relay.nostr.band"
+  "wss://relay.nostr.band",
 ];
 ```
 
 ### **Event Querying System**
 
 #### **Subscription-Based Querying**
-- Uses `pool.subscribeMany()` for event retrieval
+
+- Uses `pool.sub(relays, filters)` for event retrieval
 - Implements proper event collection with timeouts
 - Handles End-of-Stored-Events (EOSE) notifications
 - Closes subscriptions and connections properly
 
+Example using nostr-tools SimplePool:
+
+```ts
+import { SimplePool } from "nostr-tools";
+
+const pool = new SimplePool();
+const relays = ["wss://relay.damus.io", "wss://nos.lol"];
+const currentPubkey = "<hex>"; // author
+const targetPubkey = "<hex>"; // referenced in #p tag
+
+const events: any[] = [];
+const sub = pool.sub(
+  relays,
+  [{ kinds: [1776], authors: [currentPubkey], "#p": [targetPubkey] }],
+  { eoseTimeout: 5000 }
+);
+sub.on("event", (ev) => {
+  events.push(ev);
+});
+sub.on("eose", () => sub.unsub());
+```
+
 ## 🚀 **Usage Examples**
 
 ### **1. Prepare for Key Rotation (60 days ahead)**
+
 ```typescript
 const recovery = new NostrKeyRecoveryService();
 
 // Create whitelist event
-const result = await recovery.prepareKeyRotation(
-  currentNsec,
-  targetPubkey,
-  ["wss://relay.damus.io"]
-);
+const result = await recovery.prepareKeyRotation(currentNsec, targetPubkey, [
+  "wss://relay.damus.io",
+]);
 
 if (result.success) {
   console.log(`Whitelist event created: ${result.whitelistEventId}`);
@@ -141,11 +176,9 @@ if (result.success) {
 ```
 
 ### **2. Check Whitelist Status**
+
 ```typescript
-const status = await recovery.checkWhitelistStatus(
-  currentPubkey,
-  targetPubkey
-);
+const status = await recovery.checkWhitelistStatus(currentPubkey, targetPubkey);
 
 if (status.isWhitelisted) {
   console.log("Ready for migration!");
@@ -155,6 +188,7 @@ if (status.isWhitelisted) {
 ```
 
 ### **3. Perform Complete NIP-41 Key Rotation**
+
 ```typescript
 const result = await recovery.performNIP41KeyRotation(
   userId,
@@ -163,7 +197,7 @@ const result = await recovery.performNIP41KeyRotation(
   {
     nip05: "user@satnam.pub",
     lightningAddress: "user@satnam.pub",
-    username: "user"
+    username: "user",
   }
 );
 
@@ -177,16 +211,19 @@ if (result.success) {
 ## 🔒 **Security Features**
 
 ### **Event Signing**
+
 - Uses `nostr-tools` `getEventHash()` and `signEvent()`
 - Proper event ID generation and signature creation
 - Maintains cryptographic integrity
 
 ### **Key Handling**
+
 - Secure private key generation with `generatePrivateKey()`
 - Immediate memory cleanup after use
 - Zero-knowledge nsec handling principles
 
 ### **Relay Security**
+
 - Multiple relay publishing for redundancy
 - Individual relay error handling
 - Connection cleanup and resource management
@@ -194,33 +231,37 @@ if (result.success) {
 ## 🔄 **Integration with Existing System**
 
 ### **Backward Compatibility**
+
 - Maintains existing `initiateKeyRotation()` and `completeKeyRotation()` functions
 - Adds NIP-41 compliance as enhancement layer
 - Preserves all existing authentication system functionality
 
 ### **Enhanced Migration Steps**
+
 ```typescript
 const migrationSteps = [
   "✅ New keypair generated",
-  "✅ Whitelist event verified (60+ days old)", 
+  "✅ Whitelist event verified (60+ days old)",
   "✅ NIP-41 migration event published to Nostr network",
   "✅ Internal key rotation completed",
   "✅ NIP-05 record updated",
   "✅ Profile migration notices created",
   "⚠️ Followers will automatically update after seeing migration event",
   "⚠️ Update other Nostr clients with new nsec",
-  "⚠️ Backup new keys securely"
+  "⚠️ Backup new keys securely",
 ];
 ```
 
 ## 📋 **OpenTimestamp Integration**
 
 ### **Current Status**
+
 - **Placeholder implementation** with proper logging
 - **NIP-03 compliance** noted for future implementation
 - **Proof event references** use whitelist event ID as fallback
 
 ### **Future Implementation**
+
 ```typescript
 // Note: OpenTimestamp attestation (NIP-03) would be implemented here
 // for full NIP-41 compliance. This requires integration with OpenTimestamp
@@ -230,12 +271,14 @@ const migrationSteps = [
 ## 🎯 **Key Benefits**
 
 ### **For Users**
+
 - **Automatic follower migration** - Other Nostr clients will detect and update
 - **Social network continuity** - Maintains connections during key changes
 - **Security compliance** - Follows standardized migration protocol
 - **Attack prevention** - 60-day waiting period prevents immediate attacks
 
 ### **For Developers**
+
 - **Standardized implementation** - Follows NIP-41 specification exactly
 - **Comprehensive API** - Multiple functions for different use cases
 - **Error handling** - Graceful failure handling and detailed error messages
@@ -244,16 +287,19 @@ const migrationSteps = [
 ## 🔍 **Testing and Validation**
 
 ### **Event Validation**
+
 - Proper event structure and signing
 - Correct tag formatting and content
 - Relay publishing success verification
 
 ### **Compliance Checking**
+
 - 60-day waiting period enforcement
 - Whitelist event existence validation
 - Migration event reference verification
 
 ### **Integration Testing**
+
 - Compatibility with existing auth system
 - Database updates and NIP-05 record changes
 - Profile migration notice creation
@@ -261,6 +307,7 @@ const migrationSteps = [
 ## 🚀 **Production Readiness**
 
 ### **✅ Implemented Features**
+
 - Complete NIP-41 event creation and publishing
 - Proper nostr-tools API usage
 - Event querying and validation
@@ -269,6 +316,7 @@ const migrationSteps = [
 - Integration with existing key rotation system
 
 ### **⚠️ Future Enhancements**
+
 - OpenTimestamp integration for full NIP-03 compliance
 - Enhanced relay selection and management
 - Social recovery integration
@@ -277,13 +325,15 @@ const migrationSteps = [
 ## 📖 **API Reference**
 
 ### **Main Functions**
+
 - `createWhitelistEvent()` - Create kind 1776 events
-- `createMigrationEvent()` - Create kind 1777 events  
+- `createMigrationEvent()` - Create kind 1777 events
 - `checkWhitelistStatus()` - Validate whitelist events
 - `prepareKeyRotation()` - Prepare for future migration
 - `performNIP41KeyRotation()` - Complete NIP-41 workflow
 
 ### **Types**
+
 - `NIP41WhitelistEvent` - Kind 1776 event structure
 - `NIP41MigrationEvent` - Kind 1777 event structure
 - `NIP41EventPublishResult` - Publishing result interface

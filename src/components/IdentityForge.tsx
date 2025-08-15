@@ -26,7 +26,9 @@ import { IdentityRegistrationResult } from "../types/auth";
 import { apiClient } from '../utils/api-client';
 import { SessionInfo } from '../utils/secureSession';
 import { PostAuthInvitationModal } from "./PostAuthInvitationModal";
+import { useIdentityForge } from "./auth/AuthProvider";
 
+import SecureTokenManager from "../lib/auth/secure-token-manager";
 interface FormData {
   username: string;
   password: string;
@@ -43,6 +45,12 @@ interface IdentityForgeProps {
   invitationToken?: string | null;
   invitationDetails?: any;
   isInvitedUser?: boolean;
+  rotationMode?: {
+    enabled: boolean;
+    preserve: { nip05: string; lightningAddress?: string; username: string; bio?: string; profilePicture?: string };
+    skipStep1?: boolean;
+    onKeysReady?: (npub: string, nsecBech32: string) => Promise<void> | void;
+  };
 }
 
 const IdentityForge: React.FC<IdentityForgeProps> = ({
@@ -51,8 +59,20 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   invitationToken = null,
   invitationDetails = null,
   isInvitedUser = false,
+  rotationMode,
 }) => {
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(rotationMode?.enabled && rotationMode?.skipStep1 ? 2 : 1);
+  // When in rotation mode, preset migration mode and preserve identity fields
+  useEffect(() => {
+    if (rotationMode?.enabled) {
+      setMigrationMode('generate');
+      // Skip username/password step; user keeps existing NIP-05/Lightning
+      if (rotationMode.skipStep1) {
+        setCurrentStep(2);
+      }
+    }
+  }, [rotationMode?.enabled, rotationMode?.skipStep1]);
+
   const [formData, setFormData] = useState<FormData>({
     username: "",
     password: "",
@@ -629,6 +649,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   // Use crypto operations hook for lazy loading
   const crypto = useCryptoOperations();
+  // Unified auth integration for post-registration authentication
+  const identityForge = useIdentityForge();
 
   // State consistency validation for Steps 2+ where nsec is relevant
   useEffect(() => {
@@ -870,23 +892,41 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       setRegistrationResult(result);
 
+      // Immediately authenticate the new user to persist session
+      try {
+        const nip05Identifier = `${formData.username}@satnam.pub`;
+        const authSuccess = await identityForge.authenticateAfterRegistration(
+          nip05Identifier,
+          formData.password
+        );
 
-      // Create session info for PostAuth modal
-      const newSessionInfo: SessionInfo = {
-        isAuthenticated: true,
-        user: {
-          npub: result.user.npub,
-          nip05: result.user.nip05,
-          federationRole: 'adult' as const,
-          authMethod: 'otp' as const,
-          isWhitelisted: true,
-          votingPower: 1,
-          guardianApproved: false,
-        },
-      };
+        if (authSuccess) {
+          // Retrieve in-memory access token for invitation modal
+          const accessToken = SecureTokenManager.getAccessToken();
 
+          const newSessionInfo: SessionInfo = {
+            isAuthenticated: true,
+            sessionToken: accessToken || undefined,
+            user: {
+              npub: formData.pubkey,
+              nip05: nip05Identifier,
+              federationRole: 'adult' as const,
+              authMethod: 'otp' as const,
+              isWhitelisted: true,
+              votingPower: 1,
+              guardianApproved: false,
+            },
+          };
 
-      setSessionInfo(newSessionInfo);
+          setSessionInfo(newSessionInfo);
+        } else {
+          console.error('Post-registration authentication failed');
+          setErrorMessage('Registration successful but automatic login failed. Please log in manually.');
+        }
+      } catch (e) {
+        console.error('Failed to authenticate after registration:', e);
+        setErrorMessage('Registration successful but automatic login failed. Please log in manually.');
+      }
 
       return result;
     } catch (error) {
@@ -971,6 +1011,23 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         setIsGenerating(false);
       }
     } else if (currentStep < 4) {
+
+      // Rotation mode: after profile step completes, hand keys back to caller
+      if (rotationMode?.enabled && currentStep === 3 && migrationMode === 'generate') {
+        try {
+          // Publish profile updates (existing flow); then hand off keys
+          await publishNostrProfile();
+          if (!formData.pubkey || !ephemeralNsec) throw new Error('Missing keys for rotation');
+          await rotationMode.onKeysReady?.(formData.pubkey, ephemeralNsec);
+          return; // control will be returned to parent modal
+        } catch (e) {
+          console.error('Rotation handoff after profile update failed:', e);
+          const errorMsg = e instanceof Error ? e.message : 'Unknown error occurred';
+          setErrorMessage(`Key rotation failed: ${errorMsg}. Please try again.`);
+          setIsGenerating(false);
+        }
+      }
+
       setCurrentStep(currentStep + 1);
     } else {
       // Step 4 is the final completion screen
@@ -1660,6 +1717,15 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         </p>
                       </div>
                     )}
+
+                    {rotationMode?.enabled && (
+                      <div className="bg-amber-500/15 border border-amber-400/30 rounded-lg p-3">
+                        <p className="text-amber-200 text-sm text-center">
+                          When you rotate, your followers will be notified via NIP-26 delegation and NIP-41 migration events so they can trust your new key.
+                        </p>
+                      </div>
+                    )}
+
                   </div>
 
                   {/* Critical Security Notice */}
@@ -1825,6 +1891,51 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                             <span>Continue to Profile Setup</span>
                             {nsecStoredConfirmed && formData.agreedToTerms && <ArrowRight className="h-5 w-5" />}
                           </button>
+
+                          {rotationMode?.enabled && !nsecSecured && (
+                            <div className="mt-6 space-y-3">
+                              <button
+                                onClick={() => {
+                                  if (!rotationMode?.onKeysReady) return;
+                                  if (!formData.pubkey || !ephemeralNsec) return;
+                                  rotationMode.onKeysReady(formData.pubkey, ephemeralNsec);
+                                }}
+                                disabled={!nsecStoredConfirmed || !formData.agreedToTerms}
+                                className={`w-full py-3 rounded-lg font-semibold transition ${nsecStoredConfirmed && formData.agreedToTerms ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed'}`}
+                              >
+                                Rotate Keys Now
+                              </button>
+                              <button
+                                onClick={() => setCurrentStep(3)}
+                                className="w-full py-3 rounded-lg font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                              >
+                                Update Profile First
+                              </button>
+                            </div>
+                          )}
+
+
+                          {rotationMode?.enabled && nsecSecured && (
+                            <div className="mt-6">
+                              <button
+                                onClick={async () => {
+                                  if (!rotationMode?.onKeysReady) return;
+                                  if (!formData.pubkey) return;
+                                  // Ephemeral nsec may have been cleared after securing; prompt user to re-display if needed
+                                  if (!ephemeralNsec) {
+                                    setNsecSecured(false);
+                                    setNsecDisplayed(true);
+                                    return;
+                                  }
+                                  await rotationMode.onKeysReady(formData.pubkey, ephemeralNsec);
+                                }}
+                                className="w-full py-3 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                Proceed to Rotate Keys
+                              </button>
+                            </div>
+                          )}
+
                         </div>
                       </div>
                     ) : (

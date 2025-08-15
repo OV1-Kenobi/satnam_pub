@@ -326,15 +326,20 @@ export function useSecureMessageSigning() {
         timestamp: Date.now(),
       };
     } finally {
-      // CRITICAL: Clear nsec from memory immediately
-      if (nsecKey) {
-        nsecKey = "";
-        nsecKey = null;
-
-        // Force garbage collection if available
-        if (global.gc) {
-          global.gc();
+      // CRITICAL: Clear nsec from memory immediately using secure buffer wiping
+      try {
+        if (nsecKey) {
+          const encoder = new TextEncoder();
+          const buf = encoder.encode(nsecKey);
+          const { secureClearMemory } = await import("../privacy/encryption");
+          // Overwrite the underlying bytes with multiple passes
+          secureClearMemory([{ data: buf, type: "uint8array" } as any]);
         }
+      } catch {
+        // Non-fatal: cleanup best-effort only
+      } finally {
+        // Drop reference to the string so it can be GC'd
+        nsecKey = null;
       }
     }
   };

@@ -534,6 +534,57 @@ export async function decryptNsecSimple(
 }
 
 /**
+ * Decrypt Nostr private key (nsec) and return as Uint8Array for buffer-safe handling
+ * Browser-compatible; avoids creating long-lived JS strings.
+ */
+export async function decryptNsecSimpleToBuffer(
+  encryptedNsec: string,
+  userSalt: string
+): Promise<Uint8Array> {
+  try {
+    // Reuse the same derivation as decryptNsecSimple
+    const masterKey = await getMasterKey();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(masterKey + userSalt),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+    const salt = new TextEncoder().encode(userSalt);
+    const decryptionKey = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations: ENCRYPTION_CONFIG.iterations,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      {
+        name: ENCRYPTION_CONFIG.algorithm,
+        length: ENCRYPTION_CONFIG.keyLength,
+      },
+      false,
+      ["decrypt"]
+    );
+    const encryptedBuffer = Uint8Array.from(atob(encryptedNsec), (c) =>
+      c.charCodeAt(0)
+    );
+    const iv = encryptedBuffer.slice(0, ENCRYPTION_CONFIG.ivLength);
+    const ciphertext = encryptedBuffer.slice(ENCRYPTION_CONFIG.ivLength);
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      { name: ENCRYPTION_CONFIG.algorithm, iv },
+      decryptionKey,
+      ciphertext
+    );
+    return new Uint8Array(decryptedBuffer);
+  } catch (error) {
+    console.error("Failed to decrypt nsec to buffer:", error);
+    throw new Error("Failed to decrypt nsec");
+  }
+}
+
+/**
  * Encrypt Nostr private key (nsec) - Simple format for database storage
  * Uses user's unique salt for encryption
  */

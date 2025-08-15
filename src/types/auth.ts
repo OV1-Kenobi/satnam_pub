@@ -17,6 +17,7 @@ export interface NIP07AuthChallenge {
   domain: string;
   timestamp: number;
   expiresAt: number;
+  nonce?: string; // server-provided nonce for replay protection
 }
 
 // New hierarchical role system for Family Federations

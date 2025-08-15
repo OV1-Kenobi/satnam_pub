@@ -1,13 +1,14 @@
 /**
  * Key Rotation Modal Component
- * 
+ *
  * Provides secure interface for Nostr key rotation when keys are compromised.
  * Maintains NIP-05 and Lightning Address continuity while generating new keypair.
  */
 
-import { AlertTriangle, CheckCircle, Copy, Download, Eye, EyeOff, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, RefreshCw, X } from 'lucide-react';
 import React, { useState } from 'react';
 import { nostrKeyRecovery } from '../../lib/auth/nostr-key-recovery';
+import IdentityForge from '../IdentityForge';
 import { useAuth } from './AuthProvider';
 
 interface KeyRotationModalProps {
@@ -35,9 +36,13 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
   const [rotationStep, setRotationStep] = useState<'setup' | 'processing' | 'keys' | 'completed'>('setup');
   const [isProcessing, setIsProcessing] = useState(false);
   const [rotationId, setRotationId] = useState<string | null>(null);
-  const [newKeys, setNewKeys] = useState<{ npub: string; nsec: string } | null>(null);
-  const [showNsec, setShowNsec] = useState(false);
+  // Identity Forge handles key display/backup; no in-modal key state needed.
+  // Keeping placeholder state for potential future flows (not used currently).
+  // const [newKeys, setNewKeys] = useState<{ npub: string; nsec: string } | null>(null);
   const [migrationSteps, setMigrationSteps] = useState<string[]>([]);
+  // Identity Forge overlay state (must be declared before usage)
+  const [showIdentityForge, setShowIdentityForge] = useState<boolean>(false);
+
   const [error, setError] = useState<string | null>(null);
 
   // Confirmation state
@@ -89,7 +94,8 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
       }
 
       setRotationId(result.rotationId || null);
-      setNewKeys(result.newKeys || null);
+      // Redirect to Identity Forge Step 2 for client-side keygen
+      setShowIdentityForge(true);
       setRotationStep('keys');
 
     } catch (error) {
@@ -100,70 +106,14 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
     }
   };
 
-  const handleCompleteRotation = async () => {
-    if (!rotationId || !auth.user?.id) {
-      setError('Missing rotation data');
-      return;
-    }
 
-    setIsProcessing(true);
 
-    try {
-      const result = await nostrKeyRecovery.completeKeyRotation(
-        rotationId,
-        auth.user.id
-      );
 
-      if (result.success) {
-        setMigrationSteps(result.migrationSteps || []);
-        setRotationStep('completed');
 
-        // Clear sensitive data
-        setNewKeys(null);
 
-        if (onRotationComplete) {
-          onRotationComplete();
-        }
-      } else {
-        setError(result.error || 'Failed to complete rotation');
-      }
-
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Rotation completion failed');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleCopyNsec = async () => {
-    if (newKeys?.nsec) {
-      try {
-        await navigator.clipboard.writeText(newKeys.nsec);
-      } catch (error) {
-        console.error('Failed to copy nsec:', error);
-      }
-    }
-  };
-
-  const handleDownloadKeys = () => {
-    if (newKeys) {
-      const keyData = `# Rotated Nostr Keys\n\nPublic Key (npub): ${newKeys.npub}\nPrivate Key (nsec): ${newKeys.nsec}\n\n# Identity Preservation\nNIP-05: ${nip05}\nLightning Address: ${lightningAddress}\nUsername: ${username}\n\n# SECURITY WARNING\nStore these keys securely and never share your nsec with anyone.`;
-
-      const blob = new Blob([keyData], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'rotated-nostr-keys.txt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-  };
 
   const handleClose = () => {
     // Clear sensitive data
-    setNewKeys(null);
     setReason('');
     setError(null);
     setRotationStep('setup');
@@ -198,6 +148,11 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
+        {(rotationStep === 'processing' || (rotationStep === 'keys' && showIdentityForge)) && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded mb-4">
+            <p className="text-blue-700 text-sm">You'll be redirected to Identity Forge to generate your new keypair securely on your device.</p>
+          </div>
+        )}
 
         {/* Content */}
         <div className="p-6">
@@ -395,110 +350,16 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
             </div>
           )}
 
-          {rotationStep === 'keys' && newKeys && (
+          {rotationStep === 'keys' && (
             <div className="space-y-6">
-              {/* New Keys Display */}
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="font-semibold text-green-800 mb-2">
-                      New Keys Generated
-                    </h3>
-                    <p className="text-green-700 text-sm">
-                      Your new Nostr keypair has been generated. Please backup these keys securely.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* New Public Key */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  New Public Key (npub)
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={newKeys.npub}
-                    readOnly
-                    className="w-full p-3 pr-10 border border-gray-300 rounded-md bg-gray-50 font-mono text-sm"
-                  />
-                  <button
-                    onClick={() => navigator.clipboard.writeText(newKeys.npub)}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* New Private Key */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  New Private Key (nsec) - BACKUP SECURELY
-                </label>
-                <div className="relative">
-                  <textarea
-                    value={newKeys.nsec}
-                    readOnly
-                    rows={3}
-                    className={`w-full p-3 pr-20 border border-gray-300 rounded-md bg-gray-50 font-mono text-sm ${showNsec ? 'text-gray-900' : 'text-transparent bg-gray-200'
-                      }`}
-                    style={showNsec ? {} : { textShadow: '0 0 8px rgba(0,0,0,0.5)' }}
-                  />
-                  <div className="absolute right-2 top-2 flex flex-col space-y-1">
-                    <button
-                      onClick={() => setShowNsec(!showNsec)}
-                      className="p-1 text-gray-400 hover:text-gray-600 bg-white rounded border"
-                    >
-                      {showNsec ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                    <button
-                      onClick={handleCopyNsec}
-                      className="p-1 text-gray-400 hover:text-gray-600 bg-white rounded border"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={handleDownloadKeys}
-                      className="p-1 text-gray-400 hover:text-gray-600 bg-white rounded border"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Identity Continuity Notice */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="font-semibold text-blue-800 mb-2">Identity Continuity</h3>
-                <div className="text-blue-700 text-sm space-y-1">
-                  <p>• NIP-05: {nip05} (unchanged)</p>
-                  <p>• Lightning Address: {lightningAddress} (unchanged)</p>
-                  <p>• Username: {username} (preserved)</p>
-                  <p>• Your social network can still find and pay you</p>
-                </div>
+                <p className="text-blue-700 text-sm">
+                  Generating your new keys in Identity Forge. You'll be returned here automatically when done.
+                </p>
               </div>
-
-              {/* Complete Rotation Button */}
-              <button
-                onClick={handleCompleteRotation}
-                disabled={isProcessing}
-                className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
-              >
-                {isProcessing ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Completing Rotation...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4" />
-                    <span>Complete Key Rotation</span>
-                  </>
-                )}
-              </button>
+              {!showIdentityForge && (
+                <div className="text-gray-600 text-sm">Awaiting Identity Forge...</div>
+              )}
             </div>
           )}
 
@@ -531,6 +392,7 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
                 </div>
               </div>
 
+
               {/* Next Steps */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h3 className="font-semibold text-blue-800 mb-2">Next Steps</h3>
@@ -556,6 +418,78 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Identity Forge Modal - rendered independently of rotation step */}
+      {showIdentityForge && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-2xl w-full max-w-4xl shadow-2xl border border-white/10 overflow-hidden">
+            <IdentityForge
+              onComplete={() => setShowIdentityForge(false)}
+              onBack={() => setShowIdentityForge(false)}
+              rotationMode={{
+                enabled: true,
+                skipStep1: true,
+                preserve: {
+                  username: username.trim(),
+                  nip05: nip05.trim(),
+                  lightningAddress: lightningAddress.trim(),
+                  bio: bio.trim() || undefined,
+                  profilePicture: profilePicture.trim() || undefined,
+                },
+                onKeysReady: async (npub: string, nsecBech32: string) => {
+                  try {
+                    if (!rotationId || !auth.user?.id) {
+                      setError('Missing rotation data or user authentication');
+                      setShowIdentityForge(false);
+                      setRotationStep('setup');
+                      return;
+                    }
+
+                    // Correct flow: user already backed up keys in Identity Forge.
+                    // Perform secure memory handling and complete rotation immediately.
+                    const { SecureBuffer } = await import('../../lib/security/secure-buffer');
+                    const { secureClearMemory } = await import('../../lib/privacy/encryption');
+
+                    // Convert bech32 nsec string to bytes for secure handling
+                    const enc = new TextEncoder();
+                    const nsecBytes = enc.encode(nsecBech32);
+                    let sec: any | null = null;
+                    try {
+                      sec = SecureBuffer.fromBytes(nsecBytes, true);
+                      // Immediately clear the source nsecBytes
+                      try { secureClearMemory([{ data: nsecBytes, type: 'uint8array' }] as any); } catch { nsecBytes.fill(0); }
+
+                      // Complete rotation (db update) with provided keys
+                      const result = await nostrKeyRecovery.completeKeyRotation(
+                        rotationId,
+                        auth.user.id,
+                        { newNsecBech32: nsecBech32, newNpub: npub }
+                      );
+
+                      if (result.success) {
+                        setShowIdentityForge(false);
+                        setMigrationSteps(result.migrationSteps || []);
+                        setRotationStep('completed');
+                        if (onRotationComplete) onRotationComplete();
+                      } else {
+                        setShowIdentityForge(false);
+                        setError(result.error || 'Rotation completion failed');
+                        setRotationStep('setup');
+                      }
+                    } finally {
+                      try { sec?.dispose(); } catch { }
+                    }
+                  } catch (e) {
+                    setShowIdentityForge(false);
+                    setError(e instanceof Error ? e.message : 'Rotation preparation failed');
+                    setRotationStep('setup');
+                  }
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

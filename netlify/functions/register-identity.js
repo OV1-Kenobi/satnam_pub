@@ -6,15 +6,36 @@
  * MEMORY OPTIMIZATION: Uses dynamic imports and lazy loading
  */
 
-// Simplified CORS handler
+// Simplified CORS handler with environment-aware origin
+function getAllowedOrigin(origin) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowedProdOrigin = process.env.FRONTEND_URL || 'https://satnam.pub';
+  if (isProd) return allowedProdOrigin;
+  // Allow common local dev origins
+  if (!origin) return null;
+  try {
+    const u = new URL(origin);
+    if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && (u.protocol === 'http:' || u.protocol === 'https:')) {
+      return origin;
+    }
+  } catch {}
+  return null;
+}
+
 function handleCORS(event) {
+  const origin = event.headers?.origin || event.headers?.Origin;
+  const allowedOrigin = getAllowedOrigin(origin);
+  const allowCreds = allowedOrigin !== '*' && allowedOrigin !== null;
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Credentials': String(allowCreds),
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Max-Age': '86400',
+        'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
         'Content-Type': 'application/json'
       },
       body: ''
@@ -75,12 +96,18 @@ export const handler = async (event) => {
     }
   } catch (initError) {
     console.error("❌ Function initialization failed:", initError);
+    const origin = event.headers?.origin || event.headers?.Origin;
+    const allowedOrigin = getAllowedOrigin(origin);
+    const allowCreds = allowedOrigin !== '*' && allowedOrigin !== null;
     return {
       statusCode: 500,
       headers: {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allowedOrigin,
+        "Access-Control-Allow-Credentials": String(allowCreds),
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -94,10 +121,16 @@ export const handler = async (event) => {
   }
 
   // CORS headers following established codebase pattern
+  const origin = event.headers?.origin || event.headers?.Origin;
+  const allowedOrigin = getAllowedOrigin(origin);
+  const allowCreds = allowedOrigin !== '*' && allowedOrigin !== null;
   const headers = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Credentials": String(allowCreds),
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
     "Content-Type": "application/json",
     // Debug headers to correlate client vs server behavior
     "X-Register-Identity-Status": "ok",
@@ -180,6 +213,32 @@ export const handler = async (event) => {
       hasLightningAddress: !!userData.lightningAddress,
       timestamp: new Date().toISOString()
     });
+    // Validate password for password-based signin compatibility
+    if (userData.password === null || userData.password === undefined || typeof userData.password !== 'string' || userData.password.length < 8) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: 'Password must be at least 8 characters long',
+          field: 'password',
+          meta: { timestamp: new Date().toISOString() }
+        })
+      };
+    }
+    if (userData.confirmPassword !== undefined && userData.password !== userData.confirmPassword) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: 'Passwords do not match',
+          field: 'confirmPassword',
+          meta: { timestamp: new Date().toISOString() }
+        })
+      };
+    }
+
 
 
     // Self-contained robust dynamic import helper to avoid utility imports
@@ -202,7 +261,7 @@ export const handler = async (event) => {
       './security/duid-index-generator.js',
       ['netlify', 'functions', 'security', 'duid-index-generator.js']
     );
-    const { generateDUIDIndexFromNpub, auditDUIDOperation } = duidMod && duidMod.default ? duidMod.default : duidMod;
+    const { generateDUIDIndexFromNpub, auditDUIDOperation } = duidMod;
 
     // Generate DUID index from npub (server-side secret indexing)
     const duid_index = generateDUIDIndexFromNpub(userData.npub);
@@ -274,6 +333,19 @@ export const handler = async (event) => {
         pictureType: typeof userDataForHashing.picture
       });
 
+      // Derive PBKDF2/SHA-512 password hash & base64 salt for password-based signin
+      const { pbkdf2, randomBytes } = await import('node:crypto');
+      const password_salt = randomBytes(24).toString('base64');
+      const iterations = 100000;
+      const keyLength = 64;
+      const algorithm = 'sha512';
+      const hashBuf = await new Promise((resolve, reject) => {
+        pbkdf2(userData.password, password_salt, iterations, keyLength, algorithm, (err, derivedKey) => {
+          if (err) reject(err); else resolve(derivedKey);
+        });
+      });
+      const password_hash = Buffer.from(hashBuf).toString('base64');
+
       let hashedUserData;
       try {
         hashedUserData = await createHashedUserData(userDataForHashing);
@@ -313,6 +385,14 @@ export const handler = async (event) => {
         hashed_nip05: hashedUserData.hashed_nip05, // ENCRYPTED: NIP-05 identifier
         hashed_lightning_address: hashedUserData.hashed_lightning_address, // ENCRYPTED: Lightning address
         hashed_encrypted_nsec: hashedUserData.hashed_encrypted_nsec, // ENCRYPTED: Encrypted private key
+
+        // Password-based signin compatibility
+        password_hash: password_hash,
+        password_salt: password_salt,
+        password_created_at: new Date().toISOString(),
+        password_updated_at: new Date().toISOString(),
+        failed_attempts: 0,
+        requires_password_change: false,
 
         // METADATA (can be encrypted if needed)
         spending_limits: JSON.stringify({
@@ -369,6 +449,52 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
+    // SAFEGUARD: Prevent duplicate NIP-05 name entries before insert
+    try {
+      const { data: existingNip05 } = await supabase
+        .from('nip05_records')
+        .select('id')
+        .eq('domain', 'satnam.pub')
+        .eq('name', userData.username)
+        .eq('is_active', true)
+        .limit(1);
+
+      const taken = Array.isArray(existingNip05)
+        ? existingNip05.length > 0
+        : !!(existingNip05 && existingNip05.id);
+
+      if (taken) {
+        console.error('❌ NIP-05 name already taken:', {
+          domain: 'satnam.pub',
+          name: userData.username
+        });
+
+        // Cleanup: Remove user identity record to avoid orphaned user
+        try {
+          const { error: cleanupError } = await supabase.from('user_identities').delete().eq('id', duid_index);
+          if (cleanupError) {
+            console.error('Failed to cleanup user_identities record:', cleanupError);
+          }
+        } catch (cleanupErr) {
+          console.error('Exception during cleanup:', cleanupErr);
+        }
+
+        return {
+          statusCode: 409,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'NIP-05 name already taken',
+            code: 'NIP05_NAME_TAKEN',
+            details: `The username "${userData.username}" is already in use on satnam.pub. Please choose another.`,
+            meta: { timestamp: new Date().toISOString() }
+          })
+        };
+      }
+    } catch (availabilityError) {
+      console.warn('⚠️ NIP-05 availability check failed, proceeding to insert (will rely on DB constraint):', availabilityError);
+      // Continue to insertion; will handle unique constraint error below
+    }
     // 4. Create MAXIMUM ENCRYPTED NIP-05 record (minimal scope, unique salt)
     const nip05Salt = await generateUserSalt(); // Generate unique salt for nip05_records
     const hashedNip05Data = await createHashedUserData({
@@ -382,6 +508,8 @@ export const handler = async (event) => {
         // UNENCRYPTED: Only essential verification fields
         domain: 'satnam.pub', // Whitelisted domain (required for verification)
         is_active: true, // Active status (required for verification)
+        name: userData.username, // Plaintext local-part for public NIP-05 mapping
+        pubkey: userData.npub, // Plaintext npub for public NIP-05 mapping
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
 
@@ -392,10 +520,51 @@ export const handler = async (event) => {
       });
 
     if (nip05Error) {
+      // Handle unique constraint (duplicate name) gracefully
+      const duplicate =
+        (nip05Error.code && String(nip05Error.code) === '23505') ||
+        (nip05Error.message && nip05Error.message.toLowerCase().includes('duplicate'));
+
+      if (duplicate) {
+        console.warn('⚠️ Duplicate NIP-05 name detected during insert:', {
+          domain: 'satnam.pub',
+          name: userData.username,
+        });
+
+        // Cleanup: Remove user identity record to avoid orphaned user
+        try {
+          const { error: cleanupError } = await supabase.from('user_identities').delete().eq('id', duid_index);
+          if (cleanupError) {
+            console.error('Failed to cleanup user_identities record:', cleanupError);
+          }
+        } catch (cleanupErr) {
+          console.error('Exception during cleanup:', cleanupErr);
+        }
+
+        return {
+          statusCode: 409,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'NIP-05 name already taken',
+            code: 'NIP05_NAME_TAKEN',
+            details: `The username "${userData.username}" is already in use on satnam.pub. Please choose another.`,
+            meta: { timestamp: new Date().toISOString() },
+          }),
+        };
+      }
+
       console.error('Failed to create NIP-05 record:', nip05Error);
 
       // Cleanup: Remove user identity record if NIP-05 creation failed
-      await supabase.from('user_identities').delete().eq('id', duid_index);
+      try {
+        const { error: cleanupError } = await supabase.from('user_identities').delete().eq('id', duid_index);
+        if (cleanupError) {
+          console.error('Failed to cleanup user_identities record:', cleanupError);
+        }
+      } catch (cleanupErr) {
+        console.error('Exception during cleanup:', cleanupErr);
+      }
 
       throw new Error('Failed to create NIP-05 record');
     }

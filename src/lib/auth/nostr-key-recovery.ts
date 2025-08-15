@@ -6,6 +6,7 @@
  */
 
 import { FederationRole } from "../../types/auth";
+import { SecureBuffer } from "../security/secure-buffer";
 import { UserIdentity } from "./user-identities-auth";
 
 // NIP-41 Key Migration Types
@@ -60,8 +61,9 @@ export type RecoveryStatus =
 export interface KeyRotationData {
   oldNpub: string;
   newNpub: string;
-  oldNsec: string; // Temporarily stored for migration
-  newNsec: string; // Temporarily stored for setup
+  // Use secure buffers internally; avoid string secrets
+  oldNsecBuffer?: SecureBuffer; // transient, not persisted
+  newNsecBuffer?: SecureBuffer; // transient, not persisted
   rotationId: string;
   timestamp: number;
   reason: string;
@@ -298,11 +300,24 @@ export class NostrKeyRecoveryService {
       }
 
       // Decrypt nsec using user's salt
-      const { decryptNsecSimple } = await import("../privacy/encryption");
-      const decryptedNsec = await decryptNsecSimple(
+      const { decryptNsecSimpleToBuffer } = await import(
+        "../privacy/encryption"
+      );
+      const decryptedNsecBuf = await decryptNsecSimpleToBuffer(
         encryptedNsec,
         authResult.user.user_salt
       );
+      // Return hex only at API boundary (optimized) and clear buffer
+      const { CryptoUtils } = await import("../frost/crypto-utils");
+      const { secureClearMemory } = await import("../privacy/encryption");
+      const decryptedNsec = CryptoUtils.bytesToHex(decryptedNsecBuf);
+      try {
+        secureClearMemory([
+          { data: decryptedNsecBuf, type: "uint8array" },
+        ] as any);
+      } catch {
+        decryptedNsecBuf.fill(0);
+      }
 
       // Log successful recovery
       await this.logRecoveryAttempt(requestId, "recovery_successful");
@@ -348,50 +363,72 @@ export class NostrKeyRecoveryService {
     try {
       // Generate new cryptographically secure keypair
       const { generatePrivateKey, getPublicKey } = await import("nostr-tools");
-      const newNsec = generatePrivateKey();
-      const newPubkey = getPublicKey(newNsec);
+      const { CryptoUtils } = await import("../frost/crypto-utils");
+      const { SecureBuffer } = await import("../security/secure-buffer");
 
-      // Convert to npub format
-      const { nip19 } = await import("nostr-tools");
-      const newNpub = nip19.npubEncode(newPubkey);
-
-      // Get current user data
-      const { userIdentitiesAuth } = await import("./user-identities-auth");
-      const currentUser = await userIdentitiesAuth.getUserById(userId);
-
-      if (!currentUser) {
-        return {
-          success: false,
-          error: "User not found",
-        };
+      // Create private key and wrap in SecureBuffer (zero source bytes if applicable)
+      const privateKey = generatePrivateKey();
+      if (!privateKey) {
+        throw new Error("Failed to generate private key");
       }
+      // Support both Uint8Array and hex string return types
+      const rawNew: Uint8Array =
+        typeof privateKey === "string"
+          ? CryptoUtils.hexToBytes(privateKey)
+          : (privateKey as Uint8Array);
 
-      // Create rotation data
-      const rotationId = `rotation-${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2, 11)}`;
-      const rotationData: KeyRotationData = {
-        oldNpub: currentUser.hashed_npub || "",
-        newNpub,
-        oldNsec: "", // Will be filled during migration
-        newNsec,
-        rotationId,
-        timestamp: Date.now(),
-        reason,
-        preserveIdentity,
-      };
+      let newSec: SecureBuffer | null = null;
+      try {
+        newSec = SecureBuffer.fromBytes(rawNew, true);
+        const newPubkey = getPublicKey(newSec.toBytes());
 
-      // Store rotation request
-      await this.storeKeyRotationRequest(rotationData);
+        // Convert to npub format
+        const { nip19 } = await import("nostr-tools");
+        const newNpub = nip19.npubEncode(newPubkey);
 
-      return {
-        success: true,
-        rotationId,
-        newKeys: {
-          npub: newNpub,
-          nsec: newNsec,
-        },
-      };
+        // Get current user data
+        const { userIdentitiesAuth } = await import("./user-identities-auth");
+        const currentUser = await userIdentitiesAuth.getUserById(userId);
+
+        if (!currentUser) {
+          return {
+            success: false,
+            error: "User not found",
+          };
+        }
+
+        // Create rotation data
+        const rotationId = `rotation-${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2, 11)}`;
+        const rotationData: KeyRotationData = {
+          oldNpub: currentUser.hashed_npub || "",
+          newNpub,
+          rotationId,
+          timestamp: Date.now(),
+          reason,
+          preserveIdentity,
+          newNsecBuffer: newSec,
+        };
+
+        // Store rotation request
+        await this.storeKeyRotationRequest(rotationData);
+
+        return {
+          success: true,
+          rotationId,
+          newKeys: {
+            npub: newNpub,
+            nsec: CryptoUtils.bytesToHex(newSec.toBytes()),
+          },
+        };
+      } finally {
+        try {
+          newSec?.dispose();
+        } catch (e) {
+          console.warn("SecureBuffer dispose failed", e);
+        }
+      }
     } catch (error) {
       console.error("Key rotation initiation failed:", error);
       return {
@@ -677,7 +714,7 @@ export class NostrKeyRecoveryService {
    * Publish event to multiple Nostr relays
    */
   private async publishEventToRelays(
-    event: NIP41WhitelistEvent | NIP41MigrationEvent,
+    event: any,
     relays: string[]
   ): Promise<{
     success: boolean;
@@ -775,7 +812,7 @@ export class NostrKeyRecoveryService {
       const events: any[] = [];
 
       // Query for whitelist events (kind 1776) from the current pubkey using subscription
-      const subscription = pool.subscribeMany(
+      const sub = (pool as any).sub(
         targetRelays,
         [
           {
@@ -785,21 +822,34 @@ export class NostrKeyRecoveryService {
             limit: 10,
           },
         ],
-        {
-          onevent: (event: any) => {
-            events.push(event);
-          },
-          oneose: () => {
-            // End of stored events - we can process results
-          },
-        }
+        { eoseTimeout: 5000 }
       );
+      sub.on("event", (ev: any) => {
+        events.push(ev);
+      });
+      sub.on("eose", () => {
+        // End of stored events - unsubscribe to clean up
+        sub.unsub();
+      });
 
-      // Wait for events to be collected (give it 5 seconds)
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Wait for EOSE or timeout, whichever comes first
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          try {
+            sub.unsub();
+          } catch {}
+          resolve();
+        }, 5000);
+        sub.on("eose", () => {
+          clearTimeout(timeout);
+          try {
+            sub.unsub();
+          } catch {}
+          resolve();
+        });
+      });
 
       // Close subscription and pool
-      subscription.close();
       pool.close(targetRelays);
 
       if (events.length === 0) {
@@ -854,34 +904,189 @@ export class NostrKeyRecoveryService {
     error?: string;
   }> {
     try {
-      // Create and publish whitelist event
-      const whitelistResult = await this.createWhitelistEvent(
-        currentNsec,
-        targetPubkey,
-        relays
+      const { getPublicKey, getEventHash, signEvent } = await import(
+        "nostr-tools"
       );
+      const now = Math.floor(Date.now() / 1000);
+      const whitelistUnsigned = {
+        kind: 1776 as const,
+        pubkey: getPublicKey(currentNsec),
+        content: "Key rotation whitelist",
+        tags: [
+          ["p", targetPubkey],
+          ["alt", "pubkey whitelisting event"],
+        ],
+        created_at: now,
+      };
+      const id = getEventHash(whitelistUnsigned);
+      const sig = signEvent(whitelistUnsigned, currentNsec);
+      const event = { ...whitelistUnsigned, id, sig } as any;
 
-      if (!whitelistResult.success) {
+      const publish = await this.publishEventToRelays(event, relays);
+      if (!publish.success) {
         return {
           success: false,
-          error: whitelistResult.error,
+          error: publish.error || "Failed to publish whitelist",
         };
       }
 
-      return {
-        success: true,
-        whitelistEventId: whitelistResult.eventId,
-        waitingPeriod: 60, // 60 days as per NIP-41
-      };
+      return { success: true, whitelistEventId: id, waitingPeriod: 60 };
     } catch (error) {
-      console.error("Failed to prepare key rotation:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Whitelist creation failed",
+      };
+    }
+  }
+
+  /**
+   * Publish NIP-26 delegation from old key -> new key for trust chain
+   */
+  private async publishNIP26Delegation(
+    oldNsecHex: string,
+    newPubkey: string,
+    relays: string[] = []
+  ): Promise<{ success: boolean; eventId?: string; error?: string }> {
+    try {
+      const nt = await import("nostr-tools");
+
+      const now = Math.floor(Date.now() / 1000);
+      const until = now + 60 * 60 * 24 * 90; // 90 days window
+      const conditions = `kind=1,kind=0,kind=1777,created_at>${now},created_at<${until}`;
+
+      // Create delegation tag (NIP-26)
+      const delegTag = (nt as any).nip26?.createDelegation(oldNsecHex, {
+        pubkey: newPubkey,
+        kind: 1,
+        since: now,
+        until,
+        conditions,
+      } as any);
+
+      // Publish a kind:1 note from old key with the delegation tag for discoverability
+      const delegNoteUnsigned = {
+        kind: 1 as const,
+        pubkey: nt.getPublicKey(oldNsecHex),
+        content: `NIP-26 delegation issued to ${newPubkey} for identity migration.`,
+        tags: [
+          delegTag,
+          ["p", newPubkey],
+          ["alt", "delegation for key rotation"],
+        ],
+        created_at: now,
+      };
+
+      const eventId = nt.getEventHash(delegNoteUnsigned);
+      const sig = nt.signEvent(delegNoteUnsigned, oldNsecHex);
+      const delegEvent = { ...delegNoteUnsigned, id: eventId, sig } as any;
+
+      const publishRes = await this.publishEventToRelays(delegEvent, relays);
+      if (!publishRes.success) {
+        return {
+          success: false,
+          error: publishRes.error || "Delegation publish failed",
+        };
+      }
+      return { success: true, eventId };
+    } catch (error) {
       return {
         success: false,
         error:
           error instanceof Error
             ? error.message
-            : "Failed to prepare key rotation",
+            : "Failed to publish NIP-26 delegation",
       };
+    }
+  }
+
+  /**
+   * Publish kind:0 metadata updates on old and new keys with cross-references
+   */
+  private async publishMetadataCrossReferences(
+    oldNsecHex: string,
+    newNsecHex: string,
+    oldNpub: string,
+    newNpub: string,
+    preserveIdentity: {
+      nip05: string;
+      lightningAddress: string;
+      username: string;
+      bio?: string;
+      profilePicture?: string;
+    },
+    relays: string[] = []
+  ): Promise<{ success: boolean; errors?: string[] }> {
+    const errors: string[] = [];
+    try {
+      const nt = await import("nostr-tools");
+      const now = Math.floor(Date.now() / 1000);
+
+      const oldMeta = {
+        name: preserveIdentity.username,
+        about: `Deprecated key. New npub: ${newNpub}. See NIP-26 delegation.`,
+        picture: preserveIdentity.profilePicture || "",
+        nip05: preserveIdentity.nip05,
+        lud16: preserveIdentity.lightningAddress,
+      };
+      const newMeta = {
+        name: preserveIdentity.username,
+        about: `New identity after key rotation. Previous npub: ${oldNpub}. Delegation from old key active per NIP-26.`,
+        picture: preserveIdentity.profilePicture || "",
+        nip05: preserveIdentity.nip05,
+        lud16: preserveIdentity.lightningAddress,
+      };
+
+      const oldUnsigned = {
+        kind: 0 as const,
+        pubkey: nt.getPublicKey(oldNsecHex),
+        created_at: now,
+        content: JSON.stringify(oldMeta),
+        tags: [
+          ["p", nt.getPublicKey(newNsecHex)],
+          ["alt", "old key metadata cross-reference"],
+        ],
+      };
+      const newUnsigned = {
+        kind: 0 as const,
+        pubkey: nt.getPublicKey(newNsecHex),
+        created_at: now,
+        content: JSON.stringify(newMeta),
+        tags: [
+          ["p", nt.getPublicKey(oldNsecHex)],
+          ["alt", "new key metadata cross-reference"],
+        ],
+      };
+
+      const oldEvent = {
+        ...oldUnsigned,
+        id: nt.getEventHash(oldUnsigned),
+        sig: nt.signEvent(oldUnsigned, oldNsecHex),
+      } as any;
+      const newEvent = {
+        ...newUnsigned,
+        id: nt.getEventHash(newUnsigned),
+        sig: nt.signEvent(newUnsigned, newNsecHex),
+      } as any;
+
+      const oldRes = await this.publishEventToRelays(oldEvent, relays);
+      if (!oldRes.success)
+        errors.push(oldRes.error || "Failed to publish old metadata");
+      const newRes = await this.publishEventToRelays(newEvent, relays);
+      if (!newRes.success)
+        errors.push(newRes.error || "Failed to publish new metadata");
+
+      return {
+        success: errors.length === 0,
+        errors: errors.length ? errors : undefined,
+      };
+    } catch (error) {
+      errors.push(
+        error instanceof Error
+          ? error.message
+          : "Metadata cross-reference failed"
+      );
+      return { success: false, errors };
     }
   }
 
@@ -915,103 +1120,126 @@ export class NostrKeyRecoveryService {
       const { generatePrivateKey, getPublicKey, nip19 } = await import(
         "nostr-tools"
       );
-      const newNsec = generatePrivateKey();
-      const newPubkey = getPublicKey(newNsec);
-      const newNpub = nip19.npubEncode(newPubkey);
-      const oldPubkey = getPublicKey(currentNsec);
+      const { CryptoUtils } = await import("../frost/crypto-utils");
+      const { SecureBuffer } = await import("../security/secure-buffer");
+      const privateKey2 = generatePrivateKey();
+      if (!privateKey2) {
+        throw new Error("Failed to generate private key");
+      }
+      const rawNew: Uint8Array =
+        typeof privateKey2 === "string"
+          ? CryptoUtils.hexToBytes(privateKey2)
+          : (privateKey2 as Uint8Array);
 
-      // Step 2: Check if new pubkey is already whitelisted
-      const whitelistStatus = await this.checkWhitelistStatus(
-        oldPubkey,
-        newPubkey,
-        relays
-      );
+      let newSec: SecureBuffer | null = null;
+      try {
+        newSec = SecureBuffer.fromBytes(rawNew, true);
+        const newPubkey = getPublicKey(newSec.toBytes());
+        const newNpub = nip19.npubEncode(newPubkey);
+        const oldPubkey = getPublicKey(currentNsec);
 
-      let whitelistEventId: string | undefined;
-
-      if (!whitelistStatus.isWhitelisted) {
-        // Step 3: Create whitelist event if not already whitelisted
-        const whitelistResult = await this.createWhitelistEvent(
-          currentNsec,
+        // Step 2: Check if new pubkey is already whitelisted
+        const whitelistStatus = await this.checkWhitelistStatus(
+          oldPubkey,
           newPubkey,
           relays
         );
 
-        if (!whitelistResult.success) {
+        let whitelistEventId: string | undefined;
+
+        if (!whitelistStatus.isWhitelisted) {
+          // Step 3: Create whitelist event if not already whitelisted
+          const whitelistResult = await this.createWhitelistEvent(
+            currentNsec,
+            newPubkey,
+            relays
+          );
+
+          if (!whitelistResult.success) {
+            return {
+              success: false,
+              error: `Failed to create whitelist event: ${whitelistResult.error}`,
+            };
+          }
+
+          whitelistEventId = whitelistResult.eventId;
+
+          // According to NIP-41, we need to wait 60 days
           return {
             success: false,
-            error: `Failed to create whitelist event: ${whitelistResult.error}`,
+            whitelistEventId,
+            error:
+              "Whitelist event created. Must wait 60 days before migration per NIP-41 specification.",
+          };
+        } else {
+          whitelistEventId = whitelistStatus.whitelistEventId;
+        }
+
+        // Step 4: Initiate key rotation in our system
+        const rotationResult = await this.initiateKeyRotation(
+          userId,
+          reason,
+          preserveIdentity
+        );
+
+        if (!rotationResult.success) {
+          return {
+            success: false,
+            error: rotationResult.error,
           };
         }
 
-        whitelistEventId = whitelistResult.eventId;
+        // Step 5: Create and publish NIP-41 migration event
+        const migrationResult = await this.createMigrationEvent(
+          CryptoUtils.bytesToHex(newSec.toBytes()),
+          oldPubkey,
+          whitelistEventId!,
+          whitelistEventId!, // Using whitelist event as proof (in full implementation, this would be OpenTimestamp proof)
+          reason,
+          relays
+        );
 
-        // According to NIP-41, we need to wait 60 days
+        // Step 6: Complete the rotation in our system
+        const completionResult = await this.completeKeyRotation(
+          rotationResult.rotationId!,
+          userId
+        );
+
+        if (!completionResult.success) {
+          return {
+            success: false,
+            error: completionResult.error,
+          };
+        }
+
         return {
-          success: false,
+          success: true,
+          rotationId: rotationResult.rotationId,
+          newKeys: {
+            npub: newNpub,
+            nsec: CryptoUtils.bytesToHex(newSec.toBytes()),
+          },
           whitelistEventId,
-          error:
-            "Whitelist event created. Must wait 60 days before migration per NIP-41 specification.",
+          migrationEventId: migrationResult.eventId,
+          migrationSteps: [
+            "✅ New keypair generated",
+            "✅ Whitelist event verified (60+ days old)",
+            "✅ NIP-41 migration event published to Nostr network",
+            "✅ Internal key rotation completed",
+            "✅ NIP-05 record updated",
+            "✅ Profile migration notices created",
+            "⚠️ Followers will automatically update after seeing migration event",
+            "⚠️ Update other Nostr clients with new nsec",
+            "⚠️ Backup new keys securely",
+          ],
         };
-      } else {
-        whitelistEventId = whitelistStatus.whitelistEventId;
+      } finally {
+        try {
+          newSec?.dispose();
+        } catch (e) {
+          console.warn("SecureBuffer dispose failed", e);
+        }
       }
-
-      // Step 4: Initiate key rotation in our system
-      const rotationResult = await this.initiateKeyRotation(
-        userId,
-        reason,
-        preserveIdentity
-      );
-
-      if (!rotationResult.success) {
-        return {
-          success: false,
-          error: rotationResult.error,
-        };
-      }
-
-      // Step 5: Create and publish NIP-41 migration event
-      const migrationResult = await this.createMigrationEvent(
-        newNsec,
-        oldPubkey,
-        whitelistEventId!,
-        whitelistEventId!, // Using whitelist event as proof (in full implementation, this would be OpenTimestamp proof)
-        reason,
-        relays
-      );
-
-      // Step 6: Complete the rotation in our system
-      const completionResult = await this.completeKeyRotation(
-        rotationResult.rotationId!,
-        userId
-      );
-
-      if (!completionResult.success) {
-        return {
-          success: false,
-          error: completionResult.error,
-        };
-      }
-
-      return {
-        success: true,
-        rotationId: rotationResult.rotationId,
-        newKeys: rotationResult.newKeys,
-        whitelistEventId,
-        migrationEventId: migrationResult.eventId,
-        migrationSteps: [
-          "✅ New keypair generated",
-          "✅ Whitelist event verified (60+ days old)",
-          "✅ NIP-41 migration event published to Nostr network",
-          "✅ Internal key rotation completed",
-          "✅ NIP-05 record updated",
-          "✅ Profile migration notices created",
-          "⚠️ Followers will automatically update after seeing migration event",
-          "⚠️ Update other Nostr clients with new nsec",
-          "⚠️ Backup new keys securely",
-        ],
-      };
     } catch (error) {
       console.error("NIP-41 key rotation failed:", error);
       return {
@@ -1027,7 +1255,8 @@ export class NostrKeyRecoveryService {
    */
   async completeKeyRotation(
     rotationId: string,
-    userId: string
+    userId: string,
+    options?: { newNsecBech32?: string; newNpub?: string }
   ): Promise<{
     success: boolean;
     migrationSteps?: string[];
@@ -1044,21 +1273,96 @@ export class NostrKeyRecoveryService {
         };
       }
 
-      // Update user_identities table with new keys
+      // Prepare clients and context
       const supabase = await this.getSupabaseClient();
-
-      // Encrypt new nsec with user's salt
       const user = await this.getUserById(userId);
       if (!user) {
-        return {
-          success: false,
-          error: "User not found",
-        };
+        return { success: false, error: "User not found" };
       }
 
-      const { encryptNsecSimple } = await import("../privacy/encryption");
+      const { encryptNsecSimple, decryptNsecSimpleToBuffer } = await import(
+        "../privacy/encryption"
+      );
+      const { CryptoUtils } = await import("../frost/crypto-utils");
+      const { nip19, getPublicKey } = await import("nostr-tools");
+
+      // Derive old private key (hex) for signing delegation and old metadata
+      let oldNsecHex = "";
+      try {
+        if (user.hashed_encrypted_nsec) {
+          const oldBuf = await decryptNsecSimpleToBuffer(
+            user.hashed_encrypted_nsec,
+            user.user_salt
+          );
+          oldNsecHex = CryptoUtils.bytesToHex(oldBuf);
+          try {
+            const { secureClearMemory } = await import("../privacy/encryption");
+            secureClearMemory([{ data: oldBuf, type: "uint8array" }] as any);
+          } catch {
+            try {
+              oldBuf.fill(0);
+            } catch {}
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "⚠️ Could not decrypt old nsec; delegation may be skipped.",
+          e
+        );
+      }
+
+      // Determine new nsec (hex) and new npub from provided options or rotation data
+      let effectiveNewNsecHex = "";
+      let effectiveNewNpub = rotationData.newNpub;
+      if (options?.newNsecBech32) {
+        try {
+          const dec = nip19.decode(options.newNsecBech32);
+          if (dec.type === "nsec") {
+            effectiveNewNsecHex = CryptoUtils.bytesToHex(
+              dec.data as Uint8Array
+            );
+          }
+        } catch (e) {
+          console.warn("Invalid provided new nsec bech32:", e);
+        }
+      } else if (rotationData.newNsecBuffer) {
+        effectiveNewNsecHex = CryptoUtils.bytesToHex(
+          rotationData.newNsecBuffer.toBytes()
+        );
+      }
+
+      if (options?.newNpub) {
+        effectiveNewNpub = options.newNpub;
+      } else if (!effectiveNewNpub && effectiveNewNsecHex) {
+        const pub = getPublicKey(
+          CryptoUtils.hexToBytes(effectiveNewNsecHex) as any
+        );
+        effectiveNewNpub = nip19.npubEncode(pub);
+      }
+
+      // Publish NIP-26 delegation and cross-referenced metadata BEFORE DB update
+      if (oldNsecHex && effectiveNewNsecHex && effectiveNewNpub) {
+        try {
+          const newPubkey = getPublicKey(
+            CryptoUtils.hexToBytes(effectiveNewNsecHex) as any
+          );
+          await this.publishNIP26Delegation(oldNsecHex, newPubkey, []);
+          await this.publishMetadataCrossReferences(
+            oldNsecHex,
+            effectiveNewNsecHex,
+            rotationData.oldNpub,
+            effectiveNewNpub,
+            rotationData.preserveIdentity,
+            []
+          );
+        } catch (e) {
+          console.warn("Delegation/metadata publishing failed:", e);
+        }
+      }
+
+      // Encrypt new nsec with user's salt for DB storage
       const encryptedNewNsec = await encryptNsecSimple(
-        rotationData.newNsec,
+        effectiveNewNsecHex,
         user.user_salt
       );
 
@@ -1066,8 +1370,8 @@ export class NostrKeyRecoveryService {
       const { error: updateError } = await supabase
         .from("user_identities")
         .update({
-          npub: rotationData.newNpub,
-          encrypted_nsec: encryptedNewNsec,
+          npub: effectiveNewNpub || rotationData.newNpub,
+          hashed_encrypted_nsec: encryptedNewNsec,
           updated_at: new Date().toISOString(),
         })
         .eq("id", userId);
@@ -1094,9 +1398,13 @@ export class NostrKeyRecoveryService {
         // 3. The migration event (kind 1777)
 
         // First, check if there's an existing whitelist event for the new pubkey
-        const { getPublicKey } = await import("nostr-tools");
-        const oldPubkey = getPublicKey(rotationData.oldNsec || ""); // This would need to be retrieved securely
-        const newPubkey = getPublicKey(rotationData.newNsec);
+        const { nip19 } = await import("nostr-tools");
+        const decOld = nip19.decode(rotationData.oldNpub);
+        if (decOld.type !== "npub" || typeof decOld.data !== "string") {
+          throw new Error("Invalid old npub format");
+        }
+        const oldPubkey = decOld.data;
+        const newPubkey = rotationData.newNpub;
 
         const whitelistStatus = await this.checkWhitelistStatus(
           oldPubkey,
@@ -1121,8 +1429,12 @@ export class NostrKeyRecoveryService {
           );
         }
 
+        const { CryptoUtils } = await import("../frost/crypto-utils");
+        const newNsecHex2 = rotationData.newNsecBuffer
+          ? CryptoUtils.bytesToHex(rotationData.newNsecBuffer.toBytes())
+          : "";
         const migrationResult = await this.createMigrationEvent(
-          rotationData.newNsec,
+          newNsecHex2,
           oldPubkey,
           whitelistEventId,
           proofEventId,
@@ -1146,9 +1458,46 @@ export class NostrKeyRecoveryService {
       // Mark rotation as completed
       await this.updateKeyRotationStatus(rotationId, "completed");
 
-      // Clear sensitive data from memory
-      rotationData.oldNsec = "";
-      rotationData.newNsec = "";
+      // Clear sensitive data from memory (best-effort, browser-compatible)
+      try {
+        const { secureClearMemory } = await import("../privacy/encryption");
+        const targets: Array<{ data: Uint8Array; type: "uint8array" }> = [];
+        if (rotationData.oldNsecBuffer) {
+          targets.push({
+            data: rotationData.oldNsecBuffer.toBytes(),
+            type: "uint8array",
+          });
+        }
+        if (rotationData.newNsecBuffer) {
+          targets.push({
+            data: rotationData.newNsecBuffer.toBytes(),
+            type: "uint8array",
+          });
+        }
+        if (targets.length > 0) {
+          secureClearMemory(targets as any);
+          // Dispose SecureBuffer instances after clearing their copies
+          try {
+            rotationData.oldNsecBuffer?.dispose();
+          } catch {}
+          try {
+            rotationData.newNsecBuffer?.dispose();
+          } catch {}
+        }
+      } catch (error) {
+        console.warn("Failed to securely clear memory:", error);
+        // Fallback: dispose SecureBuffer instances directly
+        try {
+          rotationData.oldNsecBuffer?.dispose();
+        } catch {}
+        try {
+          rotationData.newNsecBuffer?.dispose();
+        } catch {}
+      } finally {
+        // Clear buffer references
+        rotationData.oldNsecBuffer = undefined;
+        rotationData.newNsecBuffer = undefined;
+      }
 
       const migrationSteps = [
         "✅ New keypair generated and encrypted",
@@ -1207,19 +1556,10 @@ export class NostrKeyRecoveryService {
   ): Promise<void> {
     try {
       // Create notice for new profile
-      const newProfileNotice = `🔄 Key Rotation Notice: This is a new Nostr identity for ${
-        rotationData.preserveIdentity.username
-      }. Previous npub (${rotationData.oldNpub.substring(
-        0,
-        16
-      )}...) has been deprecated for security reasons. Same NIP-05: ${
-        rotationData.preserveIdentity.nip05
-      } | Same Lightning Address: ${
-        rotationData.preserveIdentity.lightningAddress
-      }`;
+      const newProfileNotice = `🔄 Key Rotation: New identity for ${rotationData.preserveIdentity.username}. See delegation from old key (NIP-26). Same NIP-05: ${rotationData.preserveIdentity.nip05} | Lightning: ${rotationData.preserveIdentity.lightningAddress}`;
 
       // Create notice for old profile (if accessible)
-      const oldProfileNotice = `⚠️ DEPRECATED: This Nostr identity has been rotated for security. Find me at my new npub via NIP-05: ${rotationData.preserveIdentity.nip05} | Lightning: ${rotationData.preserveIdentity.lightningAddress}`;
+      const oldProfileNotice = `⚠️ DEPRECATED: Rotation complete. Trust events signed by the new key per NIP-26 delegation. Discover via NIP-05: ${rotationData.preserveIdentity.nip05} | Lightning: ${rotationData.preserveIdentity.lightningAddress}`;
 
       // Store notices for later profile updates
       const supabase = await this.getSupabaseClient();
@@ -1267,8 +1607,6 @@ export class NostrKeyRecoveryService {
     return {
       oldNpub: data.old_npub,
       newNpub: data.new_npub,
-      oldNsec: "", // Not stored in database
-      newNsec: "", // Not stored in database
       rotationId: data.rotation_id,
       timestamp: new Date(data.timestamp).getTime(),
       reason: data.reason,

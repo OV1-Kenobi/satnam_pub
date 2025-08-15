@@ -29,6 +29,9 @@ import ErrorBoundary from './ErrorBoundary';
 import { MaxPrivacyAuth } from './MaxPrivacyAuth';
 import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
+// At the top of the file, outside the component
+let nip07SessionId: string | undefined;
+
 interface SignInModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -198,6 +201,32 @@ const SignInModal: React.FC<SignInModalProps> = ({
     }
   }, [isOpen]);
 
+  const handleNIP07Register = () => {
+    const endpoint = (window as any).__nip07RegisterEndpoint || '/identity-forge';
+    // Ensure the endpoint is a relative path or a trusted domain
+    if (!endpoint.startsWith('/') && !endpoint.startsWith(window.location.origin)) {
+      console.error('Invalid registration endpoint:', endpoint);
+      return;
+    }
+    // Navigate to Identity Forge registration flow
+    window.location.href = endpoint;
+  };
+
+  const handleNIP07Retry = async () => {
+    try {
+      // Clear any stored sessionId and regenerate challenge, then restart sign flow
+      nip07SessionId = undefined;
+      setNip07State({ step: 'connecting', message: 'Reconnecting to extension...' });
+      await handleNIP07SignIn();
+    } catch (error) {
+      setNip07State({
+        step: 'error',
+        message: 'Failed to restart authentication.',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  };
+
   const handleClose = () => {
     setIsClosing(true);
     setTimeout(() => {
@@ -335,8 +364,12 @@ const SignInModal: React.FC<SignInModalProps> = ({
   };
 
   const generateAuthChallenge = async (): Promise<NIP07AuthChallenge> => {
-    const response = await fetch('/api/auth/nip07-challenge', {
-      method: 'POST',
+    // Generate a 32-byte sessionId (hex)
+    const sidBytes = crypto.getRandomValues(new Uint8Array(32));
+    const sessionId = Array.from(sidBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const response = await fetch(`/api/auth/nip07-challenge?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -351,29 +384,105 @@ const SignInModal: React.FC<SignInModalProps> = ({
       throw new Error(result.error || 'Challenge generation failed');
     }
 
+    // Store sessionId for signin step
+    nip07SessionId = sessionId;
     return result.data;
   };
 
   const verifyAuthentication = async (signedEvent: SignedAuthEvent, challenge: NIP07AuthChallenge) => {
-    const response = await fetch('/api/auth/nip07-signin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        signedEvent,
-        challenge: challenge.challenge,
-        domain: challenge.domain
-      }),
-    });
+    try {
+      const response = await fetch('/api/auth/nip07-signin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          signedEvent,
+          challenge: challenge.challenge,
+          domain: challenge.domain,
+          sessionId: nip07SessionId,
+          nonce: challenge.nonce
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error('Authentication verification failed');
-    }
+      // Handle specific status codes before parsing JSON
+      if (response.status === 404) {
+        let data: any = null;
+        try { data = await response.json(); } catch { }
+        const registerEndpoint = data?.registerEndpoint;
 
-    const result = await response.json();
-    if (!result.success) {
-      throw new Error(result.error || 'Authentication failed');
+        // Validate the endpoint to prevent XSS
+        const validatedEndpoint = registerEndpoint && typeof registerEndpoint === 'string'
+          && (registerEndpoint.startsWith('/') || registerEndpoint.startsWith(window.location.origin))
+          ? registerEndpoint
+          : '/identity-forge';
+
+        setNip07State({
+          step: 'error',
+          message: 'No account found. Please register to continue.',
+          error: `Register here: ${validatedEndpoint}`,
+        });
+        // Expose endpoint for UI button/link if needed
+        (window as any).__nip07RegisterEndpoint = validatedEndpoint;
+        return;
+      }
+
+      if (response.status === 401) {
+        // Challenge expired/invalid
+        nip07SessionId = undefined;
+        setNip07State({
+          step: 'error',
+          message: 'Authentication challenge expired or invalid. Please try again.',
+          error: 'Try Again to restart authentication.',
+        });
+        return;
+      }
+
+      if (response.status === 429) {
+        // Rate limited: show countdown and disable actions client-side if UI supports it
+        const waitSeconds = 60;
+        const end = Date.now() + waitSeconds * 1000;
+        let animationFrameId: number | null = null;
+
+        const updateCountdown = () => {
+          const remaining = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+          setNip07State({
+            step: 'error',
+            message: 'Too many authentication attempts. Please wait 1 minute before trying again.',
+            error: `You can retry in ${remaining}s`,
+          });
+          if (remaining > 0 && mountedRef.current) {
+            animationFrameId = requestAnimationFrame(updateCountdown);
+          }
+        };
+        updateCountdown();
+
+        // Clean up on unmount
+        return () => {
+          if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId);
+          }
+        };
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Authentication verification failed');
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Authentication failed');
+      }
+
+      // Success path continues as caller handles next steps
+    } catch (error) {
+      console.error('NIP-07 verifyAuthentication error:', error);
+      setNip07State({
+        step: 'error',
+        message: 'Authentication failed',
+        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+      });
     }
   };
 
@@ -651,12 +760,30 @@ const SignInModal: React.FC<SignInModalProps> = ({
                   </div>
                 )}
                 {nip07State.step === 'error' && (
-                  <button
-                    onClick={handleBackToMethods}
-                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
-                  >
-                    Back to Methods
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    {nip07State.message.includes('No account found') && (
+                      <button
+                        onClick={handleNIP07Register}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                      >
+                        Register Account
+                      </button>
+                    )}
+                    {nip07State.message.includes('expired or invalid') && (
+                      <button
+                        onClick={handleNIP07Retry}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                      >
+                        Try Again
+                      </button>
+                    )}
+                    <button
+                      onClick={handleBackToMethods}
+                      className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                    >
+                      Back to Methods
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
