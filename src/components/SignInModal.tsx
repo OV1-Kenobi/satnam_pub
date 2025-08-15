@@ -247,6 +247,10 @@ const SignInModal: React.FC<SignInModalProps> = ({
   };
 
   const handleNIP07SignIn = async () => {
+    // Guard: do not invoke NIP-07 during Identity Forge registration flow
+    if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+      return;
+    }
     setAuthStep('nip07-auth');
 
     try {

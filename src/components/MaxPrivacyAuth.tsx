@@ -150,6 +150,11 @@ export function MaxPrivacyAuth({
 
   // NIP-07 Authentication (Maximum Privacy with Password)
   const handleNIP07Auth = async () => {
+    // Do not invoke NIP-07 during Identity Forge registration flow
+    if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+      return;
+    }
+
     if (!window.nostr) {
       setError('NIP-07 extension not found. Please install a Nostr browser extension.');
       return;

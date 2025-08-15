@@ -306,8 +306,7 @@
 
   # Ensure server-only DUID index generator is included without lifting directory excludes
   included_files = [
-    "netlify/functions/security/duid-index-generator.js",
-    "lib/security/privacy-hashing.js"
+    "netlify/functions/security/duid-index-generator.js"
   ]
 
 [functions."hybrid-auth"]

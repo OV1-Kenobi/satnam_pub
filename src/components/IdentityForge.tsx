@@ -662,6 +662,18 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       try { identityForge.setRegistrationFlow?.(false); } catch { }
     };
   }, []);
+  // Also set a global guard to signal registration flow to any component
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__identityForgeRegFlow = true;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        try { delete (window as any).__identityForgeRegFlow; } catch { /* no-op */ }
+      }
+    };
+  }, []);
+
 
   useEffect(() => {
     if (currentStep >= 2) {

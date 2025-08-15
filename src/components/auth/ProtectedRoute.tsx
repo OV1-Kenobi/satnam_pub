@@ -51,14 +51,17 @@ const AuthPrompt: React.FC<AuthPromptProps> = ({ area, onAuthSuccess, onCancel }
 
   const handleNIP07Auth = async () => {
     try {
+      // Do not invoke NIP-07 during Identity Forge registration flow
+      if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+        return;
+      }
+
       if (!window.nostr) {
         auth.clearError();
-        // Set a more specific error for missing extension
         return;
       }
 
       if (!password.trim()) {
-        // Set error for missing password
         return;
       }
 
