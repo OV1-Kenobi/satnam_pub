@@ -60,13 +60,12 @@ export class ApiClient {
   private apiBaseUrl: string;
 
   constructor() {
-    // Prefer Netlify functions direct path to avoid redirect ambiguity
+    // Prefer API base to route through Netlify redirects in production
     const env =
       typeof import.meta !== "undefined" && (import.meta as any).env
         ? (import.meta as any).env
         : {};
-    this.apiBaseUrl =
-      env.VITE_API_BASE_URL || env.VITE_API_URL || "/.netlify/functions";
+    this.apiBaseUrl = env.VITE_API_BASE_URL || env.VITE_API_URL || "/api";
     console.log("🔍 API CLIENT: Constructor", {
       VITE_API_BASE_URL: env.VITE_API_BASE_URL,
       VITE_API_URL: env.VITE_API_URL,

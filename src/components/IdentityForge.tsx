@@ -653,6 +653,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const identityForge = useIdentityForge();
 
   // State consistency validation for Steps 2+ where nsec is relevant
+  // Mark this as a registration flow to prevent any login prompts from interfering
+  useEffect(() => {
+    try {
+      identityForge.setRegistrationFlow?.(true);
+    } catch { }
+    return () => {
+      try { identityForge.setRegistrationFlow?.(false); } catch { }
+    };
+  }, []);
+
   useEffect(() => {
     if (currentStep >= 2) {
       // Validate state consistency to prevent impossible combinations

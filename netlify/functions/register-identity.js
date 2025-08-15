@@ -278,26 +278,19 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
-    // 1. Create hashed user data for privacy-first storage
-    console.log("🔍 Testing privacy hashing import...");
+    // 1. Create hashed user data for privacy-first storage (server-side, Node crypto)
+    console.log("🔍 Initializing server-side privacy hashing...");
 
-    // Import privacy hashing functions at function scope
-    const { createHashedUserData, generateUserSalt } = await import("../../lib/security/privacy-hashing.js");
-    console.log("✅ Privacy hashing import successful");
+    // Node.js hashing helpers to avoid browser-only Web Crypto in functions
+    const { randomBytes, createHash } = await import('node:crypto');
 
-    // Test salt generation first
-    console.log("🔍 Testing salt generation...");
-    try {
-      const testSalt = await generateUserSalt();
-      console.log("✅ Salt generation successful:", {
-        hasSalt: !!testSalt,
-        saltLength: testSalt ? testSalt.length : 0,
-        saltType: typeof testSalt
-      });
-    } catch (saltError) {
-      console.error("❌ Salt generation failed:", saltError);
-      throw new Error(`Salt generation failed: ${saltError.message}`);
-    }
+    const generateUserSaltNode = () => randomBytes(32).toString('hex'); // 64 hex chars
+    const GLOBAL_SALT = 'satnam_privacy_salt_2024';
+    const hashUserDataNode = (data, userSalt) => {
+      const s = typeof data === 'string' ? data : String(data ?? '');
+      const combined = s + userSalt + GLOBAL_SALT;
+      return createHash('sha512').update(combined).digest('hex');
+    };
 
     try {
 
@@ -346,9 +339,22 @@ export const handler = async (event) => {
       });
       const password_hash = Buffer.from(hashBuf).toString('base64');
 
+      // Build hashed user data (server-side)
       let hashedUserData;
       try {
-        hashedUserData = await createHashedUserData(userDataForHashing);
+        const user_salt = generateUserSaltNode();
+        hashedUserData = {
+          user_salt,
+          username: userDataForHashing.username,
+          hashed_username: userDataForHashing.username ? hashUserDataNode(userDataForHashing.username, user_salt) : null,
+          hashed_bio: hashUserDataNode(userDataForHashing.bio || '', user_salt),
+          hashed_display_name: userDataForHashing.displayName ? hashUserDataNode(userDataForHashing.displayName, user_salt) : null,
+          hashed_picture: hashUserDataNode(userDataForHashing.picture || '', user_salt),
+          hashed_npub: userDataForHashing.npub ? hashUserDataNode(userDataForHashing.npub, user_salt) : null,
+          hashed_nip05: userDataForHashing.nip05 ? hashUserDataNode(userDataForHashing.nip05, user_salt) : null,
+          hashed_lightning_address: userDataForHashing.lightningAddress ? hashUserDataNode(userDataForHashing.lightningAddress, user_salt) : null,
+          hashed_encrypted_nsec: userDataForHashing.encryptedNsec ? hashUserDataNode(userDataForHashing.encryptedNsec, user_salt) : null,
+        };
       } catch (hashingError) {
         console.error("❌ Privacy hashing operation failed:", hashingError);
         throw new Error(`Privacy hashing failed: ${hashingError.message}`);
@@ -496,11 +502,12 @@ export const handler = async (event) => {
       // Continue to insertion; will handle unique constraint error below
     }
     // 4. Create MAXIMUM ENCRYPTED NIP-05 record (minimal scope, unique salt)
-    const nip05Salt = await generateUserSalt(); // Generate unique salt for nip05_records
-    const hashedNip05Data = await createHashedUserData({
-      username: userData.username,
-      npub: userData.npub
-    }, nip05Salt);
+    const nip05Salt = generateUserSaltNode(); // Generate unique salt for nip05_records
+    const hashedNip05Data = {
+      user_salt: nip05Salt,
+      hashed_username: hashUserDataNode(userData.username, nip05Salt),
+      hashed_npub: hashUserDataNode(userData.npub, nip05Salt),
+    };
 
     const { error: nip05Error } = await supabase
       .from('nip05_records')
