@@ -152,6 +152,8 @@ export function MaxPrivacyAuth({
   const handleNIP07Auth = async () => {
     // Do not invoke NIP-07 during Identity Forge registration flow
     if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+      console.warn('[Diag][MaxPrivacyAuth] NIP-07 blocked: registration flow active');
+      if (typeof console !== 'undefined' && typeof console.trace === 'function') console.trace('[Diag][MaxPrivacyAuth] stack');
       return;
     }
 
@@ -169,6 +171,7 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
+      console.warn('[Diag][MaxPrivacyAuth] calling window.nostr.getPublicKey()');
       const pubkey = await window.nostr.getPublicKey();
       const challenge = `auth-challenge-${Date.now()}-${Math.random()}`;
 
@@ -180,6 +183,7 @@ export function MaxPrivacyAuth({
         pubkey
       };
 
+      console.warn('[Diag][MaxPrivacyAuth] calling window.nostr.signEvent()');
       const signedEvent = await window.nostr.signEvent(event);
 
       // Use NIP-07 with password for DUID generation (same as NIP-05/Password)

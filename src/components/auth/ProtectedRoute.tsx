@@ -53,6 +53,8 @@ const AuthPrompt: React.FC<AuthPromptProps> = ({ area, onAuthSuccess, onCancel }
     try {
       // Do not invoke NIP-07 during Identity Forge registration flow
       if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+        console.warn('[Diag][ProtectedRoute] NIP-07 blocked: registration flow active');
+        if (typeof console !== 'undefined' && typeof console.trace === 'function') console.trace('[Diag][ProtectedRoute] stack');
         return;
       }
 
@@ -65,6 +67,7 @@ const AuthPrompt: React.FC<AuthPromptProps> = ({ area, onAuthSuccess, onCancel }
         return;
       }
 
+      console.warn('[Diag][ProtectedRoute] calling window.nostr.getPublicKey()');
       const pubkey = await window.nostr.getPublicKey();
       const challenge = `auth-challenge-${Date.now()}-${Math.random()}`;
 

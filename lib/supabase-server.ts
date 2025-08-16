@@ -1,15 +1,8 @@
 /**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
+ * Netlify Functions (Node.js) environment variable access
+ * Server-side: ALWAYS use process.env, never import.meta.env
  */
 function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ import.meta;
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
   return process.env[key];
 }
 

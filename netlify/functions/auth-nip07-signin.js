@@ -1,16 +1,18 @@
-// Netlify Function: /api/auth/nip07-challenge -> /.netlify/functions/auth-nip07-challenge
-// Normalized with consistent CORS, logging, and dynamic import for memory efficiency
+// Netlify Function: /api/auth/nip07-signin -> /.netlify/functions/auth-nip07-signin
+// Normalized wrapper with consistent CORS, logging, and dynamic import for memory efficiency
 
+/** Build CORS headers consistently across auth functions */
 function buildCorsHeaders(event) {
   const origin = event.headers?.origin || event.headers?.Origin;
   const isProd = process.env.NODE_ENV === 'production';
+  // Prefer explicit production origin; fallback to wildcard in dev
   const allowedOrigin = isProd ? (process.env.FRONTEND_URL || 'https://satnam.pub') : (origin || '*');
   const allowCreds = allowedOrigin !== '*';
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': String(allowCreds),
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
     'Content-Type': 'application/json',
@@ -33,80 +35,55 @@ function withCors(resp, cors) {
   return { ...resp, headers };
 }
 
-export const handler = async (event) => {
+export const handler = async (event, context) => {
   const cors = buildCorsHeaders(event);
   const startedAt = new Date().toISOString();
-  const name = 'auth-nip07-challenge';
+  const name = 'auth-nip07-signin';
 
   try {
     if (event.httpMethod === 'OPTIONS') {
       return { statusCode: 200, headers: cors, body: '' };
     }
-    if (event.httpMethod !== 'GET') {
-      return withCors({ statusCode: 405, body: JSON.stringify({ success:false, error: 'Method not allowed' }) }, cors);
+
+    if (event.httpMethod !== 'POST') {
+      return withCors({
+        statusCode: 405,
+        body: JSON.stringify({ success: false, error: 'Method not allowed' }),
+      }, cors);
     }
 
     console.log(`▶️  ${name}: started`, {
       startedAt,
       method: event.httpMethod,
-      hasQuery: !!event.queryStringParameters,
+      hasBody: !!event.body,
+      bodyLength: event.body?.length || 0,
       nodeEnv: process.env.NODE_ENV,
       memMB: (process.memoryUsage?.().heapUsed || 0) / (1024 * 1024),
     });
 
-    // Dynamic imports for memory optimization
-    const { randomBytes } = await import('node:crypto');
-    const { supabase } = await robustImport('./supabase.js', ['netlify', 'functions', 'supabase.js']);
+    // Dynamically import the implementation to reduce cold start/memory
+    const mod = await robustImport('../../api/auth/nip07-signin.js', ['api', 'auth', 'nip07-signin.js']).catch(async () => {
+      // Fallback to functions-local implementation if present
+      return await robustImport('./auth-nip07-signin.js', ['netlify', 'functions', 'auth-nip07-signin.js']);
+    });
 
-    const qs = event.queryStringParameters || {};
-    const sessionId = qs.sessionId || undefined;
-
-    // Generate challenge and nonce (hex)
-    const challenge = randomBytes(32).toString('hex');
-    const nonce = randomBytes(16).toString('hex');
-
-    const domain = event.headers?.host || 'localhost:3000';
-    const timestamp = Date.now();
-    const expiresAt = timestamp + 5 * 60 * 1000; // 5 minutes
-
-    // Best-effort cleanup of expired rows
-    try {
-      await supabase.from('auth_challenges').delete().lt('expires_at', new Date().toISOString());
-    } catch (e) {
-      console.warn(`${name}: cleanup expired challenges failed`);
+    const fn = mod && (mod.handler || mod.default);
+    if (typeof fn !== 'function') {
+      console.error(`${name}: implementation missing`);
+      return withCors({ statusCode: 500, body: JSON.stringify({ success: false, error: 'Signin handler not available' }) }, cors);
     }
 
-    // Persist challenge for replay protection
-    try {
-      await supabase.from('auth_challenges').insert({
-        session_id: sessionId || nonce,
-        nonce,
-        challenge,
-        domain,
-        issued_at: new Date(timestamp).toISOString(),
-        expires_at: new Date(expiresAt).toISOString(),
-        is_used: false,
-      });
-    } catch (persistErr) {
-      console.warn(`${name}: challenge persistence failed`);
-    }
-
+    const result = await fn(event, context);
     const finishedAt = new Date().toISOString();
     console.log(`✅ ${name}: completed`, {
       startedAt,
       finishedAt,
       durationMs: Date.now() - Date.parse(startedAt),
+      statusCode: result?.statusCode,
       memMB: (process.memoryUsage?.().heapUsed || 0) / (1024 * 1024),
     });
 
-    return withCors({
-      statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-        data: { challenge, domain, timestamp, expiresAt, nonce },
-        meta: { timestamp: new Date().toISOString(), protocol: 'NIP-07', privacyCompliant: true },
-      }),
-    }, cors);
+    return withCors(result || { statusCode: 500, body: JSON.stringify({ success: false, error: 'Empty response' }) }, cors);
   } catch (err) {
     const finishedAt = new Date().toISOString();
     console.error(`❌ ${name}: failed`, {
@@ -120,7 +97,8 @@ export const handler = async (event) => {
 
     return withCors({
       statusCode: 500,
-      body: JSON.stringify({ success:false, error:'Failed to generate NIP-07 challenge' })
+      body: JSON.stringify({ success: false, error: 'Internal server error' }),
     }, cors);
   }
 };
+

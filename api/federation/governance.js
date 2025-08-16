@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { vault } from "../../lib/vault.js";
 import {
-  SecureSessionManager,
+    SecureSessionManager,
 } from "../../netlify/functions/security/session-manager.js";
 
 function getEnvVar(key) {
@@ -11,18 +11,11 @@ function getEnvVar(key) {
 async function getApiBaseUrl() {
   try {
     const vaultUrl = await vault.getCredentials("api_base_url");
-    if (vaultUrl) {
-      return vaultUrl;
-    }
-  } catch (error) {
-    // Vault not available, fall back to environment variables
-  }
+    if (vaultUrl) return vaultUrl;
+  } catch {}
 
   const envUrl = getEnvVar("API_BASE_URL") || getEnvVar("VITE_API_BASE_URL");
-  if (envUrl) {
-    return envUrl;
-  }
-
+  if (envUrl) return envUrl;
   return "https://api.satnam.pub";
 }
 

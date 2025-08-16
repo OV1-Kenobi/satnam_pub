@@ -20,6 +20,10 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   || process.env.SUPABASE_ANON_KEY
   || process.env.VITE_SUPABASE_ANON_KEY;
 
+const supabaseKeyType = process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? 'service'
+  : ((process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY) ? 'anon' : 'unknown');
+
 if (!supabaseUrl) {
   throw new Error("Supabase URL not configured (SUPABASE_URL or VITE_SUPABASE_URL)");
 }
@@ -33,6 +37,9 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     persistSession: false,
   },
 });
+
+export const isServiceRoleKey = () => supabaseKeyType === 'service';
+export { supabaseKeyType };
 
 export default supabase;
 

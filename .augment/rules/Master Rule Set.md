@@ -1,5 +1,5 @@
 ---
-type: "manual"
+type: "always_apply"
 description: "Example description"
 ---
 

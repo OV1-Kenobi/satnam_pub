@@ -287,13 +287,23 @@ async function checkUsernameAvailability(username) {
     const local = (username || '').trim().toLowerCase();
     if (!local) return false;
 
-    // Direct database lookup using secure architecture
-    // Check both name and hashed_name columns for comprehensive availability check
+    // Server-side DUID hashing for availability check (no plaintext lookup)
+    const crypto = await import('node:crypto');
+    const secret = process.env.DUID_SECRET_KEY || process.env.DUID_SERVER_SECRET || process.env.VITE_DUID_SERVER_SECRET;
+    if (!secret) {
+      console.warn('DUID server secret not configured; availability check may be inaccurate');
+      return false;
+    }
+    const identifier = `${local}@${domain}`;
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(identifier);
+    const hashed_nip05 = hmac.digest('hex');
+
     const { data, error } = await supabase
       .from('nip05_records')
       .select('id')
-      .eq('name', local)
       .eq('domain', domain)
+      .eq('hashed_nip05', hashed_nip05)
       .eq('is_active', true)
       .limit(1);
 

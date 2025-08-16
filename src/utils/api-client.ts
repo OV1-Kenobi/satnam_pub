@@ -61,14 +61,19 @@ export class ApiClient {
 
   constructor() {
     // Prefer API base to route through Netlify redirects in production
-    const env =
-      typeof import.meta !== "undefined" && (import.meta as any).env
-        ? (import.meta as any).env
-        : {};
-    this.apiBaseUrl = env.VITE_API_BASE_URL || env.VITE_API_URL || "/api";
+    const viteApiBase =
+      typeof process !== "undefined" && process.env
+        ? (process.env as any).VITE_API_BASE_URL
+        : undefined;
+    const viteApiUrl =
+      typeof process !== "undefined" && process.env
+        ? (process.env as any).VITE_API_URL
+        : undefined;
+
+    this.apiBaseUrl = viteApiBase || viteApiUrl || "/api";
     console.log("🔍 API CLIENT: Constructor", {
-      VITE_API_BASE_URL: env.VITE_API_BASE_URL,
-      VITE_API_URL: env.VITE_API_URL,
+      VITE_API_BASE_URL: viteApiBase,
+      VITE_API_URL: viteApiUrl,
       apiBaseUrl: this.apiBaseUrl,
     });
   }

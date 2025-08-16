@@ -1325,6 +1325,7 @@ function App() {
         onClose={() => setSignInModalOpen(false)}
         onSignInSuccess={handleAuthSuccess}
         onCreateNew={() => {
+          try { (window as any).__identityForgeRegFlow = true; } catch { }
           setSignInModalOpen(false);
           setCurrentView("forge");
         }}

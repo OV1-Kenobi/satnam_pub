@@ -26,7 +26,7 @@
   status = 200
   force = true
 
-# Explicit NIP-07 endpoints mapping to avoid ":splat" issues
+# Explicit NIP-07 endpoints mapping (normalized to direct functions)
 [[redirects]]
   from = "/api/auth/nip07-challenge"
   to = "/.netlify/functions/auth-nip07-challenge"
@@ -39,10 +39,10 @@
   status = 200
   force = true
 
-# Canonical registration endpoint mapping
+# Canonical registration endpoint mapping (normalized)
 [[redirects]]
   from = "/api/auth/register-identity"
-  to = "/.netlify/functions/auth-register-identity"
+  to = "/.netlify/functions/register-identity"
   status = 200
   force = true
 
@@ -79,7 +79,7 @@
 # Dynamic NIP-05 API endpoint
 [[redirects]]
   from = "/.well-known/nostr.json"
-  to = "/.netlify/functions/nostr"
+  to = "/.netlify/functions/nostr-json"
   status = 200
   force = true
 

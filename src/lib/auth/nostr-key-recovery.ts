@@ -1499,10 +1499,35 @@ export class NostrKeyRecoveryService {
         rotationData.newNsecBuffer = undefined;
       }
 
+      // Update NIP-05 artifact (non-blocking)
+      try {
+        const response = await fetch(
+          "/.netlify/functions/nip05-artifact-upsert",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nip05: rotationData.preserveIdentity.nip05,
+              username: rotationData.preserveIdentity.username,
+              newNpub: effectiveNewNpub || rotationData.newNpub,
+            }),
+          }
+        );
+        if (!response.ok) {
+          console.warn(
+            "nip05-artifact-upsert failed with status",
+            response.status
+          );
+        }
+      } catch (e) {
+        console.warn("nip05-artifact-upsert request failed (non-blocking):", e);
+      }
+
       const migrationSteps = [
         "✅ New keypair generated and encrypted",
         "✅ User database record updated",
         "✅ NIP-05 record updated to new npub",
+        "✅ NIP-05 artifact updated",
         "✅ Deprecation notices created",
         nip41EventId
           ? "✅ NIP-41 migration event published to Nostr network"
@@ -1533,18 +1558,27 @@ export class NostrKeyRecoveryService {
     nip05: string,
     newNpub: string
   ): Promise<void> {
-    const supabase = await this.getSupabaseClient();
-
-    const { error } = await supabase
-      .from("nip05_records")
-      .update({
-        npub: newNpub,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("nip05", nip05);
-
-    if (error) {
-      throw new Error(`Failed to update NIP-05 record: ${error.message}`);
+    // Delegate to Netlify Function to perform hashed update + artifact upsert atomically
+    try {
+      const response = await fetch(
+        "/.netlify/functions/nip05-artifact-upsert",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nip05, newNpub }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(
+          `nip05-artifact-upsert failed with status ${response.status}`
+        );
+      }
+    } catch (e) {
+      throw new Error(
+        `Failed to update NIP-05 record/artifact: ${
+          e instanceof Error ? e.message : String(e)
+        }`
+      );
     }
   }
 

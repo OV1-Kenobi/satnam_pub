@@ -249,6 +249,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const handleNIP07SignIn = async () => {
     // Guard: do not invoke NIP-07 during Identity Forge registration flow
     if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+      console.warn('[Diag][SignInModal] NIP-07 blocked: registration flow active');
+      if (typeof console !== 'undefined' && typeof console.trace === 'function') console.trace('[Diag][SignInModal] stack');
       return;
     }
     setAuthStep('nip07-auth');
@@ -264,6 +266,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
       }
 
       const nostr = window.nostr;
+      console.warn('[Diag][SignInModal] NIP-07 available, proceeding to getPublicKey');
 
       // Get public key from extension with timeout
       let publicKey: string;
@@ -273,7 +276,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
             reject(new Error('Extension response timeout - please try again'));
           }, 10000); // 10 second timeout
 
-          nostr.getPublicKey()
+          (console.warn('[Diag][SignInModal] calling window.nostr.getPublicKey()'), nostr.getPublicKey())
             .then((key: string) => {
               clearTimeout(timeout);
               resolve(key);
@@ -317,6 +320,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
       // Sign the event
       let signedEvent;
       try {
+        console.warn('[Diag][SignInModal] calling window.nostr.signEvent()');
         signedEvent = await nostr.signEvent(authEvent);
       } catch (error) {
         throw new Error('Signing cancelled. Please sign the authentication challenge to continue.');
@@ -372,12 +376,16 @@ const SignInModal: React.FC<SignInModalProps> = ({
     const sidBytes = crypto.getRandomValues(new Uint8Array(32));
     const sessionId = Array.from(sidBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    const response = await fetch(`/api/auth/nip07-challenge?sessionId=${encodeURIComponent(sessionId)}`, {
+    let response = await fetch(`/api/auth/nip07-challenge?sessionId=${encodeURIComponent(sessionId)}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
     });
+    if (response.status === 404) {
+      console.warn('[Diag][SignInModal] /api/auth/nip07-challenge returned 404; retrying direct function path');
+      response = await fetch(`/.netlify/functions/auth-nip07-challenge?sessionId=${encodeURIComponent(sessionId)}`, { method: 'GET' });
+    }
 
     if (!response.ok) {
       throw new Error('Failed to generate authentication challenge');
@@ -395,7 +403,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
   const verifyAuthentication = async (signedEvent: SignedAuthEvent, challenge: NIP07AuthChallenge) => {
     try {
-      const response = await fetch('/api/auth/nip07-signin', {
+      let response = await fetch('/api/auth/nip07-signin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -408,6 +416,20 @@ const SignInModal: React.FC<SignInModalProps> = ({
           nonce: challenge.nonce
         }),
       });
+      if (response.status === 404) {
+        console.warn('[Diag][SignInModal] /api/auth/nip07-signin returned 404; retrying direct function path');
+        response = await fetch('/.netlify/functions/auth-nip07-signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            signedEvent,
+            challenge: challenge.challenge,
+            domain: challenge.domain,
+            sessionId: nip07SessionId,
+            nonce: challenge.nonce
+          })
+        });
+      }
 
       // Handle specific status codes before parsing JSON
       if (response.status === 404) {

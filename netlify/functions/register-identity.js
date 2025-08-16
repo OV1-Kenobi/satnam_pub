@@ -6,10 +6,14 @@
  * MEMORY OPTIMIZATION: Uses dynamic imports and lazy loading
  */
 
+// Server-only env accessor for Netlify Functions
+function getEnvVar(key) {
+  return process.env[key];
+}
 // Simplified CORS handler with environment-aware origin
 function getAllowedOrigin(origin) {
   const isProd = process.env.NODE_ENV === 'production';
-  const allowedProdOrigin = process.env.FRONTEND_URL || 'https://satnam.pub';
+  const allowedProdOrigin = process.env.FRONTEND_URL || 'https://www.satnam.pub';
   if (isProd) return allowedProdOrigin;
   // Allow common local dev origins
   if (!origin) return null;
@@ -44,6 +48,35 @@ function handleCORS(event) {
   return null;
 }
 
+// Server-side DUID hashing for NIP-05 availability and storage
+import crypto from 'crypto';
+function getDuidSecret() {
+  const s = getEnvVar('DUID_SERVER_SECRET');
+  if (!s) throw new Error('Missing DUID_SERVER_SECRET for NIP-05 hashing');
+  return s;
+}
+function hashWithServerSecret(value) {
+  const secret = getDuidSecret();
+  return crypto.createHmac('sha256', secret).update(value).digest('hex');
+}
+function computeHashedNip05(identifier) {
+  // Normalize to lowercase for canonical hashing
+  return hashWithServerSecret(String(identifier).trim().toLowerCase());
+}
+function computeHashedNpub(npub) {
+  // Namespace the input to avoid cross-domain collisions
+  return hashWithServerSecret(`NPUBv1:${String(npub).trim()}`);
+}
+function encryptWithServerSecret(plaintext) {
+  const secret = getDuidSecret();
+  const key = crypto.createHash('sha256').update(secret).digest(); // 32 bytes
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, ciphertext]).toString('base64');
+}
+
 // Main handler function
 export const handler = async (event) => {
   // Handle CORS preflight
@@ -61,11 +94,11 @@ export const handler = async (event) => {
   try {
     // DEBUG: Check environment variables with actual values (masked)
     console.log("🔍 Environment variables check:", {
-      hasSupabaseUrl: !!process.env.VITE_SUPABASE_URL,
-      supabaseUrlLength: process.env.VITE_SUPABASE_URL?.length || 0,
-      hasSupabaseKey: !!process.env.VITE_SUPABASE_ANON_KEY,
-      supabaseKeyLength: process.env.VITE_SUPABASE_ANON_KEY?.length || 0,
-      nodeEnv: process.env.NODE_ENV,
+      hasSupabaseUrl: !!getEnvVar('SUPABASE_URL') || !!getEnvVar('VITE_SUPABASE_URL'),
+      supabaseUrlLength: (getEnvVar('SUPABASE_URL') || getEnvVar('VITE_SUPABASE_URL') || '').length,
+      hasSupabaseKey: !!getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || !!getEnvVar('SUPABASE_ANON_KEY') || !!getEnvVar('VITE_SUPABASE_ANON_KEY'),
+      supabaseKeyLength: (getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || getEnvVar('SUPABASE_ANON_KEY') || getEnvVar('VITE_SUPABASE_ANON_KEY') || '').length,
+      nodeEnv: getEnvVar('NODE_ENV'),
       allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
     });
 
@@ -75,7 +108,12 @@ export const handler = async (event) => {
     try {
       const supabaseModule = await import("./supabase.js");
       supabase = supabaseModule.supabase;
-      console.log("✅ Supabase import successful");
+      const keyType = supabaseModule.supabaseKeyType || 'unknown';
+      const isService = typeof supabaseModule.isServiceRoleKey === 'function' ? supabaseModule.isServiceRoleKey() : false;
+      console.log("✅ Supabase import successful", { keyType, isService, note: isService ? 'service role (bypasses RLS)' : 'anon key (requires RLS allowlist)'});
+
+      // Do NOT enforce service role in dev or prod; rely on RLS policies when anon key is used
+      // If inserts fail with 42501, update RLS policies (see scripts/revert_rls_allow_anon_insert_full.sql)
 
       // Test basic Supabase connection using correct table
       console.log("🔍 Testing Supabase connection...");
@@ -455,13 +493,15 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
-    // SAFEGUARD: Prevent duplicate NIP-05 name entries before insert
+    // SAFEGUARD: Prevent duplicate NIP-05 using server-side DUID hashing (no plaintext)
     try {
+      const identifier = (userData.nip05 || `${userData.username}@satnam.pub`).trim().toLowerCase();
+      const hashed_nip05 = computeHashedNip05(identifier);
       const { data: existingNip05 } = await supabase
         .from('nip05_records')
         .select('id')
         .eq('domain', 'satnam.pub')
-        .eq('name', userData.username)
+        .eq('hashed_nip05', hashed_nip05)
         .eq('is_active', true)
         .limit(1);
 
@@ -470,9 +510,9 @@ export const handler = async (event) => {
         : !!(existingNip05 && existingNip05.id);
 
       if (taken) {
-        console.error('❌ NIP-05 name already taken:', {
+        console.error('❌ NIP-05 name already taken (hashed check):', {
           domain: 'satnam.pub',
-          name: userData.username
+          identifier
         });
 
         // Cleanup: Remove user identity record to avoid orphaned user
@@ -498,33 +538,51 @@ export const handler = async (event) => {
         };
       }
     } catch (availabilityError) {
-      console.warn('⚠️ NIP-05 availability check failed, proceeding to insert (will rely on DB constraint):', availabilityError);
+      console.warn('⚠️ NIP-05 availability check failed (hashed), proceeding to insert (will rely on DB constraint):', availabilityError);
       // Continue to insertion; will handle unique constraint error below
     }
-    // 4. Create MAXIMUM ENCRYPTED NIP-05 record (minimal scope, unique salt)
-    const nip05Salt = generateUserSaltNode(); // Generate unique salt for nip05_records
-    const hashedNip05Data = {
-      user_salt: nip05Salt,
-      hashed_username: hashUserDataNode(userData.username, nip05Salt),
-      hashed_npub: hashUserDataNode(userData.npub, nip05Salt),
-    };
+    // 4. Create NIP-05 record with server-side DUID hashing (no plaintext)
+    const identifier = (userData.nip05 || `${userData.username}@satnam.pub`).trim().toLowerCase();
+    const hashed_nip05 = computeHashedNip05(identifier);
+    const hashed_npub = computeHashedNpub(userData.npub);
 
     const { error: nip05Error } = await supabase
       .from('nip05_records')
       .insert({
-        // UNENCRYPTED: Only essential verification fields
-        domain: 'satnam.pub', // Whitelisted domain (required for verification)
-        is_active: true, // Active status (required for verification)
-        name: userData.username, // Plaintext local-part for public NIP-05 mapping
-        pubkey: userData.npub, // Plaintext npub for public NIP-05 mapping
+        domain: 'satnam.pub',
+        is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-
-        // MAXIMUM ENCRYPTION: All user-related data hashed
-        user_salt: hashedNip05Data.user_salt, // UNIQUE salt (no reuse)
-        hashed_name: hashedNip05Data.hashed_username, // ENCRYPTED: NIP-05 name
-        hashed_npub: hashedNip05Data.hashed_npub, // FIXED: Consistent column naming
+        hashed_nip05,
+        hashed_npub,
       });
+
+    // 4b. Write per-user verification artifact (non-blocking)
+    try {
+      const artifact = {
+        name: userData.username,
+        domain: 'satnam.pub',
+        pubkey: userData.npub,
+        issued_at: new Date().toISOString(),
+      };
+      const crypto = await import('node:crypto');
+      const secret = getDuidSecret();
+      const verifier = crypto.createHmac('sha256', secret);
+      verifier.update(JSON.stringify(artifact));
+      const integrity = verifier.digest('hex');
+      const payload = JSON.stringify({ ...artifact, integrity });
+
+      const { supabase } = await import('./supabase.js');
+      const hashed_nip05 = computeHashedNip05(`${userData.username}@satnam.pub`);
+      const path = `nip05_artifacts/satnam.pub/${hashed_nip05}.json`;
+      const { error: uploadError } = await supabase.storage
+        .from('nip05-artifacts')
+        .upload(path, new Blob([payload], { type: 'application/json' }), { upsert: true });
+      if (uploadError) console.warn('Artifact upload error', uploadError);
+      else console.log('✅ Wrote NIP-05 artifact', { path });
+    } catch (artifactErr) {
+      console.warn('nostr-json artifact write failed (non-blocking):', artifactErr);
+    }
 
     if (nip05Error) {
       // Handle unique constraint (duplicate name) gracefully

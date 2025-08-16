@@ -95,6 +95,7 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
 
       setRotationId(result.rotationId || null);
       // Redirect to Identity Forge Step 2 for client-side keygen
+      try { (window as any).__identityForgeRegFlow = true; } catch { }
       setShowIdentityForge(true);
       setRotationStep('keys');
 
@@ -112,6 +113,8 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
 
 
 
+  const cleanupRegFlag = () => { try { delete (window as any).__identityForgeRegFlow; } catch { } };
+
   const handleClose = () => {
     // Clear sensitive data
     setReason('');
@@ -120,6 +123,7 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
     setConfirmRotation(false);
     setConfirmBackup(false);
     setConfirmRisks(false);
+    cleanupRegFlag();
     onClose();
   };
 
@@ -424,8 +428,8 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
         <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-2xl w-full max-w-4xl shadow-2xl border border-white/10 overflow-hidden">
             <IdentityForge
-              onComplete={() => setShowIdentityForge(false)}
-              onBack={() => setShowIdentityForge(false)}
+              onComplete={() => { setShowIdentityForge(false); cleanupRegFlag(); }}
+              onBack={() => { setShowIdentityForge(false); cleanupRegFlag(); }}
               rotationMode={{
                 enabled: true,
                 skipStep1: true,

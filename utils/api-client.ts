@@ -526,12 +526,15 @@ export class ApiClient {
    */
   constructor() {
     // Use env-configured base URL when available; default to Netlify Functions path
-    const env =
-      typeof import.meta !== "undefined" && (import.meta as any).env
-        ? (import.meta as any).env
-        : {};
-    this.baseUrl =
-      env.VITE_API_BASE_URL || env.VITE_API_URL || "/.netlify/functions";
+    const viteApiBase =
+      typeof process !== "undefined" && process.env
+        ? (process.env as any).VITE_API_BASE_URL
+        : undefined;
+    const viteApiUrl =
+      typeof process !== "undefined" && process.env
+        ? (process.env as any).VITE_API_URL
+        : undefined;
+    this.baseUrl = viteApiBase || viteApiUrl || "/.netlify/functions";
   }
 
   /**

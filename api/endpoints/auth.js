@@ -75,18 +75,12 @@ import { vault } from "../../lib/vault.js";
  */
 
 /**
- * Get environment variable with import.meta.env fallback for browser compatibility
- * (Master Context requirement)
+ * Serverless Functions environment variable handling (Node.js)
+ * Netlify/Vite server code must use process.env, not import.meta.env
  * @param {string} key - Environment variable key
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {any} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
   return process.env[key];
 }
 

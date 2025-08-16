@@ -715,34 +715,57 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
     };
   }, []);
-  // Hard block NIP-07 calls during registration by proxying window.nostr
+  // Hard block NIP-07 calls during registration by monkey-patching methods in-place
+  // This avoids race conditions where other code caches window.nostr before we patch
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const nostr = (window as any).nostr;
-    if (!nostr) return;
-    const isReg = () => !!(window as any).__identityForgeRegFlow;
-    const blocked = new Set(['getPublicKey', 'signEvent', 'signSchnorr']);
-    const original = nostr;
-    const proxied = new Proxy(original, {
-      get(target, prop, receiver) {
-        if (isReg() && blocked.has(String(prop))) {
-          return (..._args: any[]) => {
-            console.warn(`[IdentityForge] Blocked NIP-07 call: ${String(prop)} during registration`);
-            return Promise.reject(new Error('NIP-07 disabled during registration'));
+    const win = window as any;
+    const blockedMethods = ['getPublicKey', 'signEvent', 'signSchnorr'];
+    const original: Record<string, any> = {};
+
+    const applyPatches = () => {
+      if (!win.nostr) return;
+      blockedMethods.forEach((m) => {
+        const fn = win.nostr?.[m];
+        if (typeof fn === 'function' && !original[m]) {
+          original[m] = fn;
+          win.nostr[m] = async (...args: any[]) => {
+            if (win.__identityForgeRegFlow) {
+              const msg = `[IdentityForge:NIP07-guard] Blocked ${m} during registration`;
+              console.warn(msg, { args });
+              if (typeof console?.trace === 'function') console.trace(msg);
+              return Promise.reject(new Error('NIP-07 disabled during registration'));
+            }
+            try {
+              return await original[m].apply(win.nostr, args);
+            } catch (err) {
+              throw err;
+            }
           };
         }
-        return Reflect.get(target as any, prop, receiver);
-      },
-    });
-    (window as any).__nostrOriginal = original;
-    (window as any).nostr = proxied;
+      });
+    };
+
+    // Initial patch and keep trying briefly to catch late extension injection
+    try { applyPatches(); } catch { }
+    const intervalId = setInterval(() => {
+      try { applyPatches(); } catch { }
+    }, 300);
+    // Stop after 10 seconds to avoid perpetual intervals
+    const stopTimer = setTimeout(() => clearInterval(intervalId), 10000);
+
     return () => {
       try {
-        if ((window as any).__nostrOriginal) {
-          (window as any).nostr = (window as any).__nostrOriginal;
-          delete (window as any).__nostrOriginal;
+        if (win.nostr) {
+          blockedMethods.forEach((m) => {
+            if (original[m]) {
+              try { win.nostr[m] = original[m]; } catch { }
+            }
+          });
         }
       } catch { }
+      clearInterval(intervalId);
+      clearTimeout(stopTimer);
     };
   }, []);
 
