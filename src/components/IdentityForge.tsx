@@ -73,6 +73,20 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     }
   }, [rotationMode?.enabled, rotationMode?.skipStep1]);
 
+  // Registration flow flag for global NIP-07 guards
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__identityForgeRegFlow = true;
+    }
+    return () => {
+      try {
+        if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
+          delete (window as any).__identityForgeRegFlow;
+        }
+      } catch { /* no-op */ }
+    };
+  }, []);
+
   const [formData, setFormData] = useState<FormData>({
     username: "",
     password: "",
@@ -618,18 +632,46 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         picture: profileData.picture,
         website: profileData.website,
         nip05: `${formData.username}@satnam.pub`,
-        lud16: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined
+        lud16: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined,
       };
 
-      // This would integrate with existing Nostr publishing services
-      // For now, simulate the publishing process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Sign a real kind:0 profile event locally using ephemeral nsec (no NIP-07)
+      const { nip19, finalizeEvent, getPublicKey } = await import('nostr-tools');
+      // Decode bech32 nsec to raw private key bytes
+      const decoded = nip19.decode(ephemeralNsec);
+      if (decoded.type !== 'nsec' || !(decoded.data instanceof Uint8Array)) {
+        throw new Error('Invalid nsec format');
+      }
+      const privkeyBytes = decoded.data as Uint8Array;
+      const pubkeyHex = getPublicKey(privkeyBytes);
 
+      const unsignedEvent = {
+        kind: 0,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [] as string[][],
+        content: JSON.stringify(profileMetadata),
+        pubkey: pubkeyHex,
+      } as const;
 
+      const signedEvent = finalizeEvent(unsignedEvent as any, privkeyBytes) as any;
+
+      // Optional: publish to a default set of relays via our browser Nostr client (no window.nostr)
+      try {
+        const mod = await import('../lib/nostr-browser');
+        const { SimplePool } = mod as any;
+        const pool = new SimplePool();
+        const defaultRelays = [
+          'wss://relay.damus.io',
+          'wss://nos.lol',
+          'wss://relay.nostr.band',
+          'wss://nostr.wine',
+        ];
+        await pool.publish(defaultRelays, signedEvent);
+      } catch (pubErr) {
+        console.warn('Profile event signed but publish failed or skipped:', pubErr instanceof Error ? pubErr.message : pubErr);
+      }
 
       // DON'T clear ephemeral nsec here - registerIdentity() still needs it
-      // setEphemeralNsec(null); // MOVED to registerIdentity() after encryption
-      // setNsecSecured(true); // MOVED to registerIdentity() after completion
 
     } catch (error) {
       console.error('Profile publishing failed:', error);
@@ -673,6 +715,37 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
     };
   }, []);
+  // Hard block NIP-07 calls during registration by proxying window.nostr
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const nostr = (window as any).nostr;
+    if (!nostr) return;
+    const isReg = () => !!(window as any).__identityForgeRegFlow;
+    const blocked = new Set(['getPublicKey', 'signEvent', 'signSchnorr']);
+    const original = nostr;
+    const proxied = new Proxy(original, {
+      get(target, prop, receiver) {
+        if (isReg() && blocked.has(String(prop))) {
+          return (..._args: any[]) => {
+            console.warn(`[IdentityForge] Blocked NIP-07 call: ${String(prop)} during registration`);
+            return Promise.reject(new Error('NIP-07 disabled during registration'));
+          };
+        }
+        return Reflect.get(target as any, prop, receiver);
+      },
+    });
+    (window as any).__nostrOriginal = original;
+    (window as any).nostr = proxied;
+    return () => {
+      try {
+        if ((window as any).__nostrOriginal) {
+          (window as any).nostr = (window as any).__nostrOriginal;
+          delete (window as any).__nostrOriginal;
+        }
+      } catch { }
+    };
+  }, []);
+
 
 
   useEffect(() => {

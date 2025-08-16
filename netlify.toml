@@ -251,17 +251,17 @@
 [context.production]
   [context.production.environment]
     NODE_ENV = "production"
-    VITE_API_BASE_URL = "/.netlify/functions"
+    VITE_API_BASE_URL = "/api"
 
 [context.deploy-preview]
   [context.deploy-preview.environment]
     NODE_ENV = "preview"
-    VITE_API_BASE_URL = "/.netlify/functions"
+    VITE_API_BASE_URL = "/api"
 
 [context.branch-deploy]
   [context.branch-deploy.environment]
     NODE_ENV = "development"
-    VITE_API_BASE_URL = "/.netlify/functions"
+    VITE_API_BASE_URL = "/api"
 
 # Functions configuration - Optimized for memory and storage efficiency
 [functions]
