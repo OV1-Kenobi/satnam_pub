@@ -84,10 +84,12 @@ export default async function handler(req, res) {
       // Award welcome course credits
       await db.models.courseCredits.awardCredits(hashedUserId, 1);
 
-      console.log(`✅ New privacy-first user registered: ${username}`);
+      // PRIVACY: Avoid logging usernames; log hashed identifier only
+      console.log(`✅ New privacy-first user registered: ${hashedUserId.substring(0,8)}...`);
     } else {
       user = userData[0];
-      console.log(`✅ Existing user authenticated: ${username}`);
+      // PRIVACY: Avoid logging usernames; log hashed identifier only
+      console.log(`✅ Existing user authenticated: ${hashedUserId.substring(0,8)}...`);
     }
 
     // Generate privacy-first JWT token (NO sensitive data)
@@ -98,15 +100,22 @@ export default async function handler(req, res) {
       role: 'user'
     });
 
-    // PRIVACY: Response contains NO pubkeys, npubs, or sensitive data
+    // PRIVACY-FIRST: Standardized SessionData response with minimal PII
     res.status(200).json({
       success: true,
-      token: token,
-      user: {
-        id: user.id,
-        username: user.username,
-        // NO npub, pubkey, or sensitive data exposed
-      }
+      data: {
+        user: {
+          id: hashedUserId, // Hashed DUID only
+          npub: '', // Not tracked in legacy login
+          username: user.username || undefined, // Optional
+          nip05: undefined, // Not available here
+          role: 'private', // Default role for legacy login
+          is_active: true,
+        },
+        authenticated: true,
+        sessionToken: token,
+        expiresAt: undefined,
+      },
     });
 
   } catch (error) {

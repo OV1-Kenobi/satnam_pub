@@ -200,8 +200,13 @@ export interface SessionData {
     id: string;
     npub: string;
     username?: string;
+    nip05?: string;
+    role?: string;
+    is_active: boolean;
   };
   authenticated: boolean;
+  sessionToken: string;
+  expiresAt?: string;
 }
 
 export const authAPI = {

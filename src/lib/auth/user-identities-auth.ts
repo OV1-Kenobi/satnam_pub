@@ -296,19 +296,15 @@ export class UserIdentitiesAuth {
   private static readonly LOCKOUT_MINUTES = 30;
 
   /**
-   * Authenticate user with NIP-07 browser extension + password
-   * Uses DUID generation with npub + password for O(1) lookup (same as NIP-05/Password)
+   * Authenticate user with NIP-07 browser extension (no password)
+   * Generates DUID using npub only (stable across methods)
    */
   async authenticateNIP07(credentials: AuthCredentials): Promise<AuthResult> {
     try {
-      if (
-        !credentials.pubkey ||
-        !credentials.signature ||
-        !credentials.password
-      ) {
+      if (!credentials.pubkey || !credentials.signature) {
         return {
           success: false,
-          error: "Missing pubkey, signature, or password",
+          error: "Missing pubkey or signature",
         };
       }
 
@@ -324,12 +320,8 @@ export class UserIdentitiesAuth {
         npub = nip19.npubEncode(credentials.pubkey);
       }
 
-      // Generate DUID using npub + password (same method as NIP-05/Password)
-      // This ensures identical DUIDs for the same user regardless of auth method
-      const deterministicUserId = await generateDUID(
-        npub,
-        credentials.password
-      );
+      // Generate DUID using npub only (stable across auth methods)
+      const deterministicUserId = await generateDUID(npub);
 
       // Direct O(1) database lookup using DUID
       const { data: user, error: userError } = await supabase

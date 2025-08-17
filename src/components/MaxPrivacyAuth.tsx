@@ -148,7 +148,7 @@ export function MaxPrivacyAuth({
     }
   };
 
-  // NIP-07 Authentication (Maximum Privacy with Password)
+  // NIP-07 Authentication (Maximum Privacy; no password)
   const handleNIP07Auth = async () => {
     // Do not invoke NIP-07 during Identity Forge registration flow
     if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
@@ -157,13 +157,9 @@ export function MaxPrivacyAuth({
       return;
     }
 
-    if (!window.nostr) {
+    const nostr = (window as any)?.nostr;
+    if (!nostr) {
       setError('NIP-07 extension not found. Please install a Nostr browser extension.');
-      return;
-    }
-
-    if (!nip07Password.trim()) {
-      setError('Password is required for maximum security and privacy protection.');
       return;
     }
 
@@ -172,7 +168,7 @@ export function MaxPrivacyAuth({
 
     try {
       console.warn('[Diag][MaxPrivacyAuth] calling window.nostr.getPublicKey()');
-      const pubkey = await window.nostr.getPublicKey();
+      const pubkey = await nostr.getPublicKey();
       const challenge = `auth-challenge-${Date.now()}-${Math.random()}`;
 
       const event = {
@@ -184,10 +180,10 @@ export function MaxPrivacyAuth({
       };
 
       console.warn('[Diag][MaxPrivacyAuth] calling window.nostr.signEvent()');
-      const signedEvent = await window.nostr.signEvent(event);
+      const signedEvent = await nostr.signEvent(event);
 
-      // Use NIP-07 with password for DUID generation (same as NIP-05/Password)
-      const success = await auth.authenticateNIP07(challenge, signedEvent.sig, pubkey, nip07Password);
+      // Use NIP-07 for DUID generation (signature-only flow)
+      const success = await auth.authenticateNIP07(challenge, signedEvent.sig, pubkey);
 
       if (!mountedRef.current) return;
       if (success) {

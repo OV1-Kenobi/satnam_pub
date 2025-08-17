@@ -268,22 +268,22 @@ export default async function handler(req, res) {
       TOKEN_CONFIG.REFRESH_TOKEN_LIFETIME
     );
 
-    // Return success response with access token
+    // Return standardized SessionData response with privacy-first data
     res.status(200).json({
       success: true,
-      sessionToken: accessToken, // For compatibility with existing code
-      accessToken: accessToken,
-      accessTokenExpiry: accessTokenExpiry * 1000, // Convert to milliseconds for JS
-      user: {
-        id: authResult.user.id,
-        hashedId: authResult.user.hashedId,
-        role: authResult.user.role,
-        is_active: authResult.user.is_active,
-        federationRole: authResult.user.federationRole || 'private',
-        privacy_settings: authResult.user.privacy_settings,
-        // Don't expose sensitive hashed data in response
+      data: {
+        user: {
+          id: authResult.user.hashedId, // Hashed DUID only
+          npub: '', // Not applicable in NIP-05/password flow
+          username: undefined, // Not returned here
+          nip05: nip05,
+          role: authResult.user.role || 'private',
+          is_active: authResult.user.is_active !== false,
+        },
+        authenticated: true,
+        sessionToken: accessToken,
+        expiresAt: new Date(accessTokenExpiry * 1000).toISOString(),
       },
-      message: 'Authentication successful',
       meta: {
         timestamp: new Date().toISOString(),
         sessionId: authResult.sessionId,

@@ -537,7 +537,7 @@ export async function decryptNsecSimple(
  * Decrypt Nostr private key (nsec) and return as Uint8Array for buffer-safe handling
  * Browser-compatible; avoids creating long-lived JS strings.
  */
-export async function decryptNsecSimpleToBuffer(
+export async function decryptNsecBytes(
   encryptedNsec: string,
   userSalt: string
 ): Promise<Uint8Array> {

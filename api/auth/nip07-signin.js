@@ -612,18 +612,21 @@ export default async function handler(event, context) {
     const jwtToken = await SecureSessionManager.createSession(null, userData);
     const refreshToken = await SecureSessionManager.createRefreshToken({ userId: duid_index, npub });
 
-    // Response
+    // Response - standardized SessionData payload
     const response = {
       success: true,
       data: {
-        token: jwtToken,
-        refreshToken,
-        npub,
         user: {
+          id: duid_index,
           npub,
+          username: undefined,
+          nip05: user.nip05 || undefined,
           role: user.role || 'private',
-          authMethod: 'nip07'
-        }
+          is_active: true,
+        },
+        authenticated: true,
+        sessionToken: jwtToken,
+        expiresAt: undefined,
       },
       sovereigntyStatus: {
         role: validation.userRole,

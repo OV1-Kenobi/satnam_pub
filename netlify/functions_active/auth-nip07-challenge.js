@@ -32,7 +32,8 @@ export const handler = async (event) => {
 
   try {
     const { randomBytes } = await import('node:crypto');
-    const { default: supabase } = await import('../functions/supabase.js');
+    const supaMod = await import('../functions/supabase.js');
+    const supabase = (supaMod && (supaMod.default?.supabase || supaMod.supabase)) || supaMod.default || supaMod;
 
     // Request params
     const qs = event.queryStringParameters || {};

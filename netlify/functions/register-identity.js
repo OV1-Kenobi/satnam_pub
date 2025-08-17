@@ -79,31 +79,31 @@ function encryptWithServerSecret(plaintext) {
 
 // Main handler function
 export const handler = async (event) => {
+  const { privacyHash, prefix, sanitize, safeLog, safeWarn, safeError } = await import('./utils/privacy-logger.js');
   // Handle CORS preflight
   const corsResponse = handleCORS(event);
   if (corsResponse) return corsResponse;
-  console.log("🔍 REGISTER IDENTITY: Function called", {
+  safeLog('REGISTER_IDENTITY_CALLED', {
     method: event.httpMethod,
     hasBody: !!event.body,
     bodyType: typeof event.body,
-    timestamp: new Date().toISOString()
   });
 
   // CRITICAL: Wrap initialization code in try-catch to prevent unhandled exceptions
   let supabase;
   try {
     // DEBUG: Check environment variables with actual values (masked)
-    console.log("🔍 Environment variables check:", {
+    safeLog('ENVIRONMENT_CHECK', {
       hasSupabaseUrl: !!getEnvVar('SUPABASE_URL') || !!getEnvVar('VITE_SUPABASE_URL'),
       supabaseUrlLength: (getEnvVar('SUPABASE_URL') || getEnvVar('VITE_SUPABASE_URL') || '').length,
       hasSupabaseKey: !!getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || !!getEnvVar('SUPABASE_ANON_KEY') || !!getEnvVar('VITE_SUPABASE_ANON_KEY'),
       supabaseKeyLength: (getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || getEnvVar('SUPABASE_ANON_KEY') || getEnvVar('VITE_SUPABASE_ANON_KEY') || '').length,
       nodeEnv: getEnvVar('NODE_ENV'),
-      allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
+      supabaseEnvKeysCount: Object.keys(process.env).filter(k => k.includes('SUPABASE')).length
     });
 
     // Import Supabase client at function scope
-    console.log("🔍 Testing Supabase import...");
+    safeLog('SUPABASE_IMPORT_TEST');
 
     try {
       const supabaseModule = await import("./supabase.js");
@@ -116,15 +116,15 @@ export const handler = async (event) => {
       // If inserts fail with 42501, update RLS policies (see scripts/revert_rls_allow_anon_insert_full.sql)
 
       // Test basic Supabase connection using correct table
-      console.log("🔍 Testing Supabase connection...");
+      safeLog('SUPABASE_CONN_TEST');
       const { error } = await supabase.from('user_identities').select('count').limit(1);
       if (error) {
-        console.error("❌ Supabase connection test failed:", error);
+        safeError('SUPABASE_CONN_FAIL', { code: error.code, msg: error.message });
       } else {
-        console.log("✅ Supabase connection test successful");
+        safeLog('SUPABASE_CONN_OK');
       }
     } catch (supabaseError) {
-      console.error("❌ Supabase import/connection failed:", supabaseError);
+      safeError('SUPABASE_IMPORT_FAIL', { msg: supabaseError instanceof Error ? supabaseError.message : String(supabaseError) });
       throw new Error(`Supabase setup failed: ${supabaseError.message}`);
     }
 
@@ -133,7 +133,7 @@ export const handler = async (event) => {
       throw new Error('Supabase client not available');
     }
   } catch (initError) {
-    console.error("❌ Function initialization failed:", initError);
+    safeError('INIT_FAIL', { msg: initError instanceof Error ? initError.message : String(initError) });
     const origin = event.headers?.origin || event.headers?.Origin;
     const allowedOrigin = getAllowedOrigin(origin);
     const allowCreds = allowedOrigin !== '*' && allowedOrigin !== null;
@@ -203,18 +203,17 @@ export const handler = async (event) => {
   try {
     // Parse request body following established codebase pattern
     const userData = JSON.parse(event.body || "{}");
-
-    console.log('🔍 REGISTER IDENTITY: Parsed request data', {
+    // log request parse (sanitized)
+    safeLog('REQUEST_PARSED', {
       hasUserData: !!userData,
-      username: userData?.username,
+      usernameHash: userData?.username ? privacyHash(userData.username) : null,
       hasNpub: !!userData?.npub,
       hasEncryptedNsec: !!userData?.encryptedNsec,
       hasPassword: !!userData?.password,
       hasConfirmPassword: !!userData?.confirmPassword,
       hasNip05: !!userData?.nip05,
       hasLightningAddress: !!userData?.lightningAddress,
-      allKeys: Object.keys(userData || {}),
-      timestamp: new Date().toISOString()
+      allKeysCount: Object.keys(userData || {}).length
     });
 
     // Comprehensive validation - Updated to check for npub instead of publicKey
@@ -242,14 +241,13 @@ export const handler = async (event) => {
       };
     }
 
-    // Log registration attempt (without sensitive data)
-    console.log('🔐 Identity registration attempt:', {
-      username: userData.username,
+    // Privacy-preserving registration attempt log
+    safeLog('REGISTRATION_ATTEMPT', {
+      usernameHash: privacyHash(userData.username),
       hasNpub: !!userData.npub,
       hasEncryptedNsec: !!userData.encryptedNsec,
       hasNip05: !!userData.nip05,
-      hasLightningAddress: !!userData.lightningAddress,
-      timestamp: new Date().toISOString()
+      hasLightningAddress: !!userData.lightningAddress
     });
     // Validate password for password-based signin compatibility
     if (userData.password === null || userData.password === undefined || typeof userData.password !== 'string' || userData.password.length < 8) {
@@ -292,23 +290,24 @@ export const handler = async (event) => {
     }
 
     // Generate secure DUID index for database storage (Phase 2 implementation)
-    console.log('🔐 Generating secure DUID index...');
+    safeLog('DUID_INDEX_GENERATION_START');
 
     // Import server-side DUID indexing using self-contained robust import
     const duidMod = await robustImport(
       './security/duid-index-generator.js',
       ['netlify', 'functions', 'security', 'duid-index-generator.js']
     );
-    const { generateDUIDIndexFromNpub, auditDUIDOperation } = duidMod;
+    const duidExports = duidMod && duidMod.default ? duidMod.default : duidMod;
+    const { generateDUIDIndexFromNpub, auditDUIDOperation } = duidExports;
 
     // Generate DUID index from npub (server-side secret indexing)
     const duid_index = generateDUIDIndexFromNpub(userData.npub);
 
     // Audit the DUID generation for security monitoring
     auditDUIDOperation('REGISTRATION_DUID_GENERATION', {
-      npubPrefix: userData.npub.substring(0, 10) + '...',
+      npubPrefix: prefix(userData.npub),
       indexPrefix: duid_index.substring(0, 10) + '...',
-      username: userData.username
+      usernameHash: privacyHash(userData.username)
     });
 
     console.log('🔐 Generated secure DUID index:', {
@@ -332,13 +331,13 @@ export const handler = async (event) => {
 
     try {
 
-      console.log("🔍 Creating MAXIMUM ENCRYPTION hashed user data...");
-      console.log("🔍 Input data for hashing:", {
-        username: userData.username,
+      safeLog('HASHING_START');
+      safeLog('HASHING_INPUT_META', {
+        usernameHash: userData?.username ? privacyHash(userData.username) : null,
         hasNpub: !!userData.npub,
         hasEncryptedNsec: !!userData.encryptedNsec,
-        nip05: userData.nip05 || `${userData.username}@satnam.pub`,
-        lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null)
+        hasNip05: !!userData.nip05,
+        hasLightningAddress: !!userData.lightningAddress
       });
 
       // Prepare user data object with explicit validation
@@ -354,10 +353,9 @@ export const handler = async (event) => {
         role: 'private'
       };
 
-      console.log("🔍 User data prepared for hashing:", {
+      safeLog('HASHING_PREP_META', {
         hasUsername: !!userDataForHashing.username,
         usernameType: typeof userDataForHashing.username,
-        usernameValue: userDataForHashing.username,
         hasDisplayName: !!userDataForHashing.displayName,
         displayNameType: typeof userDataForHashing.displayName,
         bioType: typeof userDataForHashing.bio,
@@ -394,7 +392,7 @@ export const handler = async (event) => {
           hashed_encrypted_nsec: userDataForHashing.encryptedNsec ? hashUserDataNode(userDataForHashing.encryptedNsec, user_salt) : null,
         };
       } catch (hashingError) {
-        console.error("❌ Privacy hashing operation failed:", hashingError);
+        safeError('HASHING_FAIL', { msg: hashingError instanceof Error ? hashingError.message : String(hashingError) });
         throw new Error(`Privacy hashing failed: ${hashingError.message}`);
       }
 

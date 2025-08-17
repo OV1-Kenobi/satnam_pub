@@ -61,6 +61,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   isInvitedUser = false,
   rotationMode,
 }) => {
+  // Early guard: mark registration flow as active before any effects run
+  if (typeof window !== 'undefined') {
+    try {
+      (window as any).__identityForgeRegFlow = true;
+    } catch { }
+  }
+
   const [currentStep, setCurrentStep] = useState(rotationMode?.enabled && rotationMode?.skipStep1 ? 2 : 1);
   // When in rotation mode, preset migration mode and preserve identity fields
   useEffect(() => {

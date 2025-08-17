@@ -217,9 +217,9 @@ export function useSecureMessageSigning() {
   };
 
   /**
-   * Retrieve and decrypt user's nsec from database
+   * Retrieve and decrypt user's nsec from database (returns Uint8Array)
    */
-  const retrieveEncryptedNsec = async (): Promise<string | null> => {
+  const retrieveEncryptedNsec = async (): Promise<Uint8Array | null> => {
     try {
       if (!auth.user || !auth.authenticated) {
         throw new Error("User not authenticated");
@@ -237,14 +237,14 @@ export function useSecureMessageSigning() {
         throw new Error("No encrypted nsec found for user");
       }
 
-      // Decrypt the nsec using user's unique salt
-      const { decryptNsecSimple } = await import("../privacy/encryption");
-      const decryptedNsec = await decryptNsecSimple(
+      // Decrypt the nsec using user's unique salt, returning bytes only
+      const { decryptNsecBytes } = await import("../privacy/encryption");
+      const decryptedBytes = await decryptNsecBytes(
         userRecord.hashed_encrypted_nsec,
         auth.user.user_salt || ""
       );
 
-      return decryptedNsec;
+      return decryptedBytes;
     } catch (error) {
       console.error("Failed to retrieve encrypted nsec:", error);
       return null;
@@ -258,7 +258,7 @@ export function useSecureMessageSigning() {
     event: UnsignedEvent,
     consent: NsecConsentData
   ): Promise<SigningResult> => {
-    let nsecKey: string | null = null;
+    let nsecBytes: Uint8Array | null = null;
 
     try {
       if (!consent.granted || !consent.warningAcknowledged) {
@@ -279,9 +279,9 @@ export function useSecureMessageSigning() {
         };
       }
 
-      // Retrieve and decrypt nsec
-      nsecKey = await retrieveEncryptedNsec();
-      if (!nsecKey) {
+      // Retrieve and decrypt nsec (bytes only)
+      nsecBytes = await retrieveEncryptedNsec();
+      if (!nsecBytes) {
         return {
           success: false,
           error: "Failed to retrieve encrypted nsec",
@@ -293,8 +293,7 @@ export function useSecureMessageSigning() {
       // Import nostr tools for signing
       const { finalizeEvent, getPublicKey } = await import("nostr-tools");
 
-      // Get public key from private key
-      const pubkey = getPublicKey(nsecKey);
+      const pubkey = getPublicKey(nsecBytes);
 
       // Prepare event for signing
       const eventToSign = {
@@ -303,8 +302,8 @@ export function useSecureMessageSigning() {
         pubkey: event.pubkey || pubkey,
       };
 
-      // Sign the event
-      const signedEvent = finalizeEvent(eventToSign, nsecKey);
+      // Sign the event using the same byte buffer
+      const signedEvent = finalizeEvent(eventToSign as any, nsecBytes);
 
       return {
         success: true,
@@ -328,18 +327,18 @@ export function useSecureMessageSigning() {
     } finally {
       // CRITICAL: Clear nsec from memory immediately using secure buffer wiping
       try {
-        if (nsecKey) {
-          const encoder = new TextEncoder();
-          const buf = encoder.encode(nsecKey);
+        if (nsecBytes) {
+          const buf = nsecBytes;
           const { secureClearMemory } = await import("../privacy/encryption");
-          // Overwrite the underlying bytes with multiple passes
-          secureClearMemory([{ data: buf, type: "uint8array" } as any]);
+          await Promise.resolve(
+            secureClearMemory([{ data: buf, type: "uint8array" } as any])
+          );
+          buf.fill(0);
         }
       } catch {
         // Non-fatal: cleanup best-effort only
       } finally {
-        // Drop reference to the string so it can be GC'd
-        nsecKey = null;
+        nsecBytes = null;
       }
     }
   };

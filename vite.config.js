@@ -224,12 +224,16 @@ export default defineConfig({
       VITE_SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL') || '',
       VITE_SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY') || '',
       VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
+      VITE_API_BASE_URL: getEnvVar('VITE_API_BASE_URL') || '/.netlify/functions',
+      VITE_API_URL: getEnvVar('VITE_API_URL') || '',
     }),
     'globalThis.__APP_ENV__': JSON.stringify({
       NODE_ENV: getEnvVar('NODE_ENV') || 'production',
       VITE_SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL') || '',
       VITE_SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY') || '',
       VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
+      VITE_API_BASE_URL: getEnvVar('VITE_API_BASE_URL') || '/.netlify/functions',
+      VITE_API_URL: getEnvVar('VITE_API_URL') || '',
     }),
   },
 

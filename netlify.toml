@@ -278,7 +278,6 @@
     "@noble/secp256k1",
     "@noble/hashes",
     "crypto-js",
-    "nostr-tools",
     "@scure/bip32",
     "@scure/bip39",
     "@scure/base",

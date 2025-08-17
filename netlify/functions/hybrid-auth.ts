@@ -1,24 +1,69 @@
 // lib/hybrid-auth.ts
-import type { Event as NostrEvent } from "nostr-tools";
-import {
-  finalizeEvent as finishEvent,
-  generateSecretKey as generatePrivateKey,
-  getPublicKey,
-  nip19,
-  SimplePool,
-  verifyEvent,
-} from "nostr-tools";
+// Removed nostr-tools dependency to keep function lightweight and avoid bundle duplication
+// Define a minimal local NostrEvent type for typing purposes
+interface NostrEvent {
+  id: string;
+  pubkey: string;
+  created_at: number;
+  kind: number;
+  tags: any[];
+  content: string;
+  sig?: string;
+}
+import { sha256 } from "@noble/hashes/sha256";
+import { schnorr } from "@noble/secp256k1";
+import { bech32 } from "@scure/base";
 import {
   extractNWCComponents,
   sanitizeNWCData,
   validateNWCUri,
 } from "../utils/nwc-validation";
+
+// Helpers
+const te = new TextEncoder();
+const hexToBytes = (hex: string): Uint8Array => {
+  if (hex.length % 2 !== 0) hex = "0" + hex;
+  return new Uint8Array(
+    (hex.match(/.{1,2}/g) || []).map((b) => parseInt(b, 16))
+  );
+};
+const bytesToHex = (bytes: Uint8Array): string =>
+  Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+const utf8ToBytes = (s: string): Uint8Array => te.encode(s);
+
+// Minimal NIP-19 npub encode/decode
+const npubEncode = (pubkeyHex: string): string => {
+  const words = bech32.toWords(hexToBytes(pubkeyHex));
+  return bech32.encode("npub", words);
+};
+
+// Event serialization & verification per Nostr spec
+const serializeEvent = (ev: NostrEvent): Uint8Array =>
+  utf8ToBytes(
+    JSON.stringify([0, ev.pubkey, ev.created_at, ev.kind, ev.tags, ev.content])
+  );
+const getEventHashHex = (ev: NostrEvent): string =>
+  bytesToHex(sha256(serializeEvent(ev)) as Uint8Array);
+const verifyNostrEvent = async (ev: NostrEvent): Promise<boolean> => {
+  try {
+    if (!ev.sig) return false;
+    const idHex = getEventHashHex(ev);
+    if (ev.id && ev.id !== idHex) return false;
+    return await schnorr.verify(ev.sig, idHex, ev.pubkey);
+  } catch {
+    return false;
+  }
+};
+
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
   if (!supabaseClient) {
-    const { default: supabase } = await import("./supabase");
-    supabaseClient = supabase;
+    const supaMod: any = await import("./supabase");
+    const mod = supaMod.default || supaMod;
+    supabaseClient = mod.supabase || mod; // prefer named export
   }
   return supabaseClient;
 };
@@ -63,24 +108,16 @@ export interface SupabaseSession {
 }
 
 export class HybridAuth {
-  private pool: SimplePool;
-  private relays: string[];
-
-  constructor() {
-    this.pool = new SimplePool();
-    this.relays = process.env.NOSTR_RELAYS?.split(",") || [
-      "wss://relay.damus.io",
-      "wss://nos.lol",
-    ];
-  }
+  // Removed SimplePool dependency; no relay usage in this function
+  constructor() {}
 
   async authenticateWithNostr(
     nostrEvent: NostrEvent,
     nip05?: string
   ): Promise<AuthResult> {
     try {
-      // Verify the event signature
-      if (!(verifyEvent as any)(nostrEvent)) {
+      // Verify the event signature (without nostr-tools)
+      if (!(await verifyNostrEvent(nostrEvent))) {
         return {
           success: false,
           error: "Invalid event signature",
@@ -99,27 +136,16 @@ export class HybridAuth {
 
       // Extract npub from pubkey
 
-      // Self-contained robust dynamic import helper to avoid utility imports
-      async function robustImport(rel: string, segs: string[]) {
-        try {
-          return await import(rel);
-        } catch (_e1) {
-          const path = await import("node:path");
-          const url = await import("node:url");
-          const fileUrl = url.pathToFileURL(
-            path.resolve(process.cwd(), ...segs)
-          ).href;
-          return await import(fileUrl);
-        }
-      }
-
-      const npub = nip19.npubEncode(nostrEvent.pubkey);
+      const npub = npubEncode(nostrEvent.pubkey);
 
       // Generate DUID index for secure database lookup (Phase 2)
-      const { generateDUIDIndexFromNpub } = await robustImport(
-        "./security/duid-index-generator.js",
-        ["netlify", "functions", "security", "duid-index-generator.js"]
-      );
+      let modDuid: any;
+      try {
+        modDuid = await import("./security/duid-index-generator.js");
+      } catch (e) {
+        modDuid = await import("./security/duid-index-generator");
+      }
+      const { generateDUIDIndexFromNpub } = modDuid;
       const duid_index = generateDUIDIndexFromNpub(npub);
 
       // Check if user exists in database using secure DUID index
@@ -180,11 +206,18 @@ export class HybridAuth {
       return {
         success: true,
         data: {
-          userId: userData.hashed_user_id,
-          npub: userData.npub,
-          nip05: userData.nip05,
+          user: {
+            id: userData.hashed_user_id,
+            npub: userData.npub,
+            username: userData.username || undefined,
+            nip05: userData.nip05 || undefined,
+            role: userData.role || undefined,
+            is_active: userData.is_active ?? true,
+          },
+          authenticated: true,
+          sessionToken: token,
+          expiresAt: undefined,
         },
-        token,
       };
     } catch (error) {
       console.error("Error in authenticateWithNostr:", error);
@@ -251,46 +284,24 @@ export class HybridAuth {
 
   async sendOTP(npub: string, nip05?: string): Promise<OTPResult> {
     try {
-      // Generate OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpKey = await this.generatePrivacyHash(npub + Date.now());
-
-      // Store OTP in database (with expiration)
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-
-      const { error: storeError } = await (await getSupabaseClient())
-        .from("otp_codes")
-        .insert([
-          {
-            otp_key: otpKey,
-            npub,
-            otp_code: otp,
-            expires_at: expiresAt.toISOString(),
-            created_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (storeError) {
-        console.error("Error storing OTP:", storeError);
-        return {
-          success: false,
-          error: "Failed to generate OTP",
-        };
+      // Delegate to centralized event publishing service (server-managed keys)
+      const svcMod: any = await import(
+        "../../lib/central_event_publishing_service"
+      );
+      const svc = svcMod.central_event_publishing_service || svcMod.default;
+      if (!svc || typeof svc.sendOTPDM !== "function") {
+        throw new Error(
+          "Central event publishing service not properly configured"
+        );
       }
-
-      // Send OTP via Nostr DM
-      await this.sendNostrDM(npub, `Your Satnam.pub OTP code is: ${otp}`);
-
-      return {
-        success: true,
-        otpKey,
-      };
+      const result = await svc.sendOTPDM(npub, nip05);
+      if (!result?.success) {
+        return { success: false, error: result?.error || "Failed to send OTP" };
+      }
+      return { success: true };
     } catch (error) {
       console.error("Error in sendOTP:", error);
-      return {
-        success: false,
-        error: "Failed to send OTP",
-      };
+      return { success: false, error: "Failed to send OTP" };
     }
   }
 
@@ -328,25 +339,14 @@ export class HybridAuth {
         .delete()
         .eq("otp_key", otpKey);
 
-      // Self-contained robust dynamic import helper to avoid utility imports
-      async function robustImport(rel: string, segs: string[]) {
-        try {
-          return await import(rel);
-        } catch (_e1) {
-          const path = await import("node:path");
-          const url = await import("node:url");
-          const fileUrl = url.pathToFileURL(
-            path.resolve(process.cwd(), ...segs)
-          ).href;
-          return await import(fileUrl);
-        }
-      }
-
       // Get user data using secure DUID index lookup
-      const { generateDUIDIndexFromNpub } = await robustImport(
-        "./security/duid-index-generator.js",
-        ["netlify", "functions", "security", "duid-index-generator.js"]
-      );
+      let modDuid: any;
+      try {
+        modDuid = await import("./security/duid-index-generator.js");
+      } catch (e) {
+        modDuid = await import("./security/duid-index-generator");
+      }
+      const { generateDUIDIndexFromNpub } = modDuid;
       const duid_index = generateDUIDIndexFromNpub(otpData.npub);
 
       const { data: userData, error: userError } = await (
@@ -386,32 +386,6 @@ export class HybridAuth {
         success: false,
         error: "OTP verification failed",
       };
-    }
-  }
-
-  private async sendNostrDM(
-    recipientNpub: string,
-    message: string
-  ): Promise<void> {
-    try {
-      // Generate temporary keys for sending DM
-      const senderPrivkey = (generatePrivateKey as any)();
-      const senderPubkey = (getPublicKey as any)(senderPrivkey);
-
-      const dmEvent = (finishEvent as any)(
-        {
-          kind: 4,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [["p", nip19.decode(recipientNpub).data as string]],
-          content: message,
-        },
-        senderPrivkey
-      );
-
-      // Publish to relays
-      await this.pool.publish(this.relays, dmEvent);
-    } catch (error) {
-      console.error("Error sending Nostr DM:", error);
     }
   }
 

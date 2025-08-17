@@ -10,7 +10,7 @@
  * @compliance Netlify Functions - Server-side only, never exposed to client
  */
 
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 
 /**
  * Get server secret for DUID indexing
@@ -38,7 +38,7 @@ function getServerSecret() {
  * @param {string} duid_public - Public DUID from client (SHA-256 of "DUIDv1" + npub)
  * @returns {string} DUID index for database operations
  */
-export function generateDUIDIndex(duid_public) {
+function generateDUIDIndex(duid_public) {
   if (!duid_public || typeof duid_public !== 'string') {
     throw new Error('Valid public DUID is required for index generation');
   }
@@ -77,7 +77,7 @@ export function generateDUIDIndex(duid_public) {
  * @param {string} duid_index - DUID index to validate
  * @returns {boolean} True if valid DUID index format
  */
-export function validateDUIDIndex(duid_index) {
+function validateDUIDIndex(duid_index) {
   if (!duid_index || typeof duid_index !== 'string') {
     return false;
   }
@@ -94,7 +94,7 @@ export function validateDUIDIndex(duid_index) {
  * @param {string} npub - User's Nostr public key (npub1...)
  * @returns {string} DUID index for database operations
  */
-export function generateDUIDIndexFromNpub(npub) {
+function generateDUIDIndexFromNpub(npub) {
   if (!npub || !npub.startsWith('npub1')) {
     throw new Error('Valid npub is required for DUID index generation');
   }
@@ -131,7 +131,7 @@ export function generateDUIDIndexFromNpub(npub) {
  * @param {Array<string>} public_duids - Array of public DUIDs
  * @returns {Array<{duid_public: string, duid_index: string}>} Array of DUID mappings
  */
-export function batchGenerateDUIDIndexes(public_duids) {
+function batchGenerateDUIDIndexes(public_duids) {
   const results = [];
   
   for (const duid_public of public_duids) {
@@ -155,7 +155,7 @@ export function batchGenerateDUIDIndexes(public_duids) {
  * @param {string} duid_index - DUID index from database
  * @returns {boolean} True if index matches public DUID
  */
-export function verifyDUIDIndex(duid_public, duid_index) {
+function verifyDUIDIndex(duid_public, duid_index) {
   try {
     const expectedIndex = generateDUIDIndex(duid_public);
     return expectedIndex === duid_index;
@@ -172,7 +172,7 @@ export function verifyDUIDIndex(duid_public, duid_index) {
  * @param {string} operation - Operation being performed
  * @param {Object} context - Context information
  */
-export function auditDUIDOperation(operation, context = {}) {
+function auditDUIDOperation(operation, context = {}) {
   console.log(`🔍 DUID Security Audit: ${operation}`, {
     operation,
     timestamp: new Date().toISOString(),
@@ -186,7 +186,7 @@ export function auditDUIDOperation(operation, context = {}) {
  * Initialize DUID security system
  * Validates server configuration and security requirements
  */
-export function initializeDUIDSecurity() {
+function initializeDUIDSecurity() {
   try {
     // Validate server secret exists and meets requirements
     const secret = getServerSecret();
@@ -214,8 +214,11 @@ export function initializeDUIDSecurity() {
 try {
   initializeDUIDSecurity();
 } catch (error) {
-  console.error('❌ Critical: DUID security initialization failed on module load');
+  // avoid noisy logs in production; caller logs details
 }
 
+export {
+    auditDUIDOperation, batchGenerateDUIDIndexes, generateDUIDIndex, generateDUIDIndexFromNpub, initializeDUIDSecurity, validateDUIDIndex, verifyDUIDIndex
+};
 
 

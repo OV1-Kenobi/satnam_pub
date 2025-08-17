@@ -34,7 +34,8 @@ export const handler = async (event) => {
     const crypto = await import('node:crypto');
     const secret = process.env.DUID_SERVER_SECRET;
     if (!secret) {
-      console.error('nip05-artifact-upsert: Missing DUID_SERVER_SECRET');
+      const { safeError } = await import('./utils/privacy-logger.js');
+      safeError('NIP05_ARTIFACT_UPSERT_MISCONFIG', { reason: 'Missing DUID_SERVER_SECRET' });
       return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Server misconfiguration' }) };
     }
 
@@ -42,7 +43,13 @@ export const handler = async (event) => {
     const hmac1 = crypto.createHmac('sha256', secret).update(identifier).digest('hex');
     const hmac2 = crypto.createHmac('sha256', secret).update(`NPUBv1:${newNpub}`).digest('hex');
 
-    const { supabase } = await import('./supabase.js');
+    const supaMod = await import('./supabase.js');
+    const supabase = (supaMod && (supaMod.supabase ?? supaMod.default)) || null;
+    if (!supabase || typeof supabase.from !== 'function') {
+      const { safeError } = await import('./utils/privacy-logger.js');
+      safeError('NIP05_ARTIFACT_UPSERT_MISCONFIG', { reason: 'Supabase client missing or invalid export in ./supabase.js' });
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Server misconfiguration' }) };
+    }
 
     // Update hashed_npub in DB for this hashed_nip05
     const { error: updateErr } = await supabase
@@ -53,7 +60,8 @@ export const handler = async (event) => {
       .eq('is_active', true);
 
     if (updateErr) {
-      console.error('nip05-artifact-upsert: DB update failed', updateErr);
+      const { safeWarn } = await import('./utils/privacy-logger.js');
+      safeWarn('NIP05_ARTIFACT_UPSERT_DB_FAIL', { code: updateErr.code, msg: updateErr.message });
       // Continue to artifact write; the artifact still needs to reflect new pubkey
     }
 
@@ -78,19 +86,23 @@ export const handler = async (event) => {
         .from('nip05-artifacts')
         .upload(path, new Blob([payload], { type: 'application/json' }), { upsert: true });
       if (uploadErr) {
-        console.error('nip05-artifact-upsert: Artifact upload failed', uploadErr);
+        const { safeError } = await import('./utils/privacy-logger.js');
+        safeError('NIP05_ARTIFACT_UPLOAD_FAIL', { code: uploadErr.code, msg: uploadErr.message });
       }
     } catch (e) {
-      console.error('nip05-artifact-upsert: Artifact upload exception', e);
+      const { safeError } = await import('./utils/privacy-logger.js');
+      safeError('NIP05_ARTIFACT_UPLOAD_EXC', { msg: e instanceof Error ? e.message : String(e) });
     }
 
     return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
   } catch (err) {
-    console.error('nip05-artifact-upsert: error', err instanceof Error ? err.message : String(err));
+    const { safeError } = await import('./utils/privacy-logger.js');
+    safeError('NIP05_ARTIFACT_UPSERT_ERROR', { msg: err instanceof Error ? err.message : String(err) });
     return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
   } finally {
     const ms = Date.now() - startedAt;
-    if (ms > 50) console.log(`nip05-artifact-upsert completed in ${ms}ms`);
+    const { safeLog } = await import('./utils/privacy-logger.js');
+    if (ms > 50) safeLog('NIP05_ARTIFACT_UPSERT_DONE', { ms });
   }
 };
 

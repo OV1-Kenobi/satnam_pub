@@ -227,12 +227,22 @@ export default async function handler(req, res) {
       TOKEN_CONFIG.REFRESH_TOKEN_LIFETIME
     );
 
-    // Return new access token
+    // Return standardized SessionData payload
     res.status(200).json({
       success: true,
-      accessToken: newAccessToken,
-      accessTokenExpiry: accessTokenExpiry * 1000, // Convert to milliseconds for JS
-      message: 'Tokens refreshed successfully',
+      data: {
+        user: {
+          id: refreshPayload.userId,
+          npub: '',
+          username: undefined,
+          nip05: refreshPayload.nip05,
+          role: undefined,
+          is_active: true,
+        },
+        authenticated: true,
+        sessionToken: newAccessToken,
+        expiresAt: new Date(accessTokenExpiry * 1000).toISOString(),
+      },
       meta: {
         timestamp: new Date().toISOString(),
         sessionId: newSessionId,

@@ -44,17 +44,25 @@ export default function handler(req, res) {
   }
 
   try {
-    // Mock session check for development - return proper JSON format
-    const mockSession = {
-      user: {
-        id: 'demo-user',
-        username: 'demo',
-        role: 'parent'
-      },
-      authenticated: false // Change to true for testing
+    // Mock session check for development - standardized SessionData payload
+    const mockUser = {
+      id: 'demo-user',
+      npub: '',
+      username: 'demo',
+      nip05: undefined,
+      role: 'parent',
+      is_active: false,
     };
 
-    res.status(200).json(mockSession);
+    res.status(200).json({
+      success: true,
+      data: {
+        user: mockUser,
+        authenticated: false, // Change to true for testing
+        sessionToken: '',
+        expiresAt: undefined,
+      },
+    });
   } catch (error) {
     console.error("Session check error:", error);
 

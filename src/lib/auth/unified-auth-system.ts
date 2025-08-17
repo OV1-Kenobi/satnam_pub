@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import type { SessionData } from "../api";
 import SecureTokenManager from "./secure-token-manager";
 import {
   AuthCredentials,
@@ -62,8 +63,7 @@ export interface UnifiedAuthActions {
   authenticateNIP07: (
     challenge: string,
     signature: string,
-    pubkey: string,
-    password: string
+    pubkey: string
   ) => Promise<boolean>;
 
   // OTP authentication methods
@@ -187,9 +187,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
               setState((prev) => ({ ...prev, loading: false }));
             }
           } else {
-            // Token exists but is expired - attempt refresh
-            const refreshed = await SecureTokenManager.refreshSession();
-            if (!refreshed) {
+            // Token exists but is expired - attempt refresh via silentRefresh
+            const refreshedToken = await SecureTokenManager.silentRefresh();
+            if (!refreshedToken) {
               await clearStoredSession();
               setState((prev) => ({
                 ...prev,
@@ -261,10 +261,10 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
 
       setState((prev) => ({
         ...prev,
-        user: result.user,
-        sessionToken: result.sessionToken,
+        user: result.user ?? null,
+        sessionToken: result.sessionToken ?? null,
         authenticated: true,
-        accountActive: result.user.is_active,
+        accountActive: result.user ? !!result.user.is_active : false,
         sessionValid: true,
         lastValidated: now,
         loading: false,
@@ -336,14 +336,13 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
   );
 
   /**
-   * Authenticate with NIP-07 browser extension + password
+   * Authenticate with NIP-07 browser extension (no password)
    */
   const authenticateNIP07 = useCallback(
     async (
       challenge: string,
       signature: string,
-      pubkey: string,
-      password: string
+      pubkey: string
     ): Promise<boolean> => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -352,7 +351,6 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           challenge,
           signature,
           pubkey,
-          password,
         };
         const result = await userIdentitiesAuth.authenticateNIP07(credentials);
 
@@ -399,7 +397,8 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
 
         if (response.success) {
           // Store session ID for verification
-          localStorage.setItem("otp_session_id", response.data.sessionId);
+          const data = response.data as { sessionId: string };
+          localStorage.setItem("otp_session_id", data.sessionId);
           setState((prev) => ({ ...prev, loading: false }));
           return { success: true };
         } else {
@@ -429,7 +428,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
    * Authenticate with OTP
    */
   const authenticateOTP = useCallback(
-    async (identifier: string, otpCode: string): Promise<boolean> => {
+    async (_identifier: string, otpCode: string): Promise<boolean> => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
@@ -456,15 +455,22 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           localStorage.removeItem("otp_session_id");
 
           // Create a result compatible with handleAuthSuccess
-          const authResult = {
+          // Build minimal AuthResult compatible object
+          const data = response.data as SessionData;
+          const authResult: AuthResult = {
             success: true,
-            user: response.data?.user || {
-              id: identifier,
-              hashedId: identifier,
-              nip05: identifier.includes("@") ? identifier : undefined,
-              is_active: true,
+            user: {
+              id: data.user.id,
+              user_salt: "",
+              password_hash: "",
+              password_salt: "",
+              failed_attempts: 0,
+              role: (data.user.role as any) || "private",
+              is_active: !!data.user.is_active,
+              hashedId: data.user.id,
+              authMethod: "otp",
             },
-            sessionToken: response.data?.sessionToken,
+            sessionToken: data.sessionToken,
           };
 
           return handleAuthSuccess(authResult);
@@ -563,9 +569,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      const refreshed = await SecureTokenManager.refreshSession();
+      const refreshedToken = await SecureTokenManager.silentRefresh();
 
-      if (refreshed) {
+      if (refreshedToken) {
         // Validate the refreshed session
         const isValid = await validateSession();
         setState((prev) => ({ ...prev, loading: false }));
@@ -590,7 +596,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
    * Check if user can access a protected area
    */
   const canAccessProtectedArea = useCallback(
-    (area: ProtectedArea): boolean => {
+    (_area: ProtectedArea): boolean => {
       return (
         state.authenticated &&
         state.accountActive &&
