@@ -301,8 +301,8 @@ export const handler = async (event) => {
     let auditDUIDOperation;
     try {
       const duidMod = await robustImport(
-        './security/duid-index-generator.mjs',
-        ['netlify', 'functions', 'security', 'duid-index-generator.mjs']
+        './security/duid-index-generator.js',
+        ['netlify', 'functions', 'security', 'duid-index-generator.js']
       );
       const duidExports = duidMod && duidMod.default ? duidMod.default : duidMod;
       ({ generateDUIDIndexFromNpub, auditDUIDOperation } = duidExports);

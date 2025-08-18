@@ -271,7 +271,7 @@ export interface PrivacyConsentResponse {
 }
 
 export const DEFAULT_UNIFIED_CONFIG: UnifiedMessagingConfig = {
-  relays: ["wss://relay.satnam.pub", "wss://nos.lol", "wss://relay.damus.io"],
+  relays: ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"],
   giftWrapEnabled: true,
   guardianApprovalRequired: true,
   guardianPubkeys: [],
@@ -299,14 +299,38 @@ async function getVault() {
   }
 }
 
+function isValidRelayUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  const s = url.trim();
+  if (!s.startsWith("wss://")) return false;
+  try {
+    // eslint-disable-next-line no-new
+    new URL(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseRelaysCSV(csv?: string): string[] {
+  return (csv || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function defaultRelays(): string[] {
-  const env = (process as any)?.env?.NOSTR_RELAYS as string | undefined;
-  if (env)
-    return env
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  return ["wss://relay.damus.io", "wss://relay.satnam.pub", "wss://nos.lol"];
+  const envNostr = (process as any)?.env?.NOSTR_RELAYS as string | undefined;
+  const envVite = (process as any)?.env?.VITE_NOSTR_RELAYS as
+    | string
+    | undefined;
+  const raw = envNostr && envNostr.length ? envNostr : envVite;
+  const list = parseRelaysCSV(raw).filter(isValidRelayUrl);
+  if (list.length) return list;
+  console.warn(
+    "[CEPS] NOSTR_RELAYS/VITE_NOSTR_RELAYS not set or contained no valid wss:// URLs; falling back to defaults"
+  );
+  return ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"];
 }
 
 export type GiftWrapPreference = {
@@ -339,6 +363,8 @@ export class CentralEventPublishingService {
     this.pool = new SimplePool();
     this.relays = defaultRelays();
     this.config = DEFAULT_UNIFIED_CONFIG;
+    // Keep config.relays in sync with resolved relays for consistency
+    this.config.relays = this.relays.slice();
   }
 
   setRelays(relays: string[]) {

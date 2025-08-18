@@ -226,6 +226,8 @@ export default defineConfig({
       VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
       VITE_API_BASE_URL: getEnvVar('VITE_API_BASE_URL') || '/.netlify/functions',
       VITE_API_URL: getEnvVar('VITE_API_URL') || '',
+      VITE_NOSTR_RELAYS: getEnvVar('VITE_NOSTR_RELAYS') || '',
+      NOSTR_RELAYS: getEnvVar('NOSTR_RELAYS') || '',
     }),
     'globalThis.__APP_ENV__': JSON.stringify({
       NODE_ENV: getEnvVar('NODE_ENV') || 'production',
