@@ -10,7 +10,7 @@
  * @compliance Netlify Functions - Server-side only, never exposed to client
  */
 
-import * as crypto from 'crypto';
+const crypto = require('crypto');
 
 /**
  * Get server secret for DUID indexing
@@ -217,8 +217,14 @@ try {
   // avoid noisy logs in production; caller logs details
 }
 
-export {
-    auditDUIDOperation, batchGenerateDUIDIndexes, generateDUIDIndex, generateDUIDIndexFromNpub, initializeDUIDSecurity, validateDUIDIndex, verifyDUIDIndex
+module.exports = {
+  generateDUIDIndex,
+  validateDUIDIndex,
+  generateDUIDIndexFromNpub,
+  batchGenerateDUIDIndexes,
+  verifyDUIDIndex,
+  auditDUIDOperation,
+  initializeDUIDSecurity,
 };
 
 

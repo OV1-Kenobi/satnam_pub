@@ -141,9 +141,13 @@ export class HybridAuth {
       // Generate DUID index for secure database lookup (Phase 2)
       let modDuid: any;
       try {
-        modDuid = await import("./security/duid-index-generator.js");
+        modDuid = await import("./security/duid-index-generator.mjs");
       } catch (e) {
-        modDuid = await import("./security/duid-index-generator");
+        try {
+          modDuid = await import("./security/duid-index-generator.js");
+        } catch {
+          modDuid = await import("./security/duid-index-generator");
+        }
       }
       const { generateDUIDIndexFromNpub } = modDuid;
       const duid_index = generateDUIDIndexFromNpub(npub);

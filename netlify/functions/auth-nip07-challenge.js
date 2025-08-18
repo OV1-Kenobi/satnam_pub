@@ -46,12 +46,17 @@ export const handler = async (event) => {
       return withCors({ statusCode: 405, body: JSON.stringify({ success:false, error: 'Method not allowed' }) }, cors);
     }
 
+    const traceToken = Math.random().toString(36).slice(2);
     console.log(`▶️  ${name}: started`, {
       startedAt,
       method: event.httpMethod,
       hasQuery: !!event.queryStringParameters,
+      origin: event.headers?.origin || event.headers?.Origin,
+      referer: event.headers?.referer || event.headers?.referrer,
+      userAgent: event.headers?.['user-agent'] || event.headers?.['User-Agent'],
       nodeEnv: process.env.NODE_ENV,
       memMB: (process.memoryUsage?.().heapUsed || 0) / (1024 * 1024),
+      traceToken,
     });
 
     // Dynamic imports for memory optimization
@@ -101,10 +106,11 @@ export const handler = async (event) => {
 
     return withCors({
       statusCode: 200,
+      headers: { 'X-Trace-Token': traceToken },
       body: JSON.stringify({
         success: true,
         data: { challenge, domain, timestamp, expiresAt, nonce },
-        meta: { timestamp: new Date().toISOString(), protocol: 'NIP-07', privacyCompliant: true },
+        meta: { timestamp: new Date().toISOString(), protocol: 'NIP-07', privacyCompliant: true, traceToken },
       }),
     }, cors);
   } catch (err) {
@@ -120,6 +126,7 @@ export const handler = async (event) => {
 
     return withCors({
       statusCode: 500,
+      headers: { 'X-Trace-Token': Math.random().toString(36).slice(2) },
       body: JSON.stringify({ success:false, error:'Failed to generate NIP-07 challenge' })
     }, cors);
   }

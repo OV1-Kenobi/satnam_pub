@@ -662,18 +662,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       const signedEvent = finalizeEvent(unsignedEvent as any, privkeyBytes) as any;
 
-      // Optional: publish to a default set of relays via our browser Nostr client (no window.nostr)
+      // Centralized publishing via central_event_publishing_service (no NIP-07)
       try {
-        const mod = await import('../lib/nostr-browser');
-        const { SimplePool } = mod as any;
-        const pool = new SimplePool();
-        const defaultRelays = [
-          'wss://relay.damus.io',
-          'wss://nos.lol',
-          'wss://relay.nostr.band',
-          'wss://nostr.wine',
-        ];
-        await pool.publish(defaultRelays, signedEvent);
+        const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+        await central_event_publishing_service.publishProfile(ephemeralNsec, profileMetadata);
       } catch (pubErr) {
         console.warn('Profile event signed but publish failed or skipped:', pubErr instanceof Error ? pubErr.message : pubErr);
       }

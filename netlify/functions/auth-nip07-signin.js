@@ -52,13 +52,18 @@ export const handler = async (event, context) => {
       }, cors);
     }
 
+    const traceToken = Math.random().toString(36).slice(2);
     console.log(`▶️  ${name}: started`, {
       startedAt,
       method: event.httpMethod,
       hasBody: !!event.body,
       bodyLength: event.body?.length || 0,
+      origin: event.headers?.origin || event.headers?.Origin,
+      referer: event.headers?.referer || event.headers?.referrer,
+      userAgent: event.headers?.['user-agent'] || event.headers?.['User-Agent'],
       nodeEnv: process.env.NODE_ENV,
       memMB: (process.memoryUsage?.().heapUsed || 0) / (1024 * 1024),
+      traceToken,
     });
 
     // Dynamically import the implementation to reduce cold start/memory
@@ -81,9 +86,11 @@ export const handler = async (event, context) => {
       durationMs: Date.now() - Date.parse(startedAt),
       statusCode: result?.statusCode,
       memMB: (process.memoryUsage?.().heapUsed || 0) / (1024 * 1024),
+      traceToken,
     });
 
-    return withCors(result || { statusCode: 500, body: JSON.stringify({ success: false, error: 'Empty response' }) }, cors);
+    const resp = result || { statusCode: 500, headers: {}, body: JSON.stringify({ success: false, error: 'Empty response' }) };
+    return withCors({ ...resp, headers: { ...(resp.headers || {}), 'X-Trace-Token': traceToken } }, cors);
   } catch (err) {
     const finishedAt = new Date().toISOString();
     console.error(`❌ ${name}: failed`, {

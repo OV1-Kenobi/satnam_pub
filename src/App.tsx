@@ -23,6 +23,7 @@ import IndividualPaymentAutomationModal from "./components/IndividualPaymentAuto
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
+import IdentityForgeGuard from "./components/auth/IdentityForgeGuard";
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
@@ -237,13 +238,15 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <IdentityForge
-          onComplete={() => setCurrentView("nostr-ecosystem")}
-          onBack={() => setCurrentView("landing")}
-          invitationToken={invitationToken}
-          invitationDetails={invitationDetails}
-          isInvitedUser={isInvitedUser}
-        />
+        <IdentityForgeGuard>
+          <IdentityForge
+            onComplete={() => setCurrentView("nostr-ecosystem")}
+            onBack={() => setCurrentView("landing")}
+            invitationToken={invitationToken}
+            invitationDetails={invitationDetails}
+            isInvitedUser={isInvitedUser}
+          />
+        </IdentityForgeGuard>
       </PageWrapper>
     );
   }

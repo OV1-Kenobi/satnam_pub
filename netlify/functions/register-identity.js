@@ -79,7 +79,7 @@ function encryptWithServerSecret(plaintext) {
 
 // Main handler function
 export const handler = async (event) => {
-  const { privacyHash, prefix, sanitize, safeLog, safeWarn, safeError } = await import('./utils/privacy-logger.js');
+  const { privacyHash, prefix, safeLog, safeError } = await import('./utils/privacy-logger.js');
   // Handle CORS preflight
   const corsResponse = handleCORS(event);
   if (corsResponse) return corsResponse;
@@ -173,6 +173,9 @@ export const handler = async (event) => {
     // Debug headers to correlate client vs server behavior
     "X-Register-Identity-Status": "ok",
   };
+
+  // Diagnostic phase tracker for error correlation
+  let currentPhase = 'START';
 
   // Handle preflight requests
   if (event.httpMethod === "OPTIONS") {
@@ -290,18 +293,38 @@ export const handler = async (event) => {
     }
 
     // Generate secure DUID index for database storage (Phase 2 implementation)
+    currentPhase = 'DUID_INDEX_GENERATION_START';
     safeLog('DUID_INDEX_GENERATION_START');
 
     // Import server-side DUID indexing using self-contained robust import
-    const duidMod = await robustImport(
-      './security/duid-index-generator.js',
-      ['netlify', 'functions', 'security', 'duid-index-generator.js']
-    );
-    const duidExports = duidMod && duidMod.default ? duidMod.default : duidMod;
-    const { generateDUIDIndexFromNpub, auditDUIDOperation } = duidExports;
+    let generateDUIDIndexFromNpub;
+    let auditDUIDOperation;
+    try {
+      const duidMod = await robustImport(
+        './security/duid-index-generator.mjs',
+        ['netlify', 'functions', 'security', 'duid-index-generator.mjs']
+      );
+      const duidExports = duidMod && duidMod.default ? duidMod.default : duidMod;
+      ({ generateDUIDIndexFromNpub, auditDUIDOperation } = duidExports);
+    } catch (duidImportErr) {
+      safeError('DUID_IMPORT_FAIL', {
+        msg: duidImportErr instanceof Error ? duidImportErr.message : String(duidImportErr),
+        stack: duidImportErr instanceof Error ? String(duidImportErr.stack || '').slice(0, 2000) : undefined,
+      });
+      throw new Error('DUID module import failed');
+    }
 
     // Generate DUID index from npub (server-side secret indexing)
-    const duid_index = generateDUIDIndexFromNpub(userData.npub);
+    let duid_index;
+    try {
+      duid_index = generateDUIDIndexFromNpub(userData.npub);
+    } catch (duidGenErr) {
+      safeError('DUID_GENERATION_FAIL', {
+        msg: duidGenErr instanceof Error ? duidGenErr.message : String(duidGenErr),
+        stack: duidGenErr instanceof Error ? String(duidGenErr.stack || '').slice(0, 2000) : undefined,
+      });
+      throw new Error('Failed to generate DUID index from npub');
+    }
 
     // Audit the DUID generation for security monitoring
     auditDUIDOperation('REGISTRATION_DUID_GENERATION', {
@@ -310,6 +333,7 @@ export const handler = async (event) => {
       usernameHash: privacyHash(userData.username)
     });
 
+    currentPhase = 'AFTER_DUID';
     console.log('🔐 Generated secure DUID index:', {
       indexPrefix: duid_index.substring(0, 10) + '...',
       timestamp: new Date().toISOString()
@@ -465,23 +489,25 @@ export const handler = async (event) => {
         .insert(insertPayload);
 
       if (userError) {
-        console.error('❌ CRITICAL DATABASE ERROR - Consolidated user creation failed:', {
-          message: userError.message,
+        safeError('DB_INSERT_USER_IDENTITIES_FAIL', {
+          msg: userError.message,
           details: userError.details,
           hint: userError.hint,
           code: userError.code,
-          fullError: userError
+          stack: (userError && typeof userError === 'object' && 'stack' in userError) ? String(userError.stack || '').slice(0, 2000) : undefined,
         });
 
         // Check if it's a column missing error
         if (userError.message && userError.message.includes('column')) {
-          console.error('❌ SCHEMA ERROR: Missing database column detected');
-          console.error('❌ Required columns for user_identities table:', Object.keys(insertPayload));
+          safeError('SCHEMA_MISSING_COLUMN', {
+            requiredColumns: Object.keys(insertPayload),
+          });
         }
 
         throw new Error(`User creation failed: ${userError.message}`);
       }
 
+      currentPhase = 'AFTER_DB_USER';
       console.log("✅ Consolidated user data created successfully in user_identities table");
 
     console.log('✅ Successfully stored user identity data:', {
@@ -579,6 +605,10 @@ export const handler = async (event) => {
       if (uploadError) console.warn('Artifact upload error', uploadError);
       else console.log('✅ Wrote NIP-05 artifact', { path });
     } catch (artifactErr) {
+      safeError('ARTIFACT_UPLOAD_FAIL', {
+        msg: artifactErr instanceof Error ? artifactErr.message : String(artifactErr),
+        stack: artifactErr instanceof Error ? String(artifactErr.stack || '').slice(0, 2000) : undefined,
+      });
       console.warn('nostr-json artifact write failed (non-blocking):', artifactErr);
     }
 
@@ -617,7 +647,13 @@ export const handler = async (event) => {
         };
       }
 
-      console.error('Failed to create NIP-05 record:', nip05Error);
+      safeError('DB_INSERT_NIP05_FAIL', {
+        msg: nip05Error.message,
+        details: nip05Error.details,
+        hint: nip05Error.hint,
+        code: nip05Error.code,
+        stack: (nip05Error && typeof nip05Error === 'object' && 'stack' in nip05Error) ? String(nip05Error.stack || '').slice(0, 2000) : undefined,
+      });
 
       // Cleanup: Remove user identity record if NIP-05 creation failed
       try {
@@ -633,6 +669,7 @@ export const handler = async (event) => {
     }
 
     // 5. Verify privacy compliance before response
+    currentPhase = 'BEFORE_RESPONSE';
     console.log('🔍 Verifying privacy compliance...');
     if (!hashedUserData.user_salt || !hashedUserData.hashed_npub || !hashedUserData.hashed_encrypted_nsec) {
       console.error('❌ PRIVACY VIOLATION: Critical data not properly hashed');
@@ -687,11 +724,21 @@ export const handler = async (event) => {
     };
 
     } catch (registrationError) {
+      safeError('REGISTRATION_PHASE_FAIL', {
+        msg: registrationError instanceof Error ? registrationError.message : String(registrationError),
+        stack: registrationError instanceof Error ? String(registrationError.stack || '').slice(0, 2000) : undefined,
+        phase: currentPhase,
+      });
       console.error("❌ Registration process failed:", registrationError);
       throw new Error(`Registration failed: ${registrationError.message}`);
     }
 
   } catch (error) {
+    safeError('REGISTER_IDENTITY_FAIL', {
+      msg: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? String(error.stack || '').slice(0, 2000) : undefined,
+      phase: currentPhase,
+    });
     console.error("❌ Error registering identity:", error);
 
     // Return appropriate error response
@@ -700,12 +747,13 @@ export const handler = async (event) => {
 
     return {
       statusCode,
-      headers,
+      headers: { ...headers, 'X-Trace-Phase': currentPhase },
       body: JSON.stringify({
         success: false,
         error: errorMessage,
         meta: {
           timestamp: new Date().toISOString(),
+          phase: currentPhase,
         },
       }),
     };

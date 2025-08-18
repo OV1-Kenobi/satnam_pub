@@ -1,11 +1,9 @@
 /**
  * MASTER CONTEXT COMPLIANCE: Nostr Profile Service
- * 
+ *
  * CRITICAL SECURITY: Interaction-triggered profile fetching with privacy-first caching
  * PRIVACY-FIRST: All profile data cached in user's localStorage, zero external logging
  */
-
-import { Contact } from '../types/contacts';
 
 export interface NostrProfile {
   name?: string;
@@ -25,14 +23,14 @@ interface CachedProfile {
 }
 
 export class NostrProfileService {
-  private static readonly CACHE_KEY = 'satnam_nostr_profiles';
+  private static readonly CACHE_KEY = "satnam_nostr_profiles";
   private static readonly CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
   private static readonly DEBOUNCE_DELAY = 500; // 500ms debounce
   private static readonly DEFAULT_RELAYS = [
-    'wss://relay.damus.io',
-    'wss://nos.lol',
-    'wss://relay.nostr.band',
-    'wss://nostr.wine'
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+    "wss://nostr.wine",
   ];
 
   private debounceTimers = new Map<string, NodeJS.Timeout>();
@@ -49,7 +47,9 @@ export class NostrProfileService {
   }): Promise<void> {
     try {
       const existingHistory = localStorage.getItem("satnam_profile_history");
-      const operationHistory = existingHistory ? JSON.parse(existingHistory) : [];
+      const operationHistory = existingHistory
+        ? JSON.parse(existingHistory)
+        : [];
 
       const operationRecord = {
         id: crypto.randomUUID(),
@@ -65,7 +65,10 @@ export class NostrProfileService {
         operationHistory.splice(0, operationHistory.length - 1000);
       }
 
-      localStorage.setItem("satnam_profile_history", JSON.stringify(operationHistory));
+      localStorage.setItem(
+        "satnam_profile_history",
+        JSON.stringify(operationHistory)
+      );
     } catch (error) {
       // Silent fail for privacy - no external logging
     }
@@ -80,8 +83,8 @@ export class NostrProfileService {
       if (!cached) return null;
 
       const profiles: CachedProfile[] = JSON.parse(cached);
-      const profile = profiles.find(p => p.npub === npub);
-      
+      const profile = profiles.find((p) => p.npub === npub);
+
       if (!profile) return null;
 
       // Check if cache is expired (24 hours)
@@ -106,13 +109,13 @@ export class NostrProfileService {
       const profiles: CachedProfile[] = cached ? JSON.parse(cached) : [];
 
       // Remove existing profile for this npub
-      const filteredProfiles = profiles.filter(p => p.npub !== npub);
+      const filteredProfiles = profiles.filter((p) => p.npub !== npub);
 
       // Add new profile
       filteredProfiles.push({
         profile,
         timestamp: new Date(),
-        npub
+        npub,
       });
 
       // Keep only last 100 profiles to prevent localStorage bloat
@@ -120,7 +123,10 @@ export class NostrProfileService {
         filteredProfiles.splice(0, filteredProfiles.length - 100);
       }
 
-      localStorage.setItem(NostrProfileService.CACHE_KEY, JSON.stringify(filteredProfiles));
+      localStorage.setItem(
+        NostrProfileService.CACHE_KEY,
+        JSON.stringify(filteredProfiles)
+      );
     } catch (error) {
       // Silent fail for privacy
     }
@@ -135,9 +141,12 @@ export class NostrProfileService {
       if (!cached) return;
 
       const profiles: CachedProfile[] = JSON.parse(cached);
-      const filteredProfiles = profiles.filter(p => p.npub !== npub);
-      
-      localStorage.setItem(NostrProfileService.CACHE_KEY, JSON.stringify(filteredProfiles));
+      const filteredProfiles = profiles.filter((p) => p.npub !== npub);
+
+      localStorage.setItem(
+        NostrProfileService.CACHE_KEY,
+        JSON.stringify(filteredProfiles)
+      );
     } catch (error) {
       // Silent fail for privacy
     }
@@ -176,7 +185,10 @@ export class NostrProfileService {
       if (cachedProfile) {
         await this.logProfileOperation({
           operation: "profile_cache_hit",
-          details: { npub: npub.slice(0, 16) + '...', hasPicture: !!cachedProfile.picture },
+          details: {
+            npub: npub.slice(0, 16) + "...",
+            hasPicture: !!cachedProfile.picture,
+          },
           timestamp: new Date(),
         });
         return cachedProfile;
@@ -184,12 +196,15 @@ export class NostrProfileService {
 
       // Fetch from relays if not cached
       const profile = await this.fetchFromRelays(npub);
-      
+
       if (profile) {
         this.cacheProfileImage(npub, profile);
         await this.logProfileOperation({
           operation: "profile_fetched_from_relay",
-          details: { npub: npub.slice(0, 16) + '...', hasPicture: !!profile.picture },
+          details: {
+            npub: npub.slice(0, 16) + "...",
+            hasPicture: !!profile.picture,
+          },
           timestamp: new Date(),
         });
       }
@@ -198,7 +213,10 @@ export class NostrProfileService {
     } catch (error) {
       await this.logProfileOperation({
         operation: "profile_fetch_failed",
-        details: { npub: npub.slice(0, 16) + '...', error: error instanceof Error ? error.message : 'Unknown error' },
+        details: {
+          npub: npub.slice(0, 16) + "...",
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
         timestamp: new Date(),
       });
       return null;
@@ -206,21 +224,45 @@ export class NostrProfileService {
   }
 
   /**
-   * MASTER CONTEXT COMPLIANCE: Fetch profile from Nostr relays with privacy protection
+   * PRODUCTION: Fetch profile from Nostr relays using central event publishing service
+   * Privacy-first: cache results locally and avoid extension usage
    */
   private async fetchFromRelays(npub: string): Promise<NostrProfile | null> {
-    // This is a simplified implementation
-    // In a real implementation, you would use a Nostr library like nostr-tools
-    // to connect to relays and fetch kind 0 events for the given npub
-    
     try {
-      // Mock implementation - replace with actual Nostr relay fetching
-      // const pubkey = nip19.decode(npub).data as string;
-      // const filter = { kinds: [0], authors: [pubkey], limit: 1 };
-      // const events = await pool.list(relays, [filter]);
-      
-      // For now, return null to indicate no profile found
-      // This prevents errors while the real implementation is added
+      const { central_event_publishing_service } = await import(
+        "../../lib/central_event_publishing_service"
+      );
+      // Ensure relays are initialized (service has defaults)
+      const pool: any = (central_event_publishing_service as any).pool;
+      const relays: string[] =
+        (central_event_publishing_service as any).relays || [];
+      if (!pool || !relays?.length) return null;
+
+      // Lazy import nostr-tools for decoding
+      const { nip19 } = await import("nostr-tools");
+      const pubkeyHex = nip19.decode(npub).data as string;
+
+      // List latest kind:0 event
+      const events = await pool.list(relays, [
+        { kinds: [0], authors: [pubkeyHex], limit: 1 },
+      ]);
+      if (events && events.length) {
+        const ev = events[0];
+        try {
+          const content = JSON.parse(ev.content || "{}");
+          const profile: NostrProfile = {
+            name: content.name || content.username,
+            about: content.about,
+            picture: content.picture,
+            nip05: content.nip05,
+            lud16: content.lud16,
+            banner: content.banner,
+            website: content.website,
+            displayName: content.display_name || content.displayName,
+          };
+          return profile;
+        } catch {}
+      }
       return null;
     } catch (error) {
       return null;
