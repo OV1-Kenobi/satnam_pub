@@ -14,7 +14,7 @@ import {
   User,
   X
 } from 'lucide-react';
-import { nip19 } from 'nostr-tools';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { NIP07AuthChallenge } from '../types/auth';
 
@@ -293,7 +293,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
         throw new Error('Extension access denied or timed out. Please allow access and try again.');
       }
 
-      const npub = nip19.npubEncode(publicKey);
+      const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+      const npub = central_event_publishing_service.encodeNpub(publicKey);
 
       setNip07State({
         step: 'signing',
@@ -638,7 +639,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
                   RECOMMENDED
                 </div>
                 <button
-                  onClick={handleNIP07SignIn}
+                  onClick={async () => { const { default: STM } = await import('../lib/auth/secure-token-manager'); await STM.initialize(); await handleNIP07SignIn(); }}
                   className="w-full text-left"
                 >
                   <div className="flex items-center space-x-4">

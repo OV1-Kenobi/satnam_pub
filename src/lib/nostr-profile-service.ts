@@ -233,19 +233,18 @@ export class NostrProfileService {
         "../../lib/central_event_publishing_service"
       );
       // Ensure relays are initialized (service has defaults)
-      const pool: any = (central_event_publishing_service as any).pool;
       const relays: string[] =
         (central_event_publishing_service as any).relays || [];
-      if (!pool || !relays?.length) return null;
 
-      // Lazy import nostr-tools for decoding
-      const { nip19 } = await import("nostr-tools");
-      const pubkeyHex = nip19.decode(npub).data as string;
+      // Use central service for decoding npub to hex
+      const pubkeyHex = central_event_publishing_service.decodeNpub(npub);
 
-      // List latest kind:0 event
-      const events = await pool.list(relays, [
-        { kinds: [0], authors: [pubkeyHex], limit: 1 },
-      ]);
+      // List latest kind:0 event via centralized CEPS.list (EOSE-based)
+      const events = await central_event_publishing_service.list(
+        [{ kinds: [0], authors: [pubkeyHex], limit: 1 }],
+        relays,
+        { eoseTimeout: 5000 }
+      );
       if (events && events.length) {
         const ev = events[0];
         try {

@@ -51,10 +51,17 @@ export class IdentifierProtectionService {
     try {
       // In production, this would come from a secure KMS or environment variable
       // For now, we'll generate a consistent pepper from user session
-      const response = await fetch("/api/auth/get-pepper", {
+      let response = await fetch("/api/auth/get-pepper", {
         method: "GET",
         credentials: "include",
       });
+
+      if (response.status === 404) {
+        response = await fetch("/.netlify/functions/auth-get-pepper", {
+          method: "GET",
+          credentials: "include",
+        });
+      }
 
       if (response.ok) {
         const { pepper } = await response.json();
@@ -429,11 +436,6 @@ export class SecureTokenManager {
       return false;
     }
   }
-}
-
-// Auto-initialize when module loads
-if (typeof window !== "undefined") {
-  SecureTokenManager.initialize().catch(console.error);
 }
 
 export default SecureTokenManager;

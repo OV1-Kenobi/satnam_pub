@@ -442,20 +442,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         keyType = 'private';
 
         try {
-          const { nip19 } = await import('nostr-tools');
+          const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
+          // Validate and decode the nsec using central service helpers
+          const privateKeyBytes = CEPS.decodeNsec(cleanedKey);
           const { getPublicKey } = await import('@noble/secp256k1');
           const { bytesToHex } = await import('@noble/hashes/utils');
-
-          // Validate and decode the nsec
-          const decoded = nip19.decode(cleanedKey);
-          if (decoded.type !== 'nsec') {
-            throw new Error('Invalid nsec format');
-          }
-
-          const privateKeyBytes = decoded.data as Uint8Array;
           const publicKeyBytes = getPublicKey(privateKeyBytes);
           publicKey = bytesToHex(publicKeyBytes);
-          npub = nip19.npubEncode(publicKey);
+          npub = CEPS.encodeNpub(publicKey);
 
           // Store ephemeral nsec for full access (zero-knowledge compliance)
           setEphemeralNsecProtected(cleanedKey);
@@ -470,15 +464,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         keyType = 'public';
 
         try {
-          const { nip19 } = await import('nostr-tools');
-
-          // Validate and decode the npub
-          const decoded = nip19.decode(cleanedKey);
-          if (decoded.type !== 'npub') {
-            throw new Error('Invalid npub format');
-          }
-
-          publicKey = decoded.data as string;
+          // Validate and decode the npub via central service
+          const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
+          const pubHex = CEPS.decodeNpub(cleanedKey);
+          publicKey = pubHex;
           npub = cleanedKey;
           isViewOnly = true;
 
@@ -529,8 +518,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const detectNostrProfile = async (publicKey: string) => {
     try {
       // Convert hex public key to npub format for profile service
-      const { nip19 } = await import('nostr-tools');
-      const npub = nip19.npubEncode(publicKey);
+      const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+      const npub = central_event_publishing_service.encodeNpub(publicKey);
 
       // Use existing NostrProfileService to fetch profile with timeout
       const profileService = new NostrProfileService();
@@ -643,25 +632,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       };
 
       // Sign a real kind:0 profile event locally using ephemeral nsec (no NIP-07)
-      const { nip19, finalizeEvent, getPublicKey } = await import('nostr-tools');
-      // Decode bech32 nsec to raw private key bytes
-      const decoded = nip19.decode(ephemeralNsec);
-      if (decoded.type !== 'nsec' || !(decoded.data instanceof Uint8Array)) {
-        throw new Error('Invalid nsec format');
-      }
-      const privkeyBytes = decoded.data as Uint8Array;
-      const pubkeyHex = getPublicKey(privkeyBytes);
-
-      const unsignedEvent = {
-        kind: 0,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [] as string[][],
-        content: JSON.stringify(profileMetadata),
-        pubkey: pubkeyHex,
-      } as const;
-
-      const signedEvent = finalizeEvent(unsignedEvent as any, privkeyBytes) as any;
-
+      const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+      // Prepare profile content and publish centrally (no local finalizeEvent here)
       // Centralized publishing via central_event_publishing_service (no NIP-07)
       try {
         const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');

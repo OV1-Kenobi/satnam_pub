@@ -17,7 +17,7 @@
 import { FederationRole } from "../types/auth.js";
 import { PrivacyUtils } from "./privacy/encryption.js";
 // Import crypto modules for signature verification
-import { nip19 } from "nostr-tools";
+
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
@@ -301,11 +301,11 @@ class SelfSovereignRecovery {
       // Decode user npub to get public key hex with enhanced error handling
       let userPubkeyHex: string;
       try {
-        const decoded = nip19.decode(userNpub);
-        if (decoded.type !== "npub") {
-          console.error("User npub decode failed - wrong type:", decoded.type);
-          return false;
-        }
+        const { central_event_publishing_service } = await import(
+          "../../lib/central_event_publishing_service"
+        );
+        const pubHex = central_event_publishing_service.decodeNpub(userNpub);
+        const decoded = { type: "npub", data: pubHex } as const;
         userPubkeyHex = decoded.data as string;
 
         // Validate decoded public key format
@@ -1387,7 +1387,12 @@ export class EmergencyRecoverySystem {
       // Decode guardian npub to get public key hex with enhanced error handling
       let guardianPubkeyHex: string;
       try {
-        const decoded = nip19.decode(guardianNpub);
+        const { central_event_publishing_service } = await import(
+          "../../lib/central_event_publishing_service"
+        );
+        const pubHex =
+          central_event_publishing_service.decodeNpub(guardianNpub);
+        const decoded = { type: "npub", data: pubHex } as const;
         if (decoded.type !== "npub") {
           console.error(
             "Guardian npub decode failed - wrong type:",

@@ -316,8 +316,10 @@ export class UserIdentitiesAuth {
       // Convert hex pubkey to npub format if needed
       let npub = credentials.pubkey;
       if (!npub.startsWith("npub1")) {
-        const { nip19 } = await import("nostr-tools");
-        npub = nip19.npubEncode(credentials.pubkey);
+        const { central_event_publishing_service } = await import(
+          "../../../lib/central_event_publishing_service"
+        );
+        npub = central_event_publishing_service.encodeNpub(credentials.pubkey);
       }
 
       // Generate DUID using npub only (stable across auth methods)
@@ -405,10 +407,9 @@ export class UserIdentitiesAuth {
         "../../../lib/security/duid-generator"
       );
 
-      // Generate DUID from NIP-05 + password for direct database lookup
+      // Generate DUID from NIP-05 (password is not part of DUID derivation)
       const deterministicUserId = await generateDUIDFromNIP05(
-        credentials.nip05.trim().toLowerCase(),
-        credentials.password
+        credentials.nip05.trim().toLowerCase()
       );
 
       if (!deterministicUserId) {

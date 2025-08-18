@@ -1,19 +1,29 @@
-import { authConfig, config } from "../config";
-import {
-  finalizeEvent,
-  generateSecretKey as generatePrivateKey,
-  getPublicKey,
-  nip19,
-  SimplePool,
-  verifyEvent,
-} from "../src/lib/nostr-browser";
-import { NostrEvent } from "../types/user";
+import type { Event as NostrEvent } from "nostr-tools"; // Type-only ok; runtime imports centralized via CEPS
+import { config } from "../config";
+import { central_event_publishing_service as CEPS } from "./central_event_publishing_service";
 
 /**
  * Nostr relay connection pool
  * Manages connections to multiple relays for redundancy
  */
-const pool = new SimplePool();
+const pool = {
+  publish: async (_relays?: string[], _event?: NostrEvent) => {
+    if (_relays && _relays.length && _event) {
+      await CEPS.publishEvent(_event as any, _relays);
+    }
+  },
+  list: async (relays?: string[], filters?: any[]) => {
+    const listRelays =
+      Array.isArray(relays) && relays.length ? relays : undefined;
+    const listFilters = Array.isArray(filters) && filters.length ? filters : [];
+    return CEPS.list(listFilters as any[], listRelays);
+  },
+  subscribeMany: (
+    relayUrls: string[],
+    filters: any[],
+    handlers: { onevent?: (e: NostrEvent) => void; oneose?: () => void }
+  ) => CEPS.subscribeMany(relayUrls, filters, handlers),
+}; // CEPS manages pool internally
 
 /**
  * Configure relay connections from application settings
@@ -56,7 +66,7 @@ const getKeys = () => {
  * @returns Bech32-encoded npub
  */
 const encodePublicKey = (publicKey: string): string => {
-  return nip19.npubEncode(publicKey);
+  return CEPS.encodeNpub(publicKey);
 };
 
 /**
@@ -65,7 +75,10 @@ const encodePublicKey = (publicKey: string): string => {
  * @returns Bech32-encoded nsec
  */
 const encodePrivateKey = (privateKey: string): string => {
-  return nip19.nsecEncode(privateKey);
+  const bytes = new Uint8Array(
+    (privateKey.match(/.{1,2}/g) || []).map((b) => parseInt(b, 16))
+  );
+  return CEPS.encodeNsec(bytes);
 };
 
 /**
@@ -111,14 +124,14 @@ const createAuthChallengeEvent = (pubkey: string): NostrEvent => {
   const now = Math.floor(Date.now() / 1000);
 
   // Create a challenge with a timestamp to prevent replay attacks
-  const challenge = `${authConfig.nostrAuthChallenge}:${now}`;
+  const challenge = `${config.nostr.nostrAuthChallenge}:${now}`;
 
   // Create the event without signature (client will sign)
   const event: NostrEvent = {
     id: "", // Will be set by client
     pubkey,
     created_at: now,
-    kind: authConfig.nostrAuthKind,
+    kind: config.nostr.nostrAuthKind,
     tags: [
       ["challenge", challenge],
       ["domain", new URL(config.api.baseUrl).hostname],
@@ -146,15 +159,12 @@ const createAuthChallengeEvent = (pubkey: string): NostrEvent => {
  */
 const verifyAuthEvent = (event: NostrEvent): boolean => {
   // Verify signature
-  if (!(verifyEvent as any)(event)) {
+  if (!CEPS.verifyEvent(event as any)) {
     return false;
   }
 
-  // Event hash verification would be done by verifyEvent
-  // getEventHash is not available in this context
-
   // Verify event kind
-  if (event.kind !== authConfig.nostrAuthKind) {
+  if (event.kind !== config.nostr.nostrAuthKind) {
     return false;
   }
 
@@ -236,18 +246,15 @@ const createSignedEvent = (
  */
 const publishEvent = async (
   event: NostrEvent,
-  relayUrls = relays
+  relayUrls: string[] = relays
 ): Promise<void> => {
   // Publish to each relay individually
-  const publishPromises = relayUrls.map((relayUrl) =>
+  const publishPromises = relayUrls.map((relayUrl: string) =>
     pool.publish([relayUrl], event)
   );
 
   // Wait for all publish attempts to complete
-  const results = await Promise.allSettled(publishPromises);
-
-  // Count failed publishes
-  const failures = results.filter((r) => r.status === "rejected");
+  await Promise.allSettled(publishPromises);
 
   // Publication continues even with some relay failures
 };
@@ -268,7 +275,7 @@ const subscribeToEvents = (
   filters: any[],
   onEvent: (event: NostrEvent) => void,
   onEose?: () => void,
-  relayUrls = relays
+  relayUrls: string[] = relays
 ) => {
   const sub = pool.subscribeMany(relayUrls, filters, {
     onevent: onEvent,

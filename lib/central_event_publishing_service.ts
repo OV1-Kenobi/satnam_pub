@@ -10,6 +10,7 @@ import {
   nip19,
   nip59,
   SimplePool,
+  verifyEvent,
   type Event,
 } from "nostr-tools";
 
@@ -1090,16 +1091,107 @@ export class CentralEventPublishingService {
     return (ev as any).id as string;
   }
 
+  // Expose common helpers so other modules do not import nostr-tools directly
+  signEvent(unsignedEvent: any, privateKeyHex: string): Event {
+    return finalizeEvent(unsignedEvent as any, privateKeyHex) as Event;
+  }
+  getPublicKeyHex(privateKeyHex: string): string {
+    return getPublicKey(privateKeyHex);
+  }
+  verifyEvent(ev: Event): boolean {
+    try {
+      return (verifyEvent as any)(ev);
+    } catch {
+      return false;
+    }
+  }
+  subscribeMany(
+    relays: string[],
+    filters: any[],
+    handlers: { onevent?: (e: Event) => void; oneose?: () => void }
+  ): any {
+    const list = relays && relays.length ? relays : this.relays;
+    return (this.pool as any).subscribeMany(list, filters, {
+      onevent: handlers.onevent,
+      oneose: handlers.oneose,
+    });
+  }
+
+  async list(
+    filters: any[],
+    relays?: string[],
+    opts?: { eoseTimeout?: number }
+  ): Promise<Event[]> {
+    const list = relays && relays.length ? relays : this.relays;
+    const timeout = opts?.eoseTimeout ?? 5000;
+    const events: Event[] = [];
+
+    try {
+      return await new Promise<Event[]>((resolve) => {
+        let settled = false;
+        const sub = (this.pool as any).subscribeMany(list, filters, {
+          onevent: (e: Event) => {
+            try {
+              events.push(e);
+            } catch {}
+          },
+          oneose: () => {
+            if (settled) return;
+            settled = true;
+            try {
+              sub.close();
+            } catch {}
+            try {
+              (this.pool as any).close(list);
+            } catch {}
+            resolve(events);
+          },
+        });
+
+        setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try {
+            sub.close();
+          } catch {}
+          try {
+            (this.pool as any).close(list);
+          } catch {}
+          resolve(events);
+        }, timeout);
+      });
+    } catch {
+      return [] as Event[];
+    }
+  }
+
   // ---- Keys / conversions ----
-  private npubToHex(npub: string): string {
+  npubToHex(npub: string): string {
     const dec = nip19.decode(npub);
     if (dec.type !== "npub") throw new Error("Invalid npub");
     return typeof dec.data === "string"
       ? dec.data
       : bytesToHex(dec.data as Uint8Array);
   }
-  private nsecToBytes(nsec: string): Uint8Array {
+  nsecToBytes(nsec: string): Uint8Array {
     return hexToBytes(nsec);
+  }
+  decodeNpub(npub: string): string {
+    return this.npubToHex(npub);
+  }
+  encodeNpub(pubkeyHex: string): string {
+    return nip19.npubEncode(pubkeyHex);
+  }
+  encodeNsec(privBytes: Uint8Array): string {
+    // Ensure type compatibility by converting bytes to hex for nsecEncode
+    return nip19.nsecEncode(bytesToHex(privBytes));
+  }
+  decodeNsec(nsec: string): Uint8Array {
+    const dec = nip19.decode(nsec);
+    if (dec.type !== "nsec" || !(dec.data instanceof Uint8Array)) {
+      throw new Error("Invalid nsec format");
+    }
+    return dec.data as Uint8Array;
   }
 
   private async serverKeys(): Promise<{ nsec: string; nip05?: string }> {
