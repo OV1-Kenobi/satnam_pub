@@ -300,10 +300,7 @@ export const handler = async (event) => {
     let generateDUIDIndexFromNpub;
     let auditDUIDOperation;
     try {
-      const duidMod = await robustImport(
-        './security/duid-index-generator.js',
-        ['netlify', 'functions', 'security', 'duid-index-generator.js']
-      );
+      const duidMod = await import('./security/duid-index-generator.mjs');
       const duidExports = duidMod && duidMod.default ? duidMod.default : duidMod;
       ({ generateDUIDIndexFromNpub, auditDUIDOperation } = duidExports);
     } catch (duidImportErr) {

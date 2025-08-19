@@ -305,6 +305,7 @@
 
   # Ensure server-only DUID index generator is included without lifting directory excludes
   included_files = [
+    "netlify/functions/security/duid-index-generator.mjs",
     "netlify/functions/security/duid-index-generator.js"
   ]
 
@@ -313,7 +314,7 @@
   memory_size = 256
   timeout = 20
   included_files = [
-    "netlify/functions/security/duid-index-generator.js"
+    "netlify/functions/security/duid-index-generator.mjs"
   ]
 
 [functions."nostr"]

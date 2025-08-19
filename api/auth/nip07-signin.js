@@ -496,7 +496,7 @@ export default async function handler(event, context) {
 
     // Load and validate persisted challenge
     const { supabase } = await import("../../netlify/functions/supabase.js");
-    const { generateDUIDIndexFromNpub } = await import("../../netlify/functions/security/duid-index-generator.js");
+    const { generateDUIDIndexFromNpub } = await import("../../netlify/functions/security/duid-index-generator.mjs");
     const { SecureSessionManager } = await import("../../netlify/functions/security/session-manager.js");
 
     const sessionId = parsedBody.sessionId;
