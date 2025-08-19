@@ -1113,7 +1113,35 @@ export class CentralEventPublishingService {
 
   async publishEvent(ev: Event, relays?: string[]): Promise<string> {
     const list = relays && relays.length ? relays : this.relays;
-    await this.pool.publish(list, ev);
+
+    // Publish to each relay individually to tolerate partial failures (e.g., PoW required, duplicate)
+    const results: Array<{ relay: string; ok: boolean; error?: string }> = [];
+    for (const r of list) {
+      try {
+        await this.pool.publish([r], ev);
+        results.push({ relay: r, ok: true });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Treat "duplicate" acknowledgements as non-fatal success
+        if (/duplicate/i.test(msg)) {
+          results.push({ relay: r, ok: true });
+        } else {
+          console.warn(`[CEPS] Publish to ${r} failed: ${msg}`);
+          results.push({ relay: r, ok: false, error: msg });
+        }
+      }
+    }
+
+    if (!results.some((r) => r.ok)) {
+      console.warn(
+        "[CEPS] Publish failed on all relays; proceeding without hard failure",
+        {
+          errors: results,
+        }
+      );
+    }
+
+    // Always return event id to avoid bubbling uncaught promise rejections to UI
     return (ev as any).id as string;
   }
 
