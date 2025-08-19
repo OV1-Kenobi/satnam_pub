@@ -148,10 +148,10 @@ export default async function handler(req, res) {
 
     // Verify refresh token
     const jwtSecret = process.env.JWT_SECRET;
-    const globalSalt = process.env.GLOBAL_SALT;
+    const duidServerSecret = process.env.DUID_SERVER_SECRET;
 
-    if (!jwtSecret || !globalSalt) {
-      console.error('Missing JWT_SECRET or GLOBAL_SALT environment variables');
+    if (!jwtSecret || !duidServerSecret) {
+      console.error('Missing JWT_SECRET or DUID_SERVER_SECRET environment variables');
       return res.status(500).json({
         success: false,
         error: 'Server configuration error',
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
     // Generate protected identifier for new tokens
     const protectedId = await generateProtectedId(
       refreshPayload.userId,
-      globalSalt,
+      duidServerSecret,
       newSessionId
     );
 

@@ -94,81 +94,89 @@ function setSecureCookie(res, name, value, maxAge) {
 }
 
 /**
- * Authenticate user with NIP-05 and password
+ * Authenticate user with NIP-05 and password (DUID-based, greenfield)
  */
 async function authenticateUser(nip05, password) {
   try {
-    // Hash the NIP-05 for lookup (consistent with database storage)
-    const globalSalt = process.env.GLOBAL_SALT;
-    if (!globalSalt) {
-      throw new Error('Missing global salt configuration');
+    const duidServerSecret = process.env.DUID_SERVER_SECRET;
+    if (!duidServerSecret) {
+      throw new Error('Missing DUID_SERVER_SECRET configuration');
     }
 
-    const hashedNip05 = crypto
-      .createHash('sha256')
-      .update(nip05 + globalSalt)
-      .digest('hex');
+    // Resolve NIP-05 to npub
+    const { resolveNIP05ToNpub } = await import('../../lib/security/duid-generator.js');
+    const npub = await resolveNIP05ToNpub(nip05.trim().toLowerCase());
+    if (!npub) {
+      // Constant-time dummy hash to equalize timing
+      await hashPassword('dummy', 'dummy');
+      return { success: false, error: 'Invalid credentials' };
+    }
 
-    // Query user_identities table with hashed NIP-05
-    const { data: users, error } = await supabase
+    // Compute secure DUID index from npub using server secret
+    let duid_index;
+    try {
+      const mod = await import('../../netlify/functions/security/duid-index-generator.mjs');
+      const { generateDUIDIndexFromNpub } = mod;
+      duid_index = generateDUIDIndexFromNpub(npub);
+    } catch (e) {
+      console.error('DUID index generation failed:', e);
+      return { success: false, error: 'Server configuration error' };
+    }
+
+    // Query user by DUID index (primary key)
+    const { data: user, error } = await supabase
       .from('user_identities')
       .select('*')
-      .eq('hashed_nip05', hashedNip05)
+      .eq('id', duid_index)
       .eq('is_active', true)
       .single();
 
-    if (error || !users) {
-      // Use constant-time comparison to prevent timing attacks
-      await hashPassword('dummy', 'dummy'); // Prevent timing analysis
+    if (error || !user) {
+      // Constant-time dummy hash to equalize timing
+      await hashPassword('dummy', 'dummy');
       return { success: false, error: 'Invalid credentials' };
     }
 
     // Verify password
-    const hashedPassword = await hashPassword(password, users.password_salt);
-    if (hashedPassword !== users.password_hash) {
-      // Increment failed attempts
+    const hashedPassword = await hashPassword(password, user.password_salt);
+    if (hashedPassword !== user.password_hash) {
       await supabase
         .from('user_identities')
-        .update({ 
-          failed_attempts: users.failed_attempts + 1,
-          locked_until: users.failed_attempts >= 4 ? 
-            new Date(Date.now() + 15 * 60 * 1000).toISOString() : null // 15 min lockout
+        .update({
+          failed_attempts: user.failed_attempts + 1,
+          locked_until: user.failed_attempts >= 4 ?
+            new Date(Date.now() + 15 * 60 * 1000).toISOString() : null
         })
-        .eq('id', users.id);
-        
+        .eq('id', user.id);
       return { success: false, error: 'Invalid credentials' };
     }
 
     // Check if account is locked
-    if (users.locked_until && new Date(users.locked_until) > new Date()) {
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
       return { success: false, error: 'Account temporarily locked' };
     }
 
     // Reset failed attempts on successful authentication
     await supabase
       .from('user_identities')
-      .update({ 
+      .update({
         failed_attempts: 0,
         locked_until: null,
         last_successful_auth: new Date().toISOString()
       })
-      .eq('id', users.id);
+      .eq('id', user.id);
 
-    // Generate protected identifier for tokens
+    // Generate protected identifier for tokens using DUID_SERVER_SECRET as pepper
     const sessionId = generateSessionId();
-    const protectedId = generateProtectedId(users.id, globalSalt, sessionId);
+    const protectedId = generateProtectedId(user.id, duidServerSecret, sessionId);
 
     // Create user object with protected identifier
     const userWithProtectedId = {
-      ...users,
+      ...user,
       hashedId: protectedId,
     };
 
-    return { 
-      success: true, 
-      user: userWithProtectedId,
-      sessionId
-    };
+    return { success: true, user: userWithProtectedId, sessionId };
 
   } catch (error) {
     console.error('Authentication error:', error);

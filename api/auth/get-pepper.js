@@ -12,12 +12,10 @@ const crypto = require('crypto');
  * In production, this would come from AWS KMS, HashiCorp Vault, etc.
  */
 function getSecurePepper() {
-  const pepper = process.env.GLOBAL_SALT || process.env.DUID_SERVER_SECRET;
-  
+  const pepper = process.env.DUID_SERVER_SECRET;
   if (!pepper) {
     throw new Error('No secure pepper configured in environment');
   }
-  
   return pepper;
 }
 
