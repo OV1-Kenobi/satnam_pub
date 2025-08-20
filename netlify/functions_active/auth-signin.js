@@ -102,10 +102,47 @@ async function authenticateUser(nip05, password) {
   }
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-  // Resolve NIP-05 to npub
+  // Resolve NIP-05 to npub. Add fallback for satnam.pub using hashed DB lookup
   const { resolveNIP05ToNpub } = await import('../../lib/security/duid-generator.js');
-  const npub = await resolveNIP05ToNpub(nip05.trim().toLowerCase());
+  let npub = await resolveNIP05ToNpub(nip05.trim().toLowerCase());
+
   if (!npub) {
+    // Fallback only for satnam.pub domain using server-side hashed lookup
+    try {
+      const [local, domain] = String(nip05).toLowerCase().split('@');
+      if (domain === 'satnam.pub' && local) {
+        // Compute hashed_nip05 using server secret (same as registration path)
+        const { default: nodeCrypto } = await import('node:crypto');
+        const secret = process.env.DUID_SERVER_SECRET || process.env.VITE_DUID_SERVER_SECRET;
+        if (secret) {
+          const h1 = nodeCrypto.createHmac('sha256', secret).update(`${local}@${domain}`).digest('hex');
+          const { data: rec, error: recErr } = await supabase
+            .from('nip05_records')
+            .select('hashed_npub')
+            .eq('domain', 'satnam.pub')
+            .eq('hashed_nip05', h1)
+            .eq('is_active', true)
+            .single();
+          if (!recErr && rec?.hashed_npub) {
+            // hashed_npub uses secret-based HMAC; cannot reverse to npub.
+            // However, we can derive duid_index directly from hashed_npub namespace.
+            // Instead, lookup user_identities by matching hashed_npub.
+            const { data: userByHashed, error: userErr } = await supabase
+              .from('user_identities')
+              .select('*')
+              .eq('hashed_npub', rec.hashed_npub)
+              .eq('is_active', true)
+              .single();
+            if (!userErr && userByHashed?.id) {
+              // We don't need raw npub anymore; continue with found user
+              return { success: true, user: userByHashed, sessionId: generateSessionId() };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // If fallback not successful, maintain constant-time behavior and fail
     await hashPassword('dummy', 'dummy');
     return { success: false, error: 'Invalid credentials' };
   }
@@ -193,7 +230,7 @@ export const handler = async (event) => {
 
     let jwtSecret;
     try {
-      const { getJwtSecret } = await import('./utils/jwt-secret.js');
+      const { getJwtSecret } = await import('../functions/utils/jwt-secret.js');
       jwtSecret = getJwtSecret();
     } catch (e) {
       console.error('JWT secret derivation failed:', e);

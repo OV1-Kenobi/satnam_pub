@@ -52,12 +52,8 @@ export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
     [key: string]: any;
   }) => {
     try {
-      // Authenticate the newly registered user using zero-knowledge auth system
-      // The unified auth system will handle DUID generation and secure hashing internally
-      const authSuccess = await identityForge.authenticateAfterRegistration(
-        userData.nip05,
-        userData.password
-      );
+      // Post-registration auth already handled by registration flow using returned token
+      const authSuccess = auth.authenticated;
 
       if (authSuccess) {
         identityForge.completeRegistration();

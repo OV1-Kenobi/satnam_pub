@@ -89,7 +89,7 @@ async function pbkdf2Base64(password: string, salt: string): Promise<string> {
     keyMaterial,
     64 * 8
   );
-  return btoa(String.fromCharCode(...new Uint8Array(derived)));
+  return Buffer.from(new Uint8Array(derived)).toString("base64");
 }
 
 // Stub Supabase client used by user-identities-auth
@@ -126,8 +126,9 @@ vi.mock("../../supabase", () => {
 // Minimal deterministic base64 JWT-like token (no signature verification in client)
 function makeFakeAccessToken(payload: Record<string, any>) {
   const header = { alg: "HS256", typ: "JWT" };
-  const b64 = (obj: any) => btoa(JSON.stringify(obj));
-  return `${b64(header)}.${b64(payload)}.sig`;
+  const b64url = (obj: any) =>
+    Buffer.from(JSON.stringify(obj)).toString("base64url");
+  return `${b64url(header)}.${b64url(payload)}.sig`;
 }
 
 describe("Client auth facade - NIP-05/password", () => {

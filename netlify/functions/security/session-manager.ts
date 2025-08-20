@@ -42,7 +42,7 @@ export class SecureSessionManager {
   private static async getJWTSecret(): Promise<string> {
     try {
       const mod = await import("../utils/jwt-secret.js");
-      return mod.getJwtSecret();
+      return await mod.getJwtSecret();
     } catch (error) {
       if (getEnvVar("NODE_ENV") === "production") {
         throw new Error(

@@ -981,37 +981,56 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       setRegistrationResult(result);
 
-      // Immediately authenticate the new user to persist session
+      // Immediately authenticate the new user to persist session using registration token
       try {
         const nip05Identifier = `${formData.username}@satnam.pub`;
-        const authSuccess = await identityForge.authenticateAfterRegistration(
-          nip05Identifier,
-          formData.password
-        );
+        const token = result?.session?.token || result?.sessionToken;
 
-        if (authSuccess) {
-          // Retrieve in-memory access token for invitation modal
-          const accessToken = SecureTokenManager.getAccessToken();
-
-          const newSessionInfo: SessionInfo = {
-            isAuthenticated: true,
-            sessionToken: accessToken || undefined,
-            user: {
-              npub: formData.pubkey,
-              nip05: nip05Identifier,
-              federationRole: 'adult' as const,
-              authMethod: 'otp' as const,
-              isWhitelisted: true,
-              votingPower: 1,
-              guardianApproved: false,
-            },
-          };
-
-          setSessionInfo(newSessionInfo);
-        } else {
-          console.error('Post-registration authentication failed');
-          setErrorMessage('Registration successful but automatic login failed. Please log in manually.');
+        if (!token) {
+          throw new Error('Registration did not return a session token');
         }
+
+        // Build minimal AuthResult compatible with unified auth system
+        const authResult = {
+          success: true,
+          user: {
+            id: result?.user?.id || result?.data?.user?.id || result?.data?.id || '',
+            user_salt: '',
+            password_hash: '',
+            password_salt: '',
+            failed_attempts: 0,
+            role: (result?.user?.role || result?.data?.user?.role || 'private'),
+            is_active: true,
+            hashedId: result?.user?.id || result?.data?.user?.id || result?.data?.id || '',
+            authMethod: 'otp',
+          },
+          sessionToken: token,
+        } as any;
+
+        const handle = (identityForge as any).handleAuthSuccess;
+        if (typeof handle === 'function') {
+          const ok = await handle(authResult);
+          if (!ok) throw new Error('Failed to set auth state after registration');
+        }
+
+        // Retrieve in-memory access token for invitation modal
+        const accessToken = SecureTokenManager.getAccessToken();
+
+        const newSessionInfo: SessionInfo = {
+          isAuthenticated: true,
+          sessionToken: accessToken || token,
+          user: {
+            npub: formData.pubkey,
+            nip05: nip05Identifier,
+            federationRole: 'adult' as const,
+            authMethod: 'otp' as const,
+            isWhitelisted: true,
+            votingPower: 1,
+            guardianApproved: false,
+          },
+        };
+
+        setSessionInfo(newSessionInfo);
       } catch (e) {
         console.error('Failed to authenticate after registration:', e);
         setErrorMessage('Registration successful but automatic login failed. Please log in manually.');
