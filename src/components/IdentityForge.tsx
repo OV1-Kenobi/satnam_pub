@@ -984,9 +984,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       // Immediately authenticate the new user to persist session using registration token
       try {
         const nip05Identifier = `${formData.username}@satnam.pub`;
-        const token = result?.session?.token || result?.sessionToken;
+        let sessionToken = result?.session?.token || result?.sessionToken;
+        console.log('🔐 POST-REG AUTH: Initial sessionToken from registration result', {
+          hasToken: !!sessionToken,
+          tokenPreview: sessionToken ? String(sessionToken).slice(0, 12) + '…' : null,
+          from: result?.session?.token ? 'session.token' : (result?.sessionToken ? 'sessionToken' : 'none')
+        });
 
-        if (!token) {
+        if (!sessionToken) {
           // Fallback: perform server signin to obtain access token when registration path does not return one
           try {
             const fallbackOk = await (identityForge as any).authenticateAfterRegistration?.(nip05Identifier, formData.password);
@@ -994,29 +999,37 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           } catch (e) {
             throw new Error('Registration did not return a session token and fallback signin failed');
           }
+          console.log('🔐 POST-REG AUTH: Attempting payload parse from sessionToken');
         }
 
         // Build minimal AuthResult compatible with unified auth system
+        console.log('🔐 POST-REG AUTH: Parsing payload…');
         // Ensure user.hashedId matches token payload.hashedId to pass later validation
         let payload = null as any;
-        if (token) {
+        if (sessionToken) {
           try {
-            payload = SecureTokenManager.parseTokenPayload(token);
+            payload = SecureTokenManager.parseTokenPayload(sessionToken);
+            console.log('🔐 POST-REG AUTH: Payload parse success', { payload });
           } catch (e) {
-            console.warn('Token payload parsing failed, using fallback auth flow:', e);
+            console.warn('🔐 POST-REG AUTH: Payload parse failed, using fallback auth flow:', e);
           }
         }
 
         if (!payload) {
-          console.warn('No valid token payload available, attempting fallback authentication');
+          console.warn('🔐 POST-REG AUTH: No valid payload, attempting fallback authentication');
           try {
             const fallbackOk = await (identityForge as any).authenticateAfterRegistration?.(nip05Identifier, formData.password);
+            console.log('🔐 POST-REG AUTH: Fallback authenticateAfterRegistration result', { fallbackOk });
             if (!fallbackOk) throw new Error('Fallback signin failed');
             const fallbackToken = SecureTokenManager.getAccessToken();
+            console.log('🔐 POST-REG AUTH: Fallback access token after signin', { hasToken: !!fallbackToken, tokenPreview: fallbackToken ? String(fallbackToken).slice(0, 12) + '…' : null });
             if (fallbackToken) {
               payload = SecureTokenManager.parseTokenPayload(fallbackToken);
+              console.log('🔐 POST-REG AUTH: Fallback payload parse result', { payload });
+              sessionToken = fallbackToken;
             }
           } catch (e) {
+            console.error('🔐 POST-REG AUTH: Fallback authentication failed', e);
             throw new Error('Registration succeeded but authentication failed: Invalid token payload and fallback auth failed');
           }
         }
@@ -1024,6 +1037,17 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         if (!payload) {
           throw new Error('Unable to establish valid session after registration');
         }
+
+
+
+
+        if (!payload) {
+          throw new Error('Unable to establish valid session after registration');
+        }
+        console.log('🔐 POST-REG AUTH: Building AuthResult with payload and sessionToken', {
+          payload,
+          sessionTokenPreview: sessionToken ? String(sessionToken).slice(0, 12) + '…' : null
+        });
         const authResult = {
           success: true,
           user: {
@@ -1037,21 +1061,27 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             hashedId: payload.hashedId,
             authMethod: 'otp',
           },
-          sessionToken: token,
+          sessionToken: sessionToken,
         } as any;
 
         const handle = (identityForge as any).handleAuthSuccess;
         if (typeof handle === 'function') {
+          console.log('🔐 POST-REG AUTH: Calling handleAuthSuccess with', { authResult });
           const ok = await handle(authResult);
+          console.log('🔐 POST-REG AUTH: handleAuthSuccess returned', { ok });
           if (!ok) throw new Error('Failed to set auth state after registration');
         }
 
         // Retrieve in-memory access token for invitation modal
         const accessToken = SecureTokenManager.getAccessToken();
+        console.log('🔐 POST-REG AUTH: Token storage verification after handleAuthSuccess', {
+          accessTokenPreview: accessToken ? String(accessToken).slice(0, 12) + '…' : null,
+          hasAccessToken: !!accessToken
+        });
 
         const newSessionInfo: SessionInfo = {
           isAuthenticated: true,
-          sessionToken: accessToken || token,
+          sessionToken: accessToken || sessionToken,
           user: {
             npub: formData.pubkey,
             nip05: nip05Identifier,
@@ -1062,6 +1092,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             guardianApproved: false,
           },
         };
+        console.log('🔐 POST-REG AUTH: Setting sessionInfo state', { newSessionInfo });
 
         setSessionInfo(newSessionInfo);
       } catch (e) {
@@ -1272,6 +1303,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     };
                     setSessionInfo(fallback);
                   }
+                  console.log('🔐 POST-REG AUTH: Invite Peers (primary) clicked', { hasSessionInfo: !!sessionInfo, sessionInfo });
                   setShowInvitationModal(true);
                 }}
                 className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
@@ -2444,7 +2476,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Invite Peers - Secondary */}
                     <button
-                      onClick={() => setShowInvitationModal(true)}
+                      onClick={() => {
+                        console.log('🔐 POST-REG AUTH: Invite Peers (secondary) clicked', { hasSessionInfo: !!sessionInfo, sessionInfo });
+                        setShowInvitationModal(true);
+                      }}
                       className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                     >
                       <span>🎁</span>
@@ -2573,7 +2608,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
                 {/* Invite Peers - Tertiary */}
                 <button
-                  onClick={() => setShowInvitationModal(true)}
+                  onClick={() => {
+                    console.log('🔐 POST-REG AUTH: Invite Peers (tertiary) clicked', { hasSessionInfo: !!sessionInfo, sessionInfo });
+                    setShowInvitationModal(true);
+                  }}
                   className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                 >
                   <span>🎁</span>
@@ -2851,23 +2889,27 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
 
       {/* PostAuth Invitation Modal */}
-      {
-        showInvitationModal && sessionInfo && (
-          <PostAuthInvitationModal
-            isOpen={showInvitationModal}
-            onClose={() => {
-              setShowInvitationModal(false);
-              onComplete();
-            }}
-            onSkip={() => {
-              setShowInvitationModal(false);
-              onComplete();
-            }}
-            sessionInfo={sessionInfo}
-          />
-        )
-      }
-    </div>
+      {(() => {
+        console.log('🔐 POST-REG AUTH: Modal render condition', { showInvitationModal, hasSessionInfo: !!sessionInfo, sessionInfo });
+        if (showInvitationModal && sessionInfo) {
+          return (
+            <PostAuthInvitationModal
+              isOpen={showInvitationModal}
+              onClose={() => {
+                setShowInvitationModal(false);
+                onComplete();
+              }}
+              onSkip={() => {
+                setShowInvitationModal(false);
+                onComplete();
+              }}
+              sessionInfo={sessionInfo}
+            />
+          );
+        }
+        return null;
+      })()}
+    </div >
   );
 };
 
