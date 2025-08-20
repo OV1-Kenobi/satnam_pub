@@ -46,7 +46,7 @@ describe("IndividualApiService", () => {
       const result = await IndividualApiService.getWalletData("test-123");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/individual/wallet?memberId=test-123",
+        "/api/individual/wallet?memberId=test-123",
         expect.objectContaining({
           headers: {
             "Content-Type": "application/json",
@@ -104,11 +104,12 @@ describe("IndividualApiService", () => {
         json: () => Promise.resolve(mockLightningData),
       });
 
-      const result =
-        await IndividualApiService.getLightningWalletData("test-123");
+      const result = await IndividualApiService.getLightningWalletData(
+        "test-123"
+      );
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/individual/lightning/wallet?memberId=test-123",
+        "/api/individual/lightning/wallet?memberId=test-123",
         expect.objectContaining({
           credentials: "include",
         })
@@ -151,7 +152,7 @@ describe("IndividualApiService", () => {
       const result = await IndividualApiService.getCashuWalletData("test-123");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/individual/cashu/wallet?memberId=test-123",
+        "/api/individual/cashu/wallet?memberId=test-123",
         expect.objectContaining({
           credentials: "include",
         })
@@ -189,7 +190,7 @@ describe("IndividualApiService", () => {
       const result = await IndividualApiService.sendLightningZap(zapRequest);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/individual/lightning/zap",
+        "/api/individual/lightning/zap",
         expect.objectContaining({
           method: "POST",
           headers: {
@@ -250,7 +251,7 @@ describe("IndividualApiService", () => {
       const result = await IndividualApiService.createBearerNote(bearerRequest);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/individual/cashu/bearer",
+        "/api/individual/cashu/bearer",
         expect.objectContaining({
           method: "POST",
           headers: {

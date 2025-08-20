@@ -37,24 +37,21 @@ export class SecureSessionManager {
   private static readonly REFRESH_EXPIRY = 7 * 24 * 60 * 60; // 7 days
 
   /**
-   * CRITICAL SECURITY: JWT secret from Vault (mandatory in production)
+   * CRITICAL SECURITY: JWT secret derived from DUID_SERVER_SECRET
    */
   private static async getJWTSecret(): Promise<string> {
     try {
-      const vaultSecret = await vault.getCredentials("jwt_secret");
-      if (vaultSecret) return vaultSecret;
+      const mod = await import("../utils/jwt-secret.js");
+      return mod.getJwtSecret();
     } catch (error) {
-      // Vault fallback to environment
+      if (getEnvVar("NODE_ENV") === "production") {
+        throw new Error(
+          "JWT secret derivation failed: DUID_SERVER_SECRET missing"
+        );
+      }
+      // Development-only fallback to prevent local crashes
+      return "dev-only-jwt-secret-change-in-production";
     }
-
-    const envSecret = getEnvVar("JWT_SECRET");
-    if (envSecret) return envSecret;
-
-    if (getEnvVar("NODE_ENV") === "production") {
-      throw new Error("JWT_SECRET must be configured in Vault for production");
-    }
-
-    return "dev-only-jwt-secret-change-in-production";
   }
 
   /**

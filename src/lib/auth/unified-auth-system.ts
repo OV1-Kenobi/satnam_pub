@@ -16,12 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionData } from "../api";
 import SecureTokenManager from "./secure-token-manager";
-import {
-  AuthCredentials,
-  AuthResult,
-  userIdentitiesAuth,
-  UserIdentity,
-} from "./user-identities-auth";
+import { AuthResult, UserIdentity } from "./user-identities-auth";
 
 // Protected areas that require authentication
 export const PROTECTED_AREAS = {
@@ -314,11 +309,24 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        const credentials: AuthCredentials = { nip05, password };
-        const result = await userIdentitiesAuth.authenticateNIP05Password(
-          credentials
-        );
+        // Call server endpoint for NIP-05/password authentication
+        const response = await fetch("/api/auth/signin", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nip05,
+            password,
+            authMethod: "nip05-password",
+          }),
+        });
 
+        if (!response.ok) {
+          setState((prev) => ({ ...prev, loading: false }));
+          return false;
+        }
+
+        const result: AuthResult = await response.json();
         return handleAuthSuccess(result);
       } catch (error) {
         setState((prev) => ({
@@ -347,13 +355,20 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        const credentials: AuthCredentials = {
-          challenge,
-          signature,
-          pubkey,
-        };
-        const result = await userIdentitiesAuth.authenticateNIP07(credentials);
+        // Call server NIP-07 signin endpoint
+        const response = await fetch("/api/auth/nip07-signin", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ challenge, signature, pubkey }),
+        });
 
+        if (!response.ok) {
+          setState((prev) => ({ ...prev, loading: false }));
+          return false;
+        }
+
+        const result: AuthResult = await response.json();
         return handleAuthSuccess(result);
       } catch (error) {
         setState((prev) => ({

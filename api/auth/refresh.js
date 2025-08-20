@@ -11,12 +11,39 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 // Token configuration matching client-side
+/** @type {{ACCESS_TOKEN_LIFETIME:number, REFRESH_TOKEN_LIFETIME:number, COOKIE_NAME:string, JWT_ALGORITHM:'HS256'}} */
 const TOKEN_CONFIG = {
   ACCESS_TOKEN_LIFETIME: 15 * 60, // 15 minutes in seconds
   REFRESH_TOKEN_LIFETIME: 7 * 24 * 60 * 60, // 7 days in seconds
   COOKIE_NAME: 'satnam_refresh_token',
   JWT_ALGORITHM: 'HS256',
 };
+
+/**
+ * @typedef {Object} HttpRequest
+ * @property {string} method
+ * @property {{[key:string]: string}} headers
+ *
+ * @typedef {Object} HttpResponse
+ * @property {(code:number)=>HttpResponse} status
+ * @property {(body:any)=>void} json
+ * @property {(name:string, value:string)=>void} setHeader
+ *
+ * @typedef {Object} BaseTokenPayload
+ * @property {string} userId
+ * @property {'access'|'refresh'} type
+ * @property {string} sessionId
+ * @property {string=} nip05
+ * @property {string=} hashedId
+ *
+ * @typedef {Object} TokenPayload
+ * @property {string} userId
+ * @property {'access'|'refresh'} type
+ * @property {string} sessionId
+ * @property {string=} nip05
+ * @property {number} iat
+ * @property {number} exp
+ */
 
 /**
  * Generate secure session ID
@@ -27,6 +54,9 @@ function generateSessionId() {
 
 /**
  * Generate JWT token with enhanced security
+ * @param {BaseTokenPayload} payload
+ * @param {string} secret
+ * @param {number} expiresIn
  */
 function generateJWTToken(payload, secret, expiresIn) {
   return jwt.sign(
@@ -38,7 +68,7 @@ function generateJWTToken(payload, secret, expiresIn) {
     secret,
     {
       expiresIn,
-      algorithm: TOKEN_CONFIG.JWT_ALGORITHM,
+      algorithm: 'HS256', // literal type to satisfy TS definitions
       issuer: 'satnam.pub',
       audience: 'satnam.pub-users',
     }
@@ -48,13 +78,20 @@ function generateJWTToken(payload, secret, expiresIn) {
 /**
  * Verify JWT token with enhanced validation
  */
+/**
+ * @param {string} token
+ * @param {string} secret
+ * @returns {TokenPayload|null}
+ */
 function verifyJWTToken(token, secret) {
   try {
-    return jwt.verify(token, secret, {
-      algorithms: [TOKEN_CONFIG.JWT_ALGORITHM],
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'], // use literal algorithm for TS
       issuer: 'satnam.pub',
       audience: 'satnam.pub-users',
     });
+    // jsonwebtoken types can be string | JwtPayload; normalize to object
+    return typeof decoded === 'string' ? /** @type {TokenPayload} */(JSON.parse(decoded)) : /** @type {TokenPayload} */(decoded);
   } catch (error) {
     console.error('JWT verification failed:', error.message);
     return null;
@@ -63,22 +100,27 @@ function verifyJWTToken(token, secret) {
 
 /**
  * Set secure HTTP-only cookie
+ * @param {import('http').ServerResponse} res
+ * @param {string} name
+ * @param {string} value
+ * @param {number} maxAge
  */
 function setSecureCookie(res, name, value, maxAge) {
   const isDevelopment = process.env.NODE_ENV !== 'production';
-  
   res.setHeader('Set-Cookie', [
     `${name}=${value}`,
     `Max-Age=${maxAge}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Strict',
-    ...(isDevelopment ? [] : ['Secure']), // Only Secure in production (HTTPS)
+    ...(isDevelopment ? [] : ['Secure']),
   ].join('; '));
 }
 
 /**
  * Clear secure cookie
+ * @param {import('http').ServerResponse} res
+ * @param {string} name
  */
 function clearCookie(res, name) {
   res.setHeader('Set-Cookie', [
@@ -92,19 +134,24 @@ function clearCookie(res, name) {
 
 /**
  * Parse cookies from request
+ * @param {string|undefined} cookieHeader
+ * @returns {{[key:string]: string}}
  */
 function parseCookies(cookieHeader) {
   if (!cookieHeader) return {};
-  
   return cookieHeader.split(';').reduce((cookies, cookie) => {
     const [name, value] = cookie.trim().split('=');
     cookies[name] = value;
     return cookies;
-  }, {});
+  }, /** @type {{[key:string]: string}} */({}));
 }
 
 /**
  * Generate HMAC-SHA256 for identifier protection
+ * @param {string} uuid
+ * @param {string} pepper
+ * @param {string=} salt
+ * @returns {Promise<string>}
  */
 async function generateProtectedId(uuid, pepper, salt = '') {
   const message = uuid + salt;
@@ -147,15 +194,19 @@ export default async function handler(req, res) {
     }
 
     // Verify refresh token
-    const jwtSecret = process.env.JWT_SECRET;
-    const duidServerSecret = process.env.DUID_SERVER_SECRET;
+    let jwtSecret;
+    try {
+      const helper = await import('../../netlify/functions/utils/jwt-secret.js');
+      jwtSecret = helper.getJwtSecret();
+    } catch (e) {
+      console.error('JWT secret derivation failed:', e);
+      return res.status(500).json({ success: false, error: 'Server configuration error' });
+    }
 
-    if (!jwtSecret || !duidServerSecret) {
-      console.error('Missing JWT_SECRET or DUID_SERVER_SECRET environment variables');
-      return res.status(500).json({
-        success: false,
-        error: 'Server configuration error',
-      });
+    const duidServerSecret = process.env.DUID_SERVER_SECRET;
+    if (!duidServerSecret) {
+      console.error('Missing DUID_SERVER_SECRET environment variable');
+      return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
 
     const refreshPayload = verifyJWTToken(refreshToken, jwtSecret);
@@ -188,7 +239,7 @@ export default async function handler(req, res) {
       newSessionId
     );
 
-    // Create new access token payload
+    /** @type {BaseTokenPayload} */
     const accessPayload = {
       userId: refreshPayload.userId,
       hashedId: protectedId,
@@ -197,7 +248,7 @@ export default async function handler(req, res) {
       sessionId: newSessionId,
     };
 
-    // Create new refresh token payload
+    /** @type {BaseTokenPayload} */
     const refreshPayload_new = {
       userId: refreshPayload.userId,
       hashedId: protectedId,

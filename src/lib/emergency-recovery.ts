@@ -1256,7 +1256,8 @@ export class EmergencyRecoverySystem {
   private static async checkRecoveryAttempts(
     userId: string
   ): Promise<{ allowed: boolean; reason?: string }> {
-    const { data: requests, error } = await supabase
+    const client = await getSupabaseClient();
+    const { data: requests, error } = await client
       .from("emergency_recovery_requests")
       .select("created_at")
       .eq("user_id", userId)
@@ -1501,29 +1502,28 @@ export class EmergencyRecoverySystem {
   private static async storeRecoveryRequest(
     request: EmergencyRecoveryRequest
   ): Promise<void> {
-    const { error } = await supabase
-      .from("emergency_recovery_requests")
-      .insert({
-        id: request.id,
-        user_id: request.userId,
-        user_npub: request.userNpub,
-        user_role: request.userRole,
-        request_type: request.requestType,
-        reason: request.reason,
-        urgency: request.urgency,
-        description: request.description,
-        requested_amount: request.requestedAmount,
-        recovery_method: request.recoveryMethod,
-        status: request.status,
-        created_at: request.createdAt.toISOString(),
-        expires_at: request.expiresAt.toISOString(),
-        approved_by: request.approvedBy,
-        rejected_by: request.rejectedBy,
-        consensus_threshold: request.consensusThreshold,
-        required_approvals: request.requiredApprovals,
-        current_approvals: request.currentApprovals,
-        current_rejections: request.currentRejections,
-      });
+    const client = await getSupabaseClient();
+    const { error } = await client.from("emergency_recovery_requests").insert({
+      id: request.id,
+      user_id: request.userId,
+      user_npub: request.userNpub,
+      user_role: request.userRole,
+      request_type: request.requestType,
+      reason: request.reason,
+      urgency: request.urgency,
+      description: request.description,
+      requested_amount: request.requestedAmount,
+      recovery_method: request.recoveryMethod,
+      status: request.status,
+      created_at: request.createdAt.toISOString(),
+      expires_at: request.expiresAt.toISOString(),
+      approved_by: request.approvedBy,
+      rejected_by: request.rejectedBy,
+      consensus_threshold: request.consensusThreshold,
+      required_approvals: request.requiredApprovals,
+      current_approvals: request.currentApprovals,
+      current_rejections: request.currentRejections,
+    });
 
     if (error) {
       throw error;
@@ -1533,7 +1533,8 @@ export class EmergencyRecoverySystem {
   private static async getRecoveryRequest(
     requestId: string
   ): Promise<EmergencyRecoveryRequest | null> {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient();
+    const { data, error } = await client
       .from("emergency_recovery_requests")
       .select("*")
       .eq("id", requestId)
@@ -1570,7 +1571,8 @@ export class EmergencyRecoverySystem {
   private static async updateRecoveryRequest(
     request: EmergencyRecoveryRequest
   ): Promise<void> {
-    const { error } = await supabase
+    const client = await getSupabaseClient();
+    const { error } = await client
       .from("emergency_recovery_requests")
       .update({
         status: request.status,

@@ -194,7 +194,7 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
       // - Cryptographic signature verification ensures key ownership
       // - Password still required for database lookup consistency
       // - Zero-knowledge: no browser extension keys ever stored server-side
-      const success = await nostrichSignin.authenticateNIP07(challenge, signature, pubkey, password);
+      const success = await nostrichSignin.authenticateNIP07(challenge, signature, pubkey);
 
       if (success) {
         handleAuthSuccess('individual');

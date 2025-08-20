@@ -19,6 +19,11 @@ beforeAll(async () => {
   process.env.DATABASE_URL =
     process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 
+  // Provide a base origin for relative URL fetch() in JSDOM tests
+  if (!(globalThis as any).location) {
+    (globalThis as any).location = { origin: "http://localhost:8000" } as any;
+  }
+
   // Set default test configuration
   if (!process.env.TEST_DATABASE_URL && !process.env.DATABASE_URL) {
     console.warn(

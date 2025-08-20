@@ -39,6 +39,13 @@
   status = 200
   force = true
 
+# Explicit signin mapping to avoid 404s
+[[redirects]]
+  from = "/api/auth/signin"
+  to = "/.netlify/functions/auth-signin"
+  status = 200
+  force = true
+
 # Canonical registration endpoint mapping (normalized)
 [[redirects]]
   from = "/api/auth/register-identity"

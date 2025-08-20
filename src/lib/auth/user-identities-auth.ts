@@ -326,7 +326,7 @@ export class UserIdentitiesAuth {
       const deterministicUserId = await generateDUID(npub);
 
       // Direct O(1) database lookup using DUID
-      const { data: user, error: userError } = await supabase
+      const { data: user, error: userError } = await (await getSupabaseClient())
         .from("user_identities")
         .select("*")
         .eq("id", deterministicUserId)
@@ -360,16 +360,29 @@ export class UserIdentitiesAuth {
         credentials.pubkey || "nip07_auth"
       );
 
-      // Generate new JWT session token
-      const sessionToken = await this.generateSessionToken(user);
-
-      // Store session information
-      await this.storeSessionInfo(user.id, sessionToken);
+      // Session tokens are issued by server; perform a server-side signin to get token
+      try {
+        const response = await fetch("/api/auth/nip07-signin", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challenge: credentials.challenge,
+            signature: credentials.signature,
+            pubkey: credentials.pubkey,
+          }),
+        });
+        if (response.ok) {
+          const json = await response.json();
+          return json as AuthResult;
+        }
+      } catch (e) {
+        // Fall through
+      }
 
       return {
-        success: true,
-        user: user as UserIdentity,
-        sessionToken,
+        success: false,
+        error: "NIP-07 authentication failed at server endpoint",
       };
     } catch (error) {
       console.error("NIP-07 authentication error:", error);
@@ -421,7 +434,7 @@ export class UserIdentitiesAuth {
       }
 
       // Direct O(1) database lookup using DUID
-      const { data: user, error: userError } = await supabase
+      const { data: user, error: userError } = await (await getSupabaseClient())
         .from("user_identities")
         .select("*")
         .eq("id", deterministicUserId)
@@ -473,16 +486,29 @@ export class UserIdentitiesAuth {
       // Password is valid - reset failed attempts and update last auth
       await this.handleSuccessfulAuth(user.id, credentials.nip05);
 
-      // Generate new JWT session token with rotation
-      const sessionToken = await this.generateSessionToken(user);
-
-      // Store session information for rotation tracking
-      await this.storeSessionInfo(user.id, sessionToken);
+      // Session tokens are issued by server; perform server-side signin to get token
+      try {
+        const response = await fetch("/api/auth/signin", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nip05: credentials.nip05,
+            password: credentials.password,
+            authMethod: "nip05-password",
+          }),
+        });
+        if (response.ok) {
+          const json = await response.json();
+          return json as AuthResult;
+        }
+      } catch (e) {
+        // Fall through
+      }
 
       return {
-        success: true,
-        user: user as UserIdentity,
-        sessionToken,
+        success: false,
+        error: "NIP-05/password authentication failed at server endpoint",
       };
     } catch (error) {
       console.error("Authentication error:", error);
@@ -500,7 +526,7 @@ export class UserIdentitiesAuth {
     try {
       // MAXIMUM ENCRYPTION: Use user ID instead of plaintext nip05
       // Get current user data by ID (which is already hashed)
-      const { data: user } = await supabase
+      const { data: user } = await (await getSupabaseClient())
         .from("user_identities")
         .select("failed_attempts")
         .eq("id", userId)
@@ -512,7 +538,9 @@ export class UserIdentitiesAuth {
           newFailedAttempts >= UserIdentitiesAuth.MAX_FAILED_ATTEMPTS;
 
         // Update failed attempts and potentially lock account using user ID
-        await supabase
+        await (
+          await getSupabaseClient()
+        )
           .from("user_identities")
           .update({
             failed_attempts: newFailedAttempts,
@@ -546,7 +574,9 @@ export class UserIdentitiesAuth {
   ): Promise<void> {
     try {
       // Reset failed attempts and update last successful auth
-      await supabase
+      await (
+        await getSupabaseClient()
+      )
         .from("user_identities")
         .update({
           failed_attempts: 0,
@@ -587,338 +617,11 @@ export class UserIdentitiesAuth {
   }
 
   /**
-   * Generate secure JWT session token with proper signing
-   */
-  public async generateSessionToken(user: UserIdentity): Promise<string> {
-    try {
-      // Get JWT secret from Vault (secure credential storage)
-      const { getJwtSecret } = await import("../../../lib/vault-config");
-      const jwtSecret = await getJwtSecret();
-
-      if (!jwtSecret) {
-        throw new Error("JWT secret not available from Vault");
-      }
-
-      // Create JWT payload with essential user data (hashed fields only)
-      const payload = {
-        sub: user.id, // Subject (user ID - already hashed)
-        userId: user.id, // For backward compatibility
-        role: user.role,
-        iat: Math.floor(Date.now() / 1000), // Issued at
-        exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // Expires in 24 hours
-        iss: "satnam-identity-system", // Issuer
-        aud: "satnam-users", // Audience
-        // Note: No plaintext username/nip05 in JWT for maximum encryption compliance
-      };
-
-      // Create JWT header
-      const header = {
-        alg: "HS256",
-        typ: "JWT",
-      };
-
-      // Encode header and payload
-      const encodedHeader = btoa(JSON.stringify(header))
-        .replace(/[+/]/g, (m) => ({ "+": "-", "/": "_" }[m]!))
-        .replace(/=/g, "");
-      const encodedPayload = btoa(JSON.stringify(payload))
-        .replace(/[+/]/g, (m) => ({ "+": "-", "/": "_" }[m]!))
-        .replace(/=/g, "");
-
-      // Create signature using HMAC-SHA256
-      const signatureInput = `${encodedHeader}.${encodedPayload}`;
-      const signature = await this.createHMACSignature(
-        signatureInput,
-        jwtSecret
-      );
-
-      // Return complete JWT
-      return `${encodedHeader}.${encodedPayload}.${signature}`;
-    } catch (error) {
-      console.error("JWT generation failed:", error);
-      // Fallback to secure random token if JWT fails
-      return await this.generateFallbackToken(user);
-    }
-  }
-
-  /**
-   * Create HMAC-SHA256 signature for JWT (Web Crypto API only)
-   */
-  private async createHMACSignature(
-    data: string,
-    secret: string
-  ): Promise<string> {
-    try {
-      // Browser-only serverless architecture - use Web Crypto API
-      const subtle = CryptoUtils.getSubtleCrypto();
-      const encoder = new TextEncoder();
-
-      const key = await subtle.importKey(
-        "raw",
-        encoder.encode(secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-      );
-
-      const signature = await subtle.sign("HMAC", key, encoder.encode(data));
-
-      return CryptoUtils.arrayBufferToBase64(signature)
-        .replace(/[+/]/g, (m) => ({ "+": "-", "/": "_" }[m]!))
-        .replace(/=/g, "");
-    } catch (error) {
-      console.error("HMAC signature creation failed:", error);
-      throw new Error("HMAC signature creation failed");
-    }
-  }
-
-  /**
-   * Generate fallback secure token if JWT fails (Web Crypto API only)
-   */
-  private async generateFallbackToken(user: UserIdentity): Promise<string> {
-    try {
-      const tokenData = {
-        userId: user.id, // Already hashed user ID
-        role: user.role,
-        timestamp: Date.now(),
-        expires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-        type: "fallback-session",
-        // Note: No plaintext username/nip05 for maximum encryption compliance
-      };
-
-      // Browser-only serverless architecture - use Web Crypto API for secure random bytes
-      const randomBytes = CryptoUtils.getRandomBytes(32);
-      // Fix ArrayBuffer type compatibility
-      const arrayBuffer =
-        randomBytes.buffer instanceof ArrayBuffer
-          ? randomBytes.buffer
-          : new ArrayBuffer(randomBytes.buffer.byteLength);
-      const randomString = CryptoUtils.arrayBufferToBase64(arrayBuffer);
-      return `${btoa(JSON.stringify(tokenData))}.${randomString}`;
-    } catch (error) {
-      console.error("Fallback token generation failed:", error);
-      throw new Error("Fallback token generation failed");
-    }
-  }
-
-  /**
-   * Store session information for rotation tracking
-   */
-  private async storeSessionInfo(
-    userId: string,
-    sessionToken: string
-  ): Promise<void> {
-    try {
-      // JWT token validation is handled in verifySessionToken method
-      // Store session for tracking purposes
-
-      // Store session in user_auth_attempts table for tracking
-      await (await getSupabaseClient()).from("user_auth_attempts").insert({
-        user_id: userId,
-        attempt_result: "session_created",
-        attempted_at: new Date().toISOString(),
-        // Store session hash for rotation tracking (not the full token)
-        client_info_hash: await this.hashSessionToken(sessionToken),
-      });
-    } catch (error) {
-      console.error("Failed to store session info:", error);
-      // Don't fail authentication if session storage fails
-    }
-  }
-
-  /**
-   * Hash session token for secure storage (Web Crypto API only)
-   */
-  private async hashSessionToken(token: string): Promise<string> {
-    try {
-      // Browser-only serverless architecture - use Web Crypto API
-      const subtle = CryptoUtils.getSubtleCrypto();
-      const encoder = new TextEncoder();
-      const data = encoder.encode(token);
-      const hashBuffer = await subtle.digest("SHA-256", data);
-      return CryptoUtils.arrayBufferToBase64(hashBuffer);
-    } catch (error) {
-      console.error("Session token hashing failed:", error);
-      throw new Error("Session token hashing failed");
-    }
-  }
-
-  /**
-   * Rotate session token (generate new token and invalidate old one)
-   */
-  async rotateSession(
-    currentToken: string
-  ): Promise<{ success: boolean; newToken?: string; error?: string }> {
-    try {
-      // Verify current token and extract user info
-      const userInfo = await this.verifySessionToken(currentToken);
-      if (!userInfo) {
-        return { success: false, error: "Invalid session token" };
-      }
-
-      // Get user from database
-      const { data: user, error } = await supabase
-        .from("user_identities")
-        .select("*")
-        .eq("id", userInfo.sub)
-        .eq("is_active", true)
-        .single();
-
-      if (error || !user) {
-        return { success: false, error: "User not found" };
-      }
-
-      // Generate new session token
-      const newToken = await this.generateSessionToken(user as UserIdentity);
-
-      return { success: true, newToken };
-    } catch (error) {
-      console.error("Session rotation failed:", error);
-      return { success: false, error: "Session rotation failed" };
-    }
-  }
-
-  /**
-   * Verify JWT session token with production-ready signature verification
-   */
-  private async verifySessionToken(token: string): Promise<any> {
-    try {
-      const parts = token.split(".");
-      if (parts.length !== 3) {
-        return null;
-      }
-
-      const [headerB64, payloadB64, signatureB64] = parts;
-
-      // Decode payload (header not needed for verification)
-      const payload = JSON.parse(atob(payloadB64));
-
-      // Check expiration
-      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-        return null; // Token expired
-      }
-
-      // PRODUCTION-READY: Verify signature using Web Crypto API
-      try {
-        // Get JWT secret from Vault (secure credential storage)
-        const { getJwtSecret } = await import("../../../lib/vault-config");
-        const jwtSecret = await getJwtSecret();
-
-        if (!jwtSecret) {
-          console.error("JWT secret not available from Vault");
-          return null;
-        }
-
-        // Create signing input (header.payload)
-        const signingInput = `${headerB64}.${payloadB64}`;
-
-        // Convert secret to key for HMAC
-        const encoder = new TextEncoder();
-        const keyData = encoder.encode(jwtSecret);
-
-        // Import the key for HMAC-SHA256
-        const cryptoKey = await crypto.subtle.importKey(
-          "raw",
-          keyData,
-          { name: "HMAC", hash: "SHA-256" },
-          false,
-          ["verify"]
-        );
-
-        // Convert base64url signature to ArrayBuffer
-        const signatureBytes = this.base64UrlToArrayBuffer(signatureB64);
-
-        // Verify the signature
-        const isValid = await crypto.subtle.verify(
-          "HMAC",
-          cryptoKey,
-          signatureBytes,
-          encoder.encode(signingInput)
-        );
-
-        if (!isValid) {
-          console.error("JWT signature verification failed");
-          return null;
-        }
-
-        // Signature is valid, return payload
-        return payload;
-      } catch (signatureError) {
-        console.error("JWT signature verification error:", signatureError);
-        return null;
-      }
-    } catch (error) {
-      console.error("Token verification failed:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Convert base64url string to ArrayBuffer
-   */
-  private base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
-    // Convert base64url to base64
-    const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
-    // Add padding if needed
-    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    // Convert to binary string then to ArrayBuffer
-    const binaryString = atob(padded);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-
-  /**
-   * Validate session token and return user data
-   */
-  async validateSession(sessionToken: string): Promise<AuthResult> {
-    try {
-      if (!sessionToken) {
-        return { success: false, error: "No session token provided" };
-      }
-
-      // Verify the token
-      const payload = await this.verifySessionToken(sessionToken);
-      if (!payload) {
-        return { success: false, error: "Invalid or expired session token" };
-      }
-
-      // Get user data from database
-      // FIX: Use payload.sub (standard JWT subject) instead of payload.userId
-      const { data: user, error } = await supabase
-        .from("user_identities")
-        .select("*")
-        .eq("id", payload.sub || payload.userId) // Fallback to userId for backward compatibility
-        .single();
-
-      if (error || !user) {
-        return { success: false, error: "User not found" };
-      }
-
-      // Check if user is still active
-      if (!user.is_active) {
-        return { success: false, error: "User account is inactive" };
-      }
-
-      return {
-        success: true,
-        user: user as UserIdentity,
-        sessionToken,
-      };
-    } catch (error) {
-      console.error("Session validation failed:", error);
-      return { success: false, error: "Session validation failed" };
-    }
-  }
-
-  /**
    * Get user by ID for secure operations (like nsec retrieval)
    */
   async getUserById(userId: string): Promise<UserIdentity | null> {
     try {
-      const { data: user, error } = await supabase
+      const { data: user, error } = await (await getSupabaseClient())
         .from("user_identities")
         .select("*")
         .eq("id", userId)

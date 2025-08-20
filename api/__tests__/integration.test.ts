@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 // Integration tests that test the actual API flow
 describe("API Integration Tests", () => {
-  const API_BASE = process.env.API_BASE || "";
+  const API_BASE = process.env.API_BASE || "http://localhost:8000";
 
   describe("API Flow Integration", () => {
     it("should complete a full family payment flow", async () => {

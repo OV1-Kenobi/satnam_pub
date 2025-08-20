@@ -184,7 +184,7 @@ export class FamilyWalletService {
     familyId: string
   ): Promise<FamilyMemberWallet | null> {
     try {
-      const { data: member, error } = await supabase
+      const { data: member, error } = await (await getSupabaseClient())
         .from("privacy_family_member_wallets")
         .select("*")
         .eq("member_hash", memberHash)
@@ -245,7 +245,7 @@ export class FamilyWalletService {
     );
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const { data: transactions, error } = await supabase
+    const { data: transactions, error } = await (await getSupabaseClient())
       .from("privacy_family_payment_transactions")
       .select("amount, created_at")
       .eq("family_id", familyId)
@@ -327,7 +327,7 @@ export class FamilyWalletService {
       };
 
       // Store payment request
-      const { error: insertError } = await supabase
+      const { error: insertError } = await (await getSupabaseClient())
         .from("privacy_family_payment_requests")
         .insert({
           id: paymentRequest.id,
@@ -462,7 +462,7 @@ export class FamilyWalletService {
 
     // Store violations
     if (violations.length > 0) {
-      const { error } = await supabase
+      const { error } = await (await getSupabaseClient())
         .from("privacy_spending_limit_violations")
         .insert(
           violations.map((v) => ({
@@ -561,7 +561,7 @@ export class FamilyWalletService {
       updatedAt: new Date().toISOString(),
     };
 
-    const { error } = await supabase
+    const { error } = await (await getSupabaseClient())
       .from("privacy_family_approval_requests")
       .insert({
         id: approvalRequest.id,
@@ -597,7 +597,7 @@ export class FamilyWalletService {
     familyId: string,
     roles: string[]
   ): Promise<Array<{ npub: string; role: string }>> {
-    const { data: members, error } = await supabase
+    const { data: members, error } = await (await getSupabaseClient())
       .from("privacy_family_member_wallets")
       .select("member_hash, role")
       .eq("family_id", familyId)
@@ -650,7 +650,7 @@ export class FamilyWalletService {
   ): Promise<void> {
     try {
       // Update payment request status
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (await getSupabaseClient())
         .from("privacy_family_payment_requests")
         .update({ status: "sent" })
         .eq("id", paymentRequest.id);
@@ -676,7 +676,7 @@ export class FamilyWalletService {
         updatedAt: new Date().toISOString(),
       };
 
-      const { error: transactionError } = await supabase
+      const { error: transactionError } = await (await getSupabaseClient())
         .from("privacy_family_payment_transactions")
         .insert({
           id: transaction.id,
@@ -721,7 +721,7 @@ export class FamilyWalletService {
       console.error("Error executing payment:", error);
 
       // Update payment request status to failed
-      await supabase
+      await (await getSupabaseClient())
         .from("privacy_family_payment_requests")
         .update({ status: "failed" })
         .eq("id", paymentRequest.id);
@@ -757,7 +757,7 @@ export class FamilyWalletService {
     familyId: string,
     amount: number
   ): Promise<void> {
-    const { data: member, error } = await supabase
+    const { data: member, error } = await (await getSupabaseClient())
       .from("privacy_family_member_wallets")
       .select("spending_history")
       .eq("member_hash", memberHash)
@@ -781,7 +781,7 @@ export class FamilyWalletService {
     spendingHistory.weekly += amount;
     spendingHistory.monthly += amount;
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await (await getSupabaseClient())
       .from("privacy_family_member_wallets")
       .update({ spending_history: spendingHistory })
       .eq("member_hash", memberHash)
@@ -801,7 +801,7 @@ export class FamilyWalletService {
     familyId: string,
     limits: Partial<FamilyMemberSpendingLimits>
   ): Promise<void> {
-    const { error } = await supabase
+    const { error } = await (await getSupabaseClient())
       .from("privacy_family_member_wallets")
       .update({ spending_limits: limits })
       .eq("member_hash", memberHash)
@@ -818,7 +818,9 @@ export class FamilyWalletService {
    * Privacy-first: Uses hashed UUIDs, never logs npubs
    */
   async getPendingApprovals(memberHash: string): Promise<ApprovalRequest[]> {
-    const { data: approvals, error } = await supabase
+    const { data: approvals, error } = await (
+      await getSupabaseClient()
+    )
       .from("privacy_family_approval_requests")
       .select("*")
       .contains("approvers", [{ hash: memberHash }])
@@ -863,7 +865,7 @@ export class FamilyWalletService {
   private async getApprovalRequest(
     approvalId: string
   ): Promise<ApprovalRequest | null> {
-    const { data: approval, error } = await supabase
+    const { data: approval, error } = await (await getSupabaseClient())
       .from("privacy_family_approval_requests")
       .select("*")
       .eq("id", approvalId)
@@ -884,7 +886,7 @@ export class FamilyWalletService {
   private async getPaymentRequest(
     requestId: string
   ): Promise<PaymentRequest | null> {
-    const { data: request, error } = await supabase
+    const { data: request, error } = await (await getSupabaseClient())
       .from("privacy_family_payment_requests")
       .select("*")
       .eq("id", requestId)
@@ -906,7 +908,7 @@ export class FamilyWalletService {
     memberHash: string,
     familyId: string
   ): Promise<SpendingLimitViolation[]> {
-    const { data: violations, error } = await supabase
+    const { data: violations, error } = await (await getSupabaseClient())
       .from("privacy_spending_limit_violations")
       .select("*")
       .eq("member_hash", memberHash)
@@ -931,7 +933,7 @@ export class FamilyWalletService {
     familyId: string,
     resetType: "daily" | "weekly" | "monthly"
   ): Promise<void> {
-    const { data: member, error } = await supabase
+    const { data: member, error } = await (await getSupabaseClient())
       .from("privacy_family_member_wallets")
       .select("spending_history")
       .eq("member_hash", memberHash)
@@ -965,7 +967,7 @@ export class FamilyWalletService {
 
     spendingHistory.lastReset = new Date().toISOString();
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await (await getSupabaseClient())
       .from("privacy_family_member_wallets")
       .update({ spending_history: spendingHistory })
       .eq("member_hash", memberHash)

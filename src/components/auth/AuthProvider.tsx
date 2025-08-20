@@ -148,9 +148,9 @@ export const useNostrichSignin = () => {
       return success;
     },
 
-    authenticateNIP07: async (challenge: string, signature: string, pubkey: string, password: string) => {
+    authenticateNIP07: async (challenge: string, signature: string, pubkey: string) => {
       auth.setIsLoginFlow(true);
-      const success = await auth.authenticateNIP07(challenge, signature, pubkey, password);
+      const success = await auth.authenticateNIP07(challenge, signature, pubkey);
       if (success) {
         auth.setIsLoginFlow(false);
       }

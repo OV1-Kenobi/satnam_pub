@@ -58,14 +58,19 @@ export class SatnamInternalLightningBridge {
   private phoenixd: PhoenixdClient;
   private fedimint: FedimintClient;
   private cashuManager: SatnamCrossMintCashuManager;
-  private supabase: any;
+  private supabase: any; // Optional: allows tests to inject a mock
 
   constructor() {
     this.phoenixd = new PhoenixdClient();
     this.fedimint = new FedimintClient();
     this.cashuManager = new SatnamCrossMintCashuManager();
-    // Use the shared supabase client to prevent multiple GoTrueClient instances
-    this.supabase = supabase;
+    // Do NOT initialize Supabase here to avoid TDZ and extra clients; use client() below
+  }
+
+  // Unified accessor that prefers injected mock, otherwise returns the singleton client
+  private async client() {
+    if (this.supabase) return this.supabase;
+    return await getSupabaseClient();
   }
 
   // Utility methods
@@ -75,7 +80,7 @@ export class SatnamInternalLightningBridge {
 
   private async logSwapStep(swapId: string, step: SwapStep): Promise<void> {
     try {
-      await this.supabase.from("atomic_swap_logs").insert({
+      await (await this.client()).from("atomic_swap_logs").insert({
         swap_id: swapId,
         step_number: step.step,
         description: step.description,
@@ -95,7 +100,9 @@ export class SatnamInternalLightningBridge {
     error?: string
   ): Promise<void> {
     try {
-      await this.supabase
+      await (
+        await this.client()
+      )
         .from("atomic_swaps")
         .update({
           status,
@@ -117,7 +124,7 @@ export class SatnamInternalLightningBridge {
 
     try {
       // Initialize swap record
-      await this.supabase.from("atomic_swaps").insert({
+      await (await this.client()).from("atomic_swaps").insert({
         swap_id: swapId,
         from_context: request.fromContext,
         to_context: request.toContext,
@@ -269,7 +276,7 @@ export class SatnamInternalLightningBridge {
 
     try {
       // Initialize swap record
-      await this.supabase.from("atomic_swaps").insert({
+      await (await this.client()).from("atomic_swaps").insert({
         swap_id: swapId,
         from_context: request.fromContext,
         to_context: request.toContext,
@@ -391,7 +398,7 @@ export class SatnamInternalLightningBridge {
   // Get swap status
   async getSwapStatus(swapId: string): Promise<any> {
     try {
-      const { data, error } = await this.supabase
+      const { data, error } = await (await this.client())
         .from("atomic_swaps")
         .select("*")
         .eq("swap_id", swapId)
@@ -483,30 +490,43 @@ export class SatnamInternalLightningBridge {
       throw new Error("Lightning invoice creation failed");
     }
 
-    // Step 2: Simulate Fedimint redemption (method doesn't exist yet)
-    const fedimintRedemption = {
-      success: true,
-      txId: `fedimint_${Date.now()}`,
-      fee: 0,
-      error: undefined,
-    };
+    // Optional: Validate fedimint balance before attempting redemption
+    if (typeof this.fedimint.getBalance === "function") {
+      const balance = await this.fedimint.getBalance(request.fromMemberId);
+      if (typeof balance === "number" && balance < request.amount) {
+        throw new Error("Insufficient Fedimint eCash balance");
+      }
+    }
 
-    if (!fedimintRedemption.success) {
+    // Step 2: Redeem Fedimint to pay the Lightning invoice
+    const fedimintRedemption = await this.fedimint.atomicRedeemToPay({
+      memberId: request.fromMemberId,
+      amount: request.amount,
+      lightningInvoice: lightningInvoice.invoice,
+      swapId,
+    });
+
+    if (!fedimintRedemption?.success) {
       throw new Error(
-        `Fedimint redemption failed: ${fedimintRedemption.error}`
+        `Fedimint redemption failed${
+          fedimintRedemption?.error ? `: ${fedimintRedemption.error}` : ""
+        }`
       );
     }
 
-    // Step 3: Simulate Lightning payment verification (method doesn't exist yet)
-    const lightningPayment = {
-      success: true,
-      paymentHash: lightningInvoice.paymentHash,
-      fees: lightningInvoice.fees || 0,
-      error: undefined,
-    };
-
-    if (!lightningPayment.success) {
-      // Rollback Fedimint transaction would go here
+    // Step 3: Wait for Lightning payment confirmation
+    const lightningResult = await this.phoenixd.waitForPayment(
+      lightningInvoice.paymentHash
+    );
+    if (!lightningResult?.success) {
+      // Attempt to rollback redemption on failure
+      if (typeof this.fedimint.rollbackRedemption === "function") {
+        try {
+          await this.fedimint.rollbackRedemption(swapId);
+        } catch (e) {
+          console.warn("Rollback failed:", e);
+        }
+      }
       throw new Error("Lightning payment not received within timeout");
     }
 
@@ -514,21 +534,21 @@ export class SatnamInternalLightningBridge {
     await this.creditIndividualLightningWallet(
       request.toMemberId,
       request.amount,
-      lightningPayment.paymentHash
+      lightningResult.paymentHash
     );
 
     return {
       success: true,
       swapId,
-      fromTxId: fedimintRedemption.txId,
-      bridgeTxId: lightningPayment.paymentHash,
-      toTxId: lightningInvoice.paymentHash,
+      fromTxId: fedimintRedemption.txId || "",
+      bridgeTxId: lightningResult.paymentHash || "",
+      toTxId: lightningInvoice.paymentHash || "",
       amount: request.amount,
       fees: {
-        fedimintFee: fedimintRedemption.fee,
-        lightningFee: lightningPayment.fees,
+        fedimintFee: fedimintRedemption.fee ?? 0,
+        lightningFee: lightningResult.fee ?? 0,
         cashuFee: 0,
-        totalFee: fedimintRedemption.fee + lightningPayment.fees,
+        totalFee: (fedimintRedemption.fee ?? 0) + (lightningResult.fee ?? 0),
       },
       timestamp: startTime,
     };
@@ -541,20 +561,18 @@ export class SatnamInternalLightningBridge {
   ): Promise<AtomicSwapResult> {
     const startTime = new Date();
 
-    // Step 1: Simulate Cashu mint request (method doesn't exist yet)
-    const cashuMintRequest = {
-      hash: `cashu_mint_${Date.now()}`,
-      pr: `lnbc${request.amount}...`, // Simulated payment request
-      success: true,
-    };
+    // Step 1: Request Cashu mint invoice
+    const cashuMintRequest = await (this.cashuManager as any).requestMint(
+      request.amount
+    );
 
-    // Step 2: Simulate Fedimint redemption (method doesn't exist yet)
-    const fedimintRedemption = {
-      success: true,
-      txId: `fedimint_${Date.now()}`,
-      fee: 0,
-      error: undefined,
-    };
+    // Step 2: Redeem Fedimint to pay the Cashu mint invoice
+    const fedimintRedemption = await this.fedimint.atomicRedeemToPay({
+      memberId: request.fromMemberId,
+      amount: request.amount,
+      lightningInvoice: cashuMintRequest.pr,
+      swapId,
+    });
 
     if (!fedimintRedemption.success) {
       throw new Error(
@@ -562,17 +580,27 @@ export class SatnamInternalLightningBridge {
       );
     }
 
-    // Step 3: Simulate Cashu minting completion (method doesn't exist yet)
-    const cashuTokens = {
-      success: true,
-      tokenId: `cashu_${Date.now()}`,
-      tokens: `cashu_tokens_${Date.now()}`,
-      fee: 0,
-      error: undefined,
-    };
+    // Step 3: Complete mint on Cashu
+    const cashuTokens = await (this.cashuManager as any).completeMint({
+      amount: request.amount,
+      hash: cashuMintRequest.hash,
+      pr: cashuMintRequest.pr,
+      swapId,
+    });
 
     if (!cashuTokens.success) {
-      // Rollback Fedimint transaction would go here
+      // Attempt to rollback redemption on failure
+      if (typeof this.fedimint.rollbackRedemption === "function") {
+        try {
+          await this.fedimint.rollbackRedemption({
+            memberId: request.fromMemberId,
+            amount: request.amount,
+            swapId,
+          });
+        } catch (e) {
+          console.warn("Rollback failed:", e);
+        }
+      }
       throw new Error("Cashu minting failed");
     }
 
@@ -715,13 +743,13 @@ export class SatnamInternalLightningBridge {
     }
 
     // Validate members exist
-    const { data: fromMember } = await this.supabase
+    const { data: fromMember } = await (await this.client())
       .from("family_members")
       .select("id, role")
       .eq("id", request.fromMemberId)
       .single();
 
-    const { data: toMember } = await this.supabase
+    const { data: toMember } = await (await this.client())
       .from("family_members")
       .select("id, role")
       .eq("id", request.toMemberId)
@@ -747,7 +775,7 @@ export class SatnamInternalLightningBridge {
     swapId: string
   ): Promise<{ approved: boolean; reason?: string }> {
     // Check if amount requires guardian approval
-    const { data: familyMember } = await this.supabase
+    const { data: familyMember } = await (await this.client())
       .from("family_members")
       .select("role, spending_limits")
       .eq("id", request.fromMemberId)
@@ -768,7 +796,7 @@ export class SatnamInternalLightningBridge {
       request.amount > familyMember.spending_limits.requiresApproval
     ) {
       // Check for existing guardian approval
-      const { data: approval } = await this.supabase
+      const { data: approval } = await (await this.client())
         .from("guardian_approvals")
         .select("*")
         .eq("swap_id", swapId)
@@ -792,21 +820,25 @@ export class SatnamInternalLightningBridge {
     amount: number,
     paymentHash: string
   ): Promise<void> {
-    await this.supabase
+    await (
+      await this.client()
+    )
       .from("individual_lightning_wallets")
       .update({
-        balance: this.supabase.raw("balance + ?", [amount]),
+        balance: (await this.client()).raw("balance + ?", [amount]),
         updated_at: new Date().toISOString(),
       })
       .eq("member_id", memberId);
 
-    await this.supabase.from("individual_lightning_transactions").insert({
-      member_id: memberId,
-      amount,
-      type: "credit",
-      payment_hash: paymentHash,
-      description: "Atomic swap from family Fedimint eCash",
-    });
+    await (await this.client())
+      .from("individual_lightning_transactions")
+      .insert({
+        member_id: memberId,
+        amount,
+        type: "credit",
+        payment_hash: paymentHash,
+        description: "Atomic swap from family Fedimint eCash",
+      });
   }
 
   private async creditIndividualCashuWallet(
@@ -814,15 +846,17 @@ export class SatnamInternalLightningBridge {
     tokens: string,
     amount: number
   ): Promise<void> {
-    await this.supabase
+    await (
+      await this.client()
+    )
       .from("individual_cashu_wallets")
       .update({
-        balance: this.supabase.raw("balance + ?", [amount]),
+        balance: (await this.client()).raw("balance + ?", [amount]),
         updated_at: new Date().toISOString(),
       })
       .eq("member_id", memberId);
 
-    await this.supabase.from("individual_cashu_tokens").insert({
+    await (await this.client()).from("individual_cashu_tokens").insert({
       member_id: memberId,
       tokens,
       amount,
@@ -832,7 +866,7 @@ export class SatnamInternalLightningBridge {
   }
 
   private async logAtomicSwap(result: AtomicSwapResult): Promise<void> {
-    await this.supabase.from("atomic_swaps").insert({
+    await (await this.client()).from("atomic_swaps").insert({
       swap_id: result.swapId,
       success: result.success,
       amount: result.amount,
