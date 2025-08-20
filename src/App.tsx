@@ -64,7 +64,7 @@ function App() {
   const [showCommunications, setShowCommunications] = useState(false);
   const [showFamilyFoundryAuthModal, setShowFamilyFoundryAuthModal] = useState(false);
   const [showContactsModal, setShowContactsModal] = useState(false);
-  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'automated-payments' | 'contacts' | 'ln-node-management' | null>(null);
+  const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management' | null>(null);
 
   // Invitation handling state
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
@@ -121,6 +121,22 @@ function App() {
     checkForInvitationToken();
   }, []); // Run only once on mount
 
+  // App-level navigation event listener used by IdentityForge completion screen
+  useEffect(() => {
+    const handler = (evt: Event) => {
+      try {
+        const e = evt as CustomEvent<{ view?: string }>;
+        const targetView = e?.detail?.view as any;
+        if (!targetView) return;
+        setCurrentView(targetView);
+      } catch (err) {
+        console.warn('satnam:navigate handler error', err);
+      }
+    };
+    window.addEventListener('satnam:navigate', handler as EventListener);
+    return () => window.removeEventListener('satnam:navigate', handler as EventListener);
+  }, []);
+
   // Auto-close transient modals when navigating to new views
   useEffect(() => {
     // Close communications overlay if navigating elsewhere
@@ -155,7 +171,7 @@ function App() {
         setCurrentView('family-foundry');
         break;
       case 'payment-automation':
-        setCurrentView('payment-automation');
+        setCurrentView('family-payment-automation');
         break;
       case 'educational-dashboard':
         setCurrentView('educational-dashboard');
@@ -201,8 +217,6 @@ function App() {
         setCurrentView("onboarding");
       } else if (pendingDestination === 'educational-dashboard') {
         setCurrentView("education");
-      } else if (pendingDestination === 'payment-automation') {
-        setCurrentView("dashboard"); // Will show payment automation in family dashboard
       } else if (pendingDestination === 'sovereignty-controls') {
         setCurrentView("dashboard"); // Will show sovereignty controls in family dashboard
       } else if (pendingDestination === 'privacy-preferences') {
@@ -213,8 +227,6 @@ function App() {
         setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
       } else if (pendingDestination === 'payment-cascade') {
         setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
-      } else if (pendingDestination === 'payment-automation') {
-        setCurrentView('family-payment-automation');
       } else if (pendingDestination === 'contacts') {
         setShowContactsModal(true);
       } else if (pendingDestination === 'ln-node-management') {

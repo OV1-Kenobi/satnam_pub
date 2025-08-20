@@ -987,21 +987,32 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         const token = result?.session?.token || result?.sessionToken;
 
         if (!token) {
-          throw new Error('Registration did not return a session token');
+          // Fallback: perform server signin to obtain access token when registration path does not return one
+          try {
+            const fallbackOk = await (identityForge as any).authenticateAfterRegistration?.(nip05Identifier, formData.password);
+            if (!fallbackOk) throw new Error('Fallback signin failed');
+          } catch (e) {
+            throw new Error('Registration did not return a session token and fallback signin failed');
+          }
         }
 
         // Build minimal AuthResult compatible with unified auth system
+        // Ensure user.hashedId matches token payload.hashedId to pass later validation
+        const payload = token ? SecureTokenManager.parseTokenPayload(token) : null;
+        if (!payload) {
+          throw new Error('Invalid registration token payload');
+        }
         const authResult = {
           success: true,
           user: {
-            id: result?.user?.id || result?.data?.user?.id || result?.data?.id || '',
+            id: payload.hashedId,
             user_salt: '',
             password_hash: '',
             password_salt: '',
             failed_attempts: 0,
             role: (result?.user?.role || result?.data?.user?.role || 'private'),
             is_active: true,
-            hashedId: result?.user?.id || result?.data?.user?.id || result?.data?.id || '',
+            hashedId: payload.hashedId,
             authMethod: 'otp',
           },
           sessionToken: token,
@@ -1220,7 +1231,27 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => setShowInvitationModal(true)}
+                onClick={async () => {
+                  if (!sessionInfo) {
+                    const token = SecureTokenManager.getAccessToken();
+                    const nip05Identifier = `${formData.username}@satnam.pub`;
+                    const fallback: SessionInfo = {
+                      isAuthenticated: !!token,
+                      sessionToken: token || undefined,
+                      user: {
+                        npub: formData.pubkey,
+                        nip05: nip05Identifier,
+                        federationRole: 'adult',
+                        authMethod: 'otp',
+                        isWhitelisted: true,
+                        votingPower: 1,
+                        guardianApproved: false,
+                      },
+                    };
+                    setSessionInfo(fallback);
+                  }
+                  setShowInvitationModal(true);
+                }}
                 className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
               >
                 <span>🎁 Invite a Peer</span>
@@ -2375,8 +2406,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     <div className="text-center">
                       <button
                         onClick={() => {
-                          // Navigate to Dynastic Sovereignty page which leads to Family Foundry
-                          window.location.href = '/dynastic-sovereignty';
+                          // Navigate via app-level event to Dynastic Sovereignty view
+                          window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'dynastic-sovereignty' } }));
                         }}
                         className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-4 px-10 rounded-xl transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-3 mx-auto text-lg shadow-lg hover:shadow-xl"
                       >
@@ -2404,7 +2435,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     {/* Explore Nostr Ecosystem - Tertiary */}
                     <button
                       onClick={() => {
-                        window.location.href = '/nostr-resources';
+                        window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'nostr-ecosystem' } }));
                       }}
                       className="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                     >
@@ -2490,8 +2521,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 <div className="text-center">
                   <button
                     onClick={() => {
-                      // Navigate to Dynastic Sovereignty page which leads to Family Foundry
-                      window.location.href = '/dynastic-sovereignty';
+                      // Navigate via app-level event to Dynastic Sovereignty view
+                      window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'dynastic-sovereignty' } }));
                     }}
                     className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-4 px-10 rounded-xl transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-3 mx-auto text-lg shadow-lg hover:shadow-xl"
                   >
@@ -2510,7 +2541,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 {/* Nostr Resources - Secondary */}
                 <button
                   onClick={() => {
-                    window.location.href = '/nostr-resources';
+                    window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'nostr-ecosystem' } }));
                   }}
                   className="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                 >

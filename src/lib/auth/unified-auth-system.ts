@@ -81,6 +81,9 @@ export interface UnifiedAuthActions {
 
   // Error handling
   clearError: () => void;
+
+  // Expose internal handler for post-registration flows
+  handleAuthSuccess: (result: AuthResult) => Promise<boolean>;
 }
 
 // Session validation interval (5 minutes)
@@ -326,8 +329,28 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           return false;
         }
 
-        const result: AuthResult = await response.json();
-        return handleAuthSuccess(result);
+        const raw = await response.json();
+        const normalized: AuthResult =
+          raw && raw.data && raw.data.sessionToken
+            ? {
+                success: !!raw.success,
+                user: raw.data.user
+                  ? {
+                      id: raw.data.user.id,
+                      user_salt: "",
+                      password_hash: "",
+                      password_salt: "",
+                      failed_attempts: 0,
+                      role: (raw.data.user.role as any) || "private",
+                      is_active: raw.data.user.is_active !== false,
+                      hashedId: raw.data.user.id,
+                      authMethod: "nip05-password",
+                    }
+                  : undefined,
+                sessionToken: raw.data.sessionToken,
+              }
+            : raw;
+        return handleAuthSuccess(normalized);
       } catch (error) {
         setState((prev) => ({
           ...prev,
@@ -368,8 +391,28 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           return false;
         }
 
-        const result: AuthResult = await response.json();
-        return handleAuthSuccess(result);
+        const raw = await response.json();
+        const normalized: AuthResult =
+          raw && raw.data && raw.data.sessionToken
+            ? {
+                success: !!raw.success,
+                user: raw.data.user
+                  ? {
+                      id: raw.data.user.id,
+                      user_salt: "",
+                      password_hash: "",
+                      password_salt: "",
+                      failed_attempts: 0,
+                      role: (raw.data.user.role as any) || "private",
+                      is_active: raw.data.user.is_active !== false,
+                      hashedId: raw.data.user.id,
+                      authMethod: "nip07",
+                    }
+                  : undefined,
+                sessionToken: raw.data.sessionToken,
+              }
+            : raw;
+        return handleAuthSuccess(normalized);
       } catch (error) {
         setState((prev) => ({
           ...prev,
@@ -686,5 +729,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     requireAuthentication,
     checkAccountStatus,
     clearError,
+
+    // Expose internal handler for post-registration flows
+    // Note: not part of UnifiedAuthActions type yet; accessed via context
+    handleAuthSuccess,
   };
 }

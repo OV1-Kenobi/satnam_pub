@@ -101,21 +101,13 @@ export const useIdentityForge = () => {
     isRegistrationFlow: auth.isRegistrationFlow,
     setRegistrationFlow: auth.setIsRegistrationFlow,
 
-    // Post-registration authentication via server to set HttpOnly refresh cookie
+    // Post-registration authentication using unified flow (sets HttpOnly refresh cookie)
     authenticateAfterRegistration: async (nip05: string, password: string) => {
       try {
-        const res = await fetch('/api/auth/signin', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nip05, password, authMethod: 'nip05-password' }),
-        });
-        if (!res.ok) return false;
-        const json = await res.json();
-        const success = await (auth as any).handleAuthSuccess(json);
+        const success = await auth.authenticateNIP05Password(nip05, password);
         if (success) auth.setIsRegistrationFlow(false);
         return success;
-      } catch (e) {
+      } catch {
         return false;
       }
     },
