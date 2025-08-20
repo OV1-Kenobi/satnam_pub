@@ -18,6 +18,7 @@ export function PostAuthInvitationModal({
   onSkip,
   sessionInfo
 }: PostAuthInvitationModalProps) {
+  console.log('🔐 INVITE MODAL: mount', { isOpen, hasSessionInfo: !!sessionInfo, sessionInfo });
   // Do not render when closed to avoid full-screen overlay blocking navigation
   if (!isOpen) return null;
 
@@ -31,6 +32,9 @@ export function PostAuthInvitationModal({
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
 
+  useEffect(() => {
+    console.log('🔐 INVITE MODAL: effect isOpen/sessionInfo', { isOpen, hasSessionInfo: !!sessionInfo });
+  }, [isOpen, sessionInfo]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -108,6 +112,7 @@ export function PostAuthInvitationModal({
       setError('Failed to generate invitation. Please try again.');
     } finally {
       setLoading(false);
+      console.log('🔐 INVITE MODAL: render guard', { isOpen, isAuthenticated: sessionInfo?.isAuthenticated, hasToken: !!sessionInfo?.sessionToken });
     }
   };
 

@@ -309,7 +309,13 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
    */
   const authenticateNIP05Password = useCallback(
     async (nip05: string, password: string): Promise<boolean> => {
+      console.log("🔐 AUTH TRACE: authenticateNIP05Password called", {
+        nip05Preview: nip05?.slice(0, 16) + "…",
+      });
       try {
+        if (process.env.NODE_ENV !== "production") {
+          console.trace("🔐 AUTH TRACE: authenticateNIP05Password call stack");
+        }
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
         // Call server endpoint for NIP-05/password authentication
@@ -323,6 +329,10 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             authMethod: "nip05-password",
           }),
         });
+        console.log("🔐 AUTH TRACE: /api/auth/signin response status", {
+          ok: response.ok,
+          status: response.status,
+        });
 
         if (!response.ok) {
           setState((prev) => ({ ...prev, loading: false }));
@@ -330,6 +340,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         }
 
         const raw = await response.json();
+        console.log("🔐 AUTH TRACE: /api/auth/signin response json", raw);
         const normalized: AuthResult =
           raw && raw.data && raw.data.sessionToken
             ? {
