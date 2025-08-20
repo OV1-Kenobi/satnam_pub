@@ -998,9 +998,31 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         // Build minimal AuthResult compatible with unified auth system
         // Ensure user.hashedId matches token payload.hashedId to pass later validation
-        const payload = token ? SecureTokenManager.parseTokenPayload(token) : null;
+        let payload = null as any;
+        if (token) {
+          try {
+            payload = SecureTokenManager.parseTokenPayload(token);
+          } catch (e) {
+            console.warn('Token payload parsing failed, using fallback auth flow:', e);
+          }
+        }
+
         if (!payload) {
-          throw new Error('Invalid registration token payload');
+          console.warn('No valid token payload available, attempting fallback authentication');
+          try {
+            const fallbackOk = await (identityForge as any).authenticateAfterRegistration?.(nip05Identifier, formData.password);
+            if (!fallbackOk) throw new Error('Fallback signin failed');
+            const fallbackToken = SecureTokenManager.getAccessToken();
+            if (fallbackToken) {
+              payload = SecureTokenManager.parseTokenPayload(fallbackToken);
+            }
+          } catch (e) {
+            throw new Error('Registration succeeded but authentication failed: Invalid token payload and fallback auth failed');
+          }
+        }
+
+        if (!payload) {
+          throw new Error('Unable to establish valid session after registration');
         }
         const authResult = {
           success: true,
