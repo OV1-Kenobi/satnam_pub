@@ -28,8 +28,8 @@ export interface SecureTokens {
 }
 
 export interface TokenPayload {
-  userId: string;
-  hashedId: string; // HMAC-SHA256(pepper, userId)
+  userId?: string; // Optional: auth-signin access tokens may omit userId
+  hashedId: string;
   nip05?: string;
   iat: number;
   exp: number;
@@ -406,12 +406,7 @@ export class SecureTokenManager {
       const payload = JSON.parse(atob(parts[1]));
 
       // Basic validation
-      if (
-        !payload.userId ||
-        !payload.hashedId ||
-        !payload.exp ||
-        !payload.type
-      ) {
+      if (!payload.hashedId || !payload.exp || !payload.type) {
         return null;
       }
 
