@@ -314,7 +314,9 @@
     "@scure/bip32",
     "@scure/bip39",
     "@scure/base",
-    "phoenix-server-js"
+    "phoenix-server-js",
+    "qrcode",
+    "zod"
   ]
   # CRITICAL: Exclude more files to reduce storage usage in bundles
   included_files = [
@@ -376,7 +378,7 @@
   timeout = 15
 
 # Scheduled functions for cleanup tasks (only essential ones)
-[functions."cleanup-expired-credentials"]
+[functions."cleanup-expired-credentials-background"]
   schedule = "0 */6 * * *"  # Run every 6 hours
 
 # Build optimization settings

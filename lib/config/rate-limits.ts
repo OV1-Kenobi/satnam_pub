@@ -1,17 +1,11 @@
-
 /**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
+ * Environment variable getter for serverless functions
+ * Netlify Functions must use process.env (no import.meta.env)
  */
 function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
+  return typeof process !== "undefined" && process.env
+    ? process.env[key]
+    : undefined;
 }
 
 /**
@@ -40,7 +34,9 @@ export const RATE_LIMITS = {
     limit: parseInt(getEnvVar("INVITE_RATE_LIMIT") || "5"),
     windowMs:
       parseInt(getEnvVar("INVITE_RATE_WINDOW_HOURS") || "1") * 60 * 60 * 1000,
-    description: `${getEnvVar("INVITE_RATE_LIMIT") || "5"} invites per ${getEnvVar("INVITE_RATE_WINDOW_HOURS") || "1"} hour(s)`,
+    description: `${getEnvVar("INVITE_RATE_LIMIT") || "5"} invites per ${
+      getEnvVar("INVITE_RATE_WINDOW_HOURS") || "1"
+    } hour(s)`,
   } as RateLimitConfig,
 
   /** User registration */
@@ -51,14 +47,21 @@ export const RATE_LIMITS = {
       60 *
       60 *
       1000,
-    description: `${getEnvVar("REGISTRATION_RATE_LIMIT") || "3"} registrations per ${getEnvVar("REGISTRATION_RATE_WINDOW_HOURS") || "24"} hour(s)`,
+    description: `${
+      getEnvVar("REGISTRATION_RATE_LIMIT") || "3"
+    } registrations per ${
+      getEnvVar("REGISTRATION_RATE_WINDOW_HOURS") || "24"
+    } hour(s)`,
   } as RateLimitConfig,
 
   /** API calls (general) */
   API_CALLS: {
     limit: parseInt(getEnvVar("API_RATE_LIMIT") || "100"),
-    windowMs: parseInt(getEnvVar("API_RATE_WINDOW_MINUTES") || "15") * 60 * 1000,
-    description: `${getEnvVar("API_RATE_LIMIT") || "100"} API calls per ${getEnvVar("API_RATE_WINDOW_MINUTES") || "15"} minute(s)`,
+    windowMs:
+      parseInt(getEnvVar("API_RATE_WINDOW_MINUTES") || "15") * 60 * 1000,
+    description: `${getEnvVar("API_RATE_LIMIT") || "100"} API calls per ${
+      getEnvVar("API_RATE_WINDOW_MINUTES") || "15"
+    } minute(s)`,
   } as RateLimitConfig,
 } as const;
 

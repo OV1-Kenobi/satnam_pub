@@ -98,19 +98,11 @@ const InviteRequestSchema = z.object({
 });
 
 /**
- * Get environment variable with import.meta.env fallback for browser compatibility
- * (Master Context requirement)
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
+ * Environment variable getter for Netlify Functions (pure ESM)
+ * Netlify Functions should use process.env at runtime
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {any} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
+  return (typeof process !== 'undefined' && process.env) ? process.env[key] : undefined;
 }
 
 /**
