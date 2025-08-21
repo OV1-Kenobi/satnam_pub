@@ -303,6 +303,7 @@
   # Node.js version for functions
   node_bundler = "esbuild"
   # MEMORY OPTIMIZATION: Externalize heavy dependencies to reduce bundle size
+  # Add OTP and Hybrid Auth heavy deps to avoid bundling
   external_node_modules = [
     "pg",
     "redis",
@@ -316,7 +317,12 @@
     "@scure/base",
     "phoenix-server-js",
     "qrcode",
-    "zod"
+    "zod",
+    "nostr-tools",
+    "isomorphic-ws",
+    "ws",
+    "bech32",
+    "@scure/base"
   ]
   # CRITICAL: Exclude more files to reduce storage usage in bundles
   included_files = [
@@ -378,7 +384,7 @@
   timeout = 15
 
 # Scheduled functions for cleanup tasks (only essential ones)
-[functions."cleanup-expired-credentials-background"]
+[functions."cleanup-expired-credentials"]
   schedule = "0 */6 * * *"  # Run every 6 hours
 
 # Build optimization settings

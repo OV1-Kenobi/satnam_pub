@@ -513,17 +513,19 @@ export default async function handler(req, res) {
 
   try {
     const authHeader = req.headers.authorization;
-    /** @type {SessionData|null} */
-    const sessionData = await SecureSessionManager.validateSessionFromHeader(authHeader);
+    const sessionPayload = await SecureSessionManager.validateSessionFromHeader(authHeader);
 
-    if (!sessionData?.isAuthenticated || !sessionData.sessionToken) {
+    // Accept minimal access token payload (registration-issued tokens)
+    const tokenValid = !!sessionPayload && sessionPayload.type === 'access' && !!sessionPayload.hashedId;
+    if (!tokenValid) {
       return res.status(401).json({
         success: false,
         error: "Authentication required",
       });
     }
 
-    const hashedUserId = await generatePrivacyHash(sessionData.sessionToken);
+    const token = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.substring(7) : '';
+    const hashedUserId = await generatePrivacyHash(token);
 
     const rateLimitAllowed = await checkRateLimit(hashedUserId);
     if (!rateLimitAllowed) {

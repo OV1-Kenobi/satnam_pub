@@ -444,7 +444,8 @@ export const handler = async (event) => {
         hashed_bio: hashedUserData.hashed_bio, // ENCRYPTED: Bio text
         hashed_display_name: hashedUserData.hashed_display_name, // ENCRYPTED: Display name
         hashed_picture: hashedUserData.hashed_picture, // ENCRYPTED: Picture URL
-        hashed_npub: hashedUserData.hashed_npub, // ENCRYPTED: Nostr public key
+        // Align with auth fallback: store server-HMAC npub for cross-table matching
+        hashed_npub: computeHashedNpub(userDataForHashing.npub), // Server-side HMAC
         hashed_nip05: hashedUserData.hashed_nip05, // ENCRYPTED: NIP-05 identifier
         hashed_lightning_address: hashedUserData.hashed_lightning_address, // ENCRYPTED: Lightning address
         hashed_encrypted_nsec: hashedUserData.hashed_encrypted_nsec, // ENCRYPTED: Encrypted private key

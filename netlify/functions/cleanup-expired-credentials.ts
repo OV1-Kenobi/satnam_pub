@@ -1,13 +1,12 @@
 /**
- * Cleanup Expired Credentials Background Function
- * Runs on a schedule to automatically clean up expired nsec credentials
- * Background functions have relaxed limits and reduce build-time constraints.
+ * Cleanup Expired Credentials Function (scheduled)
+ * Reverted from background function to standard function for Netlify free plan
  */
 
 import { supabase } from '../../src/lib/supabase';
 
-export default async function handler(event: any) {
-  // Netlify scheduled background functions will call this with POST
+export async function handler(event: any) {
+  // Netlify scheduled functions call with POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -16,19 +15,19 @@ export default async function handler(event: any) {
   }
 
   try {
-    console.log('🧹 [BG] Starting expired credentials cleanup...');
+    console.log('🧹 Starting expired credentials cleanup...');
 
     const { data, error } = await supabase.rpc('cleanup_expired_nostr_credentials');
 
     if (error) {
-      console.error('❌ [BG] Cleanup failed:', error);
+      console.error('❌ Cleanup failed:', error);
       return {
         statusCode: 500,
         body: JSON.stringify({ error: 'Cleanup failed', details: error.message }),
       };
     }
 
-    console.log('✅ [BG] Expired credentials cleanup completed successfully');
+    console.log('✅ Expired credentials cleanup completed successfully');
 
     return {
       statusCode: 200,
@@ -39,7 +38,7 @@ export default async function handler(event: any) {
       }),
     };
   } catch (error) {
-    console.error('❌ [BG] Unexpected error during cleanup:', error);
+    console.error('❌ Unexpected error during cleanup:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({
