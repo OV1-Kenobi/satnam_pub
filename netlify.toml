@@ -53,6 +53,32 @@
   status = 200
   force = true
 
+# Auth refresh/logout/check-refresh explicit mappings
+[[redirects]]
+  from = "/api/auth/refresh"
+  to = "/.netlify/functions/auth-refresh"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/auth/check-refresh"
+  to = "/.netlify/functions/auth-check-refresh"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/auth/logout"
+  to = "/.netlify/functions/auth-logout"
+  status = 200
+  force = true
+
+# Authenticated endpoints
+[[redirects]]
+  from = "/api/authenticated/generate-peer-invite"
+  to = "/.netlify/functions/authenticated-generate-peer-invite"
+  status = 200
+  force = true
+
 # Generic mapping for other API endpoints
 [[redirects]]
   from = "/api/*"

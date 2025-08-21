@@ -1,6 +1,6 @@
 /**
  * Token Refresh API Endpoint
- * 
+ *
  * Implements secure token refresh using HttpOnly cookies as per security requirements:
  * - Short-lived access tokens (5-15 min) with rotating refresh tokens
  * - HttpOnly, Secure, SameSite=Strict cookies for refresh tokens
@@ -175,11 +175,15 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed' 
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
     });
   }
+
+  // DIAG: Begin refresh handler diagnostics (privacy-preserving)
+  const hadCookie = !!(req.headers && req.headers.cookie);
+  console.log('🔄 REFRESH DIAG: start', { hadCookie });
 
   try {
     // Get refresh token from HttpOnly cookie
@@ -210,7 +214,9 @@ export default async function handler(req, res) {
     }
 
     const refreshPayload = verifyJWTToken(refreshToken, jwtSecret);
-    if (!refreshPayload || refreshPayload.type !== 'refresh') {
+    const tokenValid = !!refreshPayload && refreshPayload.type === 'refresh';
+    console.log('🔄 REFRESH DIAG: verify', { tokenValid });
+    if (!tokenValid) {
       clearCookie(res, TOKEN_CONFIG.COOKIE_NAME);
       return res.status(401).json({
         success: false,
@@ -292,6 +298,8 @@ export default async function handler(req, res) {
         },
         authenticated: true,
         sessionToken: newAccessToken,
+  // DIAG: end of refresh handler reach (should not happen)
+
         expiresAt: new Date(accessTokenExpiry * 1000).toISOString(),
       },
       meta: {
@@ -303,10 +311,10 @@ export default async function handler(req, res) {
     console.log(`🔄 Tokens refreshed for user ${refreshPayload.userId}`);
   } catch (error) {
     console.error('Token refresh error:', error);
-    
+
     // Clear potentially invalid refresh cookie
     clearCookie(res, TOKEN_CONFIG.COOKIE_NAME);
-    
+
     res.status(500).json({
       success: false,
       error: 'Token refresh failed',

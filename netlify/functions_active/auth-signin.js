@@ -8,7 +8,8 @@ import * as crypto from 'node:crypto';
 function buildCorsHeaders(event) {
   const origin = event.headers?.origin || event.headers?.Origin;
   const isProd = process.env.NODE_ENV === 'production';
-  const allowedOrigin = isProd ? (process.env.FRONTEND_URL || 'https://satnam.pub') : (origin || '*');
+  // Preferred production origin consistency
+  const allowedOrigin = isProd ? (process.env.FRONTEND_URL || 'https://www.satnam.pub') : (origin || '*');
   const allowCreds = allowedOrigin !== '*';
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
@@ -106,6 +107,9 @@ async function authenticateUser(nip05, password) {
   const { resolveNIP05ToNpub } = await import('../../lib/security/duid-generator.js');
   let npub = await resolveNIP05ToNpub(nip05.trim().toLowerCase());
 
+  let authPath = 'nip05-resolution';
+  let userLookupSucceeded = false;
+
   if (!npub) {
     // Fallback only for satnam.pub domain using server-side hashed lookup
     try {
@@ -124,9 +128,6 @@ async function authenticateUser(nip05, password) {
             .eq('is_active', true)
             .single();
           if (!recErr && rec?.hashed_npub) {
-            // hashed_npub uses secret-based HMAC; cannot reverse to npub.
-            // However, we can derive duid_index directly from hashed_npub namespace.
-            // Instead, lookup user_identities by matching hashed_npub.
             const { data: userByHashed, error: userErr } = await supabase
               .from('user_identities')
               .select('*')
@@ -134,17 +135,21 @@ async function authenticateUser(nip05, password) {
               .eq('is_active', true)
               .single();
             if (!userErr && userByHashed?.id) {
-              // We don't need raw npub anymore; continue with found user
-              return { success: true, user: userByHashed, sessionId: generateSessionId() };
+              console.log('🔐 AUTH DIAG: fallback-path user lookup success');
+              return { success: true, user: userByHashed, sessionId: generateSessionId(), diag: { path: 'hashed-fallback', userFound: true } };
             }
           }
         }
       }
-    } catch (_) {}
+      authPath = 'hashed-fallback';
+    } catch (_) {
+      authPath = 'hashed-fallback-error';
+    }
 
     // If fallback not successful, maintain constant-time behavior and fail
     await hashPassword('dummy', 'dummy');
-    return { success: false, error: 'Invalid credentials' };
+    console.warn('🔐 AUTH DIAG: no user found via fallback', { path: authPath });
+    return { success: false, error: 'Invalid credentials', diag: { path: authPath, userFound: false } };
   }
 
   // Compute DUID index
@@ -155,7 +160,7 @@ async function authenticateUser(nip05, password) {
     duid_index = generateDUIDIndexFromNpub(npub);
   } catch (e) {
     console.error('DUID index generation failed:', e);
-    return { success: false, error: 'Server configuration error' };
+    return { success: false, error: 'Server configuration error', diag: { path: authPath, duidGen: 'fail' } };
   }
 
   // Lookup user
@@ -168,17 +173,23 @@ async function authenticateUser(nip05, password) {
 
   if (error || !user) {
     await hashPassword('dummy', 'dummy');
-    return { success: false, error: 'Invalid credentials' };
+    console.warn('🔐 AUTH DIAG: user lookup failed before password verify', { path: authPath, userFound: false });
+    return { success: false, error: 'Invalid credentials', diag: { path: authPath, userFound: false } };
   }
+
+  userLookupSucceeded = true;
 
   // Check lock BEFORE verifying password
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
-    return { success: false, error: 'Account temporarily locked' };
+    console.warn('🔐 AUTH DIAG: account locked', { path: authPath });
+    return { success: false, error: 'Account temporarily locked', diag: { path: authPath, locked: true } };
   }
 
   // Verify password
   const hashedPassword = await hashPassword(password, user.password_salt);
-  if (hashedPassword !== user.password_hash) {
+  const match = hashedPassword === user.password_hash;
+  console.log('🔐 AUTH DIAG: password-compare', { path: authPath, userFound: userLookupSucceeded, match });
+  if (!match) {
     // Atomic increment via RPC to prevent race conditions
     try {
       await supabase.rpc('increment_failed_attempts', {
@@ -187,7 +198,6 @@ async function authenticateUser(nip05, password) {
         lock_duration_minutes: 15,
       });
     } catch (rpcErr) {
-      // Fallback: non-atomic update as last resort
       try {
         await supabase
           .from('user_identities')
@@ -200,7 +210,7 @@ async function authenticateUser(nip05, password) {
           .eq('id', user.id);
       } catch (_) { /* swallow to avoid leaking details */ }
     }
-    return { success: false, error: 'Invalid credentials' };
+    return { success: false, error: 'Invalid credentials', diag: { path: authPath, userFound: true, match: false } };
   }
 
   // Reset failed attempts on success
@@ -215,7 +225,7 @@ async function authenticateUser(nip05, password) {
   hmac.update(user.id + sessionId);
   const protectedId = hmac.digest('hex');
 
-  return { success: true, user: { ...user, hashedId: protectedId }, sessionId };
+  return { success: true, user: { ...user, hashedId: protectedId }, sessionId, diag: { path: authPath, userFound: true, match: true } };
 }
 
 export const handler = async (event) => {
