@@ -285,12 +285,18 @@ export class SecureTokenManager {
    * Get current access token (from memory)
    */
   static getAccessToken(): string | null {
+    const now = Date.now();
+    const hasToken = !!currentAccessToken && !!accessTokenExpiry;
+    const expiresIn = accessTokenExpiry ? accessTokenExpiry - now : null;
+    console.log("🗝️ STM:getAccessToken", { hasToken, expiresInMs: expiresIn });
+
     if (!currentAccessToken || !accessTokenExpiry) {
       return null;
     }
 
     // Check if token is expired
-    if (Date.now() >= accessTokenExpiry) {
+    if (now >= accessTokenExpiry) {
+      console.warn("🗝️ STM:getAccessToken token expired, clearing");
       this.clearAccessToken();
       return null;
     }

@@ -683,26 +683,107 @@ export const handler = async (event) => {
       timestamp: new Date().toISOString()
     });
 
-    // Success response (PRIVACY-FIRST: No sensitive data in response)
+    // Issue session tokens to complete post-registration authentication
+    // 1) Derive JWT secret
+    let jwtSecret;
+    try {
+      const { getJwtSecret } = await import('./utils/jwt-secret.js');
+      jwtSecret = getJwtSecret();
+    } catch (e) {
+      console.error('JWT secret derivation failed during registration:', e);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ success: false, error: 'Server configuration error' }),
+      };
+    }
+
+    // 2) Reuse helpers from auth-signin.js by inlining minimal equivalents
+    const TOKEN_CONFIG = {
+      ACCESS_TOKEN_LIFETIME: 15 * 60, // seconds
+      REFRESH_TOKEN_LIFETIME: 7 * 24 * 60 * 60, // seconds
+      COOKIE_NAME: 'satnam_refresh_token',
+      JWT_ALGORITHM: 'HS256',
+    };
+
+    async function setSecureCookie(headersObj, name, value, maxAge) {
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      const cookie = [
+        `${name}=${value}`,
+        `Max-Age=${maxAge}`,
+        'Path=/',
+        'HttpOnly',
+        'SameSite=Strict',
+        ...(isDevelopment ? [] : ['Secure'])
+      ].join('; ');
+      const existing = headersObj['Set-Cookie'];
+      if (existing) {
+        headersObj['Set-Cookie'] = Array.isArray(existing) ? [...existing, cookie] : [existing, cookie];
+      } else {
+        headersObj['Set-Cookie'] = cookie;
+      }
+    }
+
+    // 3) Build protected hashedId similarly to auth-signin
+    const duidServerSecret = process.env.DUID_SERVER_SECRET || process.env.VITE_DUID_SERVER_SECRET;
+    if (!duidServerSecret) {
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Missing DUID server secret' }) };
+    }
+
+    const { createHmac, randomUUID } = await import('node:crypto');
+    const sessionId = randomUUID();
+    const protectedId = createHmac('sha256', duidServerSecret).update(duid_index + sessionId).digest('hex');
+
+    // 4) Sign access and refresh tokens
+    const nip05Id = userData.nip05 || `${userData.username}@satnam.pub`;
+    const accessPayload = { hashedId: protectedId, nip05: nip05Id, type: 'access', sessionId };
+
+    let accessToken;
+    try {
+      const mod = await import('jsonwebtoken');
+      const jwt = mod.default || mod;
+      accessToken = jwt.sign(accessPayload, jwtSecret, { expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_LIFETIME, algorithm: TOKEN_CONFIG.JWT_ALGORITHM, issuer: 'satnam.pub', audience: 'satnam.pub-users' });
+    } catch (e) {
+      console.error('Access token signing failed:', e);
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Failed to sign access token' }) };
+    }
+
+    // Generate refresh token (opaque JWT with type refresh)
+    const refreshPayload = { hashedId: protectedId, type: 'refresh', sessionId };
+    let refreshToken;
+    try {
+      const mod = await import('jsonwebtoken');
+      const jwt = mod.default || mod;
+      refreshToken = jwt.sign(refreshPayload, jwtSecret, { expiresIn: TOKEN_CONFIG.REFRESH_TOKEN_LIFETIME, algorithm: TOKEN_CONFIG.JWT_ALGORITHM, issuer: 'satnam.pub', audience: 'satnam.pub-users' });
+    } catch (e) {
+      console.error('Refresh token signing failed:', e);
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Failed to sign refresh token' }) };
+    }
+
+    // 5) Set refresh token cookie
+    await setSecureCookie(headers, TOKEN_CONFIG.COOKIE_NAME, refreshToken, TOKEN_CONFIG.REFRESH_TOKEN_LIFETIME);
+
+    // 6) Build success response including sessionToken
     const responseData = {
       success: true,
       message: "Identity registered successfully with privacy-first protection",
+      sessionToken: accessToken,
       user: {
-        id: duid_index, // Secure DUID index identifier (Phase 2)
-        username: userData.username, // Only unencrypted field
-        nip05: userData.nip05 || `${userData.username}@satnam.pub`, // Public identifier
+        id: duid_index,
+        username: userData.username,
+        nip05: nip05Id,
         lightningAddress: userData.lightningAddress || (userData.lightningEnabled ? `${userData.username}@satnam.pub` : null),
         registeredAt: new Date().toISOString(),
-        role: 'private', // Individual user role
-        privacyProtected: true, // ALL user data is encrypted
-        privacyLevel: 'maximum', // Over-encryption strategy
+        role: 'private',
+        privacyProtected: true,
+        privacyLevel: 'maximum',
         zeroKnowledgeEnabled: true,
-        encryptionStrategy: 'over_encryption' // Maximum database breach protection
+        encryptionStrategy: 'over_encryption'
       },
       meta: {
         timestamp: new Date().toISOString(),
-        architecture: 'maximum_encryption_two_tables', // Lean architecture
-        tablesUpdated: ['user_identities', 'nip05_records'], // Only 2 tables
+        architecture: 'maximum_encryption_two_tables',
+        tablesUpdated: ['user_identities', 'nip05_records'],
         encryptionScope: 'ALL user data encrypted, frontend decryption required',
         backwardCompatibility: 'NONE - greenfield maximum security approach'
       }
@@ -713,12 +794,8 @@ export const handler = async (event) => {
       responseData.postAuthAction = "show_invitation_modal";
     }
 
-    console.log("✅ Registration completed successfully");
-    return {
-      statusCode: 201,
-      headers,
-      body: JSON.stringify(responseData),
-    };
+    console.log("✅ Registration completed successfully (with session tokens)");
+    return { statusCode: 201, headers, body: JSON.stringify(responseData) };
 
     } catch (registrationError) {
       safeError('REGISTRATION_PHASE_FAIL', {
