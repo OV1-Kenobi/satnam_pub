@@ -19,8 +19,7 @@ import crypto from 'crypto';
 import { promisify } from 'util';
 import { vault } from '../../lib/vault.js';
 import { SecureSessionManager } from '../../netlify/functions/security/session-manager.js';
-import { supabase } from '../../src/lib/supabase.js';
-import { generateSessionToken } from '../../utils/auth-crypto.js';
+import { supabase } from '../../netlify/functions/supabase.js';
 
 // REMOVED: Deprecated getEnvVar() function
 // Now using direct process.env access as per new Vite-injected pattern
@@ -90,6 +89,20 @@ function validateRole(role) {
   );
 }
 
+// Local secure random hex generator for fallback salts/tokens
+function generateRandomHex(bytes = 32) {
+  try {
+    return crypto.randomBytes(bytes).toString('hex');
+  } catch (e) {
+    // Extremely unlikely fallback: use Math.random
+    let out = '';
+    for (let i = 0; i < bytes; i++) {
+      out += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+    }
+    return out;
+  }
+}
+
 /**
  * Generate Individual Wallet Sovereignty spending limits based on role
  * MASTER CONTEXT COMPLIANCE: Private/Adults/Stewards/Guardians have unlimited authority (-1)
@@ -131,7 +144,19 @@ function generateSovereigntySpendingLimits(role) {
 async function generatePrivacyPreservingHash(userData) {
   const encoder = new TextEncoder();
   const data = encoder.encode(`registration_${userData}_${Date.now()}`);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  let subtle;
+  try {
+    if (globalThis.crypto && globalThis.crypto.subtle) {
+      subtle = globalThis.crypto.subtle;
+    } else {
+      const nodeCrypto = await import('node:crypto');
+      subtle = nodeCrypto.webcrypto.subtle;
+    }
+  } catch (e) {
+    const nodeCrypto = await import('node:crypto');
+    subtle = nodeCrypto.webcrypto.subtle;
+  }
+  const hashBuffer = await subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
 }
@@ -582,11 +607,11 @@ export default async function handler(event, context) {
       registrationSalt = await vault.getCredentials("registration_salt");
       if (!registrationSalt) {
         console.error('Registration salt not found in Vault');
-        registrationSalt = await generateSessionToken(32); // Fallback
+        registrationSalt = generateRandomHex(32); // Fallback
       }
     } catch (vaultError) {
       console.error('Vault access failed:', vaultError);
-      registrationSalt = await generateSessionToken(32); // Fallback
+      registrationSalt = generateRandomHex(32); // Fallback
     }
 
     // Create secure session with JWT token
