@@ -26,25 +26,14 @@
   status = 200
   force = true
 
-# Explicit NIP-07 endpoints mapping (normalized to direct functions)
+# Consolidated auth endpoints routed via auth-router
 [[redirects]]
-  from = "/api/auth/nip07-challenge"
-  to = "/.netlify/functions/auth-nip07-challenge"
+  from = "/api/auth/*"
+  to = "/.netlify/functions/auth-router"
   status = 200
   force = true
 
-[[redirects]]
-  from = "/api/auth/nip07-signin"
-  to = "/.netlify/functions/auth-nip07-signin"
-  status = 200
-  force = true
 
-# Explicit signin mapping to avoid 404s
-[[redirects]]
-  from = "/api/auth/signin"
-  to = "/.netlify/functions/auth-signin"
-  status = 200
-  force = true
 
 # Canonical registration endpoint mapping (normalized)
 [[redirects]]
@@ -53,24 +42,7 @@
   status = 200
   force = true
 
-# Auth refresh/logout/check-refresh explicit mappings
-[[redirects]]
-  from = "/api/auth/refresh"
-  to = "/.netlify/functions/auth-refresh"
-  status = 200
-  force = true
 
-[[redirects]]
-  from = "/api/auth/check-refresh"
-  to = "/.netlify/functions/auth-check-refresh"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/auth/logout"
-  to = "/.netlify/functions/auth-logout"
-  status = 200
-  force = true
 
 # Authenticated endpoints
 [[redirects]]
@@ -343,30 +315,39 @@
   memory_size = 512  # 512MB for identity operations
   timeout = 20
 
-
   # Ensure server-only DUID index generator is included without lifting directory excludes
   included_files = [
     "netlify/functions/security/duid-index-generator.mjs",
     "netlify/functions/security/duid-index-generator.js"
   ]
 
-[functions."hybrid-auth"]
+# Auth router configuration
+[functions."auth-router"]
   node_bundler = "esbuild"
-  memory_size = 256
-  timeout = 20
   included_files = [
-    "netlify/functions/security/duid-index-generator.mjs"
+    # Target modules dynamically imported by the router
+    "netlify/functions_active/auth-signin.js",
+    "api/auth/logout.js",
+    "api/auth/refresh.js",
+    "api/auth/check-refresh.js",
+    "api/auth/nip07-challenge.js",
+    "api/auth/nip07-signin.js",
+
+    # Helpers these modules import dynamically
+    "netlify/functions/utils/jwt-secret.js",
+    "netlify/functions/security/duid-index-generator.mjs",
+    "netlify/functions/supabase.js",
+    "lib/security/duid-generator.js"
   ]
+
+
 
 [functions."nostr"]
   node_bundler = "esbuild"
   memory_size = 256  # 256MB for NIP-05 operations
   timeout = 10
 
-[functions."nostr-otp-service"]
-  node_bundler = "esbuild"
-  memory_size = 256  # 256MB for OTP operations
-  timeout = 15
+
 
 [functions."secure-storage"]
   node_bundler = "esbuild"

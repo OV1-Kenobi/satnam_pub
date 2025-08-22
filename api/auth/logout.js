@@ -39,6 +39,23 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Standardized IP-based rate limiting for logout (60s, 60 attempts)
+    try {
+      const xfwd = req.headers['x-forwarded-for'] || req.headers['X-Forwarded-For'];
+      const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+      const windowSec = 60;
+      const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+      const helper = await import('../../netlify/functions/supabase.js');
+      const { supabase } = helper;
+      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 60 });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) {
+        return res.status(429).json({ success:false, error:'Too many attempts' });
+      }
+    } catch {
+      return res.status(429).json({ success:false, error:'Too many attempts' });
+    }
+
     // Clear refresh token cookie
     clearCookie(res, 'satnam_refresh_token');
 

@@ -22,7 +22,6 @@ export {
   FamilyFederationAuthWrapper,
 } from "./auth/FamilyFederationAuth";
 export { default as FamilyFederationSignIn } from "./auth/FamilyFederationSignIn";
-export { default as NWCOTPSignIn } from "./auth/NWCOTPSignIn";
 export { default as AuthTestingPanel } from "./AuthTestingPanel";
 export { default as IndividualAuth } from "./IndividualAuth";
 export { MaxPrivacyAuth } from "./MaxPrivacyAuth";

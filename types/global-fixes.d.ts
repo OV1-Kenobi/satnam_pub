@@ -7,7 +7,6 @@
 declare global {
   const supabase: any;
   const PrivacyManager: any;
-  const HybridAuth: any;
   const SecureStorage: any;
   const EventSigner: any;
   const generatePrivateKey: () => string;

@@ -10,12 +10,22 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 /**
  * API Response type
+ * - Success: data is T
+ * - Error: error is string
  */
 interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+}
+
+/**
+ * Auth session response shape when unauthenticated
+ */
+interface UnauthSession {
+  authenticated: false;
+  user: null;
 }
 
 /**
@@ -94,7 +104,7 @@ export class ApiClient {
         if (endpoint.includes("/auth/session") && response.status === 401) {
           return {
             success: true,
-            data: { authenticated: false, user: null },
+            data: { authenticated: false, user: null } as unknown as T,
           };
         }
 
@@ -221,16 +231,9 @@ export const authAPI = {
   authenticateNostr: (data: NostrAuthData) =>
     apiClient.post<SessionData>("/auth/nostr", data),
 
-  // NWC authentication
+  // NWC authentication (deprecated)
   authenticateNWC: (data: NWCAuthData) =>
     apiClient.post<SessionData>("/auth/nwc", data),
-
-  // OTP authentication
-  initiateOTP: (data: OTPInitiateData) =>
-    apiClient.post("/auth/otp-initiate", data),
-
-  verifyOTP: (data: OTPVerifyData) =>
-    apiClient.post<SessionData>("/auth/otp-verify", data),
 
   // Session management
   getSession: () => apiClient.get<SessionData>("/auth/session"),

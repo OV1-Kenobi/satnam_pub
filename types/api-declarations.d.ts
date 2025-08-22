@@ -11,14 +11,6 @@ declare module "../api/test.js" {
   export function handler(event: any, context: any): Promise<any>;
 }
 
-declare module "../api/auth/otp-initiate.js" {
-  export function handler(event: any, context: any): Promise<any>;
-}
-
-declare module "../api/auth/otp-verify.js" {
-  export function handler(event: any, context: any): Promise<any>;
-}
-
 declare module "../api/auth/register-identity.js" {
   export function handler(event: any, context: any): Promise<any>;
 }
@@ -53,22 +45,6 @@ declare module "../api/bridge/atomic-swap.js" {
 
 declare module "../api/rewards.js" {
   export function handler(event: any, context: any): Promise<any>;
-}
-
-declare module "../lib/hybrid-auth.js" {
-  export class HybridAuth {
-    constructor();
-    authenticate(credentials: any): Promise<any>;
-    validateSession(token: string): Promise<any>;
-  }
-}
-
-declare module "../hybrid-auth.js" {
-  export class HybridAuth {
-    constructor();
-    authenticate(credentials: any): Promise<any>;
-    validateSession(token: string): Promise<any>;
-  }
 }
 
 declare module "../lib/secure-storage.js" {
@@ -133,10 +109,6 @@ declare module "../lib/redis.js" {
     set(key: string, value: string, ttl?: number): Promise<void>;
     delete(key: string): Promise<void>;
   }
-}
-
-declare module "../netlify/functions/hybrid-auth.js" {
-  export function handler(event: any, context: any): Promise<any>;
 }
 
 declare module "../netlify/functions/privacy/encryption.js" {

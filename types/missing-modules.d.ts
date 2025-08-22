@@ -41,6 +41,12 @@ declare module "../config" {
   };
 }
 
+// Also support CommonJS/JS import pattern without extension resolution differences
+declare module "../config.js" {
+  export const config: any;
+  export const authConfig: any;
+}
+
 // Fix missing security module
 declare module "../security.js" {
   export function deriveEncryptionKey(
@@ -134,20 +140,7 @@ declare module "../crypto/privacy-manager.js" {
   }
 }
 
-// Fix missing hybrid auth modules
-declare module "../lib/hybrid-auth.js" {
-  export class HybridAuth {
-    static validateSession(): Promise<any>;
-    static authenticate(credentials: any): Promise<any>;
-  }
-}
-
-declare module "../hybrid-auth.js" {
-  export class HybridAuth {
-    static validateSession(): Promise<any>;
-    static authenticate(credentials: any): Promise<any>;
-  }
-}
+// Hybrid auth module declarations removed intentionally
 
 // Fix missing secure storage modules
 declare module "../lib/secure-storage.js" {

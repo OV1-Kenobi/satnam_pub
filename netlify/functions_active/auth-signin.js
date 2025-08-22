@@ -238,6 +238,24 @@ export const handler = async (event) => {
       return withCors({ statusCode: 405, body: JSON.stringify({ success: false, error: 'Method not allowed' }) }, cors);
     }
 
+    // Standardized IP-based rate limiting (60s window, 30 attempts)
+    try {
+      const xfwd = event.headers?.['x-forwarded-for'] || event.headers?.['X-Forwarded-For'];
+      const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+      const windowSec = 60;
+      const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+      const { supabase } = await import('../functions/supabase.js');
+      const { data, error } = await supabase.rpc('increment_auth_rate', {
+        p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 30,
+      });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) {
+        return withCors({ statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many attempts' }) }, cors);
+      }
+    } catch (e) {
+      return withCors({ statusCode: 429, body: JSON.stringify({ success: false, error: 'Too many attempts' }) }, cors);
+    }
+
     let jwtSecret;
     try {
       const { getJwtSecret } = await import('../functions/utils/jwt-secret.js');

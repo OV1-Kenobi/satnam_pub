@@ -27,6 +27,7 @@
 
 // Import verifyEvent function - will be implemented inline for browser compatibility
 // import { verifyEvent } from "../../src/lib/nostr-browser.js";
+import jwt from "jsonwebtoken";
 
 /**
  * Enhanced verifyEvent implementation with comprehensive security
@@ -497,7 +498,6 @@ export default async function handler(event, context) {
     // Load and validate persisted challenge
     const { supabase } = await import("../../netlify/functions/supabase.js");
     const { generateDUIDIndexFromNpub } = await import("../../netlify/functions/security/duid-index-generator.mjs");
-    const { SecureSessionManager } = await import("../../netlify/functions/security/session-manager.js");
 
     const sessionId = parsedBody.sessionId;
     const nonce = parsedBody.nonce;
@@ -513,11 +513,20 @@ export default async function handler(event, context) {
     // Basic rate limiting by IP (60s window, 30 attempts)
     const xfwd = event.headers["x-forwarded-for"] || event.headers["X-Forwarded-For"];
     const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
-    try { await incrementRateLimit(supabase, { identifier: clientIp, scope: 'ip', limit: 30, windowSec: 60 }); } catch (e) {
-      // If incrementRateLimit throws a response-like object, return it
-      if (e && typeof e === 'object' && 'statusCode' in e) {
-        return /** @type {any} */ (e);
+
+    const windowSec_ip = 60;
+    const now_ip = Date.now();
+    const windowStart_ip = new Date(Math.floor(now_ip / (windowSec_ip * 1000)) * (windowSec_ip * 1000)).toISOString();
+
+    try {
+      const { data, error } = await supabase.rpc('increment_auth_rate', {
+        p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart_ip, p_limit: 30
+      });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) {
+        return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
       }
+    } catch (e) {
       return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
     }
 
@@ -564,8 +573,20 @@ export default async function handler(event, context) {
     }
 
     // Rate limit per user (60s window, 10 attempts)
-    try { await incrementRateLimit(supabase, { identifier: duid_index, scope: 'duid', limit: 10, windowSec: 60 }); } catch (e) {
-      return e.response || { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    const windowSec_duid = 60;
+    const now_duid = Date.now();
+    const windowStart_duid = new Date(Math.floor(now_duid / (windowSec_duid * 1000)) * (windowSec_duid * 1000)).toISOString();
+
+    try {
+      const { data, error } = await supabase.rpc('increment_auth_rate', {
+        p_identifier: duid_index, p_scope: 'duid', p_window_start: windowStart_duid, p_limit: 10
+      });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) {
+        return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+      }
+    } catch (e) {
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
     }
 
     // Lookup user by DUID index
@@ -608,16 +629,62 @@ export default async function handler(event, context) {
       sessionToken: ''
     };
 
-    // Create session JWTs (Netlify response object unused in current implementation)
-    const jwtToken = await SecureSessionManager.createSession(null, userData);
-    const refreshToken = await SecureSessionManager.createRefreshToken({ userId: duid_index, npub });
+    // Create JWTs aligned with password signin flow
+    // Derive JWT secret (HS256, issuer/audience standardized)
+    let jwtSecret;
+    try {
+      const helper = await import('../../netlify/functions/utils/jwt-secret.js');
+      jwtSecret = helper.getJwtSecret();
+    } catch (e) {
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+    }
 
-    // Response - standardized SessionData payload
+    // Protected identifier (hashedId) using DUID_SERVER_SECRET and sessionId
+    const newSessionId = crypto.randomUUID();
+    const duidServerSecret = process.env.DUID_SERVER_SECRET;
+    if (!duidServerSecret) {
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+    }
+    const hmac = await (async () => {
+      const { createHmac } = await import('node:crypto');
+      const h = createHmac('sha256', duidServerSecret);
+      h.update(String(duid_index) + newSessionId);
+      return h.digest('hex');
+    })();
+
+    const TOKEN = { ACCESS_TOKEN_LIFETIME: 15 * 60, REFRESH_TOKEN_LIFETIME: 7 * 24 * 60 * 60 };
+    function signJWT(payload, secret, expiresIn) {
+      return jwt.sign(
+        { ...payload, jti: crypto.randomUUID() },
+        secret,
+        { expiresIn, algorithm: 'HS256', issuer: 'satnam.pub', audience: 'satnam.pub-users' }
+      );
+    }
+
+    const accessPayload = { hashedId: hmac, nip05: user.nip05 || undefined, type: 'access', sessionId: newSessionId };
+    const refreshPayload = { hashedId: hmac, nip05: user.nip05 || undefined, type: 'refresh', sessionId: newSessionId };
+
+    const accessToken = signJWT(accessPayload, jwtSecret, TOKEN.ACCESS_TOKEN_LIFETIME);
+    const refreshToken = signJWT(refreshPayload, jwtSecret, TOKEN.REFRESH_TOKEN_LIFETIME);
+
+    // Set HttpOnly refresh cookie like auth-signin
+    const headers = { ...corsHeaders };
+    const isDev = process.env.NODE_ENV !== 'production';
+    const cookie = [
+      `satnam_refresh_token=${refreshToken}`,
+      `Max-Age=${TOKEN.REFRESH_TOKEN_LIFETIME}`,
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Strict',
+      ...(isDev ? [] : ['Secure'])
+    ].join('; ');
+    headers['Set-Cookie'] = cookie;
+
     const response = {
       success: true,
       data: {
         user: {
-          id: duid_index,
+          id: hmac,
           npub,
           username: undefined,
           nip05: user.nip05 || undefined,
@@ -625,7 +692,7 @@ export default async function handler(event, context) {
           is_active: true,
         },
         authenticated: true,
-        sessionToken: jwtToken,
+        sessionToken: accessToken,
         expiresAt: undefined,
       },
       sovereigntyStatus: {
@@ -635,32 +702,12 @@ export default async function handler(event, context) {
       },
       meta: {
         timestamp: new Date().toISOString(),
-        protocol: "NIP-07",
+        protocol: 'NIP-07',
         privacyCompliant: true,
       },
     };
 
-    // Helper: atomic rate limiter via PostgreSQL RPC
-    async function incrementRateLimit(supabaseClient, { identifier, scope, limit, windowSec }) {
-      const now = new Date();
-      const windowStart = new Date(Math.floor(now.getTime() / (windowSec*1000)) * (windowSec*1000)).toISOString();
-      const { data, error } = await supabaseClient.rpc('increment_auth_rate', {
-        p_identifier: identifier,
-        p_scope: scope,
-        p_window_start: windowStart,
-        p_limit: limit,
-      });
-      if (error || (data && Array.isArray(data) && data[0]?.limited)) {
-        const resp = { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts. Please try later.' }) };
-        throw resp;
-      }
-    }
-
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: JSON.stringify(response),
-    };
+    return { statusCode: 200, headers, body: JSON.stringify(response) };
   } catch (error) {
     // PRIVACY: No sensitive error data logging
     return {

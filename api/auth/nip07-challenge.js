@@ -242,6 +242,23 @@ export default async function handler(event, context) {
     };
   }
 
+  // Standardized IP-based rate limiting (60s, 30 attempts)
+  try {
+    const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+    const windowSec = 60;
+    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+    const helper = await import('../../netlify/functions/supabase.js');
+    const { supabase } = helper;
+    const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 30 });
+    const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+    if (error || limited) {
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    }
+  } catch {
+    return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+  }
+
   // Allow GET and POST for challenge retrieval (POST ignored body)
   if (event.httpMethod !== "GET" && event.httpMethod !== "POST") {
     return {
