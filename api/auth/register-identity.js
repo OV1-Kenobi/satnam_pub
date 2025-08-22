@@ -21,7 +21,6 @@ import { vault } from '../../lib/vault.js';
 import { SecureSessionManager } from '../../netlify/functions/security/session-manager.js';
 import { supabase } from '../../src/lib/supabase.js';
 import { generateSessionToken } from '../../utils/auth-crypto.js';
-import { OTPStorageService } from '../../utils/otp-storage.js';
 
 // REMOVED: Deprecated getEnvVar() function
 // Now using direct process.env access as per new Vite-injected pattern
@@ -77,11 +76,7 @@ async function verifyPassword(password, storedHash, salt) {
   }
 }
 
-// Rate limiting configuration
-const RATE_LIMITS = {
-  REGISTRATION_PER_IP_PER_HOUR: 5,
-  REGISTRATION_PER_IP_PER_DAY: 10
-};
+// Deprecated OTP-based rate limiting constants retained for documentation only
 
 /**
  * Validate role from Identity Forge component
@@ -149,8 +144,8 @@ async function generatePrivacyPreservingHash(userData) {
 function extractClientInfo(event) {
   return {
     userAgent: event.headers['user-agent'],
-    ipAddress: event.headers['x-forwarded-for'] || 
-               event.headers['x-real-ip'] || 
+    ipAddress: event.headers['x-forwarded-for'] ||
+               event.headers['x-real-ip'] ||
                event.headers['client-ip']
   };
 }
@@ -233,47 +228,7 @@ function validateRegistrationData(userData) {
  * @param {string} ipAddress - Client IP address
  * @returns {Promise<Object>} Rate limit check result
  */
-async function checkRateLimit(ipAddress) {
-  const hourlyKey = `registration_rate_${ipAddress}_${Math.floor(Date.now() / (60 * 60 * 1000))}`;
-  const dailyKey = `registration_rate_${ipAddress}_${Math.floor(Date.now() / (24 * 60 * 60 * 1000))}`;
-  
-  try {
-    // Check hourly rate limit
-    const hourlyLimit = await OTPStorageService.checkRateLimit(
-      hourlyKey,
-      RATE_LIMITS.REGISTRATION_PER_IP_PER_HOUR,
-      1
-    );
-    
-    if (!hourlyLimit.allowed) {
-      return {
-        allowed: false,
-        error: 'Too many registration attempts this hour',
-        retryAfter: Math.ceil((hourlyLimit.resetTime.getTime() - Date.now()) / 1000)
-      };
-    }
-    
-    // Check daily rate limit
-    const dailyLimit = await OTPStorageService.checkRateLimit(
-      dailyKey,
-      RATE_LIMITS.REGISTRATION_PER_IP_PER_DAY,
-      1
-    );
-    
-    if (!dailyLimit.allowed) {
-      return {
-        allowed: false,
-        error: 'Too many registration attempts today',
-        retryAfter: Math.ceil((dailyLimit.resetTime.getTime() - Date.now()) / 1000)
-      };
-    }
-    
-    return { allowed: true };
-  } catch (error) {
-    console.error('Rate limit check failed:', error);
-    return { allowed: true }; // Allow on error to prevent blocking legitimate users
-  }
-}
+
 
 /**
  * Check username availability using secure DUID architecture
@@ -531,24 +486,30 @@ export default async function handler(event, context) {
     }
 
     // Extract client information for security
-    const clientInfo = extractClientInfo(event);
-
-    // Rate limiting check
-    const rateLimitResult = await checkRateLimit(clientInfo.ipAddress || 'unknown');
-    if (!rateLimitResult.allowed) {
+    // Standardized IP-based rate limiting (60s, 5 attempts for registration)
+    try {
+      const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+      const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+      const windowSec = 60;
+      const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+      const { supabase } = await import('../../netlify/functions/supabase.js');
+      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 5 });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) {
+        return {
+          statusCode: 429,
+          headers: corsHeaders,
+          body: JSON.stringify({ success:false, error:'Too many registration attempts' })
+        };
+      }
+    } catch {
       return {
         statusCode: 429,
         headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: rateLimitResult.error,
-          retryAfter: rateLimitResult.retryAfter,
-          meta: {
-            timestamp: new Date().toISOString()
-          }
-        })
+        body: JSON.stringify({ success:false, error:'Too many registration attempts' })
       };
     }
+
 
     // Validate request data
     const validationResult = validateRegistrationData(userData);
