@@ -46,6 +46,9 @@ function resolveRoute(path, method) {
   // Core auth (NIP-05/password)
   if (p.endsWith('/api/auth/signin') && method === 'POST') return './auth-signin.js';
 
+  // Registration
+  if (p.endsWith('/api/auth/register-identity') && method === 'POST') return '../../api/auth/register-identity.js';
+
   // Session management
   if (p.endsWith('/api/auth/logout') && method === 'POST') return '../../api/auth/logout.js';
   if (p.endsWith('/api/auth/refresh') && method === 'POST') return '../../api/auth/refresh.js';
