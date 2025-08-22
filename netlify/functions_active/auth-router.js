@@ -47,7 +47,7 @@ function resolveRoute(path, method) {
   if (p.endsWith('/api/auth/signin') && method === 'POST') return './auth-signin.js';
 
   // Registration
-  if (p.endsWith('/api/auth/register-identity') && method === 'POST') return './register-identity.js';
+  if (p.endsWith('/api/auth/register-identity') && method === 'POST') return './auth-register-identity.js';
 
   // Session management
   if (p.endsWith('/api/auth/logout') && method === 'POST') return '../../api/auth/logout.js';
