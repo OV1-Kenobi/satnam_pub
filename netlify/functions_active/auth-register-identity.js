@@ -3,10 +3,6 @@
 
 import * as crypto from 'node:crypto';
 import { promisify } from 'node:util';
-import { createHashedUserData, generateUserSalt } from '../../lib/security/privacy-hashing.js';
-import { vault } from '../../lib/vault.js';
-import { SecureSessionManager } from '../functions/security/session-manager.js';
-import { supabase } from '../functions/supabase.js';
 
 function buildCors(event) {
   const origin = event.headers?.origin || event.headers?.Origin;
@@ -112,6 +108,14 @@ export default async function handler(event) {
   try {
     let userData; try { userData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body; } catch { return { statusCode: 400, headers: cors, body: JSON.stringify({ success:false, error:'Invalid JSON in request body' }) }; }
 
+    // Lazy load heavy deps to reduce bundling memory
+    const [{ supabase }, { SecureSessionManager }, { generateUserSalt, createHashedUserData }, { vault }] = await Promise.all([
+      import('../functions/supabase.js'),
+      import('../functions/security/session-manager.js'),
+      import('../../lib/security/privacy-hashing.js'),
+      import('../../lib/vault.ts'),
+    ]);
+
     // Rate limit (60s window, 5 attempts per IP)
     try {
       const xfwd = event.headers?.['x-forwarded-for'] || event.headers?.['X-Forwarded-For'];
@@ -196,7 +200,7 @@ export default async function handler(event) {
       updated_at: new Date().toISOString()
     };
 
-    const { data: inserted, error: insertErr } = await supabase.from('user_identities').insert([profileData]).select().single();
+    const { error: insertErr } = await supabase.from('user_identities').insert([profileData]);
     if (insertErr) { console.error('User identity creation failed:', insertErr); return { statusCode: 500, headers: cors, body: JSON.stringify({ success:false, error:'Failed to create user identity' }) }; }
 
     // Registration salt (Vault) for auditing PBKDF2 compliance (fallback safe)

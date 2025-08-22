@@ -325,19 +325,14 @@
 [functions."auth-router"]
   node_bundler = "esbuild"
   included_files = [
-    # Target modules dynamically imported by the router
-    "netlify/functions_active/auth-signin.js",
-    "api/auth/logout.js",
-    "api/auth/refresh.js",
-    "api/auth/check-refresh.js",
-    "api/auth/nip07-challenge.js",
-    "api/auth/nip07-signin.js",
-
-    # Helpers these modules import dynamically
-    "netlify/functions/utils/jwt-secret.js",
-    "netlify/functions/security/duid-index-generator.mjs",
+    # Consolidated registration handler and required runtime deps
+    "netlify/functions_active/auth-register-identity.js",
     "netlify/functions/supabase.js",
-    "lib/security/duid-generator.js"
+    "netlify/functions/security/session-manager.js",
+    "netlify/functions/security/session-manager.ts",
+    "lib/vault.ts",
+    "lib/security/privacy-hashing.js",
+    "utils/privacy-logger.js"
   ]
 
 
