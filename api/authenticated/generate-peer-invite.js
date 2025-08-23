@@ -20,7 +20,7 @@
 import QRCode from "qrcode";
 import { z } from "zod";
 import { RATE_LIMITS, formatTimeWindow } from "../../lib/config/rate-limits.js";
-import { vault } from "../../lib/vault.js";
+import { vault } from "../../lib/vault.ts";
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
 

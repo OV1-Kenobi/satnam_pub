@@ -1,0 +1,75 @@
+// Type declarations for the JavaScript config module (config.js)
+// Provides typings for imports like: import { config, authConfig } from "../config"
+
+export interface SupabaseConfig {
+  url: string;
+  anonKey: string;
+}
+
+export interface PubkyConfig {
+  homeserverUrl: string;
+  pkarrRelays: string[];
+  enableMigration: string | boolean;
+  sovereigntyTracking: string | boolean;
+}
+
+export interface PkarrConfig {
+  relayTimeout: string | number;
+  recordTtl: string | number;
+  backupRelays: string | number;
+  publishRetries: string | number;
+}
+
+export interface NostrConfig {
+  relays: string[];
+  defaultKind: number;
+  privateKey: string;
+  nostrAuthChallenge: string;
+  nostrAuthKind: number;
+}
+
+export interface LightningConfig {
+  defaultNode: string;
+  networkTimeout: number;
+}
+
+export interface PrivacyConfig {
+  encryptionAlgorithm: string;
+  keyDerivationIterations: number;
+}
+
+export interface FederationConfig {
+  defaultRole: string;
+  approvalThreshold: number;
+}
+
+export interface DevelopmentConfig {
+  enableDebugLogs: boolean;
+  mockServices: boolean;
+}
+
+export interface ApiConfig {
+  baseUrl: string;
+  timeout: number;
+}
+
+export interface Nip05Config {
+  verificationEndpoint: string;
+  allowedDomains: string[];
+}
+
+export interface AppConfig {
+  supabase: SupabaseConfig;
+  pubky: PubkyConfig;
+  pkarr: PkarrConfig;
+  nostr: NostrConfig;
+  lightning: LightningConfig;
+  privacy: PrivacyConfig;
+  federation: FederationConfig;
+  development: DevelopmentConfig;
+  api: ApiConfig;
+  nip05: Nip05Config;
+}
+
+export const config: AppConfig;
+export const authConfig: any;

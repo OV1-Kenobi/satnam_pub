@@ -43,20 +43,20 @@ function resolveRoute(path, method) {
   // Normalize for safety
   const p = path.toLowerCase();
 
-  // Core auth (NIP-05/password)
-  if (p.endsWith('/api/auth/signin') && method === 'POST') return './auth-signin.js';
+  // Core auth (NIP-05/password) - handle both /api/auth/* and /auth/* patterns
+  if ((p.endsWith('/api/auth/signin') || p.endsWith('/auth/signin')) && method === 'POST') return './auth-signin.js';
 
-  // Registration
-  if (p.endsWith('/api/auth/register-identity') && method === 'POST') return './auth-register-identity.js';
+  // Registration - handle both /api/auth/* and /auth/* patterns
+  if ((p.endsWith('/api/auth/register-identity') || p.endsWith('/auth/register-identity')) && method === 'POST') return './auth-register-identity.js';
 
   // Session management
-  if (p.endsWith('/api/auth/logout') && method === 'POST') return '../../api/auth/logout.js';
-  if (p.endsWith('/api/auth/refresh') && method === 'POST') return '../../api/auth/refresh.js';
-  if (p.endsWith('/api/auth/check-refresh') && method === 'GET') return '../../api/auth/check-refresh.js';
+  if ((p.endsWith('/api/auth/logout') || p.endsWith('/auth/logout')) && method === 'POST') return '../../api/auth/logout.js';
+  if ((p.endsWith('/api/auth/refresh') || p.endsWith('/auth/refresh')) && method === 'POST') return '../../api/auth/refresh.js';
+  if ((p.endsWith('/api/auth/check-refresh') || p.endsWith('/auth/check-refresh')) && method === 'GET') return '../../api/auth/check-refresh.js';
 
   // NIP-07
-  if (p.endsWith('/api/auth/nip07-challenge') && method === 'GET') return '../../api/auth/nip07-challenge.js';
-  if (p.endsWith('/api/auth/nip07-signin') && method === 'POST') return '../../api/auth/nip07-signin.js';
+  if ((p.endsWith('/api/auth/nip07-challenge') || p.endsWith('/auth/nip07-challenge')) && method === 'GET') return '../../api/auth/nip07-challenge.js';
+  if ((p.endsWith('/api/auth/nip07-signin') || p.endsWith('/auth/nip07-signin')) && method === 'POST') return '../../api/auth/nip07-signin.js';
 
   return null;
 }

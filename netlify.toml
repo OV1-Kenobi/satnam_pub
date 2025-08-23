@@ -26,21 +26,8 @@
   status = 200
   force = true
 
-# Consolidated auth endpoints routed via auth-router
-[[redirects]]
-  from = "/api/auth/*"
-  to = "/.netlify/functions/auth-router"
-  status = 200
-  force = true
 
 
-
-# Canonical registration endpoint mapping (normalized)
-[[redirects]]
-  from = "/api/auth/register-identity"
-  to = "/.netlify/functions/register-identity"
-  status = 200
-  force = true
 
 
 
@@ -51,10 +38,17 @@
   status = 200
   force = true
 
-# Generic mapping for other API endpoints
+# Generic mapping for other API endpoints (excluding auth which is handled below)
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
+  status = 200
+  force = false
+
+# Consolidated auth endpoints routed via auth-router (MUST come after generic to override)
+[[redirects]]
+  from = "/api/auth/*"
+  to = "/.netlify/functions/auth-router"
   status = 200
   force = true
 
@@ -326,7 +320,6 @@
   node_bundler = "esbuild"
   included_files = [
     # Consolidated registration handler and required runtime deps
-    "netlify/functions_active/package.json",
     "netlify/functions_active/auth-register-identity.js",
     "netlify/functions/supabase.js",
     "netlify/functions/security/session-manager.js",

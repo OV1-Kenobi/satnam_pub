@@ -33,7 +33,7 @@ async function hashPasswordPBKDF2(password, saltB64) {
 function generatePasswordSalt() { return crypto.randomBytes(24).toString('base64'); }
 function generateRandomHex(bytes = 32) { return crypto.randomBytes(bytes).toString('hex'); }
 
-async function checkUsernameAvailability(username) {
+async function checkUsernameAvailability(username, supabase) {
   try {
     const domain = 'satnam.pub';
     const local = (username || '').trim().toLowerCase();
@@ -100,7 +100,7 @@ function validateRegistrationData(userData) {
   };
 }
 
-export default async function handler(event) {
+export const handler = async function(event) {
   const cors = buildCors(event);
   if ((event.httpMethod || 'GET').toUpperCase() === 'OPTIONS') return { statusCode: 200, headers: cors, body: '' };
   if ((event.httpMethod || 'GET').toUpperCase() !== 'POST') return { statusCode: 405, headers: { ...cors, 'Allow':'POST' }, body: JSON.stringify({ success:false, error:'Method not allowed' }) };
@@ -134,7 +134,7 @@ export default async function handler(event) {
     const v = validation.data;
 
     // Username availability (hashed NIP-05)
-    const available = await checkUsernameAvailability(v.username);
+    const available = await checkUsernameAvailability(v.username, supabase);
     if (!available) return { statusCode: 409, headers: cors, body: JSON.stringify({ success:false, error:'Username is already taken', field:'username' }) };
 
     // DUID FAIL-SAFE (exact requirement)
@@ -252,4 +252,6 @@ export default async function handler(event) {
     console.error('Registration error:', e);
     return { statusCode: 500, headers: cors, body: JSON.stringify({ success:false, error:'Registration failed' }) };
   }
-}
+};
+
+export default handler;
