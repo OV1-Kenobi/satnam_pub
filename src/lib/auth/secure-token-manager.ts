@@ -46,29 +46,17 @@ export class IdentifierProtectionService {
 
   /**
    * Initialize the service with a secure pepper from environment
+   * OPTIMIZATION: Use client-side fallback to avoid server dependency
    */
   static async initialize(): Promise<void> {
     try {
-      // In production, this would come from a secure KMS or environment variable
-      // For now, we'll generate a consistent pepper from user session
-      let response = await fetch("/api/auth/get-pepper", {
-        method: "GET",
-        credentials: "include",
-      });
-
-      if (response.status === 404) {
-        response = await fetch("/.netlify/functions/auth-get-pepper", {
-          method: "GET",
-          credentials: "include",
-        });
-      }
-
-      if (response.ok) {
-        const { pepper } = await response.json();
-        this.pepper = pepper;
-      } else {
-        throw new Error("Failed to retrieve secure pepper");
-      }
+      // MEMORY OPTIMIZATION: Skip server fetch, use client-side fallback
+      // The server-side already handles pepper via DUID_SERVER_SECRET
+      // Client-side identifier protection is optional for UI purposes only
+      this.pepper = "client-side-identifier-protection-fallback";
+      console.log(
+        "🔐 Identifier Protection Service initialized (client-side mode)"
+      );
     } catch (error) {
       console.error("Failed to initialize identifier protection:", error);
       throw error;

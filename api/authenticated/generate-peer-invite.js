@@ -27,9 +27,8 @@
  * ✅ Supports both Identity Forge new users and existing authenticated users
  */
 
-import QRCode from "qrcode";
-import { z } from "zod";
-import { RATE_LIMITS, formatTimeWindow } from "../../lib/config/rate-limits.js";
+// MEMORY OPTIMIZATION: Use lazy imports to reduce bundle size
+// Heavy dependencies loaded only when needed
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
 
@@ -102,23 +101,48 @@ import { supabase } from "../../netlify/functions/supabase.js";
  * @property {function(): void} end
  */
 
-// Rate limiting configuration (now imported from config)
-const { limit: INVITE_RATE_LIMIT, windowMs: RATE_LIMIT_WINDOW } = RATE_LIMITS.PEER_INVITES;
+// MEMORY OPTIMIZATION: Lazy load heavy dependencies
+let RATE_LIMITS, z, QRCode, formatTimeWindow;
 
-// Invitation request validation schema (privacy-first with gift-wrap support)
-const InviteRequestSchema = z.object({
-  personalMessage: z.string().max(500, "Personal message too long").optional(),
-  courseCredits: z.number().int().min(1).max(5).default(1),
-  expiryDays: z.number().int().min(1).max(90).default(30),
-  inviterNip05: z.string().optional(),
-  recipientNostrPubkey: z.string().optional(),
-  sendAsGiftWrappedDM: z.boolean().default(false),
-  signingOptions: z.object({
-    preferNIP07: z.boolean().default(false),
-    userPassword: z.string().nullable().optional(),
-    temporaryNsec: z.string().nullable().optional()
-  }).optional()
-});
+async function loadDependencies() {
+  if (!RATE_LIMITS) {
+    const rateConfig = await import("../../lib/config/rate-limits.js");
+    RATE_LIMITS = rateConfig.RATE_LIMITS;
+    formatTimeWindow = rateConfig.formatTimeWindow;
+  }
+  if (!z) {
+    const zodModule = await import("zod");
+    z = zodModule.z;
+  }
+  if (!QRCode) {
+    const qrModule = await import("qrcode");
+    QRCode = qrModule.default;
+  }
+}
+
+// Rate limiting configuration (loaded dynamically)
+function getRateLimits() {
+  if (!RATE_LIMITS) throw new Error("Dependencies not loaded");
+  return RATE_LIMITS.PEER_INVITES;
+}
+
+// Invitation request validation schema (created dynamically)
+function getInviteRequestSchema() {
+  if (!z) throw new Error("Dependencies not loaded");
+  return z.object({
+    personalMessage: z.string().max(500, "Personal message too long").optional(),
+    courseCredits: z.number().int().min(1).max(5).default(1),
+    expiryDays: z.number().int().min(1).max(90).default(30),
+    inviterNip05: z.string().optional(),
+    recipientNostrPubkey: z.string().optional(),
+    sendAsGiftWrappedDM: z.boolean().default(false),
+    signingOptions: z.object({
+      preferNIP07: z.boolean().default(false),
+      userPassword: z.string().nullable().optional(),
+      temporaryNsec: z.string().nullable().optional()
+    }).optional()
+  });
+}
 
 /**
  * Environment variable getter for Netlify Functions (pure ESM)
@@ -542,10 +566,11 @@ async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip
  */
 async function checkRateLimit(userHash) {
   try {
+    const rateLimits = getRateLimits();
     const { data, error } = await supabase.rpc("check_and_update_rate_limit", {
       user_hash: userHash,
-      rate_limit: INVITE_RATE_LIMIT,
-      window_ms: RATE_LIMIT_WINDOW,
+      rate_limit: rateLimits.limit,
+      window_ms: rateLimits.windowMs,
     });
 
     if (error) {
@@ -580,11 +605,12 @@ async function getRateLimitStatus(userHash) {
 
     if (error) {
       if (error.code === "PGRST116") {
+        const rateLimits = getRateLimits();
         return {
           allowed: true,
           current_count: 0,
-          rate_limit: INVITE_RATE_LIMIT,
-          window_ms: RATE_LIMIT_WINDOW,
+          rate_limit: rateLimits.limit,
+          window_ms: rateLimits.windowMs,
         };
       }
       return null;
@@ -594,12 +620,13 @@ async function getRateLimitStatus(userHash) {
     const resetTime = new Date(data.reset_time);
     const isExpired = now > resetTime;
 
+    const rateLimits = getRateLimits();
     return {
-      allowed: isExpired || data.request_count < INVITE_RATE_LIMIT,
+      allowed: isExpired || data.request_count < rateLimits.limit,
       current_count: isExpired ? 0 : data.request_count,
-      rate_limit: INVITE_RATE_LIMIT,
+      rate_limit: rateLimits.limit,
       reset_time: resetTime.getTime(),
-      window_ms: RATE_LIMIT_WINDOW,
+      window_ms: rateLimits.windowMs,
     };
   } catch (error) {
     return null;
@@ -668,6 +695,9 @@ function setCorsHeaders(req, res) {
  * @param {NetlifyResponse} res - Response object
  */
 export default async function handler(req, res) {
+  // MEMORY OPTIMIZATION: Load dependencies only when needed
+  await loadDependencies();
+
   setCorsHeaders(req, res);
 
   if (req.method === "OPTIONS") {
@@ -721,10 +751,10 @@ export default async function handler(req, res) {
         success: false,
         error: `Rate limit exceeded. You have generated ${
           rateLimitStatus?.current_count || "maximum"
-        } of ${INVITE_RATE_LIMIT} allowed invitations. Please try again ${
+        } of ${rateLimitStatus?.rate_limit || "allowed"} invitations. Please try again ${
           resetTimeFormatted
             ? `after ${resetTimeFormatted}`
-            : `in ${formatTimeWindow(RATE_LIMIT_WINDOW)}`
+            : `in ${formatTimeWindow ? formatTimeWindow(rateLimitStatus?.window_ms || 3600000) : "later"}`
         }.`,
         rateLimitInfo: rateLimitStatus
           ? {
@@ -739,6 +769,7 @@ export default async function handler(req, res) {
       });
     }
 
+    const InviteRequestSchema = getInviteRequestSchema();
     const validationResult = InviteRequestSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({

@@ -208,11 +208,13 @@ export const handler = async function(event) {
       const nip05Identifier = `${v.username}@satnam.pub`;
       const hashedNip05 = crypto.createHmac('sha256', secret).update(nip05Identifier).digest('hex');
 
+      // PRIVACY-FIRST: Only store hashed values, no plaintext
+      const hashedNpub = crypto.createHmac('sha256', secret).update(v.npub).digest('hex');
+
       const nip05Record = {
         domain: 'satnam.pub',
-        local_part: v.username,
         hashed_nip05: hashedNip05,
-        user_id: v.deterministicUserId,
+        hashed_npub: hashedNpub,
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
