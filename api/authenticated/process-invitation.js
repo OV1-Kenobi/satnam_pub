@@ -18,7 +18,6 @@
  */
 
 import { z } from "zod";
-import { vault } from "../../lib/vault.js";
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
 
@@ -66,11 +65,16 @@ function getEnvVar(key) {
  * @property {string} npub
  * @property {string} [nip05]
  * @property {"private"|"offspring"|"adult"|"steward"|"guardian"} federationRole
- * @property {"otp"|"nwc"} authMethod
+ * @property {"otp"|"nwc"|"nip05-password"|"nip07"|"nsec"} authMethod
  * @property {boolean} isWhitelisted
  * @property {number} votingPower
  * @property {boolean} guardianApproved
  * @property {boolean} stewardApproved
+ * @property {"access"|"refresh"} [type] - JWT token type
+ * @property {string} [hashedId] - HMAC-SHA256 protected identifier
+ * @property {string} [sessionId] - Session identifier for token tracking
+ * @property {number} [iat] - Issued at timestamp
+ * @property {number} [exp] - Expiration timestamp
  */
 
 /**
@@ -166,30 +170,21 @@ async function createHMACSHA256(data, key) {
  * @returns {Promise<string>} Privacy hash
  */
 async function generatePrivacyHash(sessionToken) {
-  try {
-    const vaultSalt = await vault.getCredentials("privacy_salt");
-    const salt = vaultSalt || getEnvVar("PRIVACY_SALT");
+  const salt = getEnvVar("PRIVACY_SALT") || "default_salt_change_in_production";
 
-    if (!salt) {
-      if (getEnvVar("NODE_ENV") === "production") {
-        throw new Error(
-          "PRIVACY_SALT must be configured in Vault for production"
-        );
-      }
-      return await createHMACSHA256(
-        sessionToken,
-        "default_salt_change_in_production"
+  if (!salt || salt === "default_salt_change_in_production") {
+    if (getEnvVar("NODE_ENV") === "production") {
+      throw new Error(
+        "PRIVACY_SALT must be configured in environment variables for production"
       );
     }
-
-    return await createHMACSHA256(sessionToken, salt);
-  } catch (error) {
-    const salt = getEnvVar("PRIVACY_SALT");
-    if (!salt) {
-      throw new Error("PRIVACY_SALT environment variable is required");
-    }
-    return await createHMACSHA256(sessionToken, salt);
+    return await createHMACSHA256(
+      sessionToken,
+      "default_salt_change_in_production"
+    );
   }
+
+  return await createHMACSHA256(sessionToken, salt);
 }
 
 /**

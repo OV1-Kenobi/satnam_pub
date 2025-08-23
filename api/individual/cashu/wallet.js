@@ -24,6 +24,9 @@
  * - Token structure preparation for blind signature implementation
  */
 
+// Import SecureSessionManager for authentication
+import { SecureSessionManager } from "../../../netlify/functions/security/session-manager.js";
+
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -252,16 +255,31 @@ export default async function handler(event, context) {
 
   try {
     // Parse query parameters
-    const { memberId, userRole = 'private', includeTransactions = 'true', includeBearerInstruments = 'true', limit = '50' } = event.queryStringParameters || {};
+    const { memberId: rawMemberId, userRole = 'private', includeTransactions = 'true', includeBearerInstruments = 'true', limit = '50' } = event.queryStringParameters || {};
 
     // Validate required parameters
-    if (!memberId || typeof memberId !== "string") {
+    if (!rawMemberId || typeof rawMemberId !== "string") {
       return {
         statusCode: 400,
         headers: corsHeaders,
         body: JSON.stringify({ error: "Member ID is required" }),
       };
     }
+
+    // Get session data for user ID resolution
+    const authHeader = event.headers.authorization || event.headers.Authorization;
+    const sessionData = await SecureSessionManager.validateSessionFromHeader(authHeader);
+
+    if (!sessionData || !sessionData.isAuthenticated) {
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Authentication required" }),
+      };
+    }
+
+    // Resolve "current-user" to actual user ID from session
+    const memberId = rawMemberId === "current-user" ? sessionData.userId : rawMemberId;
 
     // Validate Individual Wallet Sovereignty
     const sovereigntyValidation = validateCashuWalletSovereignty(/** @type {'private'|'offspring'|'adult'|'steward'|'guardian'} */ (userRole), 'view_wallet');

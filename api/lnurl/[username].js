@@ -1,22 +1,10 @@
-import {
-  SecureSessionManager,
-} from "../../netlify/functions/security/session-manager.js";
-import { vault } from "../../lib/vault.js";
+
 
 function getEnvVar(key) {
   return process.env[key];
 }
 
 async function getApiBaseUrl() {
-  try {
-    const vaultUrl = await vault.getCredentials("api_base_url");
-    if (vaultUrl) {
-      return vaultUrl;
-    }
-  } catch (error) {
-    // Vault not available, fall back to environment variables
-  }
-
   const envUrl = getEnvVar("API_BASE_URL") || getEnvVar("VITE_API_BASE_URL");
   if (envUrl) {
     return envUrl;
@@ -26,15 +14,6 @@ async function getApiBaseUrl() {
 }
 
 async function getLightningDomain() {
-  try {
-    const vaultDomain = await vault.getCredentials("lightning_address_domain");
-    if (vaultDomain) {
-      return vaultDomain;
-    }
-  } catch (error) {
-    // Vault not available, fall back to environment variables
-  }
-
   return getEnvVar("LIGHTNING_ADDRESS_DOMAIN") || "satnam.pub";
 }
 

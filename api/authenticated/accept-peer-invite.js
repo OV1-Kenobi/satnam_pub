@@ -50,11 +50,16 @@ import { supabase } from "../../netlify/functions/supabase.js";
  * @property {string} npub
  * @property {string} [nip05]
  * @property {"private"|"offspring"|"adult"|"steward"|"guardian"} federationRole
- * @property {"otp"|"nwc"} authMethod
+ * @property {"otp"|"nwc"|"nip05-password"|"nip07"|"nsec"} authMethod
  * @property {boolean} isWhitelisted
  * @property {number} votingPower
  * @property {boolean} guardianApproved
  * @property {boolean} stewardApproved
+ * @property {"access"|"refresh"} [type] - JWT token type
+ * @property {string} [hashedId] - HMAC-SHA256 protected identifier
+ * @property {string} [sessionId] - Session identifier for token tracking
+ * @property {number} [iat] - Issued at timestamp
+ * @property {number} [exp] - Expiration timestamp
  */
 
 /**

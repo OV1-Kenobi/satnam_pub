@@ -15,15 +15,23 @@
  */
 
 // Use server-side Supabase client via Netlify functions helper
-let supabaseClient: any = null;
-async function getServerSupabase() {
-  if (!supabaseClient) {
-    const { supabase } = await import("../netlify/functions/supabase.js");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-}
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { FederationRole } from "../src/types/auth";
+
+let supabaseClient: SupabaseClient | null = null;
+async function getServerSupabase(): Promise<SupabaseClient> {
+  if (!supabaseClient) {
+    const supabaseModule = (await import(
+      "../netlify/functions/supabase.js"
+    )) as {
+      supabase: SupabaseClient;
+      isServiceRoleKey: () => boolean;
+      supabaseKeyType: "service" | "anon" | "unknown";
+    };
+    supabaseClient = supabaseModule.supabase;
+  }
+  return supabaseClient!;
+}
 
 /**
  * Emergency event log entry for privacy-preserving audit trail
@@ -229,6 +237,7 @@ export class EmergencyRecoveryLib {
       };
 
       // Store recovery request in Supabase
+      const supabase = await getServerSupabase();
       const { error: insertError } = await supabase
         .from("emergency_recovery_requests")
         .insert({
@@ -305,6 +314,7 @@ export class EmergencyRecoveryLib {
     error?: string;
   }> {
     try {
+      const supabase = await getServerSupabase();
       const { data: guardians, error } = await supabase
         .from("family_members")
         .select("*")
@@ -373,6 +383,7 @@ export class EmergencyRecoveryLib {
       }
 
       // Get recovery request
+      const supabase = await getServerSupabase();
       const { data: request, error: fetchError } = await supabase
         .from("emergency_recovery_requests")
         .select("*")
@@ -500,6 +511,7 @@ export class EmergencyRecoveryLib {
     error?: string;
   }> {
     try {
+      const supabase = await getServerSupabase();
       const { data: requests, error } = await supabase
         .from("emergency_recovery_requests")
         .select("*")
@@ -580,17 +592,7 @@ export class EmergencyRecoveryLib {
     recoveryTimeoutMs: number;
     consensusThreshold: number;
   }> {
-    try {
-      // Try to get configuration from Vault first
-      const vaultConfig = await this.getVaultCredentials(
-        "emergency_recovery_config"
-      );
-      if (vaultConfig) {
-        return JSON.parse(vaultConfig);
-      }
-    } catch (error) {
-      // Vault not available, use environment variables with secure defaults
-    }
+    // Use environment variables directly (vault deprecated)
 
     return {
       maxDailyAttempts: parseInt(
@@ -611,18 +613,8 @@ export class EmergencyRecoveryLib {
    * Get credentials from Vault with error handling
    * MASTER CONTEXT COMPLIANCE: Secure credential management
    */
-  private static async getVaultCredentials(
-    key: string
-  ): Promise<string | null> {
-    try {
-      // TODO: Implement proper Vault integration
-      // const vault = await import("./vault");
-      // return await vault.getCredentials(key);
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
+  // Removed getVaultCredentials - vault.ts has been deprecated
+  // Use environment variables directly for credential access
 
   /**
    * Validate recovery permissions based on RBAC
@@ -675,6 +667,7 @@ export class EmergencyRecoveryLib {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const supabase = await getServerSupabase();
     const { data: todayRequests, error } = await supabase
       .from("emergency_recovery_requests")
       .select("id")
@@ -904,9 +897,19 @@ export class EmergencyRecoveryLib {
       for (const guardian of guardians) {
         // Send privacy-preserving notification to guardian.npub
         // Include recovery request ID and urgency level only
+        console.log(
+          `Notifying guardian ${guardian.npub.substring(
+            0,
+            12
+          )}... for recovery request ${request.id}`
+        );
       }
     } catch (error) {
       // MASTER CONTEXT COMPLIANCE: Privacy-first logging - no sensitive data exposure
+      console.warn(
+        "Guardian notification failed:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
     }
   }
 }

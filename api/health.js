@@ -1,6 +1,5 @@
-import { vault } from "../lib/vault.js";
 import {
-  SecureSessionManager,
+    SecureSessionManager,
 } from "../netlify/functions/security/session-manager.js";
 
 function getEnvVar(key) {
@@ -8,15 +7,6 @@ function getEnvVar(key) {
 }
 
 async function getAllowedOrigins() {
-  try {
-    const vaultOrigins = await vault.getCredentials("allowed_origins");
-    if (vaultOrigins) {
-      return JSON.parse(vaultOrigins);
-    }
-  } catch (error) {
-    // Vault not available, fall back to environment variables
-  }
-
   return getEnvVar("NODE_ENV") === "production"
     ? [getEnvVar("FRONTEND_URL") || "https://satnam.pub"]
     : ["http://localhost:3000", "http://localhost:5173", "http://localhost:3002"];

@@ -38,6 +38,12 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/authenticated/process-signed-invitation"
+  to = "/.netlify/functions/authenticated-process-signed-invitation"
+  status = 200
+  force = true
+
 # Generic mapping for other API endpoints (excluding auth which is handled below)
 [[redirects]]
   from = "/api/*"
@@ -324,7 +330,6 @@
     "netlify/functions/supabase.js",
     "netlify/functions/security/session-manager.js",
     "netlify/functions/security/session-manager.ts",
-    "lib/vault.ts",
     "lib/security/privacy-hashing.js",
     "utils/privacy-logger.js"
   ]

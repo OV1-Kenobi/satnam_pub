@@ -1,7 +1,7 @@
 // Browser-compatible encryption module using Web Crypto API
 // NO Node.js crypto module usage - only Web Crypto API
 
-import { vault } from '../vault';
+// Removed vault import - using environment variables directly
 
 // Encryption interface
 export interface EncryptionResult {
@@ -22,34 +22,36 @@ export interface PrivacyOperation {
 /**
  * Encrypt sensitive data using AES-256-GCM
  */
-export async function encryptSensitiveData(data: string, key?: string): Promise<EncryptionResult> {
+export async function encryptSensitiveData(
+  data: string,
+  key?: string
+): Promise<EncryptionResult> {
   try {
-    // Get encryption key from Vault or generate one
-    const encryptionKey = key || await vault.getCredentials('encryption_key') || 
-      await generateEncryptionKey();
-    
+    // Get encryption key from parameter or generate one
+    const encryptionKey = key || (await generateEncryptionKey());
+
     // Convert key to CryptoKey
     const cryptoKey = await importKey(encryptionKey);
-    
+
     // Generate IV
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    
+
     // Encrypt data
     const encodedData = new TextEncoder().encode(data);
     const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
+      { name: "AES-GCM", iv },
       cryptoKey,
       encodedData
     );
-    
+
     return {
       encrypted: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
       iv: btoa(String.fromCharCode(...iv)),
-      tag: '' // GCM tag is included in encrypted data
+      tag: "", // GCM tag is included in encrypted data
     };
   } catch (error) {
-    console.error('Encryption failed:', error);
-    throw new Error('Failed to encrypt sensitive data');
+    console.error("Encryption failed:", error);
+    throw new Error("Failed to encrypt sensitive data");
   }
 }
 
@@ -57,39 +59,43 @@ export async function encryptSensitiveData(data: string, key?: string): Promise<
  * Decrypt sensitive data using AES-256-GCM
  */
 export async function decryptSensitiveData(
-  encrypted: string, 
-  iv: string, 
+  encrypted: string,
+  iv: string,
   key?: string
 ): Promise<string> {
   try {
-    // Get encryption key from Vault
-    const encryptionKey = key || await vault.getCredentials('encryption_key');
-    if (!encryptionKey) {
-      throw new Error('Encryption key not available');
+    // Get encryption key from parameter
+    if (!key) {
+      throw new Error("Encryption key must be provided for decryption");
     }
-    
+    const encryptionKey = key;
+
     // Convert key to CryptoKey
     const cryptoKey = await importKey(encryptionKey);
-    
+
     // Decode encrypted data and IV
     const encryptedData = new Uint8Array(
-      atob(encrypted).split('').map(char => char.charCodeAt(0))
+      atob(encrypted)
+        .split("")
+        .map((char) => char.charCodeAt(0))
     );
     const ivData = new Uint8Array(
-      atob(iv).split('').map(char => char.charCodeAt(0))
+      atob(iv)
+        .split("")
+        .map((char) => char.charCodeAt(0))
     );
-    
+
     // Decrypt data
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: ivData },
+      { name: "AES-GCM", iv: ivData },
       cryptoKey,
       encryptedData
     );
-    
+
     return new TextDecoder().decode(decrypted);
   } catch (error) {
-    console.error('Decryption failed:', error);
-    throw new Error('Failed to decrypt sensitive data');
+    console.error("Decryption failed:", error);
+    throw new Error("Failed to decrypt sensitive data");
   }
 }
 
@@ -98,12 +104,12 @@ export async function decryptSensitiveData(
  */
 async function generateEncryptionKey(): Promise<string> {
   const key = await crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     true,
-    ['encrypt', 'decrypt']
+    ["encrypt", "decrypt"]
   );
-  
-  const exported = await crypto.subtle.exportKey('raw', key);
+
+  const exported = await crypto.subtle.exportKey("raw", key);
   return btoa(String.fromCharCode(...new Uint8Array(exported)));
 }
 
@@ -112,15 +118,17 @@ async function generateEncryptionKey(): Promise<string> {
  */
 async function importKey(keyString: string): Promise<CryptoKey> {
   const keyData = new Uint8Array(
-    atob(keyString).split('').map(char => char.charCodeAt(0))
+    atob(keyString)
+      .split("")
+      .map((char) => char.charCodeAt(0))
   );
-  
+
   return await crypto.subtle.importKey(
-    'raw',
+    "raw",
     keyData,
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     false,
-    ['encrypt', 'decrypt']
+    ["encrypt", "decrypt"]
   );
 }
 
@@ -131,22 +139,24 @@ export function logPrivacyOperation(operation: PrivacyOperation): void {
   const logEntry = {
     ...operation,
     timestamp: operation.timestamp || new Date().toISOString(),
-    sessionId: crypto.randomUUID()
+    sessionId: crypto.randomUUID(),
   };
-  
+
   // Store in browser storage for user-controlled audit logs
-  const auditLogs = JSON.parse(localStorage.getItem('privacy_audit_logs') || '[]');
+  const auditLogs = JSON.parse(
+    localStorage.getItem("privacy_audit_logs") || "[]"
+  );
   auditLogs.push(logEntry);
-  
+
   // Keep only last 100 entries
   if (auditLogs.length > 100) {
     auditLogs.splice(0, auditLogs.length - 100);
   }
-  
-  localStorage.setItem('privacy_audit_logs', JSON.stringify(auditLogs));
-  
+
+  localStorage.setItem("privacy_audit_logs", JSON.stringify(auditLogs));
+
   // Log to console for development (remove in production)
-  console.log('🔒 Privacy operation:', logEntry);
+  console.log("🔒 Privacy operation:", logEntry);
 }
 
 /**
@@ -155,7 +165,7 @@ export function logPrivacyOperation(operation: PrivacyOperation): void {
 export async function hashSensitiveData(data: string): Promise<string> {
   const encoder = new TextEncoder();
   const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
   return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
 }
 
@@ -166,4 +176,4 @@ export function generateSecureToken(length: number = 32): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
   return btoa(String.fromCharCode(...array));
-} 
+}

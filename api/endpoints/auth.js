@@ -16,7 +16,6 @@
  * - Vault integration for sensitive credentials
  */
 
-import { vault } from "../../lib/vault.js";
 
 /**
  * @typedef {Object} AuthResponse
@@ -89,15 +88,6 @@ function getEnvVar(key) {
  * @returns {Promise<string>} API base URL
  */
 async function getApiBaseUrl() {
-  try {
-    const vaultUrl = await vault.getCredentials("api_base_url");
-    if (vaultUrl) {
-      return vaultUrl;
-    }
-  } catch (error) {
-    // Vault not available, fall back to environment variables
-  }
-
   const envUrl = getEnvVar("API_BASE_URL") || getEnvVar("VITE_API_BASE_URL");
   if (envUrl) {
     return envUrl;

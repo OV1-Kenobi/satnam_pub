@@ -25,10 +25,12 @@ import { NostrProfileService } from "../lib/nostr-profile-service";
 import { IdentityRegistrationResult } from "../types/auth";
 import { apiClient } from '../utils/api-client';
 import { SessionInfo } from '../utils/secureSession';
-import { PostAuthInvitationModal } from "./PostAuthInvitationModal";
 import { useIdentityForge } from "./auth/AuthProvider";
 
 import SecureTokenManager from "../lib/auth/secure-token-manager";
+import { secureNsecManager } from "../lib/secure-nsec-manager";
+import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
+
 interface FormData {
   username: string;
   password: string;
@@ -632,7 +634,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       };
 
       // Sign a real kind:0 profile event locally using ephemeral nsec (no NIP-07)
-      const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
       // Prepare profile content and publish centrally (no local finalizeEvent here)
       // Centralized publishing via central_event_publishing_service (no NIP-07)
       try {
@@ -659,6 +660,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [registrationResult, setRegistrationResult] = useState<IdentityRegistrationResult | null>(null);
   const [showInvitationModal, setShowInvitationModal] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+
+  // Nsec retention for immediate peer invitations
+  const [nsecRetentionSessionId, setNsecRetentionSessionId] = useState<string | null>(null);
 
   // Use crypto operations hook for lazy loading
   const crypto = useCryptoOperations();
@@ -983,13 +987,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       // Immediately authenticate the new user to persist session using registration token
       try {
+        // Initialize SecureTokenManager if not already initialized
+        try {
+          await SecureTokenManager.initialize();
+        } catch (initError) {
+          console.warn('🔐 POST-REG AUTH: SecureTokenManager initialization warning:', initError);
+        }
+
         const nip05Identifier = `${formData.username}@satnam.pub`;
         let sessionToken = result?.session?.token || result?.sessionToken;
-        console.log('🔐 POST-REG AUTH: Initial sessionToken from registration result', {
-          hasToken: !!sessionToken,
-          tokenPreview: sessionToken ? String(sessionToken).slice(0, 12) + '…' : null,
-          from: result?.session?.token ? 'session.token' : (result?.sessionToken ? 'sessionToken' : 'none')
-        });
+
 
         if (!sessionToken) {
           // Fallback: perform server signin to obtain access token when registration path does not return one
@@ -999,37 +1006,31 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           } catch (e) {
             throw new Error('Registration did not return a session token and fallback signin failed');
           }
-          console.log('🔐 POST-REG AUTH: Attempting payload parse from sessionToken');
+
         }
 
         // Build minimal AuthResult compatible with unified auth system
-        console.log('🔐 POST-REG AUTH: Parsing payload…');
         // Ensure user.hashedId matches token payload.hashedId to pass later validation
         let payload = null as any;
         if (sessionToken) {
           try {
             payload = SecureTokenManager.parseTokenPayload(sessionToken);
-            console.log('🔐 POST-REG AUTH: Payload parse success', { payload });
+
           } catch (e) {
             console.warn('🔐 POST-REG AUTH: Payload parse failed, using fallback auth flow:', e);
           }
         }
 
         if (!payload) {
-          console.warn('🔐 POST-REG AUTH: No valid payload, attempting fallback authentication');
           try {
             const fallbackOk = await (identityForge as any).authenticateAfterRegistration?.(nip05Identifier, formData.password);
-            console.log('🔐 POST-REG AUTH: Fallback authenticateAfterRegistration result', { fallbackOk });
             if (!fallbackOk) throw new Error('Fallback signin failed');
             const fallbackToken = SecureTokenManager.getAccessToken();
-            console.log('🔐 POST-REG AUTH: Fallback access token after signin', { hasToken: !!fallbackToken, tokenPreview: fallbackToken ? String(fallbackToken).slice(0, 12) + '…' : null });
             if (fallbackToken) {
               payload = SecureTokenManager.parseTokenPayload(fallbackToken);
-              console.log('🔐 POST-REG AUTH: Fallback payload parse result', { payload });
               sessionToken = fallbackToken;
             }
           } catch (e) {
-            console.error('🔐 POST-REG AUTH: Fallback authentication failed', e);
             throw new Error('Registration succeeded but authentication failed: Invalid token payload and fallback auth failed');
           }
         }
@@ -1044,10 +1045,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         if (!payload) {
           throw new Error('Unable to establish valid session after registration');
         }
-        console.log('🔐 POST-REG AUTH: Building AuthResult with payload and sessionToken', {
-          payload,
-          sessionTokenPreview: sessionToken ? String(sessionToken).slice(0, 12) + '…' : null
-        });
+
         const authResult = {
           success: true,
           user: {
@@ -1064,20 +1062,21 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           sessionToken: sessionToken,
         } as any;
 
+        // Store the session token in SecureTokenManager for API calls
+        if (sessionToken) {
+          const expiryMs = Date.now() + (24 * 60 * 60 * 1000); // 24 hours from now
+          SecureTokenManager.setAccessToken(sessionToken, expiryMs);
+
+        }
+
         const handle = (identityForge as any).handleAuthSuccess;
         if (typeof handle === 'function') {
-          console.log('🔐 POST-REG AUTH: Calling handleAuthSuccess with', { authResult });
           const ok = await handle(authResult);
-          console.log('🔐 POST-REG AUTH: handleAuthSuccess returned', { ok });
           if (!ok) throw new Error('Failed to set auth state after registration');
         }
 
         // Retrieve in-memory access token for invitation modal
         const accessToken = SecureTokenManager.getAccessToken();
-        console.log('🔐 POST-REG AUTH: Token storage verification after handleAuthSuccess', {
-          accessTokenPreview: accessToken ? String(accessToken).slice(0, 12) + '…' : null,
-          hasAccessToken: !!accessToken
-        });
 
         const newSessionInfo: SessionInfo = {
           isAuthenticated: true,
@@ -1092,9 +1091,24 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             guardianApproved: false,
           },
         };
-        console.log('🔐 POST-REG AUTH: Setting sessionInfo state', { newSessionInfo });
+
 
         setSessionInfo(newSessionInfo);
+
+        // Retain nsec for immediate peer invitations (15-minute session)
+        if (ephemeralNsec) {
+          try {
+            const retentionSessionId = secureNsecManager.createPostRegistrationSession(
+              ephemeralNsec,
+              15 * 60 * 1000 // 15 minutes
+            );
+            setNsecRetentionSessionId(retentionSessionId);
+
+          } catch (retentionError) {
+            console.warn('Failed to retain nsec for peer invitations:', retentionError);
+            // Non-critical error - user can still create invitations with password
+          }
+        }
       } catch (e) {
         console.error('Failed to authenticate after registration:', e);
         setErrorMessage('Registration successful but automatic login failed. Please log in manually.');
@@ -1303,7 +1317,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     };
                     setSessionInfo(fallback);
                   }
-                  console.log('🔐 POST-REG AUTH: Invite Peers (primary) clicked', { hasSessionInfo: !!sessionInfo, sessionInfo });
+
                   setShowInvitationModal(true);
                 }}
                 className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
@@ -2477,7 +2491,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     {/* Invite Peers - Secondary */}
                     <button
                       onClick={() => {
-                        console.log('🔐 POST-REG AUTH: Invite Peers (secondary) clicked', { hasSessionInfo: !!sessionInfo, sessionInfo });
                         setShowInvitationModal(true);
                       }}
                       className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
@@ -2609,7 +2622,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 {/* Invite Peers - Tertiary */}
                 <button
                   onClick={() => {
-                    console.log('🔐 POST-REG AUTH: Invite Peers (tertiary) clicked', { hasSessionInfo: !!sessionInfo, sessionInfo });
                     setShowInvitationModal(true);
                   }}
                   className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
@@ -2888,27 +2900,23 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         )
       }
 
-      {/* PostAuth Invitation Modal */}
-      {(() => {
-        console.log('🔐 POST-REG AUTH: Modal render condition', { showInvitationModal, hasSessionInfo: !!sessionInfo, sessionInfo });
-        if (showInvitationModal && sessionInfo) {
-          return (
-            <PostAuthInvitationModal
-              isOpen={showInvitationModal}
-              onClose={() => {
-                setShowInvitationModal(false);
-                onComplete();
-              }}
-              onSkip={() => {
-                setShowInvitationModal(false);
-                onComplete();
-              }}
-              sessionInfo={sessionInfo}
-            />
-          );
-        }
-        return null;
-      })()}
+      {/* Secure Peer Invitation Modal */}
+      {showInvitationModal && sessionInfo && (
+        <SecurePeerInvitationModal
+          isOpen={showInvitationModal}
+          onClose={() => {
+            setShowInvitationModal(false);
+            onComplete();
+          }}
+          sessionInfo={sessionInfo}
+          temporaryNsec={nsecRetentionSessionId ? 'available' : undefined}
+          retentionSessionId={nsecRetentionSessionId || undefined}
+          onComplete={() => {
+            setShowInvitationModal(false);
+            onComplete();
+          }}
+        />
+      )}
     </div >
   );
 };

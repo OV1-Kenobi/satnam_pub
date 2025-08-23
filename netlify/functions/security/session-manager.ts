@@ -12,7 +12,7 @@ import { getEnvVar } from "../utils/env.js";
  * ✅ JWT tokens instead of cookies for authentication
  */
 
-import { vault } from "../../../lib/vault";
+// Removed vault import - using environment variables directly
 import { FamilyFederationUser, FederationRole } from "../../../src/types/auth";
 import { NetlifyResponse } from "../../../types/netlify-functions";
 
@@ -30,6 +30,10 @@ export interface SessionData {
   isAuthenticated: boolean;
   iat?: number;
   exp?: number;
+  // JWT payload properties
+  type?: "access" | "refresh";
+  hashedId?: string; // HMAC-SHA256 protected identifier
+  sessionId?: string; // Session identifier for token tracking
 }
 
 export class SecureSessionManager {
@@ -58,19 +62,12 @@ export class SecureSessionManager {
    * CRITICAL SECURITY: Refresh secret from Vault (mandatory in production)
    */
   private static async getRefreshSecret(): Promise<string> {
-    try {
-      const vaultSecret = await vault.getCredentials("jwt_refresh_secret");
-      if (vaultSecret) return vaultSecret;
-    } catch (error) {
-      // Vault fallback to environment
-    }
-
     const envSecret = getEnvVar("JWT_REFRESH_SECRET");
     if (envSecret) return envSecret;
 
     if (getEnvVar("NODE_ENV") === "production") {
       throw new Error(
-        "JWT_REFRESH_SECRET must be configured in Vault for production"
+        "JWT_REFRESH_SECRET must be configured in environment variables for production"
       );
     }
 
@@ -82,17 +79,6 @@ export class SecureSessionManager {
    * WARNING: Default salt generation is NOT secure for production
    */
   private static async getAuthSalt(): Promise<Uint8Array> {
-    try {
-      const vaultSalt = await vault.getCredentials("auth_salt");
-      if (vaultSalt) {
-        return new Uint8Array(
-          vaultSalt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-        );
-      }
-    } catch (error) {
-      // Vault fallback to environment
-    }
-
     const envSalt = getEnvVar("AUTH_SALT");
     if (envSalt) {
       return new Uint8Array(
@@ -101,7 +87,9 @@ export class SecureSessionManager {
     }
 
     if (getEnvVar("NODE_ENV") === "production") {
-      throw new Error("AUTH_SALT must be configured in Vault for production");
+      throw new Error(
+        "AUTH_SALT must be configured in environment variables for production"
+      );
     }
 
     // WARNING: Development-only salt generation (insecure for production)

@@ -290,14 +290,7 @@ export const DEFAULT_UNIFIED_CONFIG: UnifiedMessagingConfig = {
   },
 };
 
-async function getVault() {
-  try {
-    const v: any = await import("../lib/vault.js");
-    return (v && (v.vault || (v.default && v.default.vault))) || v;
-  } catch {
-    return null;
-  }
-}
+// Removed getVault function - vault.ts has been deprecated
 
 function isValidRelayUrl(url: string): boolean {
   if (!url || typeof url !== "string") return false;
@@ -1249,14 +1242,7 @@ export class CentralEventPublishingService {
   }
 
   private async serverKeys(): Promise<{ nsec: string; nip05?: string }> {
-    const vault = await getVault();
-    if (vault) {
-      try {
-        const nsec = await vault.getCredentials("rebuilding_camelot_nsec");
-        const nip05 = await vault.getCredentials("rebuilding_camelot_nip05");
-        if (nsec) return { nsec, nip05: nip05 || undefined };
-      } catch {}
-    }
+    // Get server keys directly from Supabase (vault deprecated)
     const supabase = await getSupabase();
     const nsecResp = await supabase.rpc("get_rebuilding_camelot_nsec");
     const nip05Resp = await supabase.rpc("get_rebuilding_camelot_nip05");

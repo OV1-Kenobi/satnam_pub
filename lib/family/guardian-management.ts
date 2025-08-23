@@ -38,15 +38,8 @@ function getEnvVar(key: string): string {
  * Get credentials from Vault with error handling
  * MASTER CONTEXT COMPLIANCE: Secure credential management
  */
-async function getVaultCredentials(key: string): Promise<string | null> {
-  try {
-    const vault = await import("../vault");
-    return await vault.default.getCredentials(key);
-  } catch (error) {
-    // MASTER CONTEXT COMPLIANCE: Privacy-first logging - no sensitive data exposure
-    return null;
-  }
-}
+// Removed getVaultCredentials - vault.ts has been deprecated
+// Use environment variables directly for credential access
 
 /**
  * Master Context role hierarchy type

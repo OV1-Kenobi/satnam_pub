@@ -39,13 +39,18 @@ function getEnvVar(key) {
  * @property {string} npub - User Nostr public key
  * @property {string} [nip05] - NIP-05 identifier
  * @property {'private'|'offspring'|'adult'|'steward'|'guardian'} federationRole - User role in family hierarchy
- * @property {'otp'|'nwc'} authMethod - Authentication method used
+ * @property {'otp'|'nwc'|'nip05-password'|'nip07'|'nsec'} authMethod - Authentication method used
  * @property {boolean} isWhitelisted - Whether user is whitelisted
  * @property {number} votingPower - User's voting power
  * @property {boolean} guardianApproved - Whether approved by guardian
  * @property {boolean} stewardApproved - Whether approved by steward
  * @property {string} sessionToken - Session token
  * @property {boolean} isAuthenticated - Whether user is authenticated
+ * @property {"access"|"refresh"} [type] - JWT token type
+ * @property {string} [hashedId] - HMAC-SHA256 protected identifier
+ * @property {string} [sessionId] - Session identifier for token tracking
+ * @property {number} [iat] - Issued at timestamp
+ * @property {number} [exp] - Expiration timestamp
  * @property {number} [iat] - Issued at timestamp
  * @property {number} [exp] - Expiration timestamp
  */

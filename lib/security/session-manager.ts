@@ -1,8 +1,11 @@
 // Browser-compatible session manager for secure session handling
 // NO Node.js dependencies - uses browser storage and Web Crypto API
 
-import { vault } from '../vault';
-import { encryptSensitiveData, decryptSensitiveData, generateSecureToken } from '../privacy/encryption';
+import {
+  decryptSensitiveData,
+  encryptSensitiveData,
+  generateSecureToken,
+} from "../privacy/encryption";
 
 // Session data interface
 export interface SessionData {
@@ -22,7 +25,7 @@ export class SecureSessionManager {
   private sessionTimeout: number = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor() {
-    this.sessionKey = 'satnam_session';
+    this.sessionKey = "satnam_session";
   }
 
   /**
@@ -37,12 +40,12 @@ export class SecureSessionManager {
   }): Promise<SessionData> {
     const sessionToken = generateSecureToken(64);
     const now = Date.now();
-    
+
     const sessionData: SessionData = {
       ...userData,
       expiresAt: now + this.sessionTimeout,
       lastActivity: now,
-      sessionToken
+      sessionToken,
     };
 
     // Encrypt session data before storing
@@ -53,7 +56,7 @@ export class SecureSessionManager {
 
     // Store encrypted session in browser storage
     sessionStorage.setItem(this.sessionKey, JSON.stringify(encryptedSession));
-    
+
     // Also store in localStorage for persistence across tabs
     localStorage.setItem(this.sessionKey, JSON.stringify(encryptedSession));
 
@@ -65,17 +68,18 @@ export class SecureSessionManager {
    */
   async getSession(): Promise<SessionData | null> {
     try {
-      const encryptedSession = sessionStorage.getItem(this.sessionKey) || 
-                             localStorage.getItem(this.sessionKey);
-      
+      const encryptedSession =
+        sessionStorage.getItem(this.sessionKey) ||
+        localStorage.getItem(this.sessionKey);
+
       if (!encryptedSession) {
         return null;
       }
 
       const { encrypted, iv } = JSON.parse(encryptedSession);
       const sessionData = await decryptSensitiveData(
-        encrypted, 
-        iv, 
+        encrypted,
+        iv,
         await this.getSessionEncryptionKey()
       );
 
@@ -93,7 +97,7 @@ export class SecureSessionManager {
 
       return session;
     } catch (error) {
-      console.error('Failed to get session:', error);
+      console.error("Failed to get session:", error);
       await this.destroySession();
       return null;
     }
@@ -144,9 +148,11 @@ export class SecureSessionManager {
    * Get session encryption key from Vault
    */
   private async getSessionEncryptionKey(): Promise<string> {
-    const key = await vault.getCredentials('session_encryption_key');
+    const key = process.env.SESSION_ENCRYPTION_KEY;
     if (!key) {
-      throw new Error('Session encryption key not available');
+      throw new Error(
+        "SESSION_ENCRYPTION_KEY environment variable not available"
+      );
     }
     return key;
   }
@@ -194,4 +200,4 @@ export class SecureSessionManager {
 
 // Export singleton instance
 export const sessionManager = new SecureSessionManager();
-export default sessionManager; 
+export default sessionManager;

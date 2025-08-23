@@ -183,12 +183,27 @@ export class IndividualApiService {
   ): Promise<T> {
     const url = `${API_BASE}/api${endpoint}`;
 
+    // Get JWT token from SecureTokenManager
+    let authHeaders: Record<string, string> = {};
+    try {
+      const { SecureTokenManager } = await import(
+        "../lib/auth/secure-token-manager"
+      );
+      const accessToken = SecureTokenManager.getAccessToken();
+      if (accessToken) {
+        authHeaders.Authorization = `Bearer ${accessToken}`;
+      }
+    } catch (error) {
+      console.warn("Failed to get access token:", error);
+    }
+
     const defaultOptions: RequestInit = {
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders,
         ...options.headers,
       },
-      credentials: "include", // Include cookies for authentication
+      credentials: "include", // Include cookies for fallback authentication
     };
 
     const response = await fetch(url, { ...defaultOptions, ...options });

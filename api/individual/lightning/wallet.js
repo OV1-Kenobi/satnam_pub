@@ -14,24 +14,8 @@
  * - Lightning wallet operations with node provider information
  */
 
-// TODO: Convert session-manager.ts to JavaScript for proper imports
-// import { SecureSessionManager } from "../../../netlify/functions/security/session-manager.js";
-
-// Mock SecureSessionManager for Master Context compliance testing
-const SecureSessionManager = {
-  validateSessionFromHeader: async (authHeader) => {
-    // Mock session validation for testing
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return { isAuthenticated: false };
-    }
-    return {
-      isAuthenticated: true,
-      sessionToken: authHeader.replace('Bearer ', ''),
-      federationRole: 'adult', // Default to adult for sovereignty testing
-      memberId: 'test-member-id'
-    };
-  }
-};
+// Import SecureSessionManager for proper authentication
+import { SecureSessionManager } from "../../../netlify/functions/security/session-manager.js";
 
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
@@ -292,27 +276,11 @@ export default async function handler(event, context) {
   }
 
   try {
-    // Validate session and get user role for sovereignty enforcement
-    const authHeader = event.headers.authorization || event.headers.Authorization;
-    const sessionValidation = await SecureSessionManager.validateSessionFromHeader(authHeader);
+    // Session validation is handled below with current-user resolution
 
-    if (!sessionValidation.isAuthenticated) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Authentication required for Lightning wallet operations",
-          meta: {
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      };
-    }
+    const { memberId: rawMemberId, userRole } = event.queryStringParameters || {};
 
-    const { memberId, userRole } = event.queryStringParameters || {};
-
-    if (!memberId || typeof memberId !== "string") {
+    if (!rawMemberId || typeof rawMemberId !== "string") {
       return {
         statusCode: 400,
         headers: corsHeaders,
@@ -326,8 +294,29 @@ export default async function handler(event, context) {
       };
     }
 
+    // Get session data for user ID resolution
+    const authHeader = event.headers.authorization || event.headers.Authorization;
+    const sessionData = await SecureSessionManager.validateSessionFromHeader(authHeader);
+
+    if (!sessionData || !sessionData.isAuthenticated) {
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: "Authentication required",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        }),
+      };
+    }
+
+    // Resolve "current-user" to actual user ID from session
+    const memberId = rawMemberId === "current-user" ? sessionData.userId : rawMemberId;
+
     // Validate role and sovereignty (greenfield code - no legacy role mapping needed)
-    const userRoleForValidation = userRole || sessionValidation.federationRole || 'private';
+    const userRoleForValidation = userRole || sessionData.federationRole || 'private';
     const sovereigntyValidation = validateLightningWalletSovereignty(userRoleForValidation);
 
     // Generate privacy-preserving wallet hash

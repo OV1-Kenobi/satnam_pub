@@ -17,7 +17,6 @@
 
 import crypto from 'crypto';
 import { promisify } from 'util';
-import { vault } from '../../lib/vault.js';
 import { SecureSessionManager } from '../../netlify/functions/security/session-manager.js';
 import { supabase } from '../../netlify/functions/supabase.js';
 
@@ -87,20 +86,6 @@ function validateRole(role) {
   return /** @type {'private'|'offspring'|'adult'|'steward'|'guardian'} */ (
     validRoles.includes(role) ? role : 'private'
   );
-}
-
-// Local secure random hex generator for fallback salts/tokens
-function generateRandomHex(bytes = 32) {
-  try {
-    return crypto.randomBytes(bytes).toString('hex');
-  } catch (e) {
-    // Extremely unlikely fallback: use Math.random
-    let out = '';
-    for (let i = 0; i < bytes; i++) {
-      out += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
-    }
-    return out;
-  }
 }
 
 /**
@@ -599,19 +584,6 @@ export default async function handler(event, context) {
           }
         })
       };
-    }
-
-    // Get registration salt from Vault for PBKDF2 + SHA-512 compliance
-    let registrationSalt;
-    try {
-      registrationSalt = await vault.getCredentials("registration_salt");
-      if (!registrationSalt) {
-        console.error('Registration salt not found in Vault');
-        registrationSalt = generateRandomHex(32); // Fallback
-      }
-    } catch (vaultError) {
-      console.error('Vault access failed:', vaultError);
-      registrationSalt = generateRandomHex(32); // Fallback
     }
 
     // Create secure session with JWT token

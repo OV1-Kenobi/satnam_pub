@@ -104,7 +104,7 @@ function isAuthorizedForWallet(sessionData, memberId) {
 
   // MASTER CONTEXT: Standardized role hierarchy - 'private'|'offspring'|'adult'|'steward'|'guardian'
   const authorizedRoles = ['guardian', 'steward'];
-  const userRole = sessionData.federationRole || sessionData.role;
+  const userRole = sessionData.federationRole;
 
   return authorizedRoles.includes(userRole);
 }
@@ -166,8 +166,20 @@ function validateSpendingLimitsBySovereignty(userRole, proposedLimits) {
  * @typedef {Object} SessionData
  * @property {string} userId - User identifier
  * @property {boolean} isAuthenticated - Authentication status
- * @property {string} [role] - User role
- * @property {string} [federationRole] - Federation role
+ * @property {string} sessionToken - Session token
+ * @property {string} npub - User Nostr public key
+ * @property {string} [nip05] - NIP-05 identifier
+ * @property {"private"|"offspring"|"adult"|"steward"|"guardian"} federationRole - Federation role
+ * @property {"otp"|"nwc"|"nip05-password"|"nip07"|"nsec"} authMethod - Authentication method
+ * @property {boolean} isWhitelisted - Whether user is whitelisted
+ * @property {number} votingPower - User's voting power
+ * @property {boolean} guardianApproved - Whether approved by guardian
+ * @property {boolean} stewardApproved - Whether approved by steward
+ * @property {"access"|"refresh"} [type] - JWT token type
+ * @property {string} [hashedId] - HMAC-SHA256 protected identifier
+ * @property {string} [sessionId] - Session identifier for token tracking
+ * @property {number} [iat] - Issued at timestamp
+ * @property {number} [exp] - Expiration timestamp
  */
 
 /**
@@ -263,15 +275,18 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { memberId } = req.query;
+    const { memberId: rawMemberId } = req.query;
 
-    if (!memberId || typeof memberId !== "string") {
+    if (!rawMemberId || typeof rawMemberId !== "string") {
       res.status(400).json({
         error: "Member ID is required",
         code: "MISSING_MEMBER_ID",
       });
       return;
     }
+
+    // Resolve "current-user" to actual user ID from session
+    const memberId = rawMemberId === "current-user" ? sessionData.userId : rawMemberId;
 
     // SECURITY: Verify user can access this wallet
     if (sessionData.userId !== memberId && !isAuthorizedForWallet(sessionData, memberId)) {

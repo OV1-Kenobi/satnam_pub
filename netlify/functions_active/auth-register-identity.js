@@ -109,11 +109,10 @@ export const handler = async function(event) {
     let userData; try { userData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body; } catch { return { statusCode: 400, headers: cors, body: JSON.stringify({ success:false, error:'Invalid JSON in request body' }) }; }
 
     // Lazy load heavy deps to reduce bundling memory
-    const [{ supabase }, { SecureSessionManager }, { generateUserSalt, createHashedUserData }, { vault }] = await Promise.all([
+    const [{ supabase }, { SecureSessionManager }, { generateUserSalt, createHashedUserData }] = await Promise.all([
       import('../functions/supabase.js'),
       import('../functions/security/session-manager.js'),
       import('../../lib/security/privacy-hashing.js'),
-      import('../../lib/vault.ts'),
     ]);
 
     // Rate limit (60s window, 5 attempts per IP)
