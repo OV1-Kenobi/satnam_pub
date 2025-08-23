@@ -326,6 +326,7 @@
   node_bundler = "esbuild"
   included_files = [
     # Consolidated registration handler and required runtime deps
+    "netlify/functions_active/package.json",
     "netlify/functions_active/auth-register-identity.js",
     "netlify/functions/supabase.js",
     "netlify/functions/security/session-manager.js",
