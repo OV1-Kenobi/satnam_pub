@@ -203,12 +203,26 @@ export const handler = async function(event) {
     const { error: insertErr } = await supabase.from('user_identities').insert([profileData]);
     if (insertErr) { console.error('User identity creation failed:', insertErr); return { statusCode: 500, headers: cors, body: JSON.stringify({ success:false, error:'Failed to create user identity' }) }; }
 
-    // Registration salt (Vault) for auditing PBKDF2 compliance (fallback safe)
-    try {
-      let registrationSalt = await vault.getCredentials('registration_salt');
-      if (!registrationSalt) { console.error('Registration salt not found in Vault'); registrationSalt = generateRandomHex(32); }
-    } catch (e) {
-      console.error('Vault access failed:', e);
+    // Create NIP-05 record using DUID_SERVER_SECRET for indexing
+    const secret = process.env.DUID_SECRET_KEY || process.env.DUID_SERVER_SECRET || process.env.VITE_DUID_SERVER_SECRET;
+    if (secret) {
+      const nip05Identifier = `${v.username}@satnam.pub`;
+      const hashedNip05 = crypto.createHmac('sha256', secret).update(nip05Identifier).digest('hex');
+
+      const nip05Record = {
+        domain: 'satnam.pub',
+        local_part: v.username,
+        hashed_nip05: hashedNip05,
+        user_id: v.deterministicUserId,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: nip05Err } = await supabase.from('nip05_records').insert([nip05Record]);
+      if (nip05Err) { console.error('NIP-05 record creation failed:', nip05Err); }
+    } else {
+      console.error('DUID_SERVER_SECRET not configured - NIP-05 record not created');
     }
 
     // Session creation
