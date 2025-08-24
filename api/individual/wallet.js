@@ -55,17 +55,11 @@ const supabase = {
 };
 
 /**
- * Environment variable access pattern (Master Context compliant)
+ * Environment variable access - Netlify Functions ALWAYS use process.env
  * @param {string} key - Environment variable key
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {any} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
   return process.env[key];
 }
 

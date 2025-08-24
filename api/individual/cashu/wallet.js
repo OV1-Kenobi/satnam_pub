@@ -33,12 +33,6 @@ import { SecureSessionManager } from "../../../netlify/functions/security/sessio
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
   return process.env[key];
 }
 
