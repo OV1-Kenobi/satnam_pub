@@ -19,12 +19,7 @@
   command = "npm run dev"
 
 # Redirects for SPA and API endpoints - API only
-# Specific auth pepper endpoint mapping to avoid invalid ":splat" function naming with slashes
-[[redirects]]
-  from = "/api/auth/get-pepper"
-  to = "/.netlify/functions/auth-get-pepper"
-  status = 200
-  force = true
+# Pepper endpoint removed - client now uses fallback (memory optimization)
 
 
 
