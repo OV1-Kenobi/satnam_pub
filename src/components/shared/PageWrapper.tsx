@@ -4,7 +4,7 @@ import Navigation from './Navigation';
 interface PageWrapperProps {
   children: React.ReactNode;
   currentView: string;
-  setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem") => void;
+  setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem" | "communications") => void;
   setSignInModalOpen: (open: boolean) => void;
   handleProtectedRoute: (destination: 'dashboard' | 'individual-finances' | 'communications') => void;
   mobileMenuOpen: boolean;
@@ -66,6 +66,8 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
         handleProtectedRoute={handleProtectedRoute}
         mobileMenuOpen={mobileMenuOpen}
         setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
       />
 
       {/* Page Content */}

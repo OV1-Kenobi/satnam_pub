@@ -27,8 +27,8 @@ import IdentityForgeGuard from "./components/auth/IdentityForgeGuard";
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
-import { useAuth } from "./hooks/useAuth";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
+import { useUnifiedAuth } from "./lib/auth/unified-auth-system";
 import { validateInvitation } from "./lib/invitation-validator";
 
 function App() {
@@ -71,8 +71,9 @@ function App() {
   const [invitationDetails, setInvitationDetails] = useState<any>(null);
   const [isInvitedUser, setIsInvitedUser] = useState(false);
 
-  // Authentication hook
-  const { authenticated, loading, familyId } = useAuth();
+  // Authentication hook - using unified auth system
+  const auth = useUnifiedAuth();
+  const { authenticated } = auth;
 
   // Initialize credential cleanup system (only after authentication)
   useCredentialCleanup({
@@ -449,6 +450,13 @@ function App() {
   }
 
   if (currentView === "family-payment-automation") {
+    // Only show family payment automation for family federation members
+    if (!auth.user?.familyId) {
+      // Redirect individual users to individual payment automation instead
+      setCurrentView("individual-payment-automation");
+      return null;
+    }
+
     return (
       <PageWrapper
         currentView={currentView}
@@ -467,7 +475,7 @@ function App() {
             console.log("Family payment schedule saved:", schedule);
             setCurrentView("landing");
           }}
-          familyId={familyId || "family-123"}
+          familyId={auth.user.familyId}
           familyMembers={[
             {
               id: "member-1",

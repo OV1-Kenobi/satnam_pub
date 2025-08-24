@@ -8,7 +8,7 @@
  * 4. Batch invitation creation for Family Foundry
  */
 
-import { AlertTriangle, Copy, Key, Mail, Shield, Users, X } from 'lucide-react';
+import { CheckCircle, Copy, Key, Mail, Shield, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { secureNsecManager } from '../lib/secure-nsec-manager';
 
@@ -54,6 +54,8 @@ interface InvitationResult {
   qrCodeImage?: string;
   error?: string;
   signingMethod: 'nip07' | 'NIP05/password' | 'temporary_nsec';
+  relayPublished?: boolean;
+  publishMethod?: string;
 }
 
 export function SecurePeerInvitationModal({
@@ -133,6 +135,28 @@ export function SecurePeerInvitationModal({
     );
   };
 
+  // Check if this is a newly created account with available nsec
+  const isNewlyCreatedAccount = (): boolean => {
+    return !!(temporaryNsec || retentionSessionId);
+  };
+
+  // Check if user has secure session credentials available
+  const hasSecureSessionCredentials = (): boolean => {
+    try {
+      // Check if there's a retained nsec from registration
+      if (temporaryNsec || retentionSessionId) {
+        return true;
+      }
+
+      // Check if secureNsecManager has an active session
+      const sessionStatus = secureNsecManager.getSessionStatus(retentionSessionId);
+      return sessionStatus.active;
+    } catch (error) {
+      console.warn('Error checking secure session credentials:', error);
+      return false;
+    }
+  };
+
   // Determine the best signing method
   const determineBestSigningMethod = (): 'nip07' | 'NIP05/password' | 'temporary_nsec' => {
     // Priority 1: Post-registration retained nsec or temporary nsec from Identity Forge
@@ -177,7 +201,11 @@ export function SecurePeerInvitationModal({
     const event = {
       kind: 4, // Direct message
       created_at: Math.floor(Date.now() / 1000),
-      tags: [['p', inviteData.recipientPubkey]],
+      tags: [
+        ['p', inviteData.recipientPubkey],
+        ['message-type', 'invitation'],
+        ['encryption', 'gift-wrap']
+      ],
       content: inviteData.giftWrappedContent,
       pubkey
     };
@@ -275,12 +303,24 @@ export function SecurePeerInvitationModal({
           })
         });
 
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to process signed invitation');
+        }
+
         return {
           success: result.success,
           inviteUrl: result.inviteUrl,
           qrCodeImage: result.qrCodeImage,
           signingMethod: 'nip07',
+          relayPublished: result.relayPublished,
+          publishMethod: result.publishMethod,
           error: result.error
         };
       } else {
@@ -396,7 +436,7 @@ export function SecurePeerInvitationModal({
                   {batchMode ? 'Family Federation Invitations' : 'Secure Peer Invitation'}
                 </h2>
                 <p className="text-purple-200 text-sm">
-                  {temporaryNsec ? 'Using temporary key from Identity Forge' :
+                  {isNewlyCreatedAccount() ? '✅ Successfully signed in - no additional signing required' :
                     isNIP07Available() ? 'NIP-07 extension available' : 'Password-based signing'}
                 </p>
               </div>
@@ -409,21 +449,19 @@ export function SecurePeerInvitationModal({
             </button>
           </div>
 
-          {/* Security Notice */}
-          {(temporaryNsec || retentionSessionId) && (
-            <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-400/30 mb-6">
+          {/* Security Notice for newly created accounts */}
+          {isNewlyCreatedAccount() && (
+            <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-400/30 mb-6">
               <div className="flex items-start space-x-3">
-                <AlertTriangle className="h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0" />
+                <Shield className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-orange-300 mb-1">
-                    {retentionSessionId ? 'Post-Registration Key Session' : 'Temporary Key Session'}
+                  <h4 className="font-medium text-blue-300 mb-1">
+                    Secure Session Active
                   </h4>
-                  <p className="text-sm text-orange-200">
-                    {retentionSessionId
-                      ? 'Using nsec retained from registration completion. This key will be cleared from memory after invitation creation.'
-                      : 'Using temporary nsec from Identity Forge. This key will be cleared from memory after invitation creation.'
-                    }
-                    Create multiple invitations now if needed.
+                  <p className="text-sm text-blue-200">
+                    Your account credentials are temporarily available in secure memory for immediate
+                    peer invitations. This session will automatically expire for security.
+                    Create any additional invitations you need now.
                   </p>
                 </div>
               </div>
@@ -501,8 +539,26 @@ export function SecurePeerInvitationModal({
                 </div>
               </div>
 
-              {/* Authentication Method Selection */}
-              {!temporaryNsec && (
+              {/* Success message for newly created accounts */}
+              {isNewlyCreatedAccount() && (
+                <div className="bg-emerald-500/10 rounded-lg p-4 border border-emerald-400/30">
+                  <div className="flex items-start space-x-3">
+                    <CheckCircle className="h-5 w-5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-emerald-300 mb-1">
+                        Ready to Send Invitations
+                      </h4>
+                      <p className="text-sm text-emerald-200">
+                        Your account is authenticated and ready. You can create secure peer invitations
+                        using your just-created credentials. No additional signing steps required.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Authentication Method Selection - Hidden for newly created accounts */}
+              {!isNewlyCreatedAccount() && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-white">Signing Method</h3>
 
@@ -660,8 +716,19 @@ export function SecurePeerInvitationModal({
 
                       <p className="text-emerald-200 text-sm">
                         Signed with: {result.signingMethod === 'nip07' ? 'NIP-07 Extension' :
-                          result.signingMethod === 'temporary_nsec' ? 'Temporary Key' : 'NIP-05/Password Decryption'}
+                          result.signingMethod === 'temporary_nsec' ? 'Just-Created Account Credentials' : 'NIP-05/Password Decryption'}
                       </p>
+
+                      {result.relayPublished !== undefined && (
+                        <div className={`mt-2 p-2 rounded-lg ${result.relayPublished ? 'bg-emerald-500/20 border border-emerald-400/30' : 'bg-yellow-500/20 border border-yellow-400/30'}`}>
+                          <p className={`text-sm font-medium ${result.relayPublished ? 'text-emerald-300' : 'text-yellow-300'}`}>
+                            {result.relayPublished
+                              ? `✅ Invitation successfully delivered to recipient via ${result.publishMethod || 'Nostr relays'}`
+                              : '⚠️ Invitation created but relay delivery failed - please share the URL manually'
+                            }
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>

@@ -130,6 +130,7 @@ export interface UserIdentity {
 
   // Additional properties for compatibility
   federationRole?: "private" | "offspring" | "adult" | "steward" | "guardian";
+  familyId?: string; // Optional family federation ID - only for family federation members
   hashedUUID?: string;
   hashedId?: string; // HMAC-SHA256 protected identifier for secure tokens
   authMethod?: "nip05-password" | "nip07" | "otp" | "nsec";

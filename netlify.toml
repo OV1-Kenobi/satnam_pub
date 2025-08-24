@@ -39,6 +39,32 @@
   status = 200
   force = true
 
+# Individual wallet endpoints
+[[redirects]]
+  from = "/api/individual/wallet"
+  to = "/.netlify/functions/individual-wallet"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/individual/cashu/wallet"
+  to = "/.netlify/functions/individual-cashu-wallet"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/individual/lightning/wallet"
+  to = "/.netlify/functions/individual-lightning-wallet"
+  status = 200
+  force = true
+
+# PhoenixD status endpoint
+[[redirects]]
+  from = "/api/phoenixd/status"
+  to = "/.netlify/functions/phoenixd-status"
+  status = 200
+  force = true
+
 # Generic mapping for other API endpoints (excluding auth which is handled below)
 [[redirects]]
   from = "/api/*"

@@ -7,11 +7,13 @@ import {
 
 interface NavigationProps {
   currentView: string;
-  setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem") => void;
+  setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem" | "communications") => void;
   setSignInModalOpen: (open: boolean) => void;
   handleProtectedRoute: (destination: 'dashboard' | 'individual-finances' | 'communications') => void;
   mobileMenuOpen: boolean;
   setMobileMenuOpen: (open: boolean) => void;
+  showCommunications?: boolean;
+  setShowCommunications?: (show: boolean) => void;
 }
 
 const Navigation: React.FC<NavigationProps> = ({
@@ -21,11 +23,13 @@ const Navigation: React.FC<NavigationProps> = ({
   handleProtectedRoute,
   mobileMenuOpen,
   setMobileMenuOpen,
+  showCommunications,
+  setShowCommunications,
 }) => {
   const navigationItems = [
     { label: "Family Financials", action: () => setCurrentView("dashboard") },
     { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
-    { label: "Communications", action: () => setShowCommunications(true) },
+    { label: "Communications", action: () => handleProtectedRoute("communications") },
     {
       label: "Nostr Resources",
       action: () => setCurrentView("nostr-ecosystem"),
@@ -41,12 +45,6 @@ const Navigation: React.FC<NavigationProps> = ({
       external: true,
     },
   ];
-
-  const setShowCommunications = (show: boolean) => {
-    // This would need to be passed as a prop or handled differently
-    // For now, we'll use a placeholder
-    console.log("Show communications:", show);
-  };
 
   return (
     <nav className="relative z-20 bg-purple-900/90 backdrop-blur-sm border-b border-yellow-400 shadow-lg">
@@ -90,6 +88,13 @@ const Navigation: React.FC<NavigationProps> = ({
               className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 text-xs"
             >
               Individual Finances
+            </button>
+
+            <button
+              onClick={() => handleProtectedRoute("communications")}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 text-xs"
+            >
+              Communications
             </button>
 
             {/* Communications Button - No background, center position */}
