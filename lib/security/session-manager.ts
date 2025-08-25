@@ -54,23 +54,19 @@ export class SecureSessionManager {
       await this.getSessionEncryptionKey()
     );
 
-    // Store encrypted session in browser storage
+    // SECURITY: Store encrypted session only in sessionStorage (cleared on tab close)
     sessionStorage.setItem(this.sessionKey, JSON.stringify(encryptedSession));
-
-    // Also store in localStorage for persistence across tabs
-    localStorage.setItem(this.sessionKey, JSON.stringify(encryptedSession));
 
     return sessionData;
   }
 
   /**
-   * Get current session data
+   * Get current session data - SECURITY: Only check sessionStorage
    */
   async getSession(): Promise<SessionData | null> {
     try {
-      const encryptedSession =
-        sessionStorage.getItem(this.sessionKey) ||
-        localStorage.getItem(this.sessionKey);
+      // SECURITY: Only use sessionStorage to prevent XSS persistence
+      const encryptedSession = sessionStorage.getItem(this.sessionKey);
 
       if (!encryptedSession) {
         return null;
@@ -104,7 +100,7 @@ export class SecureSessionManager {
   }
 
   /**
-   * Update session data
+   * Update session data - SECURITY: Only use sessionStorage (cleared on tab close)
    */
   async updateSession(sessionData: SessionData): Promise<void> {
     const encryptedSession = await encryptSensitiveData(
@@ -112,16 +108,19 @@ export class SecureSessionManager {
       await this.getSessionEncryptionKey()
     );
 
+    // SECURITY: Only use sessionStorage to prevent XSS persistence
     sessionStorage.setItem(this.sessionKey, JSON.stringify(encryptedSession));
-    localStorage.setItem(this.sessionKey, JSON.stringify(encryptedSession));
   }
 
   /**
-   * Destroy current session
+   * Destroy current session - SECURITY: Clear all storage
    */
   async destroySession(): Promise<void> {
     sessionStorage.removeItem(this.sessionKey);
-    localStorage.removeItem(this.sessionKey);
+    // Also clear any legacy localStorage entries
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(this.sessionKey);
+    }
   }
 
   /**

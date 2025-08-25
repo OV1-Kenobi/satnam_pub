@@ -26,35 +26,24 @@
 
 
 
-# Authenticated endpoints
+# Authenticated endpoints - Unified invitation handler
 [[redirects]]
-  from = "/api/authenticated/generate-peer-invite"
-  to = "/.netlify/functions/authenticated-generate-peer-invite"
+  from = "/api/authenticated/*-invite*"
+  to = "/.netlify/functions/invitation-unified"
   status = 200
   force = true
 
+# Family wallet endpoints (steward/guardian access only) - Unified handler
 [[redirects]]
-  from = "/api/authenticated/process-signed-invitation"
-  to = "/.netlify/functions/authenticated-process-signed-invitation"
+  from = "/api/family/*/wallet"
+  to = "/.netlify/functions/family-wallet-unified"
   status = 200
   force = true
 
-# Individual wallet endpoints
+# Individual wallet endpoints (existing + new fedimint) - Unified handler
 [[redirects]]
-  from = "/api/individual/wallet"
-  to = "/.netlify/functions/individual-wallet"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/individual/cashu/wallet"
-  to = "/.netlify/functions/individual-cashu-wallet"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/individual/lightning/wallet"
-  to = "/.netlify/functions/individual-lightning-wallet"
+  from = "/api/individual/*/wallet"
+  to = "/.netlify/functions/individual-wallet-unified"
   status = 200
   force = true
 
@@ -72,10 +61,17 @@
   status = 200
   force = false
 
-# Consolidated auth endpoints routed via auth-router (MUST come after generic to override)
+# Username availability check endpoint (specific route before generic auth router)
+[[redirects]]
+  from = "/api/auth/check-username-availability"
+  to = "/.netlify/functions/check-username-availability"
+  status = 200
+  force = true
+
+# Consolidated auth endpoints routed via auth-unified (MUST come after generic to override)
 [[redirects]]
   from = "/api/auth/*"
-  to = "/.netlify/functions/auth-router"
+  to = "/.netlify/functions/auth-unified"
   status = 200
   force = true
 
@@ -185,13 +181,14 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
-    # Content Security Policy for Bitcoin-only, privacy-first app
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nostr.wine; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
+    # Content Security Policy - MAXIMUM SECURITY (removed unsafe-eval and unused CDNs; unsafe-inline kept for Google Fonts)
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nostr.wine wss://relay.satnam.pub; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self';"
 
-    # CORS headers for API
-    Access-Control-Allow-Origin = "*"
+    # CORS headers for API - SECURITY HARDENED (restricted to production domain)
+    Access-Control-Allow-Origin = "https://www.satnam.pub"
     Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With"
+    Access-Control-Allow-Credentials = "true"
     Access-Control-Max-Age = "86400"
 
 # Ensure index.html is always fresh (prevents stale chunk references)
@@ -318,6 +315,7 @@
     "@scure/base"
   ]
   # CRITICAL: Exclude more files to reduce storage usage in bundles
+  # IMPORTANT: Exclude functions_lazy directory - these are loaded dynamically only
   included_files = [
     "!**/__tests__/**",
     "!**/*.test.*",
@@ -327,7 +325,8 @@
     "!**/*.map",
     "!**/*.d.ts",
     "!**/coverage/**",
-    "!**/docs/**"
+    "!**/docs/**",
+    "!**/functions_lazy/**"
   ]
 
 # Essential functions with memory optimization
@@ -342,16 +341,27 @@
     "netlify/functions/security/duid-index-generator.js"
   ]
 
-# Auth router configuration
-[functions."auth-router"]
+# Unified auth handler configuration
+[functions."auth-unified"]
   node_bundler = "esbuild"
+  memory_size = 256  # 256MB for authentication operations
+  timeout = 15
   included_files = [
-    # Consolidated registration handler and required runtime deps
+    # Authentication handlers and required runtime deps
     "netlify/functions_active/auth-register-identity.js",
+    "netlify/functions_active/auth-signin.js",
+    "api/auth/nip07-challenge.js",
+    "api/auth/nip07-signin.js",
+    "api/auth/logout.js",
+    "api/auth/refresh.js",
+    "api/auth/check-refresh.js",
+    "api/auth/check-username-availability.js",
     "netlify/functions/supabase.js",
     "netlify/functions/security/session-manager.js",
     "netlify/functions/security/session-manager.ts",
     "lib/security/privacy-hashing.js",
+    "lib/security/duid-generator.js",
+    "netlify/functions/utils/env.ts",
     "utils/privacy-logger.js"
   ]
 
@@ -378,6 +388,41 @@
   node_bundler = "esbuild"
   memory_size = 384  # 384MB for crypto module loading
   timeout = 15
+
+# Unified wallet handlers (lazy-loaded)
+[functions."family-wallet-unified"]
+  node_bundler = "esbuild"
+  memory_size = 128  # Minimal memory for unified proxy function
+  timeout = 15
+  included_files = [
+    "netlify/functions_lazy/family-cashu-wallet.js",
+    "netlify/functions_lazy/family-lightning-wallet.js",
+    "netlify/functions_lazy/family-fedimint-wallet.js"
+  ]
+
+[functions."individual-wallet-unified"]
+  node_bundler = "esbuild"
+  memory_size = 128  # Minimal memory for unified proxy function
+  timeout = 15
+  included_files = [
+    "netlify/functions_lazy/individual-cashu-wallet.js",
+    "netlify/functions_lazy/individual-lightning-wallet.js",
+    "netlify/functions_lazy/individual-fedimint-wallet.js"
+  ]
+
+[functions."invitation-unified"]
+  node_bundler = "esbuild"
+  memory_size = 128  # Minimal memory for unified proxy function
+  timeout = 15
+  included_files = [
+    "api/authenticated/generate-peer-invite.js",
+    "api/authenticated/process-signed-invitation.js"
+  ]
+
+[functions."phoenixd-status"]
+  node_bundler = "esbuild"
+  memory_size = 128  # Minimal memory for proxy function
+  timeout = 10
 
 # Scheduled functions for cleanup tasks (only essential ones)
 [functions."cleanup-expired-credentials"]

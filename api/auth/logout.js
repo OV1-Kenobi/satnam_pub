@@ -1,40 +1,68 @@
 /**
  * Logout API Endpoint
- * 
+ *
  * Securely logs out users by clearing HttpOnly refresh token cookies
+ * with proper CORS handling and cookie deletion attributes
  */
 
 /**
- * Clear secure cookie
+ * SECURITY FIX: Clear secure cookie with proper Domain/Path matching
+ * Ensures cookies are deleted by matching original creation attributes
  */
-function clearCookie(res, name) {
-  res.setHeader('Set-Cookie', [
-    `${name}=`,
-    'Max-Age=0',
-    'Path=/',
+function clearSecureCookie(res, name) {
+  // ISSUE 1 FIX: Cookie deletion with proper Domain attribute matching
+  const domainAttr = process.env.COOKIE_DOMAIN ? `Domain=${process.env.COOKIE_DOMAIN}; ` : '';
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  // Match original cookie attributes exactly for successful deletion
+  const commonAttrs = [
+    `${domainAttr}Path=/`,
     'HttpOnly',
     'SameSite=Strict',
-  ].join('; '));
+    'Max-Age=0',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    ...(isDev ? [] : ['Secure']) // Conditional Secure for local development
+  ].join('; ');
+
+  return `${name}=; ${commonAttrs}`;
 }
 
 /**
- * Main logout handler
+ * Main logout handler with comprehensive CORS and cookie deletion fixes
  */
 export default async function handler(req, res) {
   // CORS headers for browser compatibility
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': process.env.VITE_APP_DOMAIN || 'https://www.satnam.pub',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '600'
+  };
 
+  // ISSUE 2 FIX: CORS Preflight Response with proper headers and status
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    // Echo requested headers and cache preflight
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      req.headers['access-control-request-headers'] || corsHeaders['Access-Control-Allow-Headers']
+    );
+    res.setHeader('Access-Control-Max-Age', corsHeaders['Access-Control-Max-Age'] || '600');
+    return res.status(204).end(); // 204 No Content for preflight
   }
 
+  // ISSUE 3 FIX: Method Not Allowed with CORS and Allow headers
   if (req.method !== 'POST') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed' 
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
     });
   }
 
@@ -56,8 +84,16 @@ export default async function handler(req, res) {
       return res.status(429).json({ success:false, error:'Too many attempts' });
     }
 
-    // Clear refresh token cookie
-    clearCookie(res, 'satnam_refresh_token');
+    // SECURITY FIX: Clear HttpOnly refresh cookies with proper attributes
+    res.setHeader('Set-Cookie', [
+      clearSecureCookie(res, 'satnam_refresh_token'),
+      clearSecureCookie(res, 'satnam_session_id')
+    ]);
+
+    // Set CORS headers for successful response
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
 
     res.status(200).json({
       success: true,
@@ -70,7 +106,12 @@ export default async function handler(req, res) {
     console.log('🚪 User logged out successfully');
   } catch (error) {
     console.error('Logout error:', error);
-    
+
+    // Set CORS headers even on error
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
+
     res.status(500).json({
       success: false,
       error: 'Logout failed',

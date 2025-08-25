@@ -703,9 +703,9 @@ export class SupabaseAuthAdapter {
       const windowMs = 15 * 60 * 1000; // 15 minutes
       const maxAttempts = 5;
 
-      // Get recent attempts from storage (could be localStorage or database)
+      // Get recent attempts from storage - SECURITY: Use sessionStorage for rate limiting
       const storageKey = `otp_rate_limit_${hashedIdentifier}`;
-      const storedData = localStorage.getItem(storageKey);
+      const storedData = sessionStorage.getItem(storageKey);
 
       let attempts: number[] = [];
       if (storedData) {
@@ -724,9 +724,9 @@ export class SupabaseAuthAdapter {
         return { allowed: false, retryAfter };
       }
 
-      // Record this attempt
+      // Record this attempt - SECURITY: Use sessionStorage for rate limiting
       attempts.push(now);
-      localStorage.setItem(storageKey, JSON.stringify(attempts));
+      sessionStorage.setItem(storageKey, JSON.stringify(attempts));
 
       return { allowed: true, retryAfter: 0 };
     } catch (error) {

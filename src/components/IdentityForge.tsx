@@ -307,6 +307,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   }, [nsecSecured, nsecDisplayed]); // Dependencies exclude timer state to prevent race condition
 
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameSuggestion, setUsernameSuggestion] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Zero-Knowledge Protocol: Secure nsec display functions
@@ -766,16 +767,47 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     return regex.test(username);
   };
 
-  // Simulate username availability check
+  // Real-time username availability check
   useEffect(() => {
     if (formData.username && validateUsername(formData.username)) {
-      const timer = setTimeout(() => {
-        // Simulate API call - randomly available for demo
-        setUsernameAvailable(Math.random() > 0.3);
-      }, 500);
+      const timer = setTimeout(async () => {
+        try {
+          setUsernameAvailable(null); // Set to loading state
+
+          const response = await fetch('/api/auth/check-username-availability', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username: formData.username
+            })
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            setUsernameAvailable(result.available);
+            if (!result.available && result.suggestion) {
+              // Store suggestion for user feedback
+              setUsernameSuggestion(result.suggestion);
+            } else {
+              setUsernameSuggestion(null);
+            }
+          } else {
+            console.error('Username availability check failed:', result.error);
+            setUsernameAvailable(false);
+          }
+        } catch (error) {
+          console.error('Error checking username availability:', error);
+          setUsernameAvailable(false);
+        }
+      }, 500); // Debounce API calls
+
       return () => clearTimeout(timer);
     } else {
       setUsernameAvailable(null);
+      setUsernameSuggestion(null);
     }
   }, [formData.username]);
 
@@ -1527,6 +1559,25 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mt-3">
                           <p className="text-red-200">
                             This name is already taken
+                          </p>
+                          {usernameSuggestion && (
+                            <div className="mt-2 pt-2 border-t border-red-500/30">
+                              <p className="text-red-200 text-sm">
+                                Try: <button
+                                  onClick={() => setFormData(prev => ({ ...prev, username: usernameSuggestion }))}
+                                  className="text-orange-300 hover:text-orange-200 underline font-medium"
+                                >
+                                  {usernameSuggestion}
+                                </button>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {usernameAvailable === true && (
+                        <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 mt-3">
+                          <p className="text-green-200">
+                            ✓ Username is available!
                           </p>
                         </div>
                       )}

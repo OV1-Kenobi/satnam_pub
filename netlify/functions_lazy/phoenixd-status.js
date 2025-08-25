@@ -1,12 +1,19 @@
-// Netlify (active) Function: /api/individual/lightning/wallet
-// Delegates to API implementation at api/individual/lightning/wallet.js
+// Lazy-loaded PhoenixD Status Function
+// This function is only loaded when actually called to reduce build memory usage
 
 export const handler = async (event, context) => {
   try {
-    const mod = await import('../../api/individual/lightning/wallet.js');
+    const mod = await import('../../api/phoenixd/status.js');
     const fn = (mod && (mod.default || mod.handler));
     if (typeof fn !== 'function') {
-      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: false, error: 'Lightning wallet handler not available' }) };
+      return { 
+        statusCode: 500, 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          success: false, 
+          error: 'PhoenixD status handler not available' 
+        }) 
+      };
     }
 
     let statusCode = 200;
@@ -32,6 +39,14 @@ export const handler = async (event, context) => {
     await fn(req, res);
     return { statusCode, headers, body };
   } catch (e) {
-    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: false, error: 'Server error', details: e instanceof Error ? e.message : String(e) }) };
+    return { 
+      statusCode: 500, 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ 
+        success: false, 
+        error: 'Server error', 
+        details: e instanceof Error ? e.message : String(e) 
+      }) 
+    };
   }
 };

@@ -26,7 +26,7 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
 }) => {
   // Views that should have specific backgrounds
   const nostrViews = ['contacts', 'nostr-ecosystem', 'communications'];
-  const financialViews = ['dashboard', 'individual-finances', 'ln-node-management'];
+  const financialViews = ['dashboard', 'individual-finances', 'family-finances', 'ln-node-management'];
 
   const useNostrBackground = nostrViews.includes(currentView);
   const useFinancialBackground = financialViews.includes(currentView);

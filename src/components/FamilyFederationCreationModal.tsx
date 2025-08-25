@@ -45,6 +45,17 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
     adult: { m: 1, n: 1 },
     offspring: { m: 1, n: 1 }
   });
+
+  // FROST wallet-specific thresholds
+  const [walletThresholds, setWalletThresholds] = useState<{
+    cashu: { m: number, n: number };
+    lightning: { m: number, n: number };
+    fedimint: { m: number, n: number };
+  }>({
+    cashu: { m: 2, n: 3 },
+    lightning: { m: 2, n: 3 },
+    fedimint: { m: 2, n: 3 }
+  });
   const [isCreating, setIsCreating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
@@ -222,7 +233,8 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
           federationConfig: {
             setupType: selectedSetupType,
             selectedRoles,
-            thresholds
+            thresholds,
+            walletThresholds
           }
         })
       });
@@ -335,8 +347,8 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
                       key={type.id}
                       onClick={() => setSelectedSetupType(type.id)}
                       className={`border rounded-lg p-4 cursor-pointer transition-all duration-300 ${selectedSetupType === type.id
-                          ? 'border-purple-500 bg-purple-500/20'
-                          : 'border-white/20 bg-white/5 hover:bg-white/10'
+                        ? 'border-purple-500 bg-purple-500/20'
+                        : 'border-white/20 bg-white/5 hover:bg-white/10'
                         }`}
                     >
                       <div className="flex items-center gap-3 mb-3">
@@ -407,8 +419,8 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
                                 key={peer.id}
                                 onClick={() => togglePeerSelection(role, peer.id)}
                                 className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 ${isSelected
-                                    ? 'bg-purple-600/20 border border-purple-400/50'
-                                    : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                                  ? 'bg-purple-600/20 border border-purple-400/50'
+                                  : 'bg-white/5 border border-white/10 hover:bg-white/10'
                                   }`}
                               >
                                 <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-white/30'
@@ -489,6 +501,190 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* FROST Wallet Threshold Configuration */}
+            {selectedSetupType && (
+              <div className="mt-8">
+                <h4 className="text-lg font-bold text-white mb-4">FROST Multi-Signature Wallet Thresholds</h4>
+                <p className="text-purple-200 text-sm mb-6">
+                  Configure signature requirements for different wallet types. Higher thresholds provide more security but require more coordination.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Cashu Wallet Threshold */}
+                  <div className="bg-black/20 rounded-lg p-4 border border-blue-500/30">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                        <Shield className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h5 className="text-white font-semibold">Cashu eCash</h5>
+                        <p className="text-blue-200 text-sm">
+                          {walletThresholds.cashu.m}-of-{walletThresholds.cashu.n} signatures
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-white text-sm mb-1">Required Signatures</label>
+                        <select
+                          value={walletThresholds.cashu.m}
+                          onChange={(e) => setWalletThresholds({
+                            ...walletThresholds,
+                            cashu: { ...walletThresholds.cashu, m: parseInt(e.target.value) }
+                          })}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value={1}>1 signature</option>
+                          <option value={2}>2 signatures</option>
+                          <option value={3}>3 signatures</option>
+                          <option value={4}>4 signatures</option>
+                          <option value={5}>5 signatures</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-white text-sm mb-1">Total Guardians</label>
+                        <select
+                          value={walletThresholds.cashu.n}
+                          onChange={(e) => setWalletThresholds({
+                            ...walletThresholds,
+                            cashu: { ...walletThresholds.cashu, n: parseInt(e.target.value) }
+                          })}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value={2}>2 guardians</option>
+                          <option value={3}>3 guardians</option>
+                          <option value={4}>4 guardians</option>
+                          <option value={5}>5 guardians</option>
+                          <option value={6}>6 guardians</option>
+                          <option value={7}>7 guardians</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lightning Wallet Threshold */}
+                  <div className="bg-black/20 rounded-lg p-4 border border-orange-500/30">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+                        <Zap className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h5 className="text-white font-semibold">Lightning</h5>
+                        <p className="text-orange-200 text-sm">
+                          {walletThresholds.lightning.m}-of-{walletThresholds.lightning.n} signatures
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-white text-sm mb-1">Required Signatures</label>
+                        <select
+                          value={walletThresholds.lightning.m}
+                          onChange={(e) => setWalletThresholds({
+                            ...walletThresholds,
+                            lightning: { ...walletThresholds.lightning, m: parseInt(e.target.value) }
+                          })}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          <option value={1}>1 signature</option>
+                          <option value={2}>2 signatures</option>
+                          <option value={3}>3 signatures</option>
+                          <option value={4}>4 signatures</option>
+                          <option value={5}>5 signatures</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-white text-sm mb-1">Total Guardians</label>
+                        <select
+                          value={walletThresholds.lightning.n}
+                          onChange={(e) => setWalletThresholds({
+                            ...walletThresholds,
+                            lightning: { ...walletThresholds.lightning, n: parseInt(e.target.value) }
+                          })}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          <option value={2}>2 guardians</option>
+                          <option value={3}>3 guardians</option>
+                          <option value={4}>4 guardians</option>
+                          <option value={5}>5 guardians</option>
+                          <option value={6}>6 guardians</option>
+                          <option value={7}>7 guardians</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fedimint Wallet Threshold */}
+                  <div className="bg-black/20 rounded-lg p-4 border border-purple-500/30">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                        <Users className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h5 className="text-white font-semibold">Fedimint</h5>
+                        <p className="text-purple-200 text-sm">
+                          {walletThresholds.fedimint.m}-of-{walletThresholds.fedimint.n} signatures
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-white text-sm mb-1">Required Signatures</label>
+                        <select
+                          value={walletThresholds.fedimint.m}
+                          onChange={(e) => setWalletThresholds({
+                            ...walletThresholds,
+                            fedimint: { ...walletThresholds.fedimint, m: parseInt(e.target.value) }
+                          })}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value={1}>1 signature</option>
+                          <option value={2}>2 signatures</option>
+                          <option value={3}>3 signatures</option>
+                          <option value={4}>4 signatures</option>
+                          <option value={5}>5 signatures</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-white text-sm mb-1">Total Guardians</label>
+                        <select
+                          value={walletThresholds.fedimint.n}
+                          onChange={(e) => setWalletThresholds({
+                            ...walletThresholds,
+                            fedimint: { ...walletThresholds.fedimint, n: parseInt(e.target.value) }
+                          })}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value={2}>2 guardians</option>
+                          <option value={3}>3 guardians</option>
+                          <option value={4}>4 guardians</option>
+                          <option value={5}>5 guardians</option>
+                          <option value={6}>6 guardians</option>
+                          <option value={7}>7 guardians</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Security Guidance */}
+                <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5" />
+                    <div>
+                      <h6 className="text-yellow-200 font-medium mb-2">Security Recommendations</h6>
+                      <ul className="text-yellow-300 text-sm space-y-1">
+                        <li>• <strong>1-of-2:</strong> Suitable for couples with high trust (estate planning recovery)</li>
+                        <li>• <strong>2-of-3:</strong> Balanced security and usability for small families</li>
+                        <li>• <strong>3-of-5:</strong> High security for larger families with multiple guardians</li>
+                        <li>• <strong>Lightning:</strong> Consider lower thresholds due to time-sensitive payments</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
