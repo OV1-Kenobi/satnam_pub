@@ -47,6 +47,13 @@
   status = 200
   force = true
 
+# Username availability check endpoint (MUST come before generic API routes)
+[[redirects]]
+  from = "/api/auth/check-username-availability"
+  to = "/.netlify/functions/check-username-availability"
+  status = 200
+  force = true
+
 # PhoenixD status endpoint
 [[redirects]]
   from = "/api/phoenixd/status"
@@ -60,13 +67,6 @@
   to = "/.netlify/functions/:splat"
   status = 200
   force = false
-
-# Username availability check endpoint (specific route before generic auth router)
-[[redirects]]
-  from = "/api/auth/check-username-availability"
-  to = "/.netlify/functions/check-username-availability"
-  status = 200
-  force = true
 
 # Consolidated auth endpoints routed via auth-unified (MUST come after generic to override)
 [[redirects]]
