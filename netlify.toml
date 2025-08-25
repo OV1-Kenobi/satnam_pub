@@ -355,7 +355,6 @@
     "api/auth/logout.js",
     "api/auth/refresh.js",
     "api/auth/check-refresh.js",
-    "api/auth/check-username-availability.js",
     "netlify/functions/supabase.js",
     "netlify/functions/security/session-manager.js",
     "netlify/functions/security/session-manager.ts",
@@ -417,6 +416,16 @@
   included_files = [
     "api/authenticated/generate-peer-invite.js",
     "api/authenticated/process-signed-invitation.js"
+  ]
+
+[functions."check-username-availability"]
+  node_bundler = "esbuild"
+  memory_size = 128  # Minimal memory for username availability check
+  timeout = 10
+  included_files = [
+    "api/auth/check-username-availability.js",
+    "netlify/functions/supabase.js",
+    "netlify/functions/utils/env.ts"
   ]
 
 [functions."phoenixd-status"]
