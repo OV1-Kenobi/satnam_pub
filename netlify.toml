@@ -54,6 +54,13 @@
   status = 200
   force = true
 
+# Consolidated auth endpoints routed via auth-unified (MUST come before generic API routes)
+[[redirects]]
+  from = "/api/auth/*"
+  to = "/.netlify/functions/auth-unified"
+  status = 200
+  force = true
+
 # PhoenixD status endpoint
 [[redirects]]
   from = "/api/phoenixd/status"
@@ -61,19 +68,12 @@
   status = 200
   force = true
 
-# Generic mapping for other API endpoints (excluding auth which is handled below)
+# Generic mapping for other API endpoints (excluding auth which is handled above)
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
   force = false
-
-# Consolidated auth endpoints routed via auth-unified (MUST come after generic to override)
-[[redirects]]
-  from = "/api/auth/*"
-  to = "/.netlify/functions/auth-unified"
-  status = 200
-  force = true
 
 # Ensure frontend assets are served by Vite with correct MIME types
 [[redirects]]
@@ -101,7 +101,7 @@
 # Dynamic NIP-05 API endpoint
 [[redirects]]
   from = "/.well-known/nostr.json"
-  to = "/.netlify/functions/nostr-json"
+  to = "/.netlify/functions/nostr"
   status = 200
   force = true
 
@@ -347,11 +347,11 @@
   memory_size = 256  # 256MB for authentication operations
   timeout = 15
   included_files = [
-    # Authentication handlers and required runtime deps
-    "netlify/functions_active/auth-register-identity.js",
-    "netlify/functions_active/auth-signin.js",
+    # Authentication implementations - LAZY LOADED via dynamic imports
+    "api/auth/signin.js",
     "api/auth/nip07-challenge.js",
     "api/auth/nip07-signin.js",
+    "api/auth/register-identity.js",
     "api/auth/logout.js",
     "api/auth/refresh.js",
     "api/auth/check-refresh.js",

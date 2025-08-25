@@ -103,17 +103,17 @@ function resolveAuthRoute(path, method) {
   // Normalize path for consistent matching
   const normalizedPath = path.toLowerCase();
 
-  // Core authentication endpoints
+  // Core authentication endpoints - LAZY LOADED for memory optimization
   if ((normalizedPath.endsWith('/auth/signin') || normalizedPath.endsWith('/api/auth/signin')) && method === 'POST') {
     return {
-      module: './auth-signin.js',
+      module: '../../api/auth/signin.js', // Generic signin router for multiple auth methods
       endpoint: 'signin'
     };
   }
 
   if ((normalizedPath.endsWith('/auth/register-identity') || normalizedPath.endsWith('/api/auth/register-identity')) && method === 'POST') {
     return {
-      module: './auth-register-identity.js',
+      module: '../../api/auth/register-identity.js', // Direct import to implementation
       endpoint: 'register-identity'
     };
   }
