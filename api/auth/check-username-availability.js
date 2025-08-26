@@ -60,10 +60,19 @@ async function checkUsernameAvailability(username) {
 
     // Server-side DUID hashing for availability check (no plaintext lookup)
     const crypto = await import('node:crypto');
-    const secret = getEnvVar('DUID_SECRET_KEY') || getEnvVar('DUID_SERVER_SECRET') || getEnvVar('VITE_DUID_SERVER_SECRET');
-    
+    // SERVER-SIDE ONLY — secrets must come from server env (no VITE_ vars)
+    const duidServerSecret = getEnvVar('DUID_SERVER_SECRET');
+    const duidSecretKey    = getEnvVar('DUID_SECRET_KEY');
+    if (!duidServerSecret && duidSecretKey) {
+      console.warn('DUID_SECRET_KEY is deprecated; please set DUID_SERVER_SECRET.');
+    }
+    const secretRaw = duidServerSecret ?? duidSecretKey;
+    const secret    = (typeof secretRaw === 'string' && secretRaw.trim())
+                      ? secretRaw.trim()
+                      : undefined;
+
     if (!secret) {
-      console.warn('DUID server secret not configured; availability check may be inaccurate');
+      console.warn('DUID server secret missing. Set DUID_SERVER_SECRET in the server environment; rejecting availability check.');
       return { available: false, error: 'Server configuration error' };
     }
 

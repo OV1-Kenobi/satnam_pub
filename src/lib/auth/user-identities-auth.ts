@@ -297,94 +297,171 @@ export class UserIdentitiesAuth {
   private static readonly LOCKOUT_MINUTES = 30;
 
   /**
+   * CLIENT-SIDE: Resolve npub to NIP-05 identifier using public .well-known/nostr.json
+   * This method runs in the browser and fetches public NIP-05 records
+   * @param pubkey - Nostr public key (hex format)
+   * @returns NIP-05 identifier (username@domain) or null if not found
+   */
+  private async resolveNpubToNIP05(pubkey: string): Promise<string | null> {
+    try {
+      // Validate input pubkey format
+      if (!pubkey || typeof pubkey !== "string") {
+        console.error("Invalid pubkey format");
+        return null;
+      }
+
+      // Fetch the public NIP-05 JSON from .well-known endpoint
+      // Consider using absolute URL or environment variable for production
+      const baseUrl = window.location.origin;
+      const response = await fetch(`${baseUrl}/.well-known/nostr.json`);
+
+      if (!response.ok) {
+        console.error("Failed to fetch NIP-05 records:", response.status);
+        return null;
+      }
+
+      // Validate content type
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("Invalid response type from NIP-05 endpoint");
+        return null;
+      }
+
+      const nip05Data = await response.json();
+
+      if (!nip05Data.names || typeof nip05Data.names !== "object") {
+        console.error("Invalid NIP-05 JSON format");
+        return null;
+      }
+
+      // Convert pubkey to npub format for comparison (CLIENT-SIDE OPERATION)
+      let npubToFind = pubkey;
+      if (!pubkey.startsWith("npub1")) {
+        try {
+          const { nip19 } = await import("nostr-tools");
+          npubToFind = nip19.npubEncode(pubkey);
+        } catch (error) {
+          console.error("Failed to encode pubkey to npub:", error);
+          return null;
+        }
+      }
+
+      // Search for the npub in the names object (CLIENT-SIDE OPERATION)
+      for (const [username, npub] of Object.entries(nip05Data.names)) {
+        // Ensure npub is a string before comparison
+        if (typeof npub !== "string") {
+          continue;
+        }
+        if (npub === npubToFind) {
+          return `${username}@satnam.pub`;
+        }
+      }
+
+      return null; // npub not found in NIP-05 records
+    } catch (error) {
+      console.error("Error resolving npub to NIP-05:", error);
+      return null;
+    }
+  }
+  /**
    * Authenticate user with NIP-07 browser extension (no password)
-   * Generates DUID using npub only (stable across methods)
+   * Uses npub → NIP-05 → DUID resolution for authentication
    */
   async authenticateNIP07(credentials: AuthCredentials): Promise<AuthResult> {
     try {
-      if (!credentials.pubkey || !credentials.signature) {
+      // NIP-07 authentication: npub → NIP-05 → DUID → User lookup
+      // 1. Resolve npub to NIP-05 using public .well-known/nostr.json
+      // 2. Generate DUID from resolved NIP-05
+      // 3. Perform standard user lookup
+
+      if (!credentials.pubkey) {
         return {
           success: false,
-          error: "Missing pubkey or signature",
+          error: "Missing public key for NIP-07 authentication",
         };
       }
 
-      // Import DUID generation utilities
-      const { generateDUID } = await import(
-        "../../../lib/security/duid-generator"
-      );
-
-      // Convert hex pubkey to npub format if needed
-      let npub = credentials.pubkey;
-      if (!npub.startsWith("npub1")) {
-        const { central_event_publishing_service } = await import(
-          "../../../lib/central_event_publishing_service"
-        );
-        npub = central_event_publishing_service.encodeNpub(credentials.pubkey);
-      }
-
-      // Generate DUID using npub only (stable across auth methods)
-      const deterministicUserId = await generateDUID(npub);
-
-      // Direct O(1) database lookup using DUID
-      const { data: user, error: userError } = await (await getSupabaseClient())
-        .from("user_identities")
-        .select("*")
-        .eq("id", deterministicUserId)
-        .eq("is_active", true)
-        .single();
-
-      if (userError || !user) {
-        await this.logAuthAttempt({
-          user_id: deterministicUserId,
-          attempt_result: "invalid_nip05", // Using existing type
-        });
-        return { success: false, error: "Invalid NIP-07 credentials" };
-      }
-
-      // Check if account is locked
-      if (user.locked_until && new Date(user.locked_until) > new Date()) {
-        await this.logAuthAttempt({
-          user_id: user.id,
-          attempt_result: "account_locked",
-        });
-        return {
-          success: false,
-          error:
-            "Account is temporarily locked due to too many failed attempts",
-        };
-      }
-
-      // NIP-07 authentication successful - reset failed attempts
-      await this.handleSuccessfulAuth(
-        user.id,
-        credentials.pubkey || "nip07_auth"
-      );
-
-      // Session tokens are issued by server; perform a server-side signin to get token
       try {
-        const response = await fetch("/api/auth/nip07-signin", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            challenge: credentials.challenge,
-            signature: credentials.signature,
-            pubkey: credentials.pubkey,
-          }),
-        });
-        if (response.ok) {
-          const json = await response.json();
-          return json as AuthResult;
-        }
-      } catch (e) {
-        // Fall through
-      }
+        // Step 1: Resolve npub to NIP-05 using public JSON endpoint
+        const nip05Identifier = await this.resolveNpubToNIP05(
+          credentials.pubkey
+        );
 
-      return {
-        success: false,
-        error: "NIP-07 authentication failed at server endpoint",
-      };
+        if (!nip05Identifier) {
+          return {
+            success: false,
+            error:
+              "NIP-07 authentication failed: npub not found in NIP-05 records. Please register first.",
+          };
+        }
+
+        // Step 2: Generate DUID from resolved NIP-05 identifier
+        const { generateDUIDFromNIP05 } = await import(
+          "../../../lib/security/duid-generator"
+        );
+        const deterministicUserId = await generateDUIDFromNIP05(
+          nip05Identifier
+        );
+
+        if (!deterministicUserId) {
+          return {
+            success: false,
+            error: "Failed to generate user identifier",
+          };
+        }
+
+        // Step 3: Direct O(1) database lookup using DUID
+        const { data: user, error: userError } = await (
+          await getSupabaseClient()
+        )
+          .from("user_identities")
+          .select("*")
+          .eq("id", deterministicUserId)
+          .eq("is_active", true)
+          .single();
+
+        if (userError || !user) {
+          await this.logAuthAttempt({
+            nip05: nip05Identifier,
+            attempt_result: "invalid_nip05",
+          });
+          return { success: false, error: "Authentication failed" };
+        }
+
+        // Check if account is locked
+        if (user.locked_until && new Date(user.locked_until) > new Date()) {
+          return {
+            success: false,
+            error:
+              "Account is temporarily locked due to too many failed attempts",
+          };
+        }
+
+        // NIP-07 authentication successful - reset failed attempts
+        await this.handleSuccessfulAuth(user.id, credentials.pubkey);
+
+        return {
+          success: true,
+          user: {
+            id: user.id,
+            user_salt: user.user_salt,
+            hashed_npub: user.hashed_npub,
+            hashed_nip05: user.hashed_nip05,
+            password_hash: user.password_hash,
+            password_salt: user.password_salt,
+            failed_attempts: user.failed_attempts,
+            role: user.role,
+            spending_limits: user.spending_limits,
+            privacy_settings: user.privacy_settings,
+            is_active: user.is_active,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+          },
+        };
+      } catch (error) {
+        console.error("NIP-07 authentication error:", error);
+        return { success: false, error: "NIP-07 authentication failed" };
+      }
     } catch (error) {
       console.error("NIP-07 authentication error:", error);
       return { success: false, error: "NIP-07 authentication failed" };

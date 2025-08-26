@@ -254,10 +254,11 @@ async function checkUsernameAvailability(username) {
 
     // Server-side DUID hashing for availability check (no plaintext lookup)
     const crypto = await import('node:crypto');
-    const secret = process.env.DUID_SECRET_KEY || process.env.DUID_SERVER_SECRET || process.env.VITE_DUID_SERVER_SECRET;
+    // SERVER-SIDE ONLY - No VITE_ prefixed variables
+    const secret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
     if (!secret) {
-      console.warn('DUID server secret not configured; availability check may be inaccurate');
-      return false;
+      console.error('CRITICAL: DUID server secret not configured - blocking registration');
+      throw new Error('Server configuration error: DUID secret missing');
     }
     const identifier = `${local}@${domain}`;
     const hmac = crypto.createHmac('sha256', secret);
@@ -308,19 +309,32 @@ async function createUserIdentity(userData, spendingLimits) {
     // CRITICAL SECURITY: Import privacy-first hashing utilities
     const { generateUserSalt, createHashedUserData } = await import('../../lib/security/privacy-hashing.js');
 
-    // FAIL-SAFE: Require pre-generated DUID from Identity Forge - NO FALLBACK GENERATION
-    const deterministicUserId = userData.deterministicUserId;
+    // DUID Generation: Use canonical NIP-05-based DUID generation
+    let deterministicUserId;
 
-    if (!deterministicUserId) {
-      // FAIL-SAFE ERROR: No fallback DUID generation to prevent inconsistency
-      console.error('❌ DUID generation failed: No pre-generated DUID provided by Identity Forge');
+    try {
+      // Import canonical DUID generator
+      const { generateDUIDFromNIP05 } = await import('../../lib/security/duid-generator.js');
+
+      // Generate DUID from NIP-05 identifier (consistent with username availability check)
+      const nip05Identifier = userData.nip05 || `${userData.username}@satnam.pub`;
+      deterministicUserId = await generateDUIDFromNIP05(nip05Identifier);
+
+      console.log('✅ Canonical NIP-05-based DUID generated:', {
+        nip05: nip05Identifier,
+        duidPrefix: deterministicUserId.substring(0, 10) + '...',
+        timestamp: new Date().toISOString(),
+        source: 'canonical-nip05'
+      });
+    } catch (duidError) {
+      console.error('❌ Canonical DUID generation failed:', duidError);
       return {
-        statusCode: 400,
+        statusCode: 500,
         headers: corsHeaders,
         body: JSON.stringify({
           success: false,
           error: "DUID generation failed",
-          details: "Deterministic User ID must be generated during Identity Forge process. Please retry account creation.",
+          details: "Failed to generate deterministic user ID. Please try again.",
           code: "DUID_GENERATION_FAILED",
           meta: {
             timestamp: new Date().toISOString(),
@@ -330,11 +344,6 @@ async function createUserIdentity(userData, spendingLimits) {
       };
     }
 
-    console.log('✅ Using pre-generated DUID from Identity Forge:', {
-      duidPrefix: deterministicUserId.substring(0, 10) + '...',
-      timestamp: new Date().toISOString()
-    });
-
     // Generate unique user salt for maximum encryption (still needed for sensitive data)
     const userSalt = await generateUserSalt();
 
@@ -342,6 +351,7 @@ async function createUserIdentity(userData, spendingLimits) {
     const passwordSalt = generatePasswordSalt();
     const passwordHash = await hashPassword(userData.password, passwordSalt);
 
+    // Note: Using standard hashed column format for maximum privacy protection
     // MAXIMUM ENCRYPTION: Hash all sensitive user data with unique salt
     let hashedUserData;
     let hashedUsername;
@@ -399,7 +409,8 @@ async function createUserIdentity(userData, spendingLimits) {
       updated_at: new Date().toISOString()
     };
 
-    // Insert into user_identities table (the correct table for Identity Forge)
+    // Insert into user_identities table with error handling for missing columns
+    console.log('🔄 Attempting to insert user identity with hashed columns...');
     const { data, error } = await supabase
       .from('user_identities')
       .insert([profileData])
@@ -408,7 +419,19 @@ async function createUserIdentity(userData, spendingLimits) {
 
     if (error) {
       console.error('User identity creation failed:', error);
-      return { success: false, error: 'Failed to create user identity' };
+      console.error('Database error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      console.error('Attempted to insert data:', JSON.stringify(profileData, null, 2));
+      return {
+        success: false,
+        error: 'Failed to create user identity',
+        details: error.message,
+        code: error.code
+      };
     }
 
     // REMOVED: profiles table insertion (table does not exist)
@@ -591,7 +614,7 @@ export default async function handler(event, context) {
       npub: `npub_${hashedIdentifier.slice(0, 8)}`, // Privacy-preserving npub reference
       nip05: `${validatedData.username}@satnam.pub`,
       federationRole: standardizedRole,
-      authMethod: /** @type {"otp"} */ ('otp'), // Use otp as closest match for registration
+      authMethod: /** @type {"nip05-password"} */ ('nip05-password'), // Registration creates NIP-05/password account
       isWhitelisted: true,
       votingPower: standardizedRole === 'guardian' ? 2 : 1,
       guardianApproved: true,

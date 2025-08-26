@@ -725,10 +725,10 @@ export const handler = async (event) => {
       }
     }
 
-    // 3) Build protected hashedId similarly to auth-signin
-    const duidServerSecret = process.env.DUID_SERVER_SECRET || process.env.VITE_DUID_SERVER_SECRET;
+    // 3) Build protected hashedId similarly to auth-signin (SERVER-SIDE ONLY)
+    const duidServerSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
     if (!duidServerSecret) {
-      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Missing DUID server secret' }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Missing DUID server secret - server-side only' }) };
     }
 
     const { createHmac, randomUUID } = await import('node:crypto');

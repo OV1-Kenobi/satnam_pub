@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  Bitcoin,
   Check,
   CheckCircle,
   Copy,
@@ -15,8 +14,7 @@ import {
   Sparkles,
   User,
   Users,
-  X,
-  Zap
+  X
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -38,7 +36,6 @@ interface FormData {
   pubkey: string;
   lightningEnabled: boolean;
   agreedToTerms: boolean;
-  deterministicUserId?: string; // DUID generated during key creation
 }
 
 interface IdentityForgeProps {
@@ -846,7 +843,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         throw new Error("Failed to generate Nostr keypair");
       }
 
-      // STEP 4: Validate generated keys meet Nostr standards
+      // STEP 3: Validate generated keys meet Nostr standards
       if (!keyPair.npub.startsWith('npub1') || keyPair.npub.length !== 63) {
         throw new Error(`Invalid npub format: ${keyPair.npub}`);
       }
@@ -858,53 +855,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
 
       setGenerationProgress(70);
-      setGenerationStep("Generating secure deterministic user ID...");
-
-      // STEP 5: Generate secure DUID for O(1) authentication performance - FAIL-SAFE REQUIRED
-      let deterministicUserId = null;
-      if (keyPair.npub) {
-        try {
-          // Import secure DUID generation utilities
-          const { generateDUID } = await import('../../lib/security/duid-generator');
-
-          // Generate secure DUID from npub only (stable across password changes)
-          deterministicUserId = await generateDUID(keyPair.npub);
-
-          console.log('🔑 Secure DUID Generated during Identity Forge:', {
-            npubPrefix: keyPair.npub.substring(0, 10) + '...',
-            duidPrefix: deterministicUserId.substring(0, 10) + '...',
-            timestamp: new Date().toISOString(),
-            stable: true // DUID survives password changes
-          });
-
-        } catch (error) {
-          console.error('❌ Secure DUID generation failed during Identity Forge:', error);
-
-          // FAIL-SAFE ERROR HANDLING: Stop the process instead of continuing without DUID
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          setErrorMessage(`Secure DUID Generation Failed: ${errorMsg}. This is required for secure authentication. Please try again.`);
-          setIsGenerating(false);
-          setGenerationProgress(0);
-          setGenerationStep("");
-          return; // Stop the identity forge process
-        }
-      }
-
-      // FAIL-SAFE VALIDATION: Ensure secure DUID was generated successfully
-      if (!deterministicUserId) {
-        const errorMessage = 'Secure DUID generation failed: Missing npub or generation error. This is required for secure authentication.';
-        console.error('❌', errorMessage);
-        setErrorMessage(errorMessage);
-        setIsGenerating(false);
-        setGenerationProgress(0);
-        setGenerationStep("");
-        return; // Stop the identity forge process
-      }
+      setGenerationStep("Finalizing cryptographic identity...");
 
       setGenerationProgress(90);
       setGenerationStep("Finalizing secure identity...");
 
-      // STEP 6: Update state with cryptographically secure keys and DUID
+      // STEP 4: Update state with cryptographically secure keys
       // CRITICAL FIX: Use flushSync to prevent React state batching timing issues
       flushSync(() => {
         // Set ephemeralNsec FIRST to ensure it's available when pubkey triggers re-render
@@ -912,11 +868,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       });
 
       flushSync(() => {
-        // Set pubkey and DUID SECOND to trigger the key display section render
+        // Set pubkey to trigger the key display section render
         setFormData((prev) => ({
           ...prev,
-          pubkey: keyPair.npub,
-          deterministicUserId: deterministicUserId || undefined
+          pubkey: keyPair.npub
         }));
       });
 
@@ -989,8 +944,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         // Include import account information
         isImportedAccount: migrationMode === 'import',
         detectedProfile: detectedProfile,
-        // Include pre-generated DUID for O(1) authentication performance
-        deterministicUserId: formData.deterministicUserId,
       };
 
 
@@ -1215,7 +1168,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           throw new Error('Registration failed - invalid response from server');
         }
 
-        // Go directly to completion screen (step 4, previously step 5)
+        // Go directly to completion screen (step 4)
         setGenerationStep("Identity forged successfully!");
         setCurrentStep(4);
       } catch (error) {
@@ -1961,21 +1914,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       </p>
                     </div>
 
-                    {/* DUID Generation Status */}
-                    {formData.deterministicUserId && (
-                      <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3">
-                        <div className="flex items-center justify-center space-x-2">
-                          <Key className="h-4 w-4 text-blue-400" />
-                          <p className="text-blue-200 text-sm font-medium">
-                            Secure Account ID Generated
-                          </p>
-                        </div>
-                        <p className="text-blue-200/70 text-xs mt-1">
-                          Enables lightning-fast authentication while maintaining maximum privacy
-                        </p>
-                      </div>
-                    )}
-
                     {rotationMode?.enabled && (
                       <div className="bg-amber-500/15 border border-amber-400/30 rounded-lg p-3">
                         <p className="text-amber-200 text-sm text-center">
@@ -2263,14 +2201,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 </div>
               ) : null}
             </div>
-          )}
+          )
+          }
 
           {/* Step 3: Profile Creation (New Users Only) */}
-          {(() => {
-            const shouldShow = currentStep === 3 && migrationMode === 'generate';
+          {
+            (() => {
+              const shouldShow = currentStep === 3 && migrationMode === 'generate';
 
-            return shouldShow;
-          })() && (
+              return shouldShow;
+            })() && (
               <div className="space-y-6">
                 <div className="text-center">
                   <User className="h-16 w-16 text-blue-500 mx-auto mb-4" />
@@ -2397,323 +2337,193 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   </div>
                 </div>
               </div>
-            )}
+            )
+          }
 
 
 
 
           {/* Step 4: Final Completion Screen */}
-          {currentStep === 4 && (
-            <div className="space-y-6">
-              {isGenerating ? (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <h3 className="text-2xl font-bold text-white mb-4">
-                      Forging Your Identity
-                    </h3>
-                    <p className="text-purple-200">
-                      Registering your sovereign identity...
-                    </p>
-                  </div>
-
-                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-white font-semibold">
-                        {generationStep}
-                      </span>
-                      <span className="text-orange-500 font-bold">
-                        {generationProgress}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-white/20 rounded-full h-3">
-                      <div
-                        className="bg-gradient-to-r from-orange-500 to-yellow-500 h-3 rounded-full transition-all duration-300"
-                        style={{ width: `${generationProgress}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : registrationResult ? (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="w-20 h-20 bg-yellow-500/20 border-2 border-yellow-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Crown className="h-10 w-10 text-yellow-400" />
-                    </div>
-                    <h3 className="text-3xl font-bold text-white mb-4">
-                      Your Unforgeable True Name is Established! 🎉
-                    </h3>
-                    <p className="text-yellow-200 text-lg">
-                      Congratulations! Your sovereign digital identity has been forged with cryptographic certainty.
-                    </p>
-                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 mt-6">
-                      <p className="text-white font-mono text-lg">
-                        {formData.username}@satnam.pub
-                      </p>
-                      <p className="text-purple-200 text-sm mt-2">
-                        Your unforgeable True Name on the sovereign web
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-green-500/20 border border-green-500/50 rounded-2xl p-6">
-                    <h4 className="text-green-200 font-bold mb-3">Your Identity Summary</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-green-300">Username:</span>
-                        <span className="text-green-100 font-mono">{registrationResult.user.username}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-green-300">NIP-05:</span>
-                        <span className="text-green-100 font-mono">{registrationResult.user.nip05}</span>
-                      </div>
-                      {formData.lightningEnabled && (
-                        <div className="flex justify-between">
-                          <span className="text-green-300">Lightning:</span>
-                          <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-6">
-                    <h4 className="text-purple-200 font-bold mb-3">🎯 Your Sovereignty Journey Begins</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-purple-200/80 text-sm">
-                      <div>
-                        <p>• <strong>Family Foundry:</strong> Create your family charter and establish governance roles</p>
-                        <p>• <strong>Invite Peers:</strong> Earn educational credits through the mutual benefit system</p>
-                      </div>
-                      <div>
-                        <p>• <strong>Nostr Ecosystem:</strong> Explore decentralized social networking tools</p>
-                        <p>• <strong>Bitcoin Education:</strong> Access sovereign financial education resources</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Primary CTA: Found Your Family Dynasty */}
-                  <div className="bg-gradient-to-br from-purple-600/30 to-yellow-600/30 backdrop-blur-sm rounded-3xl p-8 border-2 border-yellow-500/50 shadow-2xl">
-                    <div className="text-center mb-6">
-                      <div className="w-16 h-16 bg-yellow-500/20 border border-yellow-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Crown className="h-8 w-8 text-yellow-400" />
-                      </div>
-                      <h4 className="text-2xl font-bold text-white mb-3">
-                        Found Your Family Dynasty
-                      </h4>
-                      <p className="text-purple-200 text-lg mb-4">
-                        Establish your family's sovereign foundation with the Family Foundry
-                      </p>
-                    </div>
-
-                    <div className="bg-black/20 rounded-2xl p-6 mb-6">
-                      <h5 className="text-yellow-200 font-semibold mb-3">Family Federation Benefits:</h5>
-                      <div className="text-purple-200 text-sm space-y-2">
-                        <div className="flex items-start space-x-2">
-                          <Shield className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <span>Threshold multi-signature protections for Family Nostr accounts</span>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <Shield className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <span>Private banking account security through multi-sig</span>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <Users className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <span>Family governance and sovereignty features</span>
-                        </div>
-                      </div>
-                    </div>
-
+          {
+            currentStep === 4 && (
+              <div className="space-y-6">
+                {isGenerating ? (
+                  <div className="space-y-6">
                     <div className="text-center">
+                      <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                      <h3 className="text-2xl font-bold text-white mb-4">
+                        Forging Your Identity
+                      </h3>
+                      <p className="text-purple-200">
+                        Registering your sovereign identity...
+                      </p>
+                    </div>
+
+                    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-white font-semibold">
+                          {generationStep}
+                        </span>
+                        <span className="text-orange-500 font-bold">
+                          {generationProgress}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-white/20 rounded-full h-3">
+                        <div
+                          className="bg-gradient-to-r from-orange-500 to-yellow-500 h-3 rounded-full transition-all duration-300"
+                          style={{ width: `${generationProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : registrationResult ? (
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-yellow-500/20 border-2 border-yellow-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Crown className="h-10 w-10 text-yellow-400" />
+                      </div>
+                      <h3 className="text-3xl font-bold text-white mb-4">
+                        Your Unforgeable True Name is Established! 🎉
+                      </h3>
+                      <p className="text-yellow-200 text-lg">
+                        Congratulations! Your sovereign digital identity has been forged with cryptographic certainty.
+                      </p>
+                      <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 mt-6">
+                        <p className="text-white font-mono text-lg">
+                          {formData.username}@satnam.pub
+                        </p>
+                        <p className="text-purple-200 text-sm mt-2">
+                          Your unforgeable True Name on the sovereign web
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-green-500/20 border border-green-500/50 rounded-2xl p-6">
+                      <h4 className="text-green-200 font-bold mb-3">Your Identity Summary</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-green-300">Username:</span>
+                          <span className="text-green-100 font-mono">{registrationResult.user.username}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-300">NIP-05:</span>
+                          <span className="text-green-100 font-mono">{registrationResult.user.nip05}</span>
+                        </div>
+                        {formData.lightningEnabled && (
+                          <div className="flex justify-between">
+                            <span className="text-green-300">Lightning:</span>
+                            <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-6">
+                      <h4 className="text-purple-200 font-bold mb-3">🎯 Your Sovereignty Journey Begins</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-purple-200/80 text-sm">
+                        <div>
+                          <p>• <strong>Family Foundry:</strong> Create your family charter and establish governance roles</p>
+                          <p>• <strong>Invite Peers:</strong> Earn educational credits through the mutual benefit system</p>
+                        </div>
+                        <div>
+                          <p>• <strong>Nostr Ecosystem:</strong> Explore decentralized social networking tools</p>
+                          <p>• <strong>Bitcoin Education:</strong> Access sovereign financial education resources</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Primary CTA: Found Your Family Dynasty */}
+                    <div className="bg-gradient-to-br from-purple-600/30 to-yellow-600/30 backdrop-blur-sm rounded-3xl p-8 border-2 border-yellow-500/50 shadow-2xl">
+                      <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-yellow-500/20 border border-yellow-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Crown className="h-8 w-8 text-yellow-400" />
+                        </div>
+                        <h4 className="text-2xl font-bold text-white mb-3">
+                          Found Your Family Dynasty
+                        </h4>
+                        <p className="text-purple-200 text-lg mb-4">
+                          Establish your family's sovereign foundation with the Family Foundry
+                        </p>
+                      </div>
+
+                      <div className="bg-black/20 rounded-2xl p-6 mb-6">
+                        <h5 className="text-yellow-200 font-semibold mb-3">Family Federation Benefits:</h5>
+                        <div className="text-purple-200 text-sm space-y-2">
+                          <div className="flex items-start space-x-2">
+                            <Shield className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <span>Threshold multi-signature protections for Family Nostr accounts</span>
+                          </div>
+                          <div className="flex items-start space-x-2">
+                            <Shield className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <span>Private banking account security through multi-sig</span>
+                          </div>
+                          <div className="flex items-start space-x-2">
+                            <Users className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <span>Family governance and sovereignty features</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <button
+                          onClick={() => {
+                            // Navigate via app-level event to Dynastic Sovereignty view
+                            window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'dynastic-sovereignty' } }));
+                          }}
+                          className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-4 px-10 rounded-xl transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-3 mx-auto text-lg shadow-lg hover:shadow-xl"
+                        >
+                          <Crown className="h-6 w-6" />
+                          <span>Begin Family Foundry Journey</span>
+                          <ArrowRight className="h-6 w-6" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Secondary Navigation Options */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Invite Peers - Secondary */}
                       <button
                         onClick={() => {
-                          // Navigate via app-level event to Dynastic Sovereignty view
-                          window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'dynastic-sovereignty' } }));
+                          setShowInvitationModal(true);
                         }}
-                        className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-4 px-10 rounded-xl transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-3 mx-auto text-lg shadow-lg hover:shadow-xl"
+                        className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                       >
-                        <Crown className="h-6 w-6" />
-                        <span>Begin Family Foundry Journey</span>
-                        <ArrowRight className="h-6 w-6" />
+                        <span>🎁</span>
+                        <div className="text-left">
+                          <div className="font-bold">Invite Peers</div>
+                          <div className="text-xs text-emerald-200">Earn educational credits for both you and your peers</div>
+                        </div>
+                      </button>
+
+                      {/* Explore Nostr Ecosystem - Tertiary */}
+                      <button
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'nostr-ecosystem' } }));
+                        }}
+                        className="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                      >
+                        <Key className="h-5 w-5 text-blue-400" />
+                        <div className="text-left">
+                          <div className="font-bold">Explore Nostr Ecosystem</div>
+                          <div className="text-xs text-blue-200">Discover existing Nostr clients and tools</div>
+                        </div>
                       </button>
                     </div>
                   </div>
-
-                  {/* Secondary Navigation Options */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Invite Peers - Secondary */}
-                    <button
-                      onClick={() => {
-                        setShowInvitationModal(true);
-                      }}
-                      className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                    >
-                      <span>🎁</span>
-                      <div className="text-left">
-                        <div className="font-bold">Invite Peers</div>
-                        <div className="text-xs text-emerald-200">Earn educational credits for both you and your peers</div>
-                      </div>
-                    </button>
-
-                    {/* Explore Nostr Ecosystem - Tertiary */}
-                    <button
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'nostr-ecosystem' } }));
-                      }}
-                      className="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                    >
-                      <Key className="h-5 w-5 text-blue-400" />
-                      <div className="text-left">
-                        <div className="font-bold">Explore Nostr Ecosystem</div>
-                        <div className="text-xs text-blue-200">Discover existing Nostr clients and tools</div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          {/* Step 5: REMOVED - Redundant step eliminated */}
-          {false && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <Crown className="h-20 w-20 text-yellow-500 mx-auto mb-6" />
-                <h3 className="text-3xl font-bold text-white mb-4">
-                  Your Sovereign Identity is Forged!
-                </h3>
-                <p className="text-purple-200 text-lg mb-6">
-                  Welcome to true digital sovereignty, <span className="font-bold text-yellow-400">{formData.username}</span>
-                </p>
-                <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 mb-8">
-                  <p className="text-purple-200 mb-2">Your sovereign identity:</p>
-                  <p className="text-white font-mono text-lg">
-                    {formData.username}@satnam.pub
-                  </p>
-                </div>
+                ) : null}
               </div>
+            )
+          }
 
-              {/* Primary CTA: Family Dynasty Founding */}
-              <div className="bg-gradient-to-br from-purple-600/30 to-yellow-600/30 backdrop-blur-sm rounded-3xl p-8 border-2 border-yellow-500/50 shadow-2xl">
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 bg-yellow-500/20 border border-yellow-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Crown className="h-8 w-8 text-yellow-400" />
-                  </div>
-                  <h4 className="text-2xl font-bold text-white mb-3">
-                    Found Your Family Dynasty
-                  </h4>
-                  <p className="text-purple-200 text-lg mb-4">
-                    Establish your family's sovereign foundation with the Family Foundry
-                  </p>
-                </div>
 
-                <div className="bg-black/20 rounded-2xl p-6 mb-6">
-                  <h5 className="text-yellow-200 font-bold mb-4 text-lg">🏰 Dynastic Sovereignty Benefits:</h5>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Shield className="h-4 w-4 text-blue-400" />
-                        <span className="text-purple-200">Protected family nsec keys with Shamir Secret Sharing</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Users className="h-4 w-4 text-green-400" />
-                        <span className="text-purple-200">Role-based family governance and permissions</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Zap className="h-4 w-4 text-yellow-400" />
-                        <span className="text-purple-200">Family Lightning treasury with threshold signatures</span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Key className="h-4 w-4 text-orange-400" />
-                        <span className="text-purple-200">Hierarchical role-based controls (Guardian → Adult → Offspring)</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Heart className="h-4 w-4 text-red-400" />
-                        <span className="text-purple-200">Private family communications with NIP-59 gift-wrapped messaging</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Bitcoin className="h-4 w-4 text-orange-400" />
-                        <span className="text-purple-200">Fedimint eCash for enhanced privacy and family spending</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-center">
-                  <button
-                    onClick={() => {
-                      // Navigate via app-level event to Dynastic Sovereignty view
-                      window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'dynastic-sovereignty' } }));
-                    }}
-                    className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-4 px-10 rounded-xl transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-3 mx-auto text-lg shadow-lg hover:shadow-xl"
-                  >
-                    <Crown className="h-6 w-6" />
-                    <span>Begin Family Foundry Journey</span>
-                    <ArrowRight className="h-6 w-6" />
-                  </button>
-                  <p className="text-yellow-200/80 text-sm mt-3">
-                    Establish your family charter, roles, and invite family members through the Family Foundry
-                  </p>
-                </div>
-              </div>
-
-              {/* Secondary Navigation Options */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Nostr Resources - Secondary */}
-                <button
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'nostr-ecosystem' } }));
-                  }}
-                  className="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <Key className="h-5 w-5 text-blue-400" />
-                  <span>Explore Nostr Ecosystem</span>
-                </button>
-
-                {/* Invite Peers - Tertiary */}
-                <button
-                  onClick={() => {
-                    setShowInvitationModal(true);
-                  }}
-                  className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <span>🎁</span>
-                  <span>Invite Peers</span>
-                </button>
-
-                {/* Return Home - Tertiary */}
-                <button
-                  onClick={onComplete}
-                  className="bg-gray-600/20 hover:bg-gray-600/30 border border-gray-500/30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Return to Home</span>
-                </button>
-              </div>
-
-              {/* Educational Context */}
-              <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-6">
-                <h5 className="text-purple-200 font-semibold text-sm mb-2">🎓 What's Next in Your Sovereignty Journey</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-purple-200/80 text-sm">
-                  <div>
-                    <p>• <strong>Family Foundry:</strong> Create your family charter and establish governance roles</p>
-                    <p>• <strong>Invite Family Members:</strong> Extend invitations through secure NIP-59 messaging</p>
-                  </div>
-                  <div>
-                    <p>• <strong>Treasury Management:</strong> Set up family Lightning channels and eCash federation</p>
-                    <p>• <strong>Educational Credits:</strong> Earn course credits by inviting peers to join Satnam</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Navigation Buttons */}
-          {(() => {
-            const shouldShow = !(currentStep === 4 && registrationResult);
+          {
+            (() => {
+              const shouldShow = !(currentStep === 4 && registrationResult);
 
-            return shouldShow;
-          })() && (
+              return shouldShow;
+            })() && (
               <div className="flex justify-between pt-6">
                 <button
                   onClick={prevStep}
@@ -2743,11 +2553,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   )}
                 </button>
               </div>
-            )}
-        </div>
+            )
+          }
+        </div >
 
         {/* Security Messaging */}
-        <div className="text-center mt-8 pt-6 border-t border-white/20">
+        < div className="text-center mt-8 pt-6 border-t border-white/20" >
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-8 text-purple-200 text-sm">
             <span className="flex items-center space-x-2">
               <Key className="h-4 w-4" />
@@ -2762,8 +2573,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               <span>Sovereign from day one</span>
             </span>
           </div>
-        </div>
-      </div>
+        </div >
+      </div >
 
       {/* Migration Consent Dialog */}
       {
@@ -2952,22 +2763,24 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
 
       {/* Secure Peer Invitation Modal */}
-      {showInvitationModal && sessionInfo && (
-        <SecurePeerInvitationModal
-          isOpen={showInvitationModal}
-          onClose={() => {
-            setShowInvitationModal(false);
-            onComplete();
-          }}
-          sessionInfo={sessionInfo}
-          temporaryNsec={nsecRetentionSessionId ? 'available' : undefined}
-          retentionSessionId={nsecRetentionSessionId || undefined}
-          onComplete={() => {
-            setShowInvitationModal(false);
-            onComplete();
-          }}
-        />
-      )}
+      {
+        showInvitationModal && sessionInfo && (
+          <SecurePeerInvitationModal
+            isOpen={showInvitationModal}
+            onClose={() => {
+              setShowInvitationModal(false);
+              onComplete();
+            }}
+            sessionInfo={sessionInfo}
+            temporaryNsec={nsecRetentionSessionId ? 'available' : undefined}
+            retentionSessionId={nsecRetentionSessionId || undefined}
+            onComplete={() => {
+              setShowInvitationModal(false);
+              onComplete();
+            }}
+          />
+        )
+      }
     </div >
   );
 };

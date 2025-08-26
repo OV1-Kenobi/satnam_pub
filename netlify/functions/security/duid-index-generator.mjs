@@ -47,23 +47,8 @@ export function validateDUIDIndex(duid_index) {
   return /^[a-f0-9]{64}$/.test(duid_index);
 }
 
-export function generateDUIDIndexFromNpub(npub) {
-  if (!npub || !npub.startsWith('npub1')) {
-    throw new Error('Valid npub is required for DUID index generation');
-  }
-  const deterministicInput = 'DUIDv1' + npub;
-  const hash = crypto.createHash('sha256');
-  hash.update(deterministicInput);
-  const duid_public = hash.digest('hex');
-  const duid_index = generateDUIDIndex(duid_public);
-  console.log('🔑 Generated DUID index from npub:', {
-    npubPrefix: npub.substring(0, 10) + '...',
-    publicDuidPrefix: duid_public.substring(0, 10) + '...',
-    indexPrefix: duid_index.substring(0, 10) + '...',
-    timestamp: new Date().toISOString(),
-  });
-  return duid_index;
-}
+// DEPRECATED: generateDUIDIndexFromNpub() removed
+// Use canonical generateDUIDFromNIP05() from lib/security/duid-generator.js instead
 
 export function batchGenerateDUIDIndexes(public_duids) {
   const results = [];

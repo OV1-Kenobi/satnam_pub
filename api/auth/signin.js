@@ -136,32 +136,15 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
   }
 
   try {
-    // Step 1: Generate DUID from NIP-05 (following established pattern)
+    // Step 1: Generate DUID from NIP-05 using canonical generator
     const { generateDUIDFromNIP05 } = await import('../../lib/security/duid-generator.js');
-    const duid_public = await generateDUIDFromNIP05(requestData.nip05);
+    const duid = await generateDUIDFromNIP05(requestData.nip05);
 
-    // Step 2: Generate server-side DUID index for database lookup
-    const duidServerSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY || process.env.VITE_DUID_SERVER_SECRET;
-    if (!duidServerSecret) {
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Server configuration error'
-        })
-      };
-    }
-
-    const hmac = crypto.createHmac('sha256', duidServerSecret);
-    hmac.update(duid_public);
-    const duid_index = hmac.digest('hex');
-
-    // Step 3: Look up user by DUID index in user_identities table
+    // Step 2: Direct lookup using DUID as primary key (no additional indexing needed)
     const { data: users, error: userError } = await supabase
       .from('user_identities')
       .select('*')
-      .eq('duid_index', duid_index)
+      .eq('id', duid)
       .eq('is_active', true)
       .limit(1);
 

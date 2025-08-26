@@ -407,7 +407,61 @@ function validateSigninRequest(requestBody) {
 }
 
 /**
+ * SERVER-SIDE PHASE 2: Resolve npub to DUID using nip05_records lookup
+ * This complements CLIENT-SIDE PHASE 1 (npub → NIP-05 resolution via public JSON)
+ * Architecture: Client resolves npub→NIP-05, Server resolves npub→DUID for database lookup
+ * @param {string} npub - User's Nostr public key
+ * @returns {Promise<string|null>} DUID or null if not found
+ */
+async function resolveNpubToDUID(npub) {
+  try {
+    const crypto = await import('node:crypto');
+    // SERVER-SIDE ONLY - No VITE_ prefixed variables
+    const secret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
+
+    if (!secret) {
+      console.error('DUID server secret not configured - server-side only');
+      return null;
+    }
+
+    // Import supabase client for database operations
+    const { supabase } = await import("../../netlify/functions/supabase.js");
+
+    // Hash the npub using same method as registration (SERVER-SIDE ONLY)
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(npub);
+    const hashed_npub = hmac.digest('hex');
+
+    // Lookup in nip05_records table
+    const { data: nip05Record, error } = await supabase
+      .from('nip05_records')
+      .select('hashed_nip05')
+      .eq('hashed_npub', hashed_npub)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !nip05Record) {
+      console.log('npub not found in nip05_records:', {
+        npubPrefix: npub.substring(0, 4) + '...',
+        hashedNpubPrefix: hashed_npub.substring(0, 4) + '...'
+      });
+      return null;
+    }
+
+    // The hashed_nip05 IS the DUID we need!
+    return nip05Record.hashed_nip05;
+
+  } catch (error) {
+    console.error('SERVER-SIDE npub to DUID resolution failed:', error);
+    return null;
+  }
+}
+
+/**
  * MASTER CONTEXT COMPLIANCE: Netlify Functions handler for NIP-07 signin verification
+ * TWO-PHASE ARCHITECTURE:
+ * - CLIENT-SIDE PHASE 1: npub → NIP-05 resolution via public /.well-known/nostr.json
+ * - SERVER-SIDE PHASE 2: npub → DUID generation and database lookup using server secrets
  * @param {Object} event - Netlify Functions event object
  * @param {Object} context - Netlify Functions context object
  * @returns {Promise<Object>} Netlify Functions response object
@@ -497,7 +551,6 @@ export default async function handler(event, context) {
 
     // Load and validate persisted challenge
     const { supabase } = await import("../../netlify/functions/supabase.js");
-    const { generateDUIDIndexFromNpub } = await import("../../netlify/functions/security/duid-index-generator.mjs");
 
     const sessionId = parsedBody.sessionId;
     const nonce = parsedBody.nonce;
@@ -564,12 +617,22 @@ export default async function handler(event, context) {
       return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Invalid event signature' }) };
     }
 
-    // Compute npub and DUID index
+    // NIP-07 authentication with NIP-05-based DUID architecture
     const npub = await convertToNpub(eventValidation.pubkey);
-    let duid_index;
-    try { duid_index = await generateDUIDIndexFromNpub(npub); } catch { duid_index = null; }
-    if (!duid_index) {
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Failed to derive user identifier' }) };
+
+    // Resolve npub to DUID using server-side nip05_records lookup
+    const duid = await resolveNpubToDUID(npub);
+
+    if (!duid) {
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'Authentication failed. Please check your credentials.',
+          code: 'AUTH_FAILED'
+        })
+      };
     }
 
     // Rate limit per user (60s window, 10 attempts)
@@ -579,7 +642,7 @@ export default async function handler(event, context) {
 
     try {
       const { data, error } = await supabase.rpc('increment_auth_rate', {
-        p_identifier: duid_index, p_scope: 'duid', p_window_start: windowStart_duid, p_limit: 10
+        p_identifier: duid, p_scope: 'duid', p_window_start: windowStart_duid, p_limit: 10
       });
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
       if (error || limited) {
@@ -589,21 +652,27 @@ export default async function handler(event, context) {
       return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
     }
 
-    // Lookup user by DUID index
-    const { data: user, error: userErr } = await supabase
+    // Direct lookup using DUID as primary key
+    const { data: users, error: userError } = await supabase
       .from('user_identities')
       .select('*')
-      .eq('id', duid_index)
+      .eq('id', duid)
       .eq('is_active', true)
-      .single();
+      .limit(1);
 
-    if (userErr || !user) {
+    if (userError || !users || users.length === 0) {
       return {
-        statusCode: 404,
+        statusCode: 401,
         headers: corsHeaders,
-        body: JSON.stringify({ success:false, error:'User not found. Please register.', registerEndpoint: '/api/auth/register-identity' })
+        body: JSON.stringify({
+          success: false,
+          error: 'Authentication failed. Please check your credentials.',
+          code: 'AUTH_FAILED'
+        })
       };
     }
+
+    const user = users[0];
 
     // Mark challenge as used and record event for replay protection
     {
@@ -648,7 +717,7 @@ export default async function handler(event, context) {
     const hmac = await (async () => {
       const { createHmac } = await import('node:crypto');
       const h = createHmac('sha256', duidServerSecret);
-      h.update(String(duid_index) + newSessionId);
+      h.update(String(duid) + newSessionId);
       return h.digest('hex');
     })();
 
