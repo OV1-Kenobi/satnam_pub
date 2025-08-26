@@ -347,8 +347,8 @@ class SelfSovereignRecovery {
 
       // Verify signature using secp256k1 with proper error handling
       try {
-        const { verify } = await import("@noble/secp256k1");
-        const isValid = verify(
+        const { secp256k1 } = await import("@noble/curves/secp256k1");
+        const isValid = secp256k1.verify(
           signatureBytes,
           messageHashArray,
           publicKeyBytes
@@ -1446,8 +1446,8 @@ export class EmergencyRecoverySystem {
 
       // Verify signature using secp256k1 with proper error handling
       try {
-        const { verify } = await import("@noble/secp256k1");
-        const isValid = verify(
+        const { secp256k1 } = await import("@noble/curves/secp256k1");
+        const isValid = secp256k1.verify(
           signatureBytes,
           messageHashArray,
           publicKeyBytes

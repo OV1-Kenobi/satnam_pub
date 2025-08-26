@@ -3,21 +3,24 @@
  * CRITICAL: Comprehensive module declarations to eliminate ALL import errors
  */
 
-// Fix @noble/secp256k1 missing exports
-declare module "@noble/secp256k1" {
-  export function generateSecretKey(): Uint8Array;
-  export function getPublicKey(privateKey: Uint8Array | string): Uint8Array;
-  export function sign(msgHash: Uint8Array, privateKey: Uint8Array): any;
-  export function verify(
-    signature: any,
-    msgHash: Uint8Array,
-    publicKey: Uint8Array
-  ): boolean;
-  export const utils: {
-    randomPrivateKey(): Uint8Array;
-    bytesToHex(bytes: Uint8Array): string;
-    hexToBytes(hex: string): Uint8Array;
+// Fix @noble/curves missing exports
+declare module "@noble/curves/secp256k1" {
+  export const secp256k1: {
+    getPublicKey(
+      privateKey: Uint8Array | string,
+      compressed?: boolean
+    ): Uint8Array;
+    sign(msgHash: Uint8Array, privateKey: Uint8Array): any;
+    verify(signature: any, msgHash: Uint8Array, publicKey: Uint8Array): boolean;
+    utils: {
+      randomPrivateKey(): Uint8Array;
+    };
   };
+}
+
+declare module "@noble/curves/utils" {
+  export function bytesToHex(bytes: Uint8Array): string;
+  export function hexToBytes(hex: string): Uint8Array;
 }
 
 // Fix missing config module

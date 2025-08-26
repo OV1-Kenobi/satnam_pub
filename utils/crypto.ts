@@ -4,8 +4,8 @@
 // All crypto imports are lazy loaded for better performance
 // All crypto operations are now lazy loaded
 
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
-import { getPublicKey } from "@noble/secp256k1";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { bytesToHex, hexToBytes } from "@noble/curves/utils";
 import { finalizeEvent } from "nostr-tools";
 
 /**
@@ -679,7 +679,7 @@ export async function createNostrEvent(
 }> {
   // Convert hex string to Uint8Array
   const privateKeyBytes = hexToBytes(privateKey);
-  const publicKeyBytes = getPublicKey(privateKeyBytes);
+  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
   const pubkey = bytesToHex(publicKeyBytes);
   const event = {
     kind,

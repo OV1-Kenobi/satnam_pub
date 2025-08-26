@@ -1,5 +1,5 @@
-import { bytesToHex } from "@noble/hashes/utils";
-import { getPublicKey, utils } from "@noble/secp256k1";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { bytesToHex } from "@noble/curves/utils";
 
 // Import proper NIP-19 encoding functions from nostr-tools
 import { bech32 } from "@scure/base";
@@ -17,8 +17,8 @@ export class CryptoLazy {
 
   // Replace line 294 Node.js crypto import
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
-    const privateKeyBytes = utils.randomPrivateKey();
-    const publicKey = getPublicKey(privateKeyBytes);
+    const privateKeyBytes = secp256k1.utils.randomPrivateKey();
+    const publicKey = secp256k1.getPublicKey(privateKeyBytes);
     const publicKeyHex = bytesToHex(publicKey);
 
     // Use proper NIP-19 bech32 encoding
@@ -168,10 +168,10 @@ export async function generateNostrKeyPair(): Promise<{
     "🔍 CRYPTO-LAZY generateNostrKeyPair called - USING DIRECT BECH32!"
   );
 
-  const privateKeyBytes = utils.randomPrivateKey();
+  const privateKeyBytes = secp256k1.utils.randomPrivateKey();
   const privateKey = bytesToHex(privateKeyBytes);
   // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
-  const publicKeyBytes = (getPublicKey as any)(privateKeyBytes, true);
+  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
   const publicKeyHex = bytesToHex(publicKeyBytes);
 
   // Use direct bech32 encoding: extract x-coordinate (32 bytes)

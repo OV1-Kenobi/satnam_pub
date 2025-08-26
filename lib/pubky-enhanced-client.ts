@@ -21,7 +21,7 @@ function getEnvVar(key: string): string | undefined {
  * and integration with the existing domain sovereignty system.
  */
 
-import * as ed25519 from "@noble/ed25519";
+import { ed25519 } from "@noble/curves/ed25519";
 import axios from "axios";
 import {
   createCipheriv,
@@ -174,10 +174,10 @@ export class EnhancedPubkyClient {
   async generatePubkyKeypair(): Promise<PubkyKeypair> {
     try {
       // Generate a secure random private key
-      const privateKey = ed25519.utils.randomPrivateKey();
+      const privateKey = ed25519.utils.randomSecretKey();
 
       // Derive the public key from the private key
-      const publicKey = await ed25519.getPublicKey(privateKey);
+      const publicKey = ed25519.getPublicKey(privateKey);
 
       // Create the Pubky URL and z32 address
       const pubkyUrl = this.encodePubkyUrl(publicKey);
@@ -215,7 +215,7 @@ export class EnhancedPubkyClient {
       }
 
       // Derive the public key
-      const publicKey = await ed25519.getPublicKey(privateKey);
+      const publicKey = ed25519.getPublicKey(privateKey);
 
       // Create the Pubky URL and z32 address
       const pubkyUrl = this.encodePubkyUrl(publicKey);
@@ -774,7 +774,7 @@ export class EnhancedPubkyClient {
     privateKey: string
   ): Promise<string> {
     const contentBytes = Buffer.from(JSON.stringify(content));
-    const signature = await ed25519.sign(
+    const signature = ed25519.sign(
       contentBytes,
       Buffer.from(privateKey, "hex")
     );

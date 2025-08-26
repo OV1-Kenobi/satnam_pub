@@ -75,8 +75,8 @@ async function verifyEvent(event) {
 
     // Verify signature using secp256k1 with proper error handling
     try {
-      const { verify } = await import("@noble/secp256k1");
-      const isValid = verify(signatureBytes, messageHash, pubkeyBytes);
+      const { secp256k1 } = await import("@noble/curves/secp256k1");
+      const isValid = secp256k1.verify(signatureBytes, messageHash, pubkeyBytes);
 
       // Use constant-time logging to prevent timing attacks
       const logMessage = isValid

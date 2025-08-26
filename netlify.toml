@@ -299,7 +299,7 @@
     "redis",
     "jsonwebtoken",
     "@supabase/supabase-js",
-    "@noble/secp256k1",
+    "@noble/curves",
     "@noble/hashes",
     "crypto-js",
     "@scure/bip32",

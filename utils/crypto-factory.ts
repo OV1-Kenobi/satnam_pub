@@ -4,8 +4,8 @@
  * @compliance Master Context - Privacy-first, Bitcoin-only, sovereign family banking
  */
 
-import { bytesToHex } from "@noble/hashes/utils";
-import { getPublicKey, utils } from "@noble/secp256k1";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { bytesToHex, hexToBytes } from "@noble/curves/utils";
 import { bech32 } from "@scure/base";
 import { nip19 } from "nostr-tools";
 
@@ -66,13 +66,11 @@ export class CryptoFactory {
         console.log("🔄 Generating from recovery phrase...");
         // Generate from recovery phrase
         const privateKeyHex = await this.privateKeyFromPhrase(recoveryPhrase);
-        privateKeyBytes = new Uint8Array(
-          privateKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-        );
+        privateKeyBytes = hexToBytes(privateKeyHex);
       } else {
         console.log("🔄 Generating random private key...");
         // Generate random private key - keep as Uint8Array
-        privateKeyBytes = utils.randomPrivateKey();
+        privateKeyBytes = secp256k1.utils.randomPrivateKey();
       }
 
       console.log("✅ Private key generated:", {
@@ -82,7 +80,7 @@ export class CryptoFactory {
 
       console.log("🔄 Generating compressed public key from private key...");
       // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
-      const publicKey = (getPublicKey as any)(privateKeyBytes, true);
+      const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
       const publicKeyHex = bytesToHex(publicKey);
 
       console.log("🔍 ULTRA-DETAILED KEY GENERATION DEBUG:");
@@ -179,7 +177,7 @@ export class CryptoFactory {
     );
 
     // Simple fallback for compatibility
-    const entropyBytes = utils.randomPrivateKey();
+    const entropyBytes = secp256k1.utils.randomPrivateKey();
     const entropy = bytesToHex(entropyBytes);
     const words = this.generateWordsFromEntropy(entropy, wordCount);
     const phrase = words.join(" ");
@@ -228,7 +226,7 @@ export class CryptoFactory {
       const entropy = words
         .map((word) => word.charCodeAt(0).toString(16))
         .join("");
-      const privateKeyBytes = utils.randomPrivateKey();
+      const privateKeyBytes = secp256k1.utils.randomPrivateKey();
       const fallbackKey = bytesToHex(privateKeyBytes);
 
       console.log("⚠️ Using fallback private key generation");
@@ -525,7 +523,7 @@ export async function testCryptoOperations(): Promise<boolean> {
 
     // Test basic crypto operations independently
     console.log("🔍 Testing utils.randomPrivateKey()...");
-    const privateKeyBytes = utils.randomPrivateKey();
+    const privateKeyBytes = secp256k1.utils.randomPrivateKey();
     if (!privateKeyBytes || privateKeyBytes.length !== 32) {
       throw new Error("randomPrivateKey failed");
     }
@@ -704,7 +702,7 @@ console.log("- testCryptoDebug(): Full crypto operations test");
   try {
     // Test 1: Basic imports
     console.log("🔍 Testing basic imports...");
-    console.log("utils:", typeof utils);
+    console.log("secp256k1.utils:", typeof secp256k1.utils);
     console.log("getPublicKey:", typeof getPublicKey);
     console.log("nip19:", typeof nip19);
     console.log("bytesToHex:", typeof bytesToHex);
@@ -726,7 +724,7 @@ console.log("- testCryptoDebug(): Full crypto operations test");
       length: testPrivateKeyBytes.length,
     });
 
-    const testPublicKey = getPublicKey(testPrivateKeyBytes);
+    const testPublicKey = secp256k1.getPublicKey(testPrivateKeyBytes, true);
     const testPublicKeyHex = bytesToHex(testPublicKey);
 
     console.log("Test public key:", {
@@ -792,7 +790,7 @@ export async function generateNostrKeyPair(
 }
 
 export async function generateRandomHex(length: number = 32): Promise<string> {
-  const bytes = utils.randomPrivateKey();
+  const bytes = secp256k1.utils.randomPrivateKey();
   return bytesToHex(bytes).substring(0, length);
 }
 

@@ -4,7 +4,7 @@
  * @compliance Browser-compatible, ephemeral key generation, secure share distribution
  */
 
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex, hexToBytes } from "@noble/curves/utils";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import {
   CryptoOperationResult,

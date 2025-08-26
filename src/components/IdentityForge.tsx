@@ -445,9 +445,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
           // Validate and decode the nsec using central service helpers
           const privateKeyBytes = CEPS.decodeNsec(cleanedKey);
-          const { getPublicKey } = await import('@noble/secp256k1');
-          const { bytesToHex } = await import('@noble/hashes/utils');
-          const publicKeyBytes = getPublicKey(privateKeyBytes);
+          const { secp256k1 } = await import('@noble/curves/secp256k1');
+          const { bytesToHex } = await import('@noble/curves/utils');
+          const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes);
           publicKey = bytesToHex(publicKeyBytes);
           npub = CEPS.encodeNpub(publicKey);
 

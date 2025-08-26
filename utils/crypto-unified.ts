@@ -1,5 +1,5 @@
-import { bytesToHex } from "@noble/hashes/utils";
-import { getPublicKey, utils } from "@noble/secp256k1";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { bytesToHex } from "@noble/curves/utils";
 import * as CryptoJS from "crypto-js";
 
 // Import proper NIP-19 encoding functions from nostr-tools
@@ -16,9 +16,9 @@ export class CryptoUnified {
   }
 
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
-    const privateKeyBytes = utils.randomPrivateKey();
+    const privateKeyBytes = secp256k1.utils.randomPrivateKey();
     // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
-    const publicKeyBytes = (getPublicKey as any)(privateKeyBytes, true);
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
     const publicKeyHex = bytesToHex(publicKeyBytes);
 
     // Use proper NIP-19 bech32 encoding

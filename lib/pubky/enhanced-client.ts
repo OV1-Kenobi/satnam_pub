@@ -1,5 +1,4 @@
-import { createHash, randomBytes } from "crypto";
-import * as ed25519 from "@noble/ed25519";
+import { ed25519 } from "@noble/curves/ed25519";
 export interface PubkyKeypair {
   private_key: string;
   public_key: string;
@@ -26,7 +25,7 @@ export class EnhancedPubkyClient {
 
   // Generate Pubky keypair
   async generatePubkyKeypair(): Promise<PubkyKeypair> {
-    const privateKey = ed25519.utils.randomPrivateKey();
+    const privateKey = ed25519.utils.randomSecretKey();
     const publicKey = await ed25519.getPublicKey(privateKey);
 
     const pubkyUrl = this.encodePubkyUrl(publicKey);
@@ -42,7 +41,7 @@ export class EnhancedPubkyClient {
   // Register Pubky domain
   async registerPubkyDomain(
     keypair: PubkyKeypair,
-    domainRecords: PubkyDomainRecord[],
+    domainRecords: PubkyDomainRecord[]
   ): Promise<{ success: boolean; sovereignty_score: number }> {
     // Create PKARR record
     const pkarrRecord = {
@@ -55,7 +54,7 @@ export class EnhancedPubkyClient {
     const recordBytes = JSON.stringify(pkarrRecord);
     const signature = await ed25519.sign(
       Buffer.from(recordBytes),
-      Buffer.from(keypair.private_key, "hex"),
+      Buffer.from(keypair.private_key, "hex")
     );
 
     // Simulate publishing to PKARR relays

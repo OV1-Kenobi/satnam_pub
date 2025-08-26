@@ -7,10 +7,11 @@
  * All operations use browser-compatible APIs only
  */
 
-import { bytesToHex } from "@noble/hashes/utils";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { bytesToHex } from "@noble/curves/utils";
+import { finalizeEvent, nip04, nip19 } from "nostr-tools";
 import { PrivacyLevel } from "../types/privacy";
 import { GiftwrappedCommunicationService } from "./giftwrapped-communication-service";
-import { finalizeEvent, getPublicKey, nip04, nip19 } from "./nostr-browser";
 import { decryptNsec } from "./privacy/encryption";
 import { supabase } from "./supabase";
 
@@ -364,13 +365,12 @@ export class NostrMessageService {
         }
 
         // Get the public key from the private key
-        const pubkey = await getPublicKey.fromPrivateKey(privateKey);
+        const pubkey = bytesToHex(
+          secp256k1.getPublicKey(privateKey, true)
+        ).slice(2);
 
         // Sign the authentication message with the user's decrypted nsec
-        const signature = await finalizeEvent.signEvent(
-          authMessage,
-          privateKey
-        );
+        const signature = finalizeEvent(authMessage, privateKey);
 
         if (!signature) {
           throw new Error("Failed to sign message with private key");
@@ -464,7 +464,9 @@ export class NostrMessageService {
         signedEvent = await nostr.signEvent(dmEvent);
       } else {
         // Use stored private key
-        senderPubkey = await getPublicKey.fromPrivateKey(privateKey);
+        senderPubkey = bytesToHex(
+          secp256k1.getPublicKey(privateKey, true)
+        ).slice(2);
 
         // Encrypt the message using NIP-04
         encryptedContent = await nip04.encrypt(
@@ -484,7 +486,7 @@ export class NostrMessageService {
         };
 
         // Sign the event
-        signedEvent = await finalizeEvent.sign(dmEvent, privateKey);
+        signedEvent = finalizeEvent(dmEvent, privateKey);
       }
 
       // Publish to relays
@@ -550,7 +552,9 @@ export class NostrMessageService {
         signedEvent = await nostr.signEvent(noteEvent);
       } else {
         // Use stored private key
-        senderPubkey = await getPublicKey.fromPrivateKey(privateKey);
+        senderPubkey = bytesToHex(
+          secp256k1.getPublicKey(privateKey, true)
+        ).slice(2);
 
         // Create a public note event (kind 1) mentioning the recipient
         const noteEvent = {
@@ -567,7 +571,7 @@ export class NostrMessageService {
         };
 
         // Sign the event
-        signedEvent = await finalizeEvent.sign(noteEvent, privateKey);
+        signedEvent = finalizeEvent(noteEvent, privateKey);
       }
 
       // Publish to relays
@@ -629,8 +633,8 @@ export class NostrMessageService {
           throw new Error("Private key is required for group message signing");
         }
 
-        pubkey = await getPublicKey.fromPrivateKey(privateKey);
-        signature = await finalizeEvent.signEvent(authMessage, privateKey);
+        pubkey = bytesToHex(secp256k1.getPublicKey(privateKey, true)).slice(2);
+        signature = finalizeEvent(authMessage, privateKey);
 
         if (!signature) {
           throw new Error("Failed to sign group message with private key");

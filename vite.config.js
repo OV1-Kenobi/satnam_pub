@@ -250,7 +250,7 @@ export default defineConfig({
       "nostr-tools",
       "@scure/bip32",
       "@scure/bip39",
-      "@noble/secp256k1",
+      "@noble/curves",
       "@noble/hashes",
       "@scure/base",
     ],
