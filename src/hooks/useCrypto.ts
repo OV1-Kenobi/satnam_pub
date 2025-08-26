@@ -25,10 +25,17 @@ let cryptoFactoryPromise: Promise<any> | null = null;
 
 const getCryptoFactory = () => {
   if (!cryptoFactoryPromise) {
+    console.log("🔄 Loading crypto factory from correct path...");
     cryptoFactoryPromise = import("../../utils/crypto-factory").catch((err) => {
+      console.error("❌ Failed to import crypto-factory:", err);
+      console.error("❌ Import error details:", {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+      });
       // Reset promise on failure so future attempts can retry a fresh import
       cryptoFactoryPromise = null;
-      throw err;
+      throw new Error(`Crypto factory import failed: ${err.message}`);
     });
   }
   return cryptoFactoryPromise;
@@ -263,18 +270,40 @@ export function useCryptoOperations() {
 
     // Wrapped crypto operations that handle loading automatically
     async generateNostrKeyPair(recoveryPhrase?: string, account?: number) {
-      console.log("🔑 generateNostrKeyPair called");
+      console.log("🔑 generateNostrKeyPair called with:", {
+        hasRecoveryPhrase: !!recoveryPhrase,
+        account,
+        cryptoState: {
+          isLoaded: cryptoState.isLoaded,
+          isLoading: cryptoState.isLoading,
+          hasError: !!cryptoState.error,
+        },
+      });
 
       // Use cached crypto factory import
       try {
-        console.log("🔄 Using cached crypto factory import...");
+        console.log("🔄 Getting crypto factory...");
         const cryptoFactory = await getCryptoFactory();
+
+        console.log("🔍 Crypto factory loaded:", {
+          factoryExists: !!cryptoFactory,
+          hasGenerateFunction:
+            typeof cryptoFactory?.generateNostrKeyPair === "function",
+          factoryKeys: cryptoFactory ? Object.keys(cryptoFactory) : [],
+        });
+
         if (
           !cryptoFactory ||
           typeof cryptoFactory.generateNostrKeyPair !== "function"
         ) {
-          throw new Error("Crypto factory unavailable or invalid export");
+          throw new Error(
+            `Crypto factory unavailable or invalid export. Available: ${
+              cryptoFactory ? Object.keys(cryptoFactory).join(", ") : "none"
+            }`
+          );
         }
+
+        console.log("🔑 Calling crypto factory generateNostrKeyPair...");
         const result = await cryptoFactory.generateNostrKeyPair(
           recoveryPhrase,
           account

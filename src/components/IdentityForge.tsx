@@ -852,6 +852,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         throw new Error(`Invalid nsec format: ${keyPair.nsec}`);
       }
 
+      // SECURITY ENHANCEMENT: If recovery phrase was used, clean it from memory
+      if (keyPair.recoveryPhrase) {
+        const { secureRecoveryPhraseCleanup } = await import('../../utils/crypto-factory');
+        secureRecoveryPhraseCleanup(keyPair.recoveryPhrase);
+        console.log('🛡️ SECURITY: Recovery phrase securely cleaned from memory');
+      }
+
 
 
       setGenerationProgress(70);
@@ -911,13 +918,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     }
   };
 
-  // Register identity with the backend
+  // Register identity with the backend (Frontend-Only Key Generation)
   const registerIdentity = async () => {
-
+    // CRITICAL: This function now only handles registration with frontend-generated keys
+    // Private keys are NEVER generated on the backend - only encrypted storage
 
     setIsGenerating(true);
     setGenerationProgress(0);
-    setGenerationStep("Registering identity...");
+    setGenerationStep("Registering identity with frontend-generated keys...");
 
     try {
       for (let i = 0; i <= 30; i++) {
@@ -938,11 +946,21 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
 
 
-      // Import encryption function
-      const { encryptData } = await import('../../utils/crypto-factory');
+      // Import encryption and security functions
+      const { encryptData, secureMemoryWipe, validateSecureStorage } = await import('../../utils/crypto-factory');
 
-      // Encrypt the nsec using user's password (Zero-Knowledge Protocol)
+      // SECURITY ENHANCEMENT: Validate no sensitive data in storage before proceeding
+      const storageClean = await validateSecureStorage();
+      if (!storageClean) {
+        console.warn('⚠️ Potential sensitive data detected in browser storage');
+      }
+
+      // Encrypt the nsec using user's password (Zero-Knowledge Protocol with unique salt)
       const encryptedNsec = await encryptData(ephemeralNsec, formData.password);
+
+      // SECURITY ENHANCEMENT: Immediately wipe the ephemeral nsec from memory after encryption
+      secureMemoryWipe(ephemeralNsec);
+      console.log('🛡️ SECURITY: Ephemeral nsec wiped from memory after encryption');
 
       const requestData = {
         username: formData.username,
