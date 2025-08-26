@@ -58,19 +58,55 @@ export class CryptoFactory {
       console.log("🔑 Starting Nostr key pair generation...", {
         hasRecoveryPhrase: !!recoveryPhrase,
         phraseLength: recoveryPhrase ? recoveryPhrase.split(" ").length : 0,
+        secp256k1Available: !!secp256k1,
+        utilsAvailable: !!secp256k1?.utils,
+        randomPrivateKeyAvailable:
+          typeof secp256k1?.utils?.randomPrivateKey === "function",
       });
 
       let privateKeyBytes: Uint8Array;
 
       if (recoveryPhrase) {
         console.log("🔄 Generating from recovery phrase...");
-        // Generate from recovery phrase
-        const privateKeyHex = await this.privateKeyFromPhrase(recoveryPhrase);
-        privateKeyBytes = hexToBytes(privateKeyHex);
+        try {
+          // Generate from recovery phrase
+          const privateKeyHex = await this.privateKeyFromPhrase(recoveryPhrase);
+          privateKeyBytes = hexToBytes(privateKeyHex);
+          console.log(
+            "✅ Private key generated from phrase, length:",
+            privateKeyBytes.length
+          );
+        } catch (phraseError) {
+          console.error(
+            "❌ Failed to generate from recovery phrase:",
+            phraseError
+          );
+          const errorMsg =
+            phraseError instanceof Error
+              ? phraseError.message
+              : String(phraseError);
+          throw new Error(`Recovery phrase processing failed: ${errorMsg}`);
+        }
       } else {
         console.log("🔄 Generating random private key...");
-        // Generate random private key - keep as Uint8Array
-        privateKeyBytes = secp256k1.utils.randomPrivateKey();
+        try {
+          // Generate random private key - keep as Uint8Array
+          privateKeyBytes = secp256k1.utils.randomPrivateKey();
+          console.log(
+            "✅ Random private key generated, length:",
+            privateKeyBytes.length
+          );
+        } catch (randomError) {
+          console.error(
+            "❌ Failed to generate random private key:",
+            randomError
+          );
+          const errorMsg =
+            randomError instanceof Error
+              ? randomError.message
+              : String(randomError);
+          throw new Error(`Random key generation failed: ${errorMsg}`);
+        }
       }
 
       console.log("✅ Private key generated:", {

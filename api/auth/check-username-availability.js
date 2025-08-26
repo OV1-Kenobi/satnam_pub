@@ -13,17 +13,14 @@
  * - CORS headers for browser compatibility
  */
 
-import { createClient } from '@supabase/supabase-js';
+// Import the centralized Supabase client that handles service role vs anon key logic
+import { isServiceRoleKey, supabase, supabaseKeyType } from '../../netlify/functions/supabase.js';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase configuration');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+console.log('🔧 Username availability function using Supabase client:', {
+  keyType: supabaseKeyType,
+  isServiceRole: isServiceRoleKey(),
+  note: isServiceRoleKey() ? 'Service role - can access rate_limits table' : 'Anon key - RLS policies apply'
+});
 
 /**
  * Environment variable access - Netlify Functions ALWAYS use process.env
@@ -152,7 +149,14 @@ async function checkRateLimit(clientIP) {
   const now = Date.now();
   const clientKey = clientIP || 'unknown';
 
+  // Skip rate limiting if using anon key (RLS will block access anyway)
+  if (!isServiceRoleKey()) {
+    console.log('⚠️ Skipping rate limiting - anon key cannot access rate_limits table due to RLS');
+    return true; // Allow request but log the limitation
+  }
+
   try {
+    console.log('🔧 Checking rate limit with service role key');
     // Query rate limit from persistent storage
     const { data, error } = await supabase
       .from('rate_limits')

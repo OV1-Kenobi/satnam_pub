@@ -885,10 +885,24 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
     } catch (error) {
       console.error("❌ Cryptographic key generation failed:", error);
+      console.error("❌ Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+      console.error("❌ Error details:", {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        cause: error instanceof Error ? error.cause : undefined,
+        cryptoLoaded: crypto?.isLoaded,
+        cryptoAvailable: !!crypto,
+        webCryptoAvailable: typeof window !== 'undefined' && !!window.crypto,
+        timestamp: new Date().toISOString()
+      });
+
       setGenerationStep("Key generation failed");
 
       const errorMsg = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`Secure key generation failed: ${errorMsg}. Please try again.`);
+      const detailedError = `Secure key generation failed: ${errorMsg}.
+        Debug info: Crypto loaded: ${crypto?.isLoaded}, Web Crypto: ${typeof window !== 'undefined' && !!window.crypto}`;
+
+      setErrorMessage(detailedError);
 
       // Do not advance - user must retry for security
       throw error;
