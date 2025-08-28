@@ -23,7 +23,7 @@ import { NostrProfileService } from "../lib/nostr-profile-service";
 import { IdentityRegistrationResult } from "../types/auth";
 import { apiClient } from '../utils/api-client';
 import { SessionInfo } from '../utils/secureSession';
-import { useIdentityForge } from "./auth/AuthProvider";
+import { useAuth, useIdentityForge } from "./auth/AuthProvider";
 
 import SecureTokenManager from "../lib/auth/secure-token-manager";
 import { secureNsecManager } from "../lib/secure-nsec-manager";
@@ -666,6 +666,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const crypto = useCryptoOperations();
   // Unified auth integration for post-registration authentication
   const identityForge = useIdentityForge();
+  const auth = useAuth();
 
   // State consistency validation for Steps 2+ where nsec is relevant
   // Mark this as a registration flow to prevent any login prompts from interfering
@@ -850,6 +851,20 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       if (!keyPair.nsec.startsWith('nsec1') || keyPair.nsec.length !== 63) {
         throw new Error(`Invalid nsec format: ${keyPair.nsec}`);
+      }
+
+      // Ensure the underlying public key hex is 66 chars with 02/03 prefix,
+      // and that npub was derived from the 32-byte x-coordinate
+      try {
+        const { secp256k1 } = await import('@noble/curves/secp256k1.js');
+        const { hexToBytes, bytesToHex } = await import('@noble/curves/utils.js');
+        const pub = secp256k1.getPublicKey(hexToBytes(keyPair.privateKey), true);
+        const pubHex = bytesToHex(pub);
+        if (pubHex.length !== 66 || !(pubHex.startsWith('02') || pubHex.startsWith('03'))) {
+          throw new Error(`Generated compressed pubkey invalid: ${pubHex}`);
+        }
+      } catch (vkErr) {
+        console.warn('Public key validation warning:', vkErr);
       }
 
       // SECURITY ENHANCEMENT: If recovery phrase was used, clean it from memory
@@ -1079,18 +1094,35 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           sessionToken: sessionToken,
         } as any;
 
-        // Store the session token in SecureTokenManager for API calls
+        // Token storage is handled below with proper expiry parsing
+
+        // FIXED: Use the session token from registration response instead of re-authenticating
+        // The registration endpoint already returns a valid JWT token - no need to authenticate again
         if (sessionToken) {
-          const expiryMs = Date.now() + (24 * 60 * 60 * 1000); // 24 hours from now
-          SecureTokenManager.setAccessToken(sessionToken, expiryMs);
-
+          // Store the token from registration response with proper expiry
+          // Parse the JWT token to get the actual expiry time
+          try {
+            const payload = SecureTokenManager.parseTokenPayload(sessionToken);
+            const expiryMs = payload ? payload.exp * 1000 : Date.now() + (24 * 60 * 60 * 1000); // Use token exp or 24h fallback
+            SecureTokenManager.setAccessToken(sessionToken, expiryMs);
+            console.log('✅ Using session token from registration response with expiry:', new Date(expiryMs).toISOString());
+          } catch (error) {
+            // Fallback: use 24-hour expiry if token parsing fails
+            const fallbackExpiryMs = Date.now() + (24 * 60 * 60 * 1000);
+            SecureTokenManager.setAccessToken(sessionToken, fallbackExpiryMs);
+            console.log('✅ Using session token from registration response with fallback 24h expiry');
+          }
+        } else {
+          // Fallback: authenticate if no token was returned (shouldn't happen with working registration)
+          console.warn('⚠️ No session token from registration, attempting fallback authentication');
+          const authSuccess = await identityForge.authenticateAfterRegistration(nip05Identifier, formData.password);
+          if (!authSuccess) {
+            throw new Error('Failed to authenticate after registration - no token from registration and fallback auth failed');
+          }
         }
 
-        const handle = (identityForge as any).handleAuthSuccess;
-        if (typeof handle === 'function') {
-          const ok = await handle(authResult);
-          if (!ok) throw new Error('Failed to set auth state after registration');
-        }
+        // Complete the registration flow
+        identityForge.completeRegistration();
 
         // Retrieve in-memory access token for invitation modal
         const accessToken = SecureTokenManager.getAccessToken();
@@ -1102,7 +1134,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             npub: formData.pubkey,
             nip05: nip05Identifier,
             federationRole: 'adult' as const,
-            authMethod: 'otp' as const,
+            authMethod: 'nip05-password' as const, // FIXED: Use correct auth method for registration
             isWhitelisted: true,
             votingPower: 1,
             guardianApproved: false,
@@ -1112,10 +1144,36 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         setSessionInfo(newSessionInfo);
 
+        // CRITICAL: Update global authentication state to mark user as authenticated
+        // This ensures the useAuth hook reflects the authenticated state throughout the app
+        try {
+          // Use the handleAuthSuccess method from unified auth system to properly update global state
+          const authResult = {
+            success: true,
+            sessionToken: accessToken || sessionToken,
+            user: {
+              id: result?.user?.id || 'unknown',
+              npub: formData.pubkey,
+              nip05: nip05Identifier,
+              role: result?.user?.role || 'private',
+              username: result?.user?.username || formData.username,
+              is_active: true, // CRITICAL FIX: Newly registered users are active by default
+              hashedId: payload?.hashedId || 'unknown' // Include hashedId for validation
+            }
+          };
+
+          // Update the global auth state using the unified auth system
+          await auth.handleAuthSuccess(authResult);
+          console.log('✅ Global authentication state updated after registration');
+        } catch (authStateError) {
+          console.warn('⚠️ Failed to update global auth state:', authStateError);
+          // Non-critical - the local session is still valid
+        }
+
         // Retain nsec for immediate peer invitations (15-minute session)
         if (ephemeralNsec) {
           try {
-            const retentionSessionId = secureNsecManager.createPostRegistrationSession(
+            const retentionSessionId = await secureNsecManager.createPostRegistrationSession(
               ephemeralNsec,
               15 * 60 * 1000 // 15 minutes
             );

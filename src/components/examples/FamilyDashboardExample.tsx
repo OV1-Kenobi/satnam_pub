@@ -2,7 +2,7 @@
 // File: src/components/examples/FamilyDashboardExample.tsx
 
 import React from 'react';
-import { useFamilyFederationAuth } from '../../hooks/useFamilyFederationAuth';
+import { useAuth } from '../auth/AuthProvider'; // FIXED: Use unified auth system
 import ProtectedFamilyRoute from '../auth/ProtectedFamilyRoute';
 
 const FamilyFinancialsDashboard: React.FC = () => {

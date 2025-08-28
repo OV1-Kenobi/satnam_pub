@@ -17,8 +17,39 @@
 
 import crypto from 'crypto';
 import { promisify } from 'util';
-import { SecureSessionManager } from '../../netlify/functions/security/session-manager.js';
-import { supabase } from '../../netlify/functions/supabase.js';
+import { supabase, supabaseKeyType } from '../../netlify/functions/supabase.js';
+
+// SECURE JWT CREATION FUNCTION (compatible with auth-unified verification)
+async function createSecureJWT(payload) {
+  try {
+    // Import jose library for secure JWT creation
+    const { SignJWT } = await import('jose');
+
+    // Configuration
+    const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+    const JWT_ISSUER = process.env.JWT_ISSUER || 'satnam.pub';
+    const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'satnam.pub';
+
+    // Create secret key
+    const secret = new TextEncoder().encode(JWT_SECRET);
+
+    // Create JWT with proper claims
+    const jwt = await new SignJWT(payload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setIssuer(JWT_ISSUER)
+      .setAudience(JWT_AUDIENCE)
+      .setExpirationTime('24h') // 24 hours
+      .sign(secret);
+
+    console.log('✅ Secure JWT created successfully for registration');
+    return jwt;
+
+  } catch (error) {
+    console.error('❌ JWT creation error:', error.message);
+    throw new Error(`JWT creation failed: ${error.message}`);
+  }
+}
 
 // REMOVED: Deprecated getEnvVar() function
 // Now using direct process.env access as per new Vite-injected pattern
@@ -138,8 +169,8 @@ async function generatePrivacyPreservingHash(userData) {
       subtle = nodeCrypto.webcrypto.subtle;
     }
   } catch (e) {
-    const nodeCrypto = await import('node:crypto');
-    subtle = nodeCrypto.webcrypto.subtle;
+    const nodeCryptoFallback = await import('node:crypto');
+    subtle = nodeCryptoFallback.webcrypto.subtle;
   }
   const hashBuffer = await subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -306,8 +337,18 @@ async function createUserIdentity(userData, spendingLimits) {
   };
 
   try {
+    console.log('🔍 createUserIdentity: Starting user creation process:', {
+      username: userData.username,
+      role: userData.role,
+      hasNpub: !!userData.npub,
+      hasEncryptedNsec: !!userData.encryptedNsec,
+      hasPassword: !!userData.password
+    });
+
     // CRITICAL SECURITY: Import privacy-first hashing utilities
+    console.log('🔍 Importing privacy-hashing utilities...');
     const { generateUserSalt, createHashedUserData } = await import('../../lib/security/privacy-hashing.js');
+    console.log('✅ Privacy-hashing utilities imported successfully');
 
     // DUID Generation: Use canonical NIP-05-based DUID generation
     let deterministicUserId;
@@ -410,7 +451,43 @@ async function createUserIdentity(userData, spendingLimits) {
     };
 
     // Insert into user_identities table with error handling for missing columns
-    console.log('🔄 Attempting to insert user identity with hashed columns...');
+    console.log('🔄 Attempting to insert user identity with hashed columns...', {
+      keyType: 'anon_preferred',
+      supabaseKeyTypeHint: typeof supabaseKeyType === 'undefined' ? 'unknown' : (typeof supabaseKeyType === 'string' ? supabaseKeyType : 'unknown'),
+      profileDataKeys: Object.keys(profileData),
+      hasId: !!profileData.id,
+      hasHashedNpub: !!profileData.hashed_npub,
+      hasHashedEncryptedNsec: !!profileData.hashed_encrypted_nsec
+    });
+
+    // DIAGNOSTIC: Test Supabase connection before insert
+    try {
+      const { data: testData, error: testError } = await supabase
+        .from('user_identities')
+        .select('count')
+        .limit(1);
+
+      if (testError) {
+        console.error('❌ Supabase connection test failed:', testError);
+        return {
+          success: false,
+          error: 'Database connection failed',
+          details: testError.message
+        };
+      }
+      console.log('✅ Supabase connection test passed');
+    } catch (connectionError) {
+      console.error('❌ Supabase connection error:', connectionError);
+      return {
+        success: false,
+        error: 'Database connection error',
+        details: connectionError.message
+      };
+    }
+
+    // IMPORTANT: Using anon key requires RLS policies to allow this insert for unauthenticated (anon) role.
+    // Ensure database has proper RLS for public registration or switch to an authenticated flow.
+    console.log('🔄 Executing database insert...');
     const { data, error } = await supabase
       .from('user_identities')
       .insert([profileData])
@@ -451,7 +528,24 @@ async function createUserIdentity(userData, spendingLimits) {
  * @param {Object} context - Netlify Functions context object
  * @returns {Promise<Object>} Netlify Functions response object
  */
-export default async function handler(event, context) {
+export const handler = async (event, context) => {
+  console.log('🚀 Registration handler started:', {
+    method: event.httpMethod,
+    path: event.path,
+    headers: Object.keys(event.headers || {}),
+    bodyLength: event.body?.length || 0,
+    timestamp: new Date().toISOString()
+  });
+
+  // DIAGNOSTIC: Test environment variables and Supabase connection
+  console.log('🔍 Environment check:', {
+    hasSupabaseUrl: !!process.env.SUPABASE_URL || !!process.env.VITE_SUPABASE_URL,
+    hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY || !!process.env.VITE_SUPABASE_ANON_KEY,
+    hasDuidSecret: !!process.env.DUID_SERVER_SECRET,
+    supabaseKeyType: supabaseKeyType,
+    nodeEnv: process.env.NODE_ENV
+  });
+
   // CORS headers for browser compatibility (env-aware)
   function getAllowedOrigin(origin) {
     const isProd = process.env.NODE_ENV === 'production';
@@ -525,8 +619,8 @@ export default async function handler(event, context) {
       const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
       const windowSec = 60;
       const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-      const { supabase } = await import('../../netlify/functions/supabase.js');
-      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 5 });
+      const { supabase: rateLimitSupabase } = await import('../../netlify/functions/supabase.js');
+      const { data, error } = await rateLimitSupabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 5 });
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
       if (error || limited) {
         return {
@@ -564,7 +658,32 @@ export default async function handler(event, context) {
     const validatedData = validationResult.data;
 
     // Check username availability
-    const isUsernameAvailable = await checkUsernameAvailability(validatedData.username);
+    console.log('🔍 Checking username availability:', {
+      username: validatedData.username,
+      hasNpub: !!validatedData.npub,
+      hasEncryptedNsec: !!validatedData.encryptedNsec
+    });
+
+    let isUsernameAvailable;
+    try {
+      isUsernameAvailable = await checkUsernameAvailability(validatedData.username);
+      console.log('✅ Username availability check completed:', { available: isUsernameAvailable });
+    } catch (usernameError) {
+      console.error('❌ Username availability check failed:', usernameError);
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'Username availability check failed',
+          debug: usernameError.message,
+          meta: {
+            timestamp: new Date().toISOString()
+          }
+        })
+      };
+    }
+
     if (!isUsernameAvailable) {
       return {
         statusCode: 409,
@@ -590,12 +709,46 @@ export default async function handler(event, context) {
     const spendingLimits = generateSovereigntySpendingLimits(standardizedRole);
 
     // Create user identity in database with maximum encryption and DUID
-    const profileResult = await createUserIdentity(
-      { ...validatedData, role: standardizedRole },
-      spendingLimits
-    );
+    console.log('🔍 Creating user identity in database:', {
+      role: standardizedRole,
+      hasSpendingLimits: !!spendingLimits,
+      npubLength: validatedData.npub?.length,
+      encryptedNsecLength: validatedData.encryptedNsec?.length
+    });
+
+    let profileResult;
+    try {
+      profileResult = await createUserIdentity(
+        { ...validatedData, role: standardizedRole },
+        spendingLimits
+      );
+      console.log('✅ User identity creation completed:', {
+        success: profileResult.success,
+        hasData: !!profileResult.data
+      });
+    } catch (createError) {
+      console.error('❌ User identity creation failed:', createError);
+      console.error('Create error details:', {
+        name: createError.name,
+        message: createError.message,
+        stack: createError.stack?.substring(0, 500)
+      });
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'User identity creation failed',
+          debug: createError.message,
+          meta: {
+            timestamp: new Date().toISOString()
+          }
+        })
+      };
+    }
 
     if (!profileResult.success) {
+      console.error('❌ User identity creation returned failure:', profileResult.error);
       return {
         statusCode: 500,
         headers: corsHeaders,
@@ -609,22 +762,22 @@ export default async function handler(event, context) {
       };
     }
 
-    // Create secure session with JWT token
-    const sessionUserData = {
-      npub: `npub_${hashedIdentifier.slice(0, 8)}`, // Privacy-preserving npub reference
-      nip05: `${validatedData.username}@satnam.pub`,
-      federationRole: standardizedRole,
-      authMethod: /** @type {"nip05-password"} */ ('nip05-password'), // Registration creates NIP-05/password account
-      isWhitelisted: true,
-      votingPower: standardizedRole === 'guardian' ? 2 : 1,
-      guardianApproved: true,
-      stewardApproved: ['steward', 'guardian'].includes(standardizedRole),
-      sessionToken: '' // Will be set by SecureSessionManager
-    };
+    // Create secure JWT token compatible with frontend SecureTokenManager expectations
+    // Generate required fields that frontend expects
+    const sessionId = crypto.randomBytes(16).toString('hex'); // Generate random session ID
+    const hashedId = crypto.createHmac('sha256', process.env.JWT_SECRET || 'fallback-secret')
+      .update(`${profileResult.data.id}|${sessionId}`)
+      .digest('hex');
 
-    // Create secure JWT session
-    // Note: First parameter is reserved for future response header setting (currently unused)
-    const jwtToken = await SecureSessionManager.createSession(undefined, sessionUserData);
+    const jwtToken = await createSecureJWT({
+      userId: profileResult.data.id, // Use DUID from created user record
+      hashedId: hashedId, // Required by frontend SecureTokenManager
+      username: validatedData.username,
+      nip05: `${validatedData.username}@satnam.pub`,
+      role: standardizedRole,
+      type: 'access', // Required by frontend SecureTokenManager
+      sessionId: sessionId // Required by frontend SecureTokenManager
+    });
 
     const responseData = {
       success: true,

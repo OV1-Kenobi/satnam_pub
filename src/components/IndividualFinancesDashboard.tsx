@@ -46,8 +46,8 @@ import { PaymentCascadeNode, PaymentSchedule } from '../lib/payment-automation';
 import PaymentCascadeModal from './PaymentCascadeModal';
 
 // Import Emergency Recovery Modal
-import { useAuth } from '../hooks/useAuth';
 import { FederationRole } from '../types/auth';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 import EmergencyRecoveryModal from './EmergencyRecoveryModal';
 
 // Import our enhanced dual-protocol components

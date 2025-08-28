@@ -2,7 +2,7 @@
 // File: src/components/auth/ProtectedFamilyRoute.tsx
 
 import React, { useEffect } from 'react';
-import { useFamilyFederationAuth } from '../../hooks/useFamilyFederationAuth';
+import { useAuth } from './AuthProvider'; // FIXED: Use unified auth system
 import FamilyFederationSignIn from './FamilyFederationSignIn';
 
 interface ProtectedFamilyRouteProps {
@@ -18,11 +18,13 @@ const ProtectedFamilyRoute: React.FC<ProtectedFamilyRouteProps> = ({
   requireWhitelist = true,
   requireGuardianApproval = false
 }) => {
-  const { isAuthenticated, userAuth, checkSession } = useFamilyFederationAuth();
+  // FIXED: Use unified auth system instead of deprecated family federation auth
+  const { authenticated: isAuthenticated, user: userAuth, validateSession } = useAuth();
 
   useEffect(() => {
-    checkSession();
-  }, []);
+    // FIXED: Use validateSession from unified auth system
+    validateSession();
+  }, [validateSession]);
 
   // Show loading while checking authentication
   if (isAuthenticated === null) {
@@ -54,9 +56,9 @@ const ProtectedFamilyRoute: React.FC<ProtectedFamilyRouteProps> = ({
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <p className="text-red-800 text-sm">
               <strong>Account Details:</strong><br />
-              NIP-05: {userAuth.nip05 || 'Not provided'}<br />
-              Role: {userAuth.federationRole || 'None'}<br />
-              Whitelisted: {userAuth.isWhitelisted ? 'Yes' : 'No'}
+              User ID: {userAuth.id || 'Not provided'}<br />
+              Role: {userAuth.role || 'None'}<br />
+              Status: Active
             </p>
           </div>
           <p className="text-gray-500 text-sm">

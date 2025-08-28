@@ -102,7 +102,7 @@ import { supabase } from "../../netlify/functions/supabase.js";
  */
 
 // MEMORY OPTIMIZATION: Lazy load heavy dependencies
-let RATE_LIMITS, z, QRCode, formatTimeWindow;
+let RATE_LIMITS, z, qr, formatTimeWindow;
 
 async function loadDependencies() {
   if (!RATE_LIMITS) {
@@ -114,9 +114,8 @@ async function loadDependencies() {
     const zodModule = await import("zod");
     z = zodModule.z;
   }
-  if (!QRCode) {
-    const qrModule = await import("qrcode");
-    QRCode = qrModule.default;
+  if (!qr) {
+    qr = await import("qr-image");
   }
 }
 
@@ -347,14 +346,17 @@ async function generateHashedInviteId() {
  */
 async function generateQRCode(inviteUrl) {
   try {
-    const qrCodeDataUrl = await QRCode.toDataURL(inviteUrl, {
-      width: 300,
-      margin: 2,
-      color: {
-        dark: "#7C3AED",
-        light: "#FFFFFF",
-      },
+    // Generate QR code as PNG buffer
+    const qrBuffer = qr.imageSync(inviteUrl, {
+      type: 'png',
+      size: 10,
+      margin: 2
     });
+
+    // Convert buffer to base64 data URL
+    const base64 = qrBuffer.toString('base64');
+    const qrCodeDataUrl = `data:image/png;base64,${base64}`;
+
     return qrCodeDataUrl;
   } catch (error) {
     throw new Error("Failed to generate QR code");

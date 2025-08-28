@@ -1,7 +1,7 @@
 import { Crown, Users, X } from 'lucide-react';
 import React, { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
 import { useNWCWallet } from '../hooks/useNWCWallet';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 import ContactsSelector from './shared/ContactsSelector';
 
 interface Contact {

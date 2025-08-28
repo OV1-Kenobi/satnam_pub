@@ -12,7 +12,7 @@ import {
   XCircle
 } from "lucide-react";
 import React, { useState } from "react";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 import { FederationRole } from "../types/auth";
 import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
 import FamilyWalletCard from "./FamilyWalletCard";

@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, AlertTriangle, Shield, Users, Key, Zap } from 'lucide-react';
 import EmergencyRecoveryModal from './EmergencyRecoveryModal';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 import { FederationRole } from '../types/auth';
 
 interface EmergencyRecoveryPageProps {

@@ -1,6 +1,6 @@
 import { Baby, Crown, Shield, Users } from "lucide-react";
 import React, { useState } from "react";
-import { useFamilyFederationAuth } from "../../hooks/useFamilyFederationAuth";
+import { useAuth } from './AuthProvider'; // FIXED: Use unified auth system
 import { FamilyFederationAuthWrapper } from "./FamilyFederationAuth";
 import NWCOTPSignIn from "./NWCOTPSignIn";
 

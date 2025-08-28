@@ -50,11 +50,11 @@ class SecureNsecManager {
    * @param maxDurationMs - Maximum session duration (default: 10 minutes)
    * @returns Session ID for tracking
    */
-  createPostRegistrationSession(
-    nsecHex: string,
+  async createPostRegistrationSession(
+    nsecInput: string,
     maxDurationMs?: number
-  ): string {
-    return this.createTemporarySession(nsecHex, maxDurationMs);
+  ): Promise<string> {
+    return await this.createTemporarySession(nsecInput, maxDurationMs);
   }
 
   /**
@@ -63,13 +63,38 @@ class SecureNsecManager {
    * @param maxDurationMs - Maximum session duration (default: 10 minutes)
    * @returns Session ID for tracking
    */
-  private createTemporarySession(
-    nsecHex: string,
+  private async createTemporarySession(
+    nsecInput: string,
     maxDurationMs?: number
-  ): string {
-    // Validate nsec format
-    if (!/^[0-9a-fA-F]{64}$/.test(nsecHex)) {
-      throw new Error("Invalid nsec format");
+  ): Promise<string> {
+    // Convert nsec to hex format if needed
+    let nsecHex: string;
+
+    if (/^nsec1/i.test(nsecInput)) {
+      // Convert bech32 nsec to hex format
+      try {
+        const { nip19 } = await import("nostr-tools");
+        const decoded = nip19.decode(nsecInput);
+        if (decoded.type !== "nsec") {
+          throw new Error("Invalid nsec bech32 type");
+        }
+        const data = decoded.data as unknown;
+        nsecHex =
+          typeof data === "string"
+            ? data
+            : Array.from(data as Uint8Array)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+      } catch (error) {
+        throw new Error("Invalid nsec bech32 format");
+      }
+    } else if (/^[0-9a-fA-F]{64}$/.test(nsecInput)) {
+      // Already in hex format
+      nsecHex = nsecInput.toLowerCase();
+    } else {
+      throw new Error(
+        "Invalid nsec format - must be bech32 (nsec1...) or 64-character hex"
+      );
     }
 
     // Clear any existing session
@@ -77,7 +102,7 @@ class SecureNsecManager {
 
     const sessionId = `nsec-session-${Date.now()}-${Math.random()
       .toString(36)
-      .substr(2, 9)}`;
+      .substring(2, 11)}`;
     const duration = maxDurationMs || this.MAX_SESSION_DURATION;
     const now = Date.now();
 

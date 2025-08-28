@@ -26,8 +26,8 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
 import { useNWCWallet } from '../hooks/useNWCWallet';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 
 interface TestResult {
   name: string;
@@ -399,8 +399,8 @@ export default function NWCIntegrationTest() {
                         <div className="font-medium text-gray-900">{test.name}</div>
                         {test.message && (
                           <div className={`text-sm ${test.status === 'passed' ? 'text-green-600' :
-                              test.status === 'failed' ? 'text-red-600' :
-                                'text-gray-600'
+                            test.status === 'failed' ? 'text-red-600' :
+                              'text-gray-600'
                             }`}>
                             {test.message}
                           </div>

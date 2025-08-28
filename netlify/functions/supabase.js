@@ -15,20 +15,21 @@ function requireEnv(key) {
 }
 
 // Allow both SUPABASE_* (functions) and VITE_SUPABASE_* (if configured) names
+// PREFER ANON KEY for all runtime operations; service role is not required here
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  || process.env.SUPABASE_ANON_KEY
-  || process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_ANON_KEY
+  || process.env.VITE_SUPABASE_ANON_KEY
+  || process.env.SUPABASE_SERVICE_ROLE_KEY; // fallback only if anon is not provided
 
-const supabaseKeyType = process.env.SUPABASE_SERVICE_ROLE_KEY
-  ? 'service'
-  : ((process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY) ? 'anon' : 'unknown');
+const supabaseKeyType = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY)
+  ? 'anon'
+  : (process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service' : 'unknown');
 
 if (!supabaseUrl) {
   throw new Error("Supabase URL not configured (SUPABASE_URL or VITE_SUPABASE_URL)");
 }
 if (!supabaseKey) {
-  throw new Error("Supabase key not configured (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY)");
+  throw new Error("Supabase key not configured (SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY, fallback SUPABASE_SERVICE_ROLE_KEY)");
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey, {

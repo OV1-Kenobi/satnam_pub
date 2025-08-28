@@ -20,7 +20,7 @@ import {
   Zap
 } from "lucide-react";
 import React from "react";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 
 interface NostrEcosystemProps {
   onBack: () => void;

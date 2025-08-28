@@ -27,7 +27,7 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 import { useNWCWallet } from '../hooks/useNWCWallet';
 
 interface NWCWalletSetupModalProps {

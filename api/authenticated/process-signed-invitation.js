@@ -16,7 +16,7 @@
  * - Publishes signed events to Nostr relays for gift-wrapped delivery
  */
 
-import QRCode from "qrcode";
+import * as qr from "qr-image";
 import { z } from "zod";
 import { RATE_LIMITS } from "../../lib/config/rate-limits.js";
 import { supabase } from "../../netlify/functions/supabase.js";
@@ -173,14 +173,17 @@ async function generateHashedInviteId() {
  */
 async function generateQRCode(inviteUrl) {
   try {
-    const qrCodeDataUrl = await QRCode.toDataURL(inviteUrl, {
-      width: 300,
-      margin: 2,
-      color: {
-        dark: "#7C3AED",
-        light: "#FFFFFF",
-      },
+    // Generate QR code as PNG buffer
+    const qrBuffer = qr.imageSync(inviteUrl, {
+      type: 'png',
+      size: 10,
+      margin: 2
     });
+
+    // Convert buffer to base64 data URL
+    const base64 = qrBuffer.toString('base64');
+    const qrCodeDataUrl = `data:image/png;base64,${base64}`;
+
     return qrCodeDataUrl;
   } catch (error) {
     throw new Error("Failed to generate QR code");

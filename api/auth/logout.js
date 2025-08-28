@@ -30,7 +30,7 @@ function clearSecureCookie(res, name) {
 /**
  * Main logout handler with comprehensive CORS and cookie deletion fixes
  */
-export default async function handler(req, res) {
+export const handler = async (req, res) => {
   // CORS headers for browser compatibility
   const corsHeaders = {
     'Access-Control-Allow-Origin': process.env.VITE_APP_DOMAIN || 'https://www.satnam.pub',

@@ -1,0 +1,233 @@
+/**
+ * Sign-In Handler for Netlify Functions
+ * Handles NIP-05/password authentication
+ */
+
+import crypto from 'node:crypto';
+import { promisify } from 'node:util';
+
+// Import Netlify Functions utilities
+const pbkdf2 = promisify(crypto.pbkdf2);
+
+// Supabase client for database operations
+let supabase;
+
+async function getSupabase() {
+  if (!supabase) {
+    const { createClient } = await import('@supabase/supabase-js');
+    supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
+  }
+  return supabase;
+}
+
+// DUID generation for user identification
+async function generateDUID(nip05Identifier) {
+  const secret = process.env.DUID_SERVER_SECRET;
+  if (!secret) {
+    throw new Error('DUID_SERVER_SECRET not configured');
+  }
+  
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(nip05Identifier);
+  return hmac.digest('hex');
+}
+
+// Password verification
+async function verifyPassword(password, hash, salt) {
+  try {
+    const derivedKey = await pbkdf2(password, salt, 100000, 64, 'sha512');
+    const derivedHash = derivedKey.toString('hex');
+    return derivedHash === hash;
+  } catch (error) {
+    console.error('Password verification error:', error);
+    return false;
+  }
+}
+
+// SECURE JWT CREATION FUNCTION (compatible with auth-unified and frontend)
+async function createSecureJWT(payload) {
+  try {
+    // Import jose library for secure JWT creation
+    const { SignJWT } = await import('jose');
+
+    // Configuration
+    const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+    const JWT_ISSUER = process.env.JWT_ISSUER || 'satnam.pub';
+    const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'satnam.pub';
+
+    // Create secret key
+    const secret = new TextEncoder().encode(JWT_SECRET);
+
+    // Create JWT with proper claims
+    const jwt = await new SignJWT(payload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setIssuer(JWT_ISSUER)
+      .setAudience(JWT_AUDIENCE)
+      .setExpirationTime('24h') // 24 hours
+      .sign(secret);
+
+    console.log('✅ Secure JWT created successfully for signin');
+    return jwt;
+
+  } catch (error) {
+    console.error('❌ JWT creation error:', error.message);
+    throw new Error(`JWT creation failed: ${error.message}`);
+  }
+}
+
+const handler = async (event, context) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400'
+  };
+
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: corsHeaders,
+      body: ''
+    };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers: corsHeaders,
+      body: JSON.stringify({ success: false, error: 'Method not allowed' })
+    };
+  }
+
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { nip05, password, authMethod } = body;
+
+    console.log('🔄 Sign-in attempt:', { nip05, authMethod });
+
+    // Validate input
+    if (!nip05 || !password) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'NIP-05 and password are required'
+        })
+      };
+    }
+
+    // Generate DUID for user lookup
+    const userDUID = await generateDUID(nip05);
+    
+    // Get database client
+    const db = await getSupabase();
+    
+    // Look up user by DUID
+    const { data: user, error: userError } = await db
+      .from('user_identities')
+      .select('*')
+      .eq('id', userDUID)
+      .single();
+
+    if (userError || !user) {
+      console.log('❌ User not found for NIP-05 identifier');
+      return {
+        statusCode: 404,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'User not found',
+          registerEndpoint: '/identity-forge'
+        })
+      };
+    }
+
+    // Verify password
+    const isValidPassword = await verifyPassword(
+      password,
+      user.password_hash,
+      user.password_salt
+    );
+
+    if (!isValidPassword) {
+      console.log('❌ Invalid password for user:', nip05);
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'Invalid credentials'
+        })
+      };
+    }
+
+    // Create secure JWT token with UNIFIED FORMAT compatible with frontend SecureTokenManager
+    // Generate required fields that frontend SecureTokenManager.parseTokenPayload() expects
+    const sessionId = crypto.randomBytes(16).toString('hex'); // Generate random session ID
+    const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+    const hashedId = crypto.createHmac('sha256', JWT_SECRET)
+      .update(`${user.id}|${sessionId}`)
+      .digest('hex');
+
+    const tokenPayload = {
+      // FRONTEND-REQUIRED FIELDS (SecureTokenManager.parseTokenPayload expects these)
+      userId: user.id,
+      hashedId: hashedId, // Required by frontend - HMAC of userId|sessionId
+      type: 'access', // Required by frontend - token type
+      sessionId: sessionId, // Required by frontend - unique session identifier
+      nip05: user.nip05, // Required by frontend
+
+      // BACKEND-REQUIRED FIELDS (for compatibility with auth-unified and other endpoints)
+      username: user.username,
+      role: user.role
+    };
+
+    const token = await createSecureJWT(tokenPayload);
+
+    console.log('✅ Sign-in successful:', { username: user.username, role: user.role });
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        success: true,
+        message: 'Authentication successful',
+        user: {
+          id: user.id,
+          username: user.username,
+          nip05: user.nip05,
+          role: user.role
+        },
+        session: {
+          token,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        }
+      })
+    };
+
+  } catch (error) {
+    console.error('❌ Sign-in error:', error);
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        success: false,
+        error: 'Authentication service temporarily unavailable',
+        debug: {
+          message: error.message,
+          timestamp: new Date().toISOString()
+        }
+      })
+    };
+  }
+}
+
+// ESM export
+export { handler };
+

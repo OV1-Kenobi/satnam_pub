@@ -191,9 +191,11 @@ export class CryptoFactory {
         nsecPrefix: nsec.substring(0, 10) + "...",
       });
 
+      // IMPORTANT: Return x-only 32-byte public key hex for Nostr compatibility
+      const publicKeyXHex = bytesToHex(publicKeyXCoordinate);
       return {
         privateKey: bytesToHex(privateKeyBytes),
-        publicKey: publicKeyHex,
+        publicKey: publicKeyXHex, // 64-hex chars (32 bytes), as expected by NIP-19
         npub,
         nsec,
       };
@@ -841,16 +843,23 @@ console.log("- testCryptoDebug(): Full crypto operations test");
     });
 
     const testPublicKey = secp256k1.getPublicKey(testPrivateKeyBytes, true);
+    // Strip compression prefix (0x02/0x03) to obtain 32-byte x-coordinate for Nostr
+    const testPublicKeyX = testPublicKey.slice(1);
     const testPublicKeyHex = bytesToHex(testPublicKey);
+    const testPublicKeyXHex = bytesToHex(testPublicKeyX);
 
     console.log("Test public key:", {
       bytes: Array.from(testPublicKey),
       hex: testPublicKeyHex,
       length: testPublicKeyHex.length,
       expectedLength: 66,
+      xCoordHex: testPublicKeyXHex,
+      xCoordLength: testPublicKeyX.length,
+      xCoordExpectedLength: 32,
     });
 
-    const testNpub = nip19.npubEncode(testPublicKeyHex);
+    // Use 32-byte x-coordinate hex for npub encoding as required by Nostr
+    const testNpub = nip19.npubEncode(testPublicKeyXHex);
     console.log("Test npub result:", {
       npub: testNpub,
       length: testNpub.length,

@@ -6,32 +6,36 @@
  */
 
 // Security: Admin scripts should not programmatically access service role keys
-console.error('❌ SECURITY NOTICE: This script contains DDL operations that require service role privileges.');
-console.error('');
-console.error('🔒 SECURE EXECUTION REQUIRED:');
-console.error('   1. Copy the SQL content from this script');
-console.error('   2. Execute it manually in Supabase SQL Editor');
-console.error('   3. Use your admin dashboard access, not programmatic service role keys');
-console.error('');
-console.error('🚫 REASON: Service role keys should never be retrieved programmatically');
-console.error('   in application code, even for admin scripts. This prevents');
-console.error('   accidental exposure and follows security best practices.');
-console.error('');
-console.error('📋 MANUAL STEPS:');
-console.error('   1. Log into Supabase Dashboard');
-console.error('   2. Navigate to SQL Editor');
-console.error('   3. Copy/paste the vault schema update SQL');
-console.error('   4. Execute with your admin privileges');
+console.error(
+  "❌ SECURITY NOTICE: This script contains DDL operations that require service role privileges."
+);
+console.error("");
+console.error("🔒 SECURE EXECUTION REQUIRED:");
+console.error("   1. Copy the SQL content from this script");
+console.error("   2. Execute it manually in Supabase SQL Editor");
+console.error(
+  "   3. Use your admin dashboard access, not programmatic service role keys"
+);
+console.error("");
+console.error(
+  "🚫 REASON: Service role keys should never be retrieved programmatically"
+);
+console.error("   in application code, even for admin scripts. This prevents");
+console.error("   accidental exposure and follows security best practices.");
+console.error("");
+console.error("📋 MANUAL STEPS:");
+console.error("   1. Log into Supabase Dashboard");
+console.error("   2. Navigate to SQL Editor");
+console.error("   3. Copy/paste the vault schema update SQL");
+console.error("   4. Execute with your admin privileges");
 process.exit(1);
-  process.exit(1);
-}
 
 // Create anon client to access vault
 const anonClient = createClient(supabaseUrl, anonKey, {
   auth: {
     autoRefreshToken: false,
-    persistSession: false
-  }
+    persistSession: false,
+  },
 });
 
 // Global service role client
@@ -39,32 +43,34 @@ let serviceClient: any = null;
 
 async function getServiceRoleKeyFromVault(): Promise<string> {
   try {
-    console.log('🔍 Retrieving service role key from Supabase Vault...');
-    
+    console.log("🔍 Retrieving service role key from Supabase Vault...");
+
     // Try multiple possible vault key names
     const possibleKeys = [
-      'supabase_service_role_key',
-      'service_role_key', 
-      'SUPABASE_SERVICE_ROLE_KEY',
-      'supabase_service_key'
+      "supabase_service_role_key",
+      "service_role_key",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "supabase_service_key",
     ];
-    
+
     for (const keyName of possibleKeys) {
       const { data, error } = await anonClient
-        .from('vault.decrypted_secrets')
-        .select('decrypted_secret')
-        .eq('name', keyName)
+        .from("vault.decrypted_secrets")
+        .select("decrypted_secret")
+        .eq("name", keyName)
         .single();
-      
+
       if (!error && data?.decrypted_secret) {
         console.log(`✅ Service role key found in vault as: ${keyName}`);
         return data.decrypted_secret;
       }
     }
-    
-    throw new Error('Service role key not found in vault with any expected name');
+
+    throw new Error(
+      "Service role key not found in vault with any expected name"
+    );
   } catch (error) {
-    console.error('💥 Vault access error:', error);
+    console.error("💥 Vault access error:", error);
     throw error;
   }
 }
@@ -72,17 +78,17 @@ async function getServiceRoleKeyFromVault(): Promise<string> {
 async function initializeServiceClient(): Promise<void> {
   try {
     const serviceKey = await getServiceRoleKeyFromVault();
-    
+
     serviceClient = createClient(supabaseUrl, serviceKey, {
       auth: {
         autoRefreshToken: false,
-        persistSession: false
-      }
+        persistSession: false,
+      },
     });
-    
-    console.log('✅ Service role client initialized successfully');
+
+    console.log("✅ Service role client initialized successfully");
   } catch (error) {
-    console.error('❌ Failed to initialize service client:', error);
+    console.error("❌ Failed to initialize service client:", error);
     throw error;
   }
 }
@@ -90,19 +96,19 @@ async function initializeServiceClient(): Promise<void> {
 async function executeSQL(sql: string, description: string): Promise<boolean> {
   try {
     console.log(`⚡ ${description}...`);
-    
+
     if (!serviceClient) {
-      throw new Error('Service client not initialized');
+      throw new Error("Service client not initialized");
     }
-    
+
     // Try direct SQL execution first
-    const { data, error } = await serviceClient.rpc('exec_sql', { sql });
-    
+    const { data, error } = await serviceClient.rpc("exec_sql", { sql });
+
     if (error) {
       console.error(`❌ ${description} failed:`, error.message);
       return false;
     }
-    
+
     console.log(`✅ ${description} completed successfully`);
     return true;
   } catch (err) {
@@ -112,11 +118,11 @@ async function executeSQL(sql: string, description: string): Promise<boolean> {
 }
 
 async function updateDatabaseSchema(): Promise<boolean> {
-  console.log('🚀 VAULT-BASED DATABASE SCHEMA UPDATE STARTING...');
-  
+  console.log("🚀 VAULT-BASED DATABASE SCHEMA UPDATE STARTING...");
+
   // Initialize service client with vault credentials
   await initializeServiceClient();
-  
+
   // Step 1: Add missing privacy_level column to privacy_users table
   const addPrivacyLevelColumn = `
     DO $$
@@ -136,9 +142,12 @@ async function updateDatabaseSchema(): Promise<boolean> {
       END IF;
     END $$;
   `;
-  
-  const step1 = await executeSQL(addPrivacyLevelColumn, 'Adding privacy_level column to privacy_users');
-  
+
+  const step1 = await executeSQL(
+    addPrivacyLevelColumn,
+    "Adding privacy_level column to privacy_users"
+  );
+
   // Step 2: Add missing zero_knowledge_enabled column
   const addZeroKnowledgeColumn = `
     DO $$
@@ -157,9 +166,12 @@ async function updateDatabaseSchema(): Promise<boolean> {
       END IF;
     END $$;
   `;
-  
-  const step2 = await executeSQL(addZeroKnowledgeColumn, 'Adding zero_knowledge_enabled column to privacy_users');
-  
+
+  const step2 = await executeSQL(
+    addZeroKnowledgeColumn,
+    "Adding zero_knowledge_enabled column to privacy_users"
+  );
+
   // Step 3: Ensure nip05_records table exists
   const createNip05Table = `
     CREATE TABLE IF NOT EXISTS public.nip05_records (
@@ -175,9 +187,12 @@ async function updateDatabaseSchema(): Promise<boolean> {
       CONSTRAINT nip05_records_pubkey_format CHECK (pubkey LIKE 'npub1%')
     );
   `;
-  
-  const step3 = await executeSQL(createNip05Table, 'Creating nip05_records table');
-  
+
+  const step3 = await executeSQL(
+    createNip05Table,
+    "Creating nip05_records table"
+  );
+
   // Step 4: Create RLS policies for nip05_records
   const setupNip05RLS = `
     ALTER TABLE nip05_records ENABLE ROW LEVEL SECURITY;
@@ -191,9 +206,12 @@ async function updateDatabaseSchema(): Promise<boolean> {
     GRANT SELECT ON nip05_records TO authenticated;
     GRANT SELECT ON nip05_records TO anon;
   `;
-  
-  const step4 = await executeSQL(setupNip05RLS, 'Setting up nip05_records RLS policies');
-  
+
+  const step4 = await executeSQL(
+    setupNip05RLS,
+    "Setting up nip05_records RLS policies"
+  );
+
   // Step 5: Insert default NIP-05 records
   const insertDefaultRecords = `
     INSERT INTO nip05_records (name, pubkey, domain) VALUES
@@ -206,93 +224,105 @@ async function updateDatabaseSchema(): Promise<boolean> {
       ('info', 'npub1satnaminfo123456789abcdef', 'satnam.pub')
     ON CONFLICT (name, domain) DO NOTHING;
   `;
-  
-  const step5 = await executeSQL(insertDefaultRecords, 'Inserting default NIP-05 records');
-  
+
+  const step5 = await executeSQL(
+    insertDefaultRecords,
+    "Inserting default NIP-05 records"
+  );
+
   return step1 && step2 && step3 && step4 && step5;
 }
 
 async function testRegisterIdentityEndpoint(): Promise<boolean> {
-  console.log('🧪 AUTOMATED TESTING - Register Identity Endpoint...');
-  
+  console.log("🧪 AUTOMATED TESTING - Register Identity Endpoint...");
+
   try {
     const testData = {
-      username: 'vaulttest_user',
-      publicKey: 'npub1vaulttest123456789abcdef',
-      encryptedNsec: 'encrypted_vaulttest_nsec_data'
+      username: "vaulttest_user",
+      publicKey: "npub1vaulttest123456789abcdef",
+      encryptedNsec: "encrypted_vaulttest_nsec_data",
     };
-    
-    const response = await fetch('http://localhost:8888/api/register-identity', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testData)
-    });
-    
+
+    const response = await fetch(
+      "http://localhost:8888/api/register-identity",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testData),
+      }
+    );
+
     const responseText = await response.text();
-    
+
     console.log(`📊 Test Result: ${response.status} ${response.statusText}`);
-    
+
     if (response.status === 201) {
-      console.log('✅ REGISTER IDENTITY ENDPOINT WORKING CORRECTLY!');
+      console.log("✅ REGISTER IDENTITY ENDPOINT WORKING CORRECTLY!");
       const responseData = JSON.parse(responseText);
-      console.log('📋 User Registration Data:', {
+      console.log("📋 User Registration Data:", {
         success: responseData.success,
         username: responseData.user?.username,
         npub: responseData.user?.npub,
-        userHash: responseData.user?.userHash?.substring(0, 8) + '...',
-        credentialHash: responseData.user?.credentialHash?.substring(0, 8) + '...'
+        userHash: responseData.user?.userHash?.substring(0, 8) + "...",
+        credentialHash:
+          responseData.user?.credentialHash?.substring(0, 8) + "...",
       });
       return true;
     } else {
-      console.log('❌ Test Response:', responseText);
+      console.log("❌ Test Response:", responseText);
       return false;
     }
   } catch (error) {
-    console.error('💥 Test Error:', error);
+    console.error("💥 Test Error:", error);
     return false;
   }
 }
 
 async function main() {
-  console.log('🚀 VAULT-BASED DATABASE SCHEMA UPDATE - SERVICE ROLE EXECUTION');
-  console.log('=' .repeat(80));
-  
+  console.log("🚀 VAULT-BASED DATABASE SCHEMA UPDATE - SERVICE ROLE EXECUTION");
+  console.log("=".repeat(80));
+
   try {
     // Step 1: Update database schema using vault credentials
     const schemaSuccess = await updateDatabaseSchema();
-    
+
     if (!schemaSuccess) {
-      console.error('❌ CRITICAL: Schema update failed');
+      console.error("❌ CRITICAL: Schema update failed");
       process.exit(1);
     }
-    
-    console.log('🎉 DATABASE SCHEMA UPDATE COMPLETED!');
-    
+
+    console.log("🎉 DATABASE SCHEMA UPDATE COMPLETED!");
+
     // Step 2: Wait for schema changes to propagate
-    console.log('⏳ Waiting for schema changes to propagate...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
+    console.log("⏳ Waiting for schema changes to propagate...");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
     // Step 3: Test the register-identity endpoint
     const testSuccess = await testRegisterIdentityEndpoint();
-    
+
     if (testSuccess) {
-      console.log('🎉 SUCCESS: Complete register-identity system is now functional!');
-      console.log('');
-      console.log('📋 SECURITY COMPLIANCE VERIFICATION:');
-      console.log('  ✅ Service role keys removed from code');
-      console.log('  ✅ Service role key retrieved from Supabase Vault');
-      console.log('  ✅ Database schema updated automatically');
-      console.log('  ✅ RLS policies working correctly');
-      console.log('  ✅ Register identity endpoint returning 201 success');
-      console.log('  ✅ User data stored securely in privacy_users and vault_credentials');
-      console.log('');
-      console.log('🚀 READY FOR PRODUCTION DEPLOYMENT!');
+      console.log(
+        "🎉 SUCCESS: Complete register-identity system is now functional!"
+      );
+      console.log("");
+      console.log("📋 SECURITY COMPLIANCE VERIFICATION:");
+      console.log("  ✅ Service role keys removed from code");
+      console.log("  ✅ Service role key retrieved from Supabase Vault");
+      console.log("  ✅ Database schema updated automatically");
+      console.log("  ✅ RLS policies working correctly");
+      console.log("  ✅ Register identity endpoint returning 201 success");
+      console.log(
+        "  ✅ User data stored securely in privacy_users and vault_credentials"
+      );
+      console.log("");
+      console.log("🚀 READY FOR PRODUCTION DEPLOYMENT!");
     } else {
-      console.log('⚠️  Schema updated but endpoint test failed - checking logs...');
+      console.log(
+        "⚠️  Schema updated but endpoint test failed - checking logs..."
+      );
     }
-    
   } catch (error) {
-    console.error('💥 CRITICAL ERROR:', error);
+    console.error("💥 CRITICAL ERROR:", error);
     process.exit(1);
   }
 }

@@ -3,8 +3,8 @@
 // Supports both modal and redirect authentication approaches
 
 import React, { useEffect, useState } from 'react';
-import { useFamilyFederationAuth } from '../hooks/useFamilyFederationAuth';
 import { FamilyFederationUser } from '../types/auth';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 import SignInModal from './SignInModal';
 
 interface ProtectedRouteProps {
@@ -24,7 +24,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   fallback,
   onAuthSuccess
 }) => {
-  const { isAuthenticated, userAuth, isLoading } = useFamilyFederationAuth();
+  // FIXED: Use unified auth system instead of family federation auth
+  const auth = useAuth();
+  const { authenticated: isAuthenticated, user: userAuth, loading: isLoading } = auth;
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
 
@@ -34,9 +36,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
     if (authMode === 'auto') {
       // Auto mode: Use modal for navigation-triggered access, redirect for direct URL access
-      const isDirectAccess = !document.referrer || 
+      const isDirectAccess = !document.referrer ||
         new URL(document.referrer).origin !== window.location.origin;
-      
+
       if (isDirectAccess) {
         setShouldRedirect(true);
       } else {
@@ -89,9 +91,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       <div className="min-h-screen bg-gradient-to-br from-purple-400 via-purple-500 to-purple-600 flex items-center justify-center p-4">
         <SignInModal
           isOpen={true}
-          onClose={() => {}}
+          onClose={() => { }}
           onSignInSuccess={() => window.location.reload()}
-          onCreateNew={() => {}}
+          onCreateNew={() => { }}
           destination="family"
         />
       </div>
@@ -132,7 +134,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             </div>
           </div>
         )}
-        
+
         <SignInModal
           isOpen={showAuthModal}
           onClose={handleModalClose}

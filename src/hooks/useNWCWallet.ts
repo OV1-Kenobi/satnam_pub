@@ -1,4 +1,3 @@
-
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -6,7 +5,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -30,7 +29,7 @@ function getEnvVar(key: string): string | undefined {
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "./useAuth";
+import { useAuth } from "../components/auth/AuthProvider"; // FIXED: Use unified auth system
 
 // NWC Connection interface
 interface NWCConnection {

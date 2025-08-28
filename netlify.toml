@@ -28,7 +28,13 @@
 
 # Authenticated endpoints - Unified invitation handler
 [[redirects]]
-  from = "/api/authenticated/*-invite*"
+  from = "/api/authenticated/generate-peer-invite"
+  to = "/.netlify/functions/invitation-unified"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/authenticated/*invite*"
   to = "/.netlify/functions/invitation-unified"
   status = 200
   force = true
@@ -51,6 +57,13 @@
 [[redirects]]
   from = "/api/auth/check-username-availability"
   to = "/.netlify/functions/check-username-availability"
+  status = 200
+  force = true
+
+# Registration endpoint - standalone function for memory optimization (MUST come before generic auth routes)
+[[redirects]]
+  from = "/api/auth/register-identity"
+  to = "/.netlify/functions/register-identity"
   status = 200
   force = true
 
@@ -286,6 +299,11 @@
     NODE_ENV = "development"
     VITE_API_BASE_URL = "/api"
 
+[context.dev]
+  [context.dev.environment]
+    NODE_ENV = "development"
+    VITE_API_BASE_URL = "/api"
+
 # Functions configuration - Optimized for memory and storage efficiency
 [functions]
   # Deploy only functions from the minimized active directory to avoid storage exhaustion
@@ -335,12 +353,6 @@
   memory_size = 512  # 512MB for identity operations
   timeout = 20
 
-  # Ensure server-only DUID index generator is included without lifting directory excludes
-  included_files = [
-    "netlify/functions/security/duid-index-generator.mjs",
-    "netlify/functions/security/duid-index-generator.js"
-  ]
-
 # Unified auth handler configuration
 [functions."auth-unified"]
   node_bundler = "esbuild"
@@ -351,7 +363,6 @@
     "api/auth/signin.js",
     "api/auth/nip07-challenge.js",
     "api/auth/nip07-signin.js",
-    "api/auth/register-identity.js",
     "api/auth/logout.js",
     "api/auth/refresh.js",
     "api/auth/check-refresh.js",
@@ -413,10 +424,6 @@
   node_bundler = "esbuild"
   memory_size = 128  # Minimal memory for unified proxy function
   timeout = 15
-  included_files = [
-    "api/authenticated/generate-peer-invite.js",
-    "api/authenticated/process-signed-invitation.js"
-  ]
 
 [functions."check-username-availability"]
   node_bundler = "esbuild"

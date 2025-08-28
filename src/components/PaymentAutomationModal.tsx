@@ -20,12 +20,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { PaymentSchedule } from '../lib/payment-automation.js';
 
 // Import production services
-import { useAuth } from '../hooks/useAuth';
 import { contactApi, ContactValidationResult, PaymentRecipient, UserContactData } from '../services/contactApiService';
 import { showToast } from '../services/toastService';
+import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 
 // Import automated signing and notification services
-import { AutomatedSigningManager } from '../lib/automated-signing-manager';
 
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
