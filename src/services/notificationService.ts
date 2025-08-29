@@ -5,6 +5,9 @@
  * read/unread status tracking, and real-time updates.
  */
 
+// FIXED: Use static import for bundle optimization instead of dynamic import
+import { showToast } from "./toastService";
+
 export interface DashboardNotification {
   id: string;
   type:
@@ -480,11 +483,8 @@ export class NotificationService {
   private async showToastForNewNotification(
     notification: DashboardNotification
   ): Promise<void> {
-    // This would integrate with the existing toast service
-    // For now, it's a placeholder for the integration point
+    // FIXED: Use static import instead of dynamic import for bundle optimization
     try {
-      const { showToast } = await import("./toastService");
-
       const icon = this.getNotificationIcon(notification.type);
 
       showToast.info(notification.title, {

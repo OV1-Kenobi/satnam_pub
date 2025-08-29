@@ -13,6 +13,8 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+// FIXED: Use static import for bundle optimization instead of dynamic import
+import { showToast } from "./toastService";
 
 // Initialize Supabase client for FROST operations
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -514,9 +516,7 @@ async function showKeyShareError(
   errorType: string
 ): Promise<void> {
   try {
-    // Import toast service dynamically
-    const { showToast } = await import("./toastService");
-
+    // FIXED: Use static import instead of dynamic import for bundle optimization
     // Determine user-friendly message and action based on error type
     let userMessage = message;
     let actionLabel = "Try Again";
@@ -786,9 +786,7 @@ async function computeFrostSignatureShare(
  */
 async function showFrostSignatureError(error: unknown): Promise<void> {
   try {
-    // Import toast service dynamically
-    const { showToast } = await import("./toastService");
-
+    // FIXED: Use static import instead of dynamic import for bundle optimization
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
 

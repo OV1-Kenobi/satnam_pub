@@ -9,6 +9,8 @@ import {
   central_event_publishing_service,
   CentralEventPublishingService,
 } from "../../lib/central_event_publishing_service";
+// FIXED: Use static import for bundle optimization instead of dynamic import
+import { showToast } from "../services/toastService";
 
 // Define proper PaymentData interface for type safety
 export interface PaymentData {
@@ -292,9 +294,7 @@ export class AutomatedSigningManager {
         getFamilyCashuWallet,
       } = await import("../services/familyWalletApi");
 
-      // Import toast service for user feedback
-      const { showToast } = await import("../services/toastService");
-
+      // FIXED: Use static import instead of dynamic import for bundle optimization
       // Get authenticated user context
       const authToken = await this.getAuthenticatedUserToken();
       if (!authToken) {
@@ -346,9 +346,7 @@ export class AutomatedSigningManager {
 
       return transactionResult.transactionId;
     } catch (error) {
-      // Import toast service for error feedback
-      const { showToast } = await import("../services/toastService");
-
+      // FIXED: Use static import instead of dynamic import for bundle optimization
       const errorMessage =
         error instanceof Error ? error.message : "Payment processing failed";
 
@@ -480,8 +478,7 @@ export class AutomatedSigningManager {
         transactionId,
       });
 
-      // Show success toast notification
-      const { showToast } = await import("../services/toastService");
+      // FIXED: Use static import instead of dynamic import for bundle optimization
       showToast.success("Payment event published to Nostr relays", {
         title: "Transparency Confirmed",
         duration: 3000,
@@ -489,9 +486,8 @@ export class AutomatedSigningManager {
     } catch (error) {
       console.error("Failed to publish password payment event:", error);
 
-      // Show error toast notification
+      // FIXED: Use static import instead of dynamic import for bundle optimization
       try {
-        const { showToast } = await import("../services/toastService");
         showToast.error(
           error instanceof Error
             ? error.message

@@ -783,10 +783,12 @@ export const handler = async (event, context) => {
       success: true,
       message: "Identity registered successfully with sovereignty enforcement",
       user: {
-        id: hashedIdentifier,
+        id: profileResult.data.id, // FIXED: Use actual database user ID for consistency
+        hashedId: hashedId, // Include hashed ID for JWT validation
         username: validatedData.username,
         displayName: validatedData.displayName || validatedData.username,
         role: standardizedRole,
+        is_active: true, // FIXED: Include is_active for authentication state
         spendingLimits,
         registeredAt: new Date().toISOString()
       },
@@ -794,6 +796,7 @@ export const handler = async (event, context) => {
         token: jwtToken,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       },
+      sessionToken: jwtToken, // FIXED: Include sessionToken at root level for compatibility
       meta: {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'production'
