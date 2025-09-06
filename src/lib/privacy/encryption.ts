@@ -459,71 +459,53 @@ export async function decryptNsec(encryptedData: {
 }
 
 /**
- * Decrypt Nostr private key (nsec) - Simple format for database storage
- * Uses user's unique salt for decryption
+ * Decrypt Nostr private key (nsec) - Noble V2 Implementation
+ * Uses user's unique salt for zero-knowledge decryption
+ * @deprecated Legacy function - now uses Noble V2 internally
  */
 export async function decryptNsecSimple(
   encryptedNsec: string,
   userSalt: string
 ): Promise<string> {
   try {
-    // For simple encrypted nsec format, we'll use the user salt as the decryption key
-    // This assumes the nsec was encrypted with the user's unique salt
-
-    // Get master key for decryption
-    const masterKey = await getMasterKey();
-
-    // Derive decryption key from user salt and master key
-    const keyMaterial = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(masterKey + userSalt),
-      { name: "PBKDF2" },
-      false,
-      ["deriveKey"]
+    console.log("🔐 decryptNsecSimple: Using Noble V2 implementation");
+    console.log(
+      "🔐 decryptNsecSimple: Input encryptedNsec length:",
+      encryptedNsec?.length
+    );
+    console.log(
+      "🔐 decryptNsecSimple: Input userSalt length:",
+      userSalt?.length
     );
 
-    // Generate salt for key derivation
-    const salt = new TextEncoder().encode(userSalt);
+    // Validate inputs
+    if (!encryptedNsec || typeof encryptedNsec !== "string") {
+      throw new Error("Invalid encryptedNsec: must be a non-empty string");
+    }
+    if (!userSalt || typeof userSalt !== "string") {
+      throw new Error("Invalid userSalt: must be a non-empty string");
+    }
 
-    const decryptionKey = await crypto.subtle.deriveKey(
-      {
-        name: "PBKDF2",
-        salt: salt,
-        iterations: ENCRYPTION_CONFIG.iterations,
-        hash: "SHA-256",
-      },
-      keyMaterial,
-      {
-        name: ENCRYPTION_CONFIG.algorithm,
-        length: ENCRYPTION_CONFIG.keyLength,
-      },
-      false,
-      ["decrypt"]
+    // Import Noble V2 encryption
+    const { NobleEncryption } = await import("../crypto/noble-encryption");
+
+    console.log("🔐 decryptNsecSimple: Calling Noble V2 decryptNsec...");
+    const result = await NobleEncryption.decryptNsec(encryptedNsec, userSalt);
+
+    console.log("🔐 decryptNsecSimple: Noble V2 decryption successful");
+    console.log(
+      "🔐 decryptNsecSimple: Result starts with 'nsec':",
+      result.startsWith("nsec")
     );
 
-    // Decode the encrypted data (assuming base64 format)
-    const encryptedBuffer = Uint8Array.from(atob(encryptedNsec), (c) =>
-      c.charCodeAt(0)
-    );
-
-    // Extract IV (first 12 bytes for GCM)
-    const iv = encryptedBuffer.slice(0, ENCRYPTION_CONFIG.ivLength);
-    const ciphertext = encryptedBuffer.slice(ENCRYPTION_CONFIG.ivLength);
-
-    // Decrypt the data
-    const decryptedBuffer = await crypto.subtle.decrypt(
-      {
-        name: ENCRYPTION_CONFIG.algorithm,
-        iv: iv,
-      },
-      decryptionKey,
-      ciphertext
-    );
-
-    return new TextDecoder().decode(decryptedBuffer);
+    return result;
   } catch (error) {
-    console.error("Failed to decrypt nsec:", error);
-    throw new Error("Failed to decrypt nsec");
+    console.error("🔐 decryptNsecSimple: Noble V2 decryption failed:", error);
+    throw new Error(
+      `Nsec decryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
 
@@ -536,11 +518,10 @@ export async function decryptNsecBytes(
   userSalt: string
 ): Promise<Uint8Array> {
   try {
-    // Reuse the same derivation as decryptNsecSimple
-    const masterKey = await getMasterKey();
+    // Derivation without global master key: use user's salt as key material and salt
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(masterKey + userSalt),
+      new TextEncoder().encode(userSalt),
       { name: "PBKDF2" },
       false,
       ["deriveKey"]
@@ -561,8 +542,11 @@ export async function decryptNsecBytes(
       false,
       ["decrypt"]
     );
-    const encryptedBuffer = Uint8Array.from(atob(encryptedNsec), (c) =>
-      c.charCodeAt(0)
+    // Use consistent base64 decoding pattern like decryptSensitiveData
+    const encryptedBuffer = new Uint8Array(
+      atob(encryptedNsec)
+        .split("")
+        .map((c) => c.charCodeAt(0))
     );
     const iv = encryptedBuffer.slice(0, ENCRYPTION_CONFIG.ivLength);
     const ciphertext = encryptedBuffer.slice(ENCRYPTION_CONFIG.ivLength);
@@ -579,70 +563,30 @@ export async function decryptNsecBytes(
 }
 
 /**
- * Encrypt Nostr private key (nsec) - Simple format for database storage
- * Uses user's unique salt for encryption
+ * Encrypt Nostr private key (nsec) - Noble V2 Implementation
+ * Uses user's unique salt for zero-knowledge encryption
+ * @deprecated Legacy function - now uses Noble V2 internally
  */
 export async function encryptNsecSimple(
   nsec: string,
   userSalt: string
 ): Promise<string> {
   try {
-    // Get master key for encryption
-    const masterKey = await getMasterKey();
+    // Import Noble V2 encryption
+    const { NobleEncryption } = await import("../crypto/noble-encryption");
 
-    // Derive encryption key from user salt and master key
-    const keyMaterial = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(masterKey + userSalt),
-      { name: "PBKDF2" },
-      false,
-      ["deriveKey"]
-    );
+    console.log("🔐 encryptNsecSimple: Using Noble V2 implementation");
+    const result = await NobleEncryption.encryptNsec(nsec, userSalt);
 
-    // Generate salt for key derivation
-    const salt = new TextEncoder().encode(userSalt);
-
-    const encryptionKey = await crypto.subtle.deriveKey(
-      {
-        name: "PBKDF2",
-        salt: salt,
-        iterations: ENCRYPTION_CONFIG.iterations,
-        hash: "SHA-256",
-      },
-      keyMaterial,
-      {
-        name: ENCRYPTION_CONFIG.algorithm,
-        length: ENCRYPTION_CONFIG.keyLength,
-      },
-      false,
-      ["encrypt"]
-    );
-
-    // Generate random IV
-    const iv = crypto.getRandomValues(
-      new Uint8Array(ENCRYPTION_CONFIG.ivLength)
-    );
-
-    // Encrypt the nsec
-    const encryptedBuffer = await crypto.subtle.encrypt(
-      {
-        name: ENCRYPTION_CONFIG.algorithm,
-        iv: iv,
-      },
-      encryptionKey,
-      new TextEncoder().encode(nsec)
-    );
-
-    // Combine IV and ciphertext
-    const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
-    combined.set(iv);
-    combined.set(new Uint8Array(encryptedBuffer), iv.length);
-
-    // Return as base64
-    return btoa(String.fromCharCode(...combined));
+    console.log("🔐 encryptNsecSimple: Noble V2 encryption successful");
+    return result;
   } catch (error) {
-    console.error("Failed to encrypt nsec:", error);
-    throw new Error("Failed to encrypt nsec");
+    console.error("🔐 encryptNsecSimple: Noble V2 encryption failed:", error);
+    throw new Error(
+      `Nsec encryption failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
 

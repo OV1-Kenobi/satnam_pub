@@ -31,6 +31,7 @@ class SecureNsecManager {
   private cleanupTimer: number | null = null;
   private readonly MAX_SESSION_DURATION = 10 * 60 * 1000; // 10 minutes
   private readonly MAX_OPERATIONS = 50; // Maximum operations per session
+  private enforceBrowserLifetime = false;
 
   private constructor() {
     // Private constructor for singleton pattern
@@ -52,9 +53,16 @@ class SecureNsecManager {
    */
   async createPostRegistrationSession(
     nsecInput: string,
-    maxDurationMs?: number
+    maxDurationMs?: number,
+    maxOperations?: number,
+    browserLifetime?: boolean
   ): Promise<string> {
-    return await this.createTemporarySession(nsecInput, maxDurationMs);
+    return await this.createTemporarySession(
+      nsecInput,
+      maxDurationMs,
+      maxOperations,
+      browserLifetime
+    );
   }
 
   /**
@@ -65,7 +73,9 @@ class SecureNsecManager {
    */
   private async createTemporarySession(
     nsecInput: string,
-    maxDurationMs?: number
+    maxDurationMs?: number,
+    maxOperations?: number,
+    browserLifetime?: boolean
   ): Promise<string> {
     // Convert nsec to hex format if needed
     let nsecHex: string;
@@ -112,13 +122,16 @@ class SecureNsecManager {
       expiresAt: now + duration,
       sessionId,
       operationCount: 0,
-      maxOperations: this.MAX_OPERATIONS,
+      maxOperations: Math.max(1, maxOperations || this.MAX_OPERATIONS),
     };
 
-    // Set automatic cleanup timer
-    this.cleanupTimer = window.setTimeout(() => {
-      this.clearTemporarySession();
-    }, duration);
+    // Set automatic cleanup timer unless browserLifetime requested
+    this.enforceBrowserLifetime = !!browserLifetime;
+    if (!this.enforceBrowserLifetime) {
+      this.cleanupTimer = window.setTimeout(() => {
+        this.clearTemporarySession();
+      }, duration);
+    }
 
     return sessionId;
   }
@@ -198,6 +211,29 @@ class SecureNsecManager {
         this.temporarySession.operationCount,
       sessionId: this.temporarySession.sessionId,
     };
+  }
+
+  /**
+   * Get the active session ID if there's a valid session
+   * @returns Session ID string or null if no active session
+   */
+  getActiveSessionId(): string | null {
+    if (!this.temporarySession) {
+      return null;
+    }
+
+    const now = Date.now();
+    const expired = now > this.temporarySession.expiresAt;
+    const operationsExceeded =
+      this.temporarySession.operationCount >=
+      this.temporarySession.maxOperations;
+
+    if (expired || operationsExceeded) {
+      this.clearTemporarySession();
+      return null;
+    }
+
+    return this.temporarySession.sessionId;
   }
 
   /**
@@ -367,6 +403,9 @@ class SecureNsecManager {
     this.clearTemporarySession();
   }
 }
+
+// Export the class for type usage and manual instantiation
+export { SecureNsecManager };
 
 // Export singleton instance
 export const secureNsecManager = SecureNsecManager.getInstance();

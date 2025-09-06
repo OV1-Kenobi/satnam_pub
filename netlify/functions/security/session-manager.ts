@@ -45,16 +45,36 @@ export class SecureSessionManager {
    */
   private static async getJWTSecret(): Promise<string> {
     try {
+      console.log("🔐 DEBUG: getJWTSecret - checking JWT_SECRET env var");
+      const jwtSecret = getEnvVar("JWT_SECRET");
+      if (jwtSecret) {
+        console.log(
+          "🔐 DEBUG: getJWTSecret - using JWT_SECRET, length:",
+          jwtSecret.length
+        );
+        return jwtSecret;
+      }
+
+      console.log(
+        "🔐 DEBUG: getJWTSecret - JWT_SECRET not found, trying derived secret"
+      );
       const mod = await import("../utils/jwt-secret.js");
-      return await mod.getJwtSecret();
+      const secret = await mod.getJwtSecret();
+      console.log(
+        "🔐 DEBUG: getJWTSecret - derived secret, length:",
+        secret.length
+      );
+      return secret;
     } catch (error) {
+      console.error("🔐 DEBUG: getJWTSecret - error:", error);
       if (getEnvVar("NODE_ENV") === "production") {
         throw new Error(
-          "JWT secret derivation failed: DUID_SERVER_SECRET missing"
+          "JWT secret derivation failed: JWT_SECRET or DUID_SERVER_SECRET missing"
         );
       }
       // Development-only fallback to prevent local crashes
-      return "dev-only-jwt-secret-change-in-production";
+      console.log("🔐 DEBUG: getJWTSecret - using dev fallback secret");
+      return "fallback-secret";
     }
   }
 
@@ -248,15 +268,41 @@ export class SecureSessionManager {
     secret: string
   ): Promise<any | null> {
     try {
+      console.log("🔐 DEBUG: verifyJWTToken - starting verification");
+      console.log("🔐 DEBUG: verifyJWTToken - token length:", token.length);
+      console.log("🔐 DEBUG: verifyJWTToken - secret length:", secret.length);
+
       const parts = token.split(".");
-      if (parts.length !== 3) return null;
+      console.log(
+        "🔐 DEBUG: verifyJWTToken - token parts count:",
+        parts.length
+      );
+      if (parts.length !== 3) {
+        console.log(
+          "🔐 DEBUG: verifyJWTToken - invalid token format (not 3 parts)"
+        );
+        return null;
+      }
 
       const [encodedHeader, encodedPayload, encodedSignature] = parts;
+      console.log(
+        "🔐 DEBUG: verifyJWTToken - header length:",
+        encodedHeader.length
+      );
+      console.log(
+        "🔐 DEBUG: verifyJWTToken - payload length:",
+        encodedPayload.length
+      );
+      console.log(
+        "🔐 DEBUG: verifyJWTToken - signature length:",
+        encodedSignature.length
+      );
 
       const encoder = new TextEncoder();
       const data = encoder.encode(`${encodedHeader}.${encodedPayload}`);
       const keyData = encoder.encode(secret);
 
+      console.log("🔐 DEBUG: verifyJWTToken - importing crypto key");
       const cryptoKey = await crypto.subtle.importKey(
         "raw",
         keyData,
@@ -265,6 +311,7 @@ export class SecureSessionManager {
         ["verify"]
       );
 
+      console.log("🔐 DEBUG: verifyJWTToken - decoding signature");
       const signature = Uint8Array.from(
         atob(
           encodedSignature
@@ -279,14 +326,20 @@ export class SecureSessionManager {
         (c) => c.charCodeAt(0)
       );
 
+      console.log("🔐 DEBUG: verifyJWTToken - verifying signature");
       const isValid = await crypto.subtle.verify(
         "HMAC",
         cryptoKey,
         signature,
         data
       );
-      if (!isValid) return null;
+      console.log("🔐 DEBUG: verifyJWTToken - signature valid:", isValid);
+      if (!isValid) {
+        console.log("🔐 DEBUG: verifyJWTToken - signature verification failed");
+        return null;
+      }
 
+      console.log("🔐 DEBUG: verifyJWTToken - parsing payload");
       const payload = JSON.parse(
         atob(
           encodedPayload
@@ -299,11 +352,20 @@ export class SecureSessionManager {
         )
       );
 
+      console.log("🔐 DEBUG: verifyJWTToken - checking expiration");
       const now = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < now) return null;
+      if (payload.exp && payload.exp < now) {
+        console.log("🔐 DEBUG: verifyJWTToken - token expired", {
+          exp: payload.exp,
+          now,
+        });
+        return null;
+      }
 
+      console.log("🔐 DEBUG: verifyJWTToken - verification successful");
       return payload;
     } catch (error) {
+      console.error("🔐 DEBUG: verifyJWTToken - error:", error);
       return null;
     }
   }
@@ -363,13 +425,31 @@ export class SecureSessionManager {
    * Validate JWT token and extract session data
    */
   static async validateSession(token: string): Promise<SessionData | null> {
-    if (!token) return null;
+    if (!token) {
+      console.log("🔐 DEBUG: validateSession - no token provided");
+      return null;
+    }
 
     try {
+      console.log("🔐 DEBUG: validateSession - getting JWT secret");
       const jwtSecret = await this.getJWTSecret();
+      console.log(
+        "🔐 DEBUG: validateSession - JWT secret obtained, verifying token"
+      );
       const decoded = await this.verifyJWTToken(token, jwtSecret);
+      console.log(
+        "🔐 DEBUG: validateSession - token verification result:",
+        decoded ? "success" : "failed"
+      );
+      if (decoded) {
+        console.log(
+          "🔐 DEBUG: validateSession - decoded payload keys:",
+          Object.keys(decoded)
+        );
+      }
       return decoded ? (decoded as SessionData) : null;
     } catch (error) {
+      console.error("🔐 DEBUG: validateSession - error:", error);
       return null;
     }
   }

@@ -23,7 +23,6 @@ import {
   Zap
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { MessageSendResult, nostrMessageService } from '../../lib/nostr-message-service'
 import { Contact } from '../../types/contacts'
 import { PrivacyLevel, calculatePrivacyMetrics, getDefaultPrivacyLevel } from '../../types/privacy'
 import { ContactsManagerModal } from '../ContactsManagerModal'
@@ -573,13 +572,25 @@ export function PrivateCommunicationModal({
       let result: MessageSendResult;
 
       if (messageType === 'individual') {
-        // Send individual message using unified service
-        result = await nostrMessageService.sendMessage({
-          content: message,
-          recipientNpub: recipient,
-          privacyLevel,
-          messageType: 'message'
-        });
+        // Send individual message using CEPS gift-wrapped pathway (with nip04 fallback inside CEPS)
+        const sendResultId = await CEPS.sendGiftWrappedDirectMessage(
+          {
+            sessionId: 'client-ui', // UI-scoped; CEPS uses internal userSession
+            displayNameHash: recipientDisplay || 'recipient',
+            encryptedNpub: recipient, // CEPS will npubToHex inside
+            familyRole: 'private',
+            trustLevel: 'known',
+            supportsGiftWrap: true,
+            preferredEncryption: 'auto',
+            addedByHash: 'client-ui'
+          } as any,
+          {
+            type: 'text',
+            content: message,
+            meta: { privacyLevel, messageType: 'message' }
+          }
+        );
+        result = { success: true, messageId: sendResultId, method: 'giftwrapped' as any };
 
         if (result.success) {
           // Save to history
@@ -602,17 +613,11 @@ export function PrivateCommunicationModal({
           setError(`Failed to send message: ${result.error}`);
         }
       } else {
-        // Send group message using unified service
+        // Send group message via CEPS group announcement (or group messaging service)
         const group = groups.find(g => g.id === selectedGroup);
-
-        result = await nostrMessageService.sendMessage({
-          content: message,
-          recipientNpub: selectedGroup, // Use groupId as recipient for group messages
-          privacyLevel,
-          messageType: 'message',
-          groupId: selectedGroup,
-          groupName: group?.name
-        });
+        if (!group) throw new Error('Group not found');
+        const eventId = await CEPS.sendGroupAnnouncement(selectedGroup, message);
+        result = { success: true, messageId: eventId, method: 'giftwrapped' as any }
 
         if (result.success) {
           // Save to history

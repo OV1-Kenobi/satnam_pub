@@ -15,8 +15,8 @@
  * ✅ Real database operations with Supabase integration
  */
 
-import crypto from 'crypto';
-import { promisify } from 'util';
+import * as crypto from 'node:crypto';
+import { promisify } from 'node:util';
 import { supabase, supabaseKeyType } from '../../netlify/functions/supabase.js';
 
 // SECURE JWT CREATION FUNCTION (compatible with auth-unified verification)
@@ -53,6 +53,16 @@ async function createSecureJWT(payload) {
 
 // REMOVED: Deprecated getEnvVar() function
 // Now using direct process.env access as per new Vite-injected pattern
+
+
+// Shared DUID secret utility to standardize secret handling
+async function getDUIDSecret() {
+  const secret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
+  if (!secret) {
+    throw new Error('Server configuration error: DUID secret missing');
+  }
+  return secret;
+}
 
 /**
  * SECURITY: Password hashing utilities with PBKDF2/SHA-512
@@ -222,9 +232,15 @@ function validateRegistrationData(userData) {
     errors.push({ field: 'npub', message: 'Valid npub is required' });
   }
 
-  // Validate encrypted nsec (should be present for both generated and imported accounts)
+  // Validate nsec (should be present for both generated and imported accounts)
+  // Note: Now expecting raw nsec, server will handle Noble V2 encryption
   if (!userData.encryptedNsec || typeof userData.encryptedNsec !== 'string') {
-    errors.push({ field: 'encryptedNsec', message: 'Encrypted private key is required' });
+    errors.push({ field: 'encryptedNsec', message: 'Private key is required' });
+  }
+
+  // Validate nsec format (should start with nsec1)
+  if (userData.encryptedNsec && !userData.encryptedNsec.startsWith('nsec1')) {
+    errors.push({ field: 'encryptedNsec', message: 'Invalid private key format - must be bech32 nsec' });
   }
 
   // Username format validation
@@ -285,12 +301,7 @@ async function checkUsernameAvailability(username) {
 
     // Server-side DUID hashing for availability check (no plaintext lookup)
     const crypto = await import('node:crypto');
-    // SERVER-SIDE ONLY - No VITE_ prefixed variables
-    const secret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
-    if (!secret) {
-      console.error('CRITICAL: DUID server secret not configured - blocking registration');
-      throw new Error('Server configuration error: DUID secret missing');
-    }
+    const secret = await getDUIDSecret();
     const identifier = `${local}@${domain}`;
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(identifier);
@@ -388,6 +399,19 @@ async function createUserIdentity(userData, spendingLimits) {
     // Generate unique user salt for maximum encryption (still needed for sensitive data)
     const userSalt = await generateUserSalt();
 
+    // NOBLE V2 ENCRYPTION: Encrypt nsec with user salt for zero-knowledge storage
+    console.log('🔐 Encrypting nsec with Noble V2 using generated user salt');
+    let encryptedNsecNoble;
+    try {
+      // Import Noble V2 encryption from the client-side module
+      const { encryptNsecSimple } = await import('../../src/lib/privacy/encryption.js');
+      encryptedNsecNoble = await encryptNsecSimple(userData.encryptedNsec, userSalt);
+      console.log('✅ Noble V2 nsec encryption successful, format:', encryptedNsecNoble.substring(0, 20) + '...');
+    } catch (encryptError) {
+      console.error('❌ Noble V2 nsec encryption failed:', encryptError);
+      throw new Error('Failed to encrypt nsec with Noble V2: ' + encryptError.message);
+    }
+
     // Generate secure password salt and hash
     const passwordSalt = generatePasswordSalt();
     const passwordHash = await hashPassword(userData.password, passwordSalt);
@@ -401,7 +425,7 @@ async function createUserIdentity(userData, spendingLimits) {
       hashedUserData = await createHashedUserData({
         npub: userData.npub,
         nip05: userData.nip05,
-        encryptedNsec: userData.encryptedNsec,
+        encryptedNsec: encryptedNsecNoble, // Use Noble V2 encrypted nsec
         password: userData.password
       }, userSalt);
 
@@ -420,10 +444,13 @@ async function createUserIdentity(userData, spendingLimits) {
       id: deterministicUserId, // Use DUID as primary key for O(1) database lookups
       user_salt: userSalt, // Store user salt for future hashing operations
 
+      // DECRYPTABLE NSEC: Store Noble V2 encrypted nsec for authentication flow
+      encrypted_nsec: encryptedNsecNoble, // Store Noble V2 encrypted ciphertext
+      encrypted_nsec_iv: null, // IV is included in Noble V2 format
+
       // HASHED COLUMNS ONLY - MAXIMUM ENCRYPTION COMPLIANCE
       hashed_username: hashedUsername,
       hashed_npub: hashedUserData.hashed_npub,
-      hashed_encrypted_nsec: hashedUserData.hashed_encrypted_nsec,
       hashed_nip05: hashedUserData.hashed_nip05,
       hashed_lightning_address: hashedLightningAddress,
 
@@ -457,7 +484,7 @@ async function createUserIdentity(userData, spendingLimits) {
       profileDataKeys: Object.keys(profileData),
       hasId: !!profileData.id,
       hasHashedNpub: !!profileData.hashed_npub,
-      hasHashedEncryptedNsec: !!profileData.hashed_encrypted_nsec
+      hasEncryptedNsec: !!profileData.encrypted_nsec
     });
 
     // DIAGNOSTIC: Test Supabase connection before insert
@@ -488,11 +515,30 @@ async function createUserIdentity(userData, spendingLimits) {
     // IMPORTANT: Using anon key requires RLS policies to allow this insert for unauthenticated (anon) role.
     // Ensure database has proper RLS for public registration or switch to an authenticated flow.
     console.log('🔄 Executing database insert...');
-    const { data, error } = await supabase
+
+    // Set per-request RLS context for INSERT by DUID (safe fallback if helper missing)
+    try {
+      await supabase.rpc('app_set_config', {
+        setting_name: 'app.registration_duid',
+        setting_value: profileData.id,
+        is_local: true,
+      });
+    } catch (e) {
+      try {
+        await supabase.rpc('set_app_config', {
+          setting_name: 'app.registration_duid',
+          setting_value: profileData.id,
+          is_local: true,
+        });
+      } catch {}
+    }
+
+    const { error } = await supabase
       .from('user_identities')
-      .insert([profileData])
-      .select()
-      .single();
+      .insert([profileData], { returning: 'minimal' });
+
+    // Since we provided a deterministic DUID as id, we can return it without selecting
+    const data = error ? null : { id: profileData.id };
 
     if (error) {
       console.error('User identity creation failed:', error);
@@ -613,28 +659,68 @@ export const handler = async (event, context) => {
     }
 
     // Extract client information for security
-    // Standardized IP-based rate limiting (60s, 5 attempts for registration)
+    // Environment-aware rate limiting for registration attempts
     try {
       const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
       const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
-      const windowSec = 60;
+
+      // Adjust rate limits based on environment
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      const windowSec = isDevelopment ? 300 : 60; // 5 minutes in dev, 1 minute in prod
+      const maxAttempts = isDevelopment ? 50 : 5; // 50 attempts in dev, 5 in prod
+
+      console.log(`🔒 Rate limiting: ${maxAttempts} attempts per ${windowSec}s (${isDevelopment ? 'development' : 'production'} mode)`);
+
       const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
       const { supabase: rateLimitSupabase } = await import('../../netlify/functions/supabase.js');
-      const { data, error } = await rateLimitSupabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 5 });
+      const { data, error } = await rateLimitSupabase.rpc('increment_auth_rate', {
+        p_identifier: clientIp,
+        p_scope: 'ip',
+        p_window_start: windowStart,
+        p_limit: maxAttempts
+      });
+
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
-      if (error || limited) {
+      if (error) {
+        console.error('Rate limiting error:', error);
+        // In development, don't block on rate limiting errors
+        if (isDevelopment) {
+          console.warn('⚠️ Rate limiting error in development - allowing request');
+        } else {
+          return {
+            statusCode: 429,
+            headers: corsHeaders,
+            body: JSON.stringify({ success: false, error: 'Rate limiting service unavailable' })
+          };
+        }
+      }
+
+      if (limited) {
+        console.warn(`🚫 Rate limit exceeded for IP: ${clientIp}`);
         return {
           statusCode: 429,
           headers: corsHeaders,
-          body: JSON.stringify({ success:false, error:'Too many registration attempts' })
+          body: JSON.stringify({
+            success: false,
+            error: `Too many registration attempts. Please wait ${windowSec} seconds before trying again.`
+          })
         };
       }
-    } catch {
-      return {
-        statusCode: 429,
-        headers: corsHeaders,
-        body: JSON.stringify({ success:false, error:'Too many registration attempts' })
-      };
+
+      console.log(`✅ Rate limit check passed for IP: ${clientIp}`);
+    } catch (rateLimitError) {
+      console.error('Rate limiting exception:', rateLimitError);
+      // In development, don't block on rate limiting exceptions
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      if (isDevelopment) {
+        console.warn('⚠️ Rate limiting exception in development - allowing request');
+      } else {
+        return {
+          statusCode: 429,
+          headers: corsHeaders,
+          body: JSON.stringify({ success: false, error: 'Too many registration attempts' })
+        };
+      }
     }
 
 
@@ -654,6 +740,10 @@ export const handler = async (event, context) => {
         })
       };
     }
+    // Track reserved NIP-05 to allow cleanup on failure
+    let reservedHashedNip05 = null;
+    let reservedDomain = 'satnam.pub';
+
 
     const validatedData = validationResult.data;
 
@@ -698,6 +788,62 @@ export const handler = async (event, context) => {
         })
       };
     }
+    // Reserve NIP-05: insert into nip05_records to prevent duplicate usernames
+    try {
+      const domain = 'satnam.pub';
+      const local = String(validatedData.username || '').trim().toLowerCase();
+      const identifier = `${local}@${domain}`;
+
+      const { createHmac } = await import('node:crypto');
+      const secret = await getDUIDSecret();
+
+      const hashed_nip05 = createHmac('sha256', secret).update(identifier).digest('hex');
+      const hashed_npub = createHmac('sha256', secret).update(`NPUBv1:${validatedData.npub}`).digest('hex');
+
+      // Track reservation details for potential cleanup on failure
+      reservedHashedNip05 = hashed_nip05;
+      reservedDomain = domain;
+
+      const { error: nip05InsertError } = await supabase
+        .from('nip05_records')
+        .insert({
+          domain,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          hashed_nip05,
+          hashed_npub,
+        });
+
+      if (nip05InsertError) {
+        // Unique violation implies username already taken
+        const code = nip05InsertError.code || '';
+        console.warn('NIP-05 reservation insert error:', nip05InsertError);
+        if (code === '23505' || /duplicate/i.test(nip05InsertError.message || '')) {
+          return {
+            statusCode: 409,
+            headers: corsHeaders,
+            body: JSON.stringify({ success: false, error: 'Username is already taken', field: 'username' })
+          };
+        }
+        // Any other error -> fail fast with clear message
+        return {
+          statusCode: 500,
+          headers: corsHeaders,
+          body: JSON.stringify({ success: false, error: 'Failed to reserve username' })
+        };
+      }
+
+      console.log('✅ NIP-05 reservation created for', identifier);
+    } catch (reserveErr) {
+      console.error('Failed to reserve NIP-05 username:', reserveErr);
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({ success: false, error: 'Failed to reserve username' })
+      };
+    }
+
 
     // Generate privacy-preserving identifier
     const hashedIdentifier = await generatePrivacyPreservingHash(validatedData.username);
@@ -786,6 +932,8 @@ export const handler = async (event, context) => {
         id: profileResult.data.id, // FIXED: Use actual database user ID for consistency
         hashedId: hashedId, // Include hashed ID for JWT validation
         username: validatedData.username,
+        nip05: validatedData.nip05 || `${validatedData.username}@satnam.pub`,
+        lightningAddress: validatedData.lightningAddress || `${validatedData.username}@satnam.pub`,
         displayName: validatedData.displayName || validatedData.username,
         role: standardizedRole,
         is_active: true, // FIXED: Include is_active for authentication state
@@ -848,6 +996,20 @@ export const handler = async (event, context) => {
 
   } catch (error) {
     console.error('Registration error:', error);
+
+    // Cleanup reserved NIP-05 if user creation failed after reservation
+    try {
+      if (reservedHashedNip05 && reservedDomain) {
+        await supabase
+          .from('nip05_records')
+          .delete()
+          .eq('hashed_nip05', reservedHashedNip05)
+          .eq('domain', reservedDomain);
+        console.log('✅ Cleaned up reserved NIP-05 after registration failure');
+      }
+    } catch (cleanupError) {
+      console.error('⚠️ Failed to cleanup reserved NIP-05:', cleanupError);
+    }
 
     return {
       statusCode: 500,

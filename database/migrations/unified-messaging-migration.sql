@@ -15,26 +15,38 @@ CREATE TABLE IF NOT EXISTS messaging_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id TEXT NOT NULL UNIQUE,
     user_hash TEXT NOT NULL,
-    encrypted_nsec TEXT NOT NULL,
     session_key TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     ip_address INET,
     user_agent TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Constraints
     CONSTRAINT messaging_sessions_session_id_check CHECK (length(session_id) >= 32),
     CONSTRAINT messaging_sessions_user_hash_check CHECK (length(user_hash) >= 32),
-    CONSTRAINT messaging_sessions_encrypted_nsec_check CHECK (length(encrypted_nsec) >= 32),
     CONSTRAINT messaging_sessions_session_key_check CHECK (length(session_key) >= 32),
     CONSTRAINT messaging_sessions_expires_at_check CHECK (expires_at > created_at)
 );
+
+-- Backward compatibility: drop columns if exist in idempotent manner
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='messaging_sessions' AND column_name='encrypted_nsec'
+  ) THEN
+    EXECUTE 'ALTER TABLE messaging_sessions DROP COLUMN IF EXISTS encrypted_nsec';
+  END IF;
+END $$;
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_messaging_sessions_user_hash ON messaging_sessions(user_hash);
 CREATE INDEX IF NOT EXISTS idx_messaging_sessions_expires_at ON messaging_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_messaging_sessions_created_at ON messaging_sessions(created_at);
+
+
+
 
 -- =====================================================================================
 -- 2. PRIVACY CONTACTS TABLE
@@ -56,16 +68,16 @@ CREATE TABLE IF NOT EXISTS privacy_contacts (
     added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     added_by_hash TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Foreign key to messaging sessions
     CONSTRAINT fk_privacy_contacts_session FOREIGN KEY (session_id) REFERENCES messaging_sessions(session_id) ON DELETE CASCADE,
-    
+
     -- Constraints
     CONSTRAINT privacy_contacts_session_id_check CHECK (length(session_id) >= 32),
     CONSTRAINT privacy_contacts_encrypted_npub_check CHECK (length(encrypted_npub) >= 32),
     CONSTRAINT privacy_contacts_display_name_hash_check CHECK (length(display_name_hash) >= 32),
     CONSTRAINT privacy_contacts_added_by_hash_check CHECK (length(added_by_hash) >= 32),
-    
+
     -- Unique constraint for session + contact combination
     UNIQUE(session_id, display_name_hash)
 );
@@ -83,7 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_privacy_contacts_added_at ON privacy_contacts(add
 
 CREATE TABLE IF NOT EXISTS privacy_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id TEXT NOT NULL,
+    session_id TEXT NOT NULL UNIQUE,
     name_hash TEXT NOT NULL,
     description_hash TEXT,
     group_type TEXT NOT NULL CHECK (group_type IN ('family', 'business', 'friends', 'advisors')),
@@ -94,13 +106,13 @@ CREATE TABLE IF NOT EXISTS privacy_groups (
     created_by_hash TEXT NOT NULL,
     last_activity_hash TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Constraints
     CONSTRAINT privacy_groups_session_id_check CHECK (length(session_id) >= 32),
     CONSTRAINT privacy_groups_name_hash_check CHECK (length(name_hash) >= 32),
     CONSTRAINT privacy_groups_created_by_hash_check CHECK (length(created_by_hash) >= 32),
     CONSTRAINT privacy_groups_admin_hashes_check CHECK (array_length(admin_hashes, 1) >= 1),
-    
+
     -- Unique constraint for session + group name combination
     UNIQUE(session_id, name_hash)
 );
@@ -110,6 +122,9 @@ CREATE INDEX IF NOT EXISTS idx_privacy_groups_session_id ON privacy_groups(sessi
 CREATE INDEX IF NOT EXISTS idx_privacy_groups_group_type ON privacy_groups(group_type);
 CREATE INDEX IF NOT EXISTS idx_privacy_groups_created_by_hash ON privacy_groups(created_by_hash);
 CREATE INDEX IF NOT EXISTS idx_privacy_groups_created_at ON privacy_groups(created_at);
+
+
+
 
 -- =====================================================================================
 -- 4. PRIVACY GROUP MEMBERS TABLE
@@ -125,16 +140,16 @@ CREATE TABLE IF NOT EXISTS privacy_group_members (
     joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     invited_by_hash TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Foreign key to privacy groups
     CONSTRAINT fk_privacy_group_members_group FOREIGN KEY (group_session_id) REFERENCES privacy_groups(session_id) ON DELETE CASCADE,
-    
+
     -- Constraints
     CONSTRAINT privacy_group_members_group_session_id_check CHECK (length(group_session_id) >= 32),
     CONSTRAINT privacy_group_members_member_hash_check CHECK (length(member_hash) >= 32),
     CONSTRAINT privacy_group_members_display_name_hash_check CHECK (length(display_name_hash) >= 32),
     CONSTRAINT privacy_group_members_invited_by_hash_check CHECK (length(invited_by_hash) >= 32),
-    
+
     -- Unique constraint for group + member combination
     UNIQUE(group_session_id, member_hash)
 );
@@ -165,17 +180,17 @@ CREATE TABLE IF NOT EXISTS privacy_group_messages (
     guardian_pubkey TEXT,
     approval_timestamp TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Foreign key to privacy groups
     CONSTRAINT fk_privacy_group_messages_group FOREIGN KEY (group_session_id) REFERENCES privacy_groups(session_id) ON DELETE CASCADE,
-    
+
     -- Constraints
     CONSTRAINT privacy_group_messages_message_session_id_check CHECK (length(message_session_id) >= 32),
     CONSTRAINT privacy_group_messages_group_session_id_check CHECK (length(group_session_id) >= 32),
     CONSTRAINT privacy_group_messages_sender_hash_check CHECK (length(sender_hash) >= 32),
     CONSTRAINT privacy_group_messages_encrypted_content_check CHECK (length(encrypted_content) >= 1),
     CONSTRAINT privacy_group_messages_approval_check CHECK (
-        (guardian_approved = false) OR 
+        (guardian_approved = false) OR
         (guardian_approved = true AND guardian_pubkey IS NOT NULL AND approval_timestamp IS NOT NULL)
     )
 );
@@ -207,11 +222,11 @@ CREATE TABLE IF NOT EXISTS privacy_direct_messages (
     guardian_pubkey TEXT,
     approval_timestamp TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Foreign key to messaging sessions
     CONSTRAINT fk_privacy_direct_messages_sender FOREIGN KEY (sender_session_id) REFERENCES messaging_sessions(session_id) ON DELETE CASCADE,
     CONSTRAINT fk_privacy_direct_messages_recipient FOREIGN KEY (recipient_session_id) REFERENCES messaging_sessions(session_id) ON DELETE CASCADE,
-    
+
     -- Constraints
     CONSTRAINT privacy_direct_messages_message_session_id_check CHECK (length(message_session_id) >= 32),
     CONSTRAINT privacy_direct_messages_sender_session_id_check CHECK (length(sender_session_id) >= 32),
@@ -219,7 +234,7 @@ CREATE TABLE IF NOT EXISTS privacy_direct_messages (
     CONSTRAINT privacy_direct_messages_encrypted_content_check CHECK (length(encrypted_content) >= 1),
     CONSTRAINT privacy_direct_messages_different_users_check CHECK (sender_session_id != recipient_session_id),
     CONSTRAINT privacy_direct_messages_approval_check CHECK (
-        (guardian_approved = false) OR 
+        (guardian_approved = false) OR
         (guardian_approved = true AND guardian_pubkey IS NOT NULL AND approval_timestamp IS NOT NULL)
     )
 );
@@ -454,6 +469,9 @@ CREATE TRIGGER update_guardian_approval_requests_updated_at BEFORE UPDATE ON gua
 CREATE TRIGGER update_identity_disclosure_preferences_updated_at BEFORE UPDATE ON identity_disclosure_preferences FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to clean up expired sessions
+-- Drop existing function to avoid return type conflicts
+DROP FUNCTION IF EXISTS cleanup_expired_sessions();
+
 CREATE OR REPLACE FUNCTION cleanup_expired_sessions()
 RETURNS void AS $$
 BEGIN
@@ -462,6 +480,8 @@ END;
 $$ language 'plpgsql';
 
 -- Function to clean up expired approval requests
+-- Drop existing function to avoid return type conflicts
+DROP FUNCTION IF EXISTS cleanup_expired_approvals();
 CREATE OR REPLACE FUNCTION cleanup_expired_approvals()
 RETURNS void AS $$
 BEGIN
@@ -485,6 +505,14 @@ $$ language 'plpgsql';
 CREATE INDEX IF NOT EXISTS idx_privacy_contacts_session_id_fk ON privacy_contacts(session_id);
 CREATE INDEX IF NOT EXISTS idx_privacy_group_members_group_session_id_fk ON privacy_group_members(group_session_id);
 CREATE INDEX IF NOT EXISTS idx_privacy_group_messages_group_session_id_fk ON privacy_group_messages(group_session_id);
+-- Helper function for setting RLS context (used by tests and applications)
+CREATE OR REPLACE FUNCTION set_config(setting_name TEXT, setting_value TEXT, is_local BOOLEAN DEFAULT true)
+RETURNS TEXT AS $$
+BEGIN
+  PERFORM set_config(setting_name, setting_value, is_local);
+  RETURN setting_value;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE INDEX IF NOT EXISTS idx_privacy_direct_messages_sender_session_id_fk ON privacy_direct_messages(sender_session_id);
 CREATE INDEX IF NOT EXISTS idx_privacy_direct_messages_recipient_session_id_fk ON privacy_direct_messages(recipient_session_id);
 CREATE INDEX IF NOT EXISTS idx_identity_disclosure_preferences_session_id_fk ON identity_disclosure_preferences(session_id);

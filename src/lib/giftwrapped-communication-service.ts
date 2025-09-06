@@ -1,3 +1,5 @@
+import SecureTokenManager from "./auth/secure-token-manager";
+
 export interface GiftwrappedMessageConfig {
   content: string;
   recipient: string;
@@ -25,7 +27,12 @@ export interface GiftWrappedMessage {
 }
 
 export class GiftwrappedCommunicationService {
-  private apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
+  private apiBaseUrl =
+    (typeof process !== "undefined" &&
+      process.env &&
+      process.env.VITE_API_BASE_URL) ||
+    import.meta.env.VITE_API_URL ||
+    "/api";
   private relays: string[];
 
   constructor() {
@@ -53,48 +60,40 @@ export class GiftwrappedCommunicationService {
     deliveryMethod?: string;
   }> {
     try {
-      const response = await fetch(
-        `${this.apiBaseUrl}/communications/giftwrapped`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            content: config.content,
-            recipient: config.recipient,
-            sender: config.sender,
-            encryptionLevel: config.encryptionLevel,
-            communicationType: config.communicationType,
-            messageId: this.generateId(),
-            timestamp: new Date().toISOString(),
-            signedProof: config.signedProof, // Include the signed proof for authentication
-            // Add additional security metadata
-            securityVersion: "1.1", // Version of the security protocol
-            authMethod: "schnorr", // Authentication method used
-          }),
-        }
+      console.log(
+        "🔐 GiftwrappedCommunicationService: Using ClientMessageService for hybrid signing"
       );
-      const result = await response.json();
 
-      if (response.ok) {
-        return {
-          success: true,
-          messageId: result.messageId,
-          encryptionUsed: result.encryptionUsed,
-          deliveryMethod: result.deliveryMethod,
-        };
-      } else {
-        return {
-          success: false,
-          error: result.error || "Failed to send message",
-        };
-      }
+      // Use the ClientMessageService which handles hybrid signing
+      const { clientMessageService } = await import(
+        "./messaging/client-message-service"
+      );
+
+      const messageData = {
+        recipient: config.recipient,
+        content: config.content,
+        messageType: "direct" as const,
+        encryptionLevel: config.encryptionLevel || "maximum",
+        communicationType: config.communicationType || "individual",
+      };
+
+      const result = await clientMessageService.sendGiftWrappedMessage(
+        messageData
+      );
+
+      return {
+        success: result.success,
+        messageId: result.messageId,
+        error: result.error,
+        encryptionUsed: messageData.encryptionLevel,
+        deliveryMethod: result.signingMethod || "hybrid",
+      };
     } catch (error) {
       console.error("Giftwrapped communication error:", error);
       return {
         success: false,
-        error: "Network error occurred",
+        error:
+          error instanceof Error ? error.message : "Network error occurred",
       };
     }
   }
@@ -116,14 +115,76 @@ export class GiftwrappedCommunicationService {
 
   async loadContacts(memberId: string): Promise<any[]> {
     try {
+      const token = SecureTokenManager.getAccessToken();
       const response = await fetch(
-        `${this.apiBaseUrl}/communications/get-contacts?memberId=${memberId}`
+        `${this.apiBaseUrl}/communications/get-contacts?memberId=current-user`,
+        {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
       );
+      const contentType = response.headers.get("content-type") || "";
+      const result = contentType.includes("application/json")
+        ? await response.json().catch(async () => ({
+            success: false,
+            error: await response.text().catch(() => "Invalid JSON"),
+          }))
+        : {
+            success: false,
+            error: await response.text().catch(() => `HTTP ${response.status}`),
+          };
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(
+          result && (result as any).error
+            ? (result as any).error
+            : `HTTP ${response.status}`
+        );
       }
-      const result = await response.json();
-      return result.success ? result.contacts : [];
+      if (!result.success || !Array.isArray(result.contacts)) return [];
+
+      // Decrypt contacts using per-record salt/iv and return UI-friendly objects
+      const { decryptSensitiveData } = await import("./privacy/encryption");
+
+      const decrypted = await Promise.all(
+        result.contacts.map(async (row: any) => {
+          try {
+            const decryptedJson = await decryptSensitiveData({
+              encrypted: row.encrypted_contact,
+              salt: row.contact_encryption_salt,
+              iv: row.contact_encryption_iv,
+              tag: "",
+            });
+            const payload = JSON.parse(decryptedJson || "{}");
+            const npub: string = payload.npub || "";
+            const displayName: string =
+              payload.displayName ||
+              payload.nip05 ||
+              (npub ? `${npub.slice(0, 12)}…` : "Contact");
+
+            return {
+              id: row.id,
+              username: displayName,
+              npub,
+              supportsGiftWrap: !!row.supports_gift_wrap,
+              trustLevel: row.trust_level || "unverified",
+              relationshipType: row.family_role || "contact",
+            };
+          } catch (e) {
+            console.warn("Contact decrypt failed", e);
+            return {
+              id: row.id,
+              username: "Contact",
+              npub: "",
+              supportsGiftWrap: !!row.supports_gift_wrap,
+              trustLevel: row.trust_level || "unverified",
+              relationshipType: row.family_role || "contact",
+            };
+          }
+        })
+      );
+
+      return decrypted;
     } catch (error) {
       console.error("Failed to load contacts:", error);
       return [];

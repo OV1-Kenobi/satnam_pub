@@ -67,10 +67,17 @@
   status = 200
   force = true
 
-# Consolidated auth endpoints routed via auth-unified (MUST come before generic API routes)
+# Consolidated auth endpoints (specific routes override below)
 [[redirects]]
   from = "/api/auth/*"
   to = "/.netlify/functions/auth-unified"
+  status = 200
+  force = true
+
+# Lightweight session-user endpoint for post-auth session bootstrap
+[[redirects]]
+  from = "/api/auth/session-user"
+  to = "/.netlify/functions/auth-session-user"
   status = 200
   force = true
 
@@ -78,6 +85,38 @@
 [[redirects]]
   from = "/api/phoenixd/status"
   to = "/.netlify/functions/phoenixd-status"
+  status = 200
+  force = true
+
+# Communications API endpoints (single unified handler)
+[[redirects]]
+  from = "/api/communications/giftwrapped"
+  to = "/.netlify/functions/unified-communications"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/communications/messages"
+  to = "/.netlify/functions/unified-communications"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/communications/get-contacts"
+  to = "/.netlify/functions/unified-communications"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/communications/check-giftwrap-support"
+  to = "/.netlify/functions/communications-check-giftwrap-support"
+  status = 200
+  force = true
+
+# Ensure peer invitation processing endpoint is explicitly mapped
+[[redirects]]
+  from = "/api/authenticated/process-invitation"
+  to = "/.netlify/functions/invitation-unified"
   status = 200
   force = true
 
@@ -373,6 +412,21 @@
     "lib/security/duid-generator.js",
     "netlify/functions/utils/env.ts",
     "utils/privacy-logger.js"
+  ]
+
+
+# Unified communications function configuration
+[functions."unified-communications"]
+  node_bundler = "esbuild"
+  memory_size = 128
+  timeout = 15
+  included_files = [
+    "api/communications/messages.js",
+    "api/communications/get-contacts.js",
+    "api/communications/giftwrapped.js",
+    "netlify/functions/utils/rate-limiter.js",
+    "netlify/functions/supabase.js",
+    "netlify/functions/security/session-manager.js"
   ]
 
 

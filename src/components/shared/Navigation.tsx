@@ -90,12 +90,7 @@ const Navigation: React.FC<NavigationProps> = ({
               Individual Finances
             </button>
 
-            <button
-              onClick={() => handleProtectedRoute("communications")}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 text-xs"
-            >
-              Communications
-            </button>
+
 
             {/* Communications Button - No background, center position */}
             <button

@@ -5,8 +5,9 @@
  * NO npubs/nsec - ONLY secure UUIDs and encrypted sessions.
  */
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging'
+import { recoverySessionBridge } from '../../lib/auth/recovery-session-bridge'
 import { useAuth } from '../auth/AuthProvider'
 
 interface MessagingIntegrationProps {
@@ -179,6 +180,63 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
     }
   }, [messagingState.lastError])
 
+  // Ensure SecureSession on mount when authenticated but no session
+  const [ensuringSession, setEnsuringSession] = useState(false)
+  const [ensureMessage, setEnsureMessage] = useState<string | null>(null)
+  const isAuthenticated = useMemo(() => authenticated && !!user, [authenticated, user])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const ensure = async () => {
+      try {
+        if (!isAuthenticated) return
+
+        // Quick check: do we already have a signing session?
+        const status = (recoverySessionBridge as any).getRecoverySessionStatus?.()
+        const hasSession = !!status?.hasSession && !!status?.sessionId
+        if (hasSession) return
+
+        // Show a brief indicator (200–400ms)
+        setEnsuringSession(true)
+        setEnsureMessage('Initializing secure session...')
+
+        // Fetch server user payload
+        const resp = await fetch('/api/auth/session-user', { method: 'GET', credentials: 'include' })
+        if (!resp.ok) {
+          console.warn('ensureSessionOnMount: session-user fetch failed', resp.status)
+          return
+        }
+        const json = await resp.json().catch(() => null) as { success?: boolean; data?: { user?: any } } | null
+        const u = json?.data?.user
+        if (!u || !(u.user_salt && (u.hashed_encrypted_nsec || u.encrypted_nsec))) {
+          console.warn('ensureSessionOnMount: insufficient user payload for session creation')
+          return
+        }
+
+        // Attempt to create SecureSession
+        const session = await recoverySessionBridge.createRecoverySessionFromUser(u, { duration: 15 * 60 * 1000 })
+        if (!session.success) {
+          console.warn('ensureSessionOnMount: session creation failed', session.error)
+        }
+      } catch (e) {
+        console.warn('ensureSessionOnMount: error', e)
+      } finally {
+        // Keep indicator for a minimum duration to avoid flicker
+        setTimeout(() => {
+          if (!cancelled) {
+            setEnsuringSession(false)
+            setEnsureMessage(null)
+          }
+        }, 250)
+      }
+    }
+
+    // Run once on mount/auth ready
+    if (isAuthenticated) ensure()
+    return () => { cancelled = true }
+  }, [isAuthenticated])
+
   return (
     <div className={`messaging-integration ${className}`}>
       {/* Notifications */}
@@ -207,6 +265,15 @@ export const MessagingIntegration: React.FC<MessagingIntegrationProps> = ({
               </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Brief session init indicator */}
+      {ensuringSession && ensureMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40">
+          <div className="px-3 py-2 rounded bg-blue-600 text-white text-xs shadow-lg">
+            {ensureMessage}
+          </div>
         </div>
       )}
 

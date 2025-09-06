@@ -52,28 +52,80 @@ export const handler = async (event, context) => {
 
     // MEMORY OPTIMIZATION: Use runtime dynamic import to prevent bundling heavy modules
     let targetHandler;
+    let modulePath; // make visible to catch scope
     try {
       console.log('🔍 Attempting to import module:', target.module);
 
-      // Ensure proper ES module import with explicit file extension - SECURITY FIX: Use import.meta.url for reliable resolution
-      const rawModulePath = target.module.endsWith('.js') ? target.module : `${target.module}.js`;
-      const moduleUrl = new URL(rawModulePath, import.meta.url);
-      console.log('🔍 Resolved module path:', moduleUrl.href);
+      // Resolve module path relative to project root using process.cwd()
+      const path = await import('node:path');
+      const { pathToFileURL } = await import('node:url');
 
-      const mod = await import(moduleUrl.href);
+      if (target.module.startsWith('../../api/')) {
+        // Convert '../../api/xyz.js' -> absolute path '<projectRoot>/api/xyz.js'
+        const relativePath = target.module.replace('../../', '');
+        const absPath = path.resolve(process.cwd(), relativePath);
+        const fileUrl = pathToFileURL(absPath).href;
+        modulePath = fileUrl;
+        console.log('🔍 Resolved to file URL:', modulePath);
+      } else if (target.module.startsWith('api/')) {
+        // Support plain 'api/...' too
+        const absPath = path.resolve(process.cwd(), target.module);
+        const fileUrl = pathToFileURL(absPath).href;
+        modulePath = fileUrl;
+        console.log('🔍 Resolved to file URL:', modulePath);
+      } else if (target.module.startsWith('/')) {
+        // Absolute disk path provided
+        const fileUrl = pathToFileURL(target.module).href;
+        modulePath = fileUrl;
+        console.log('🔍 Using absolute file URL:', modulePath);
+      } else {
+        // As a fallback, pass through (may work for package/bare specifiers)
+        modulePath = target.module.endsWith('.js') ? target.module : `${target.module}.js`;
+        console.log('🔍 Using pass-through specifier:', modulePath);
+      }
+
+      const mod = await (async () => {
+        try {
+          const { robustDynamicImport } = await import('../functions/utils/memory-optimizer.js');
+          const segs = (target.module.startsWith('../../') ? target.module.slice(6) : target.module).split('/');
+          return await robustDynamicImport(target.module, segs);
+        } catch (_primaryErr) {
+          // Fallback to direct import of resolved path
+          return await import(modulePath);
+        }
+      })();
       console.log('✅ Module imported successfully, available exports:', Object.keys(mod));
 
       targetHandler = mod.default || mod.handler;
       console.log('✅ Target handler resolved:', typeof targetHandler);
     } catch (importError) {
       console.error(`Failed to import auth module: ${target.module}`, importError);
+      // Prepare debug info safely
+      const debugResolvedPath = modulePath || '(unresolved)';
       console.error('Import error details:', {
         name: importError.name,
         message: importError.message,
         stack: importError.stack?.substring(0, 500),
         cause: importError.cause,
-        modulePath: target.module
+        originalPath: target.module,
+        resolvedPath: debugResolvedPath
       });
+
+      // Additional debugging: Check if resolved file exists (for file:// URLs convert to path)
+      try {
+        const fs = await import('node:fs');
+        let checkPath = debugResolvedPath;
+        if (typeof checkPath === 'string' && checkPath.startsWith('file://')) {
+          const { fileURLToPath } = await import('node:url');
+          checkPath = fileURLToPath(checkPath);
+        }
+        if (typeof checkPath === 'string') {
+          const exists = fs.existsSync(checkPath);
+          console.error('File existence check:', { path: checkPath, exists });
+        }
+      } catch (fsError) {
+        console.error('Could not check file existence:', fsError.message);
+      }
 
       // Enhanced error response for debugging - SECURITY FIX: Only expose debug info with explicit DEBUG flag
       const isDebugMode = process.env.DEBUG === 'true';
@@ -88,7 +140,8 @@ export const handler = async (event, context) => {
           ...(isDebugMode && {
             debug: {
               importError: importError.message,
-              modulePath: target.module,
+              originalPath: target.module,
+              resolvedPath: debugResolvedPath,
               timestamp: new Date().toISOString()
             }
           })
@@ -108,17 +161,44 @@ export const handler = async (event, context) => {
       };
     }
 
-    // Delegate to target handler with context preservation
-    const response = await targetHandler(event, context);
-    
+    // Delegate to target handler, adapting Express-style handlers when needed
+    let response;
+    if (target.express) {
+      // Adapt (event, context) -> (req, res) like netlify/functions/communications/giftwrapped.ts
+      response = await new Promise(async (resolve) => {
+        const req = {
+          method: event.httpMethod,
+          headers: event.headers || {},
+          body: (() => {
+            if (!event.body) return undefined;
+            try { return JSON.parse(event.body); } catch { return event.body; }
+          })(),
+          query: event.queryStringParameters || {},
+        };
+        const res = {
+          _status: 200,
+          _headers: { ...cors },
+          setHeader(key, value) { this._headers[key] = value; },
+          status(code) { this._status = code; return this; },
+          json(payload) { resolve({ statusCode: this._status, headers: this._headers, body: JSON.stringify(payload) }); },
+          end() { resolve({ statusCode: this._status, headers: this._headers, body: '' }); },
+        };
+        try { await Promise.resolve(targetHandler(req, res)); } catch (e) {
+          resolve({ statusCode: 500, headers: { ...cors, 'Content-Type': 'application/json' }, body: JSON.stringify({ success: false, error: e instanceof Error ? e.message : String(e) }) });
+        }
+      });
+    } else {
+      response = await targetHandler(event, context);
+    }
+
     // Ensure CORS headers are present in response
     if (response && typeof response === 'object') {
-      return { 
-        ...response, 
-        headers: { 
-          ...(response.headers || {}), 
-          ...cors 
-        } 
+      return {
+        ...response,
+        headers: {
+          ...(response.headers || {}),
+          ...cors,
+        },
       };
     }
 
@@ -183,6 +263,13 @@ function resolveAuthRoute(path, method) {
     return {
       inline: true,
       endpoint: 'session'
+    };
+  }
+
+  if ((normalizedPath.endsWith('/auth/session-user') || normalizedPath.endsWith('/api/auth/session-user')) && method === 'GET') {
+    return {
+      module: '../../api/auth/session-user.js',
+      endpoint: 'session-user'
     };
   }
 
@@ -497,16 +584,14 @@ async function handleSigninInline(event, context, corsHeaders) {
       headers: corsHeaders,
       body: JSON.stringify({
         success: true,
-        message: 'Authentication successful',
-        user: {
-          id: user.id,
-          username: user.username,
-          nip05: user.nip05,
-          role: user.role
-        },
-        session: {
-          token,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        data: {
+          user: {
+            id: user.id,
+            nip05: nip05,
+            role: user.role,
+            is_active: true
+          },
+          sessionToken: token
         }
       })
     };

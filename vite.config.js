@@ -254,6 +254,7 @@ export default defineConfig({
       "@scure/bip39",
       "@noble/curves",
       "@noble/hashes",
+      "@noble/ciphers",
       "@scure/base",
     ],
     // Remove exclude to ensure crypto libraries are properly bundled

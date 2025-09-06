@@ -167,15 +167,27 @@ export class CryptoFactory {
         expectedXCoordinateLength: 32,
       });
 
-      // CRITICAL FIX: Ensure proper 64-character hex before bech32 encoding
-      const privateKeyHex = bytesToHex(privateKeyBytes).padStart(64, "0");
-      const publicKeyXHex = bytesToHex(publicKeyXCoordinate).padStart(64, "0");
+      // CRITICAL FIX: Ensure proper 32-byte keys (64-character hex)
+      // Pad private key bytes to ensure exactly 32 bytes
+      const paddedPrivateKeyBytes = new Uint8Array(32);
+      paddedPrivateKeyBytes.set(privateKeyBytes, 32 - privateKeyBytes.length);
 
-      // Generate npub using nostr-tools with properly padded hex (should result in 64-char bech32)
+      // Pad public key x-coordinate to ensure exactly 32 bytes
+      const paddedPublicKeyXCoordinate = new Uint8Array(32);
+      paddedPublicKeyXCoordinate.set(
+        publicKeyXCoordinate,
+        32 - publicKeyXCoordinate.length
+      );
+
+      // Generate hex strings for return values (guaranteed 64 characters)
+      const privateKeyHex = bytesToHex(paddedPrivateKeyBytes);
+      const publicKeyXHex = bytesToHex(paddedPublicKeyXCoordinate);
+
+      // Generate npub using nostr-tools with properly padded hex
       const npub = nip19.npubEncode(publicKeyXHex);
 
-      // Generate nsec using nostr-tools with properly padded hex (should result in 64-char bech32)
-      const nsec = nip19.nsecEncode(privateKeyHex);
+      // Generate nsec using nostr-tools with properly padded Uint8Array
+      const nsec = nip19.nsecEncode(paddedPrivateKeyBytes as any);
 
       console.log("🔍 FIXED BECH32 ENCODING RESULT:", {
         npub: npub,
@@ -667,23 +679,26 @@ export async function testCryptoOperations(): Promise<boolean> {
     }
     console.log("✅ getPublicKey() with compression works");
 
-    console.log("🔍 Testing direct bech32 encoding...");
+    console.log("🔍 Testing nip19 npub encoding...");
     const publicKeyHex = bytesToHex(publicKey);
 
-    // Use direct bech32 encoding: extract x-coordinate (32 bytes)
+    // Use nostr-tools nip19 encoding: extract x-coordinate (32 bytes)
     const publicKeyXCoordinate = publicKey.slice(1); // Remove compression prefix byte
-    const npub = bech32Encode("npub", publicKeyXCoordinate);
-    if (!npub || !npub.startsWith("npub1") || npub.length !== 63) {
+    const publicKeyXHex = bytesToHex(publicKeyXCoordinate);
+    const npub = nip19.npubEncode(publicKeyXHex);
+    if (!npub || !npub.startsWith("npub1") || npub.length !== 64) {
       throw new Error(
-        `Direct bech32 encoding failed: ${npub} (length: ${npub?.length})`
+        `Direct bech32 encoding failed: ${npub} (length: ${npub?.length}) - Expected 64 characters`
       );
     }
-    console.log("✅ Direct bech32 encoding works");
+    console.log("✅ nip19 npub encoding works");
 
     // Use Uint8Array for nsecEncode (as required by runtime)
     const nsec = nip19.nsecEncode(privateKeyBytes as any);
-    if (!nsec || !nsec.startsWith("nsec1") || nsec.length !== 63) {
-      throw new Error(`nsecEncode failed: ${nsec} (length: ${nsec?.length})`);
+    if (!nsec || !nsec.startsWith("nsec1") || nsec.length !== 64) {
+      throw new Error(
+        `nsecEncode failed: ${nsec} (length: ${nsec?.length}) - Expected 64 characters`
+      );
     }
     console.log("✅ nip19.nsecEncode() works");
 
@@ -777,8 +792,9 @@ export function getCryptoEnvironmentInfo(): {
       expectedXCoordinateLength: 32,
     });
 
-    const npub = bech32Encode("npub", testPublicKeyXCoordinate);
-    console.log("🔄 Direct bech32Encode returned:", typeof npub);
+    const testPublicKeyXHex = bytesToHex(testPublicKeyXCoordinate);
+    const npub = nip19.npubEncode(testPublicKeyXHex);
+    console.log("🔄 nip19.npubEncode returned:", typeof npub);
 
     results.outputResult = {
       npub: npub,

@@ -97,12 +97,15 @@ export interface UserIdentity {
   id: string;
   user_salt: string; // Unique salt for this user
 
+  // Encrypted nsec storage (decryptable)
+  encrypted_nsec?: string;
+  encrypted_nsec_iv?: string | null;
+
   // MAXIMUM ENCRYPTION: Hashed columns only - no plaintext storage
   hashed_username?: string;
   hashed_npub?: string;
   hashed_nip05?: string;
   hashed_lightning_address?: string;
-  hashed_encrypted_nsec?: string;
 
   // Password security
   password_hash: string;
@@ -364,104 +367,43 @@ export class UserIdentitiesAuth {
     }
   }
   /**
-   * Authenticate user with NIP-07 browser extension (no password)
-   * Uses npub → NIP-05 → DUID resolution for authentication
+   * Authenticate user with NIP-07 browser extension (server-only verification)
+   * Delegates to /api/auth/nip07-signin to avoid client-side DUID generation
    */
   async authenticateNIP07(credentials: AuthCredentials): Promise<AuthResult> {
-    try {
-      // NIP-07 authentication: npub → NIP-05 → DUID → User lookup
-      // 1. Resolve npub to NIP-05 using public .well-known/nostr.json
-      // 2. Generate DUID from resolved NIP-05
-      // 3. Perform standard user lookup
+    // Require pubkey and signed challenge for secure verification
+    if (
+      !credentials.pubkey ||
+      !credentials.signature ||
+      !credentials.challenge
+    ) {
+      return {
+        success: false,
+        error: "Missing NIP-07 parameters (pubkey, signature, challenge)",
+      };
+    }
 
-      if (!credentials.pubkey) {
+    try {
+      const response = await fetch("/api/auth/nip07-signin", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: credentials.pubkey,
+          signature: credentials.signature,
+          challenge: credentials.challenge,
+        }),
+      });
+
+      if (!response.ok) {
         return {
           success: false,
-          error: "Missing public key for NIP-07 authentication",
+          error: `NIP-07 signin failed (${response.status})`,
         };
       }
 
-      try {
-        // Step 1: Resolve npub to NIP-05 using public JSON endpoint
-        const nip05Identifier = await this.resolveNpubToNIP05(
-          credentials.pubkey
-        );
-
-        if (!nip05Identifier) {
-          return {
-            success: false,
-            error:
-              "NIP-07 authentication failed: npub not found in NIP-05 records. Please register first.",
-          };
-        }
-
-        // Step 2: Generate DUID from resolved NIP-05 identifier
-        const { generateDUIDFromNIP05 } = await import(
-          "../../../lib/security/duid-generator"
-        );
-        const deterministicUserId = await generateDUIDFromNIP05(
-          nip05Identifier
-        );
-
-        if (!deterministicUserId) {
-          return {
-            success: false,
-            error: "Failed to generate user identifier",
-          };
-        }
-
-        // Step 3: Direct O(1) database lookup using DUID
-        const { data: user, error: userError } = await (
-          await getSupabaseClient()
-        )
-          .from("user_identities")
-          .select("*")
-          .eq("id", deterministicUserId)
-          .eq("is_active", true)
-          .single();
-
-        if (userError || !user) {
-          await this.logAuthAttempt({
-            nip05: nip05Identifier,
-            attempt_result: "invalid_nip05",
-          });
-          return { success: false, error: "Authentication failed" };
-        }
-
-        // Check if account is locked
-        if (user.locked_until && new Date(user.locked_until) > new Date()) {
-          return {
-            success: false,
-            error:
-              "Account is temporarily locked due to too many failed attempts",
-          };
-        }
-
-        // NIP-07 authentication successful - reset failed attempts
-        await this.handleSuccessfulAuth(user.id, credentials.pubkey);
-
-        return {
-          success: true,
-          user: {
-            id: user.id,
-            user_salt: user.user_salt,
-            hashed_npub: user.hashed_npub,
-            hashed_nip05: user.hashed_nip05,
-            password_hash: user.password_hash,
-            password_salt: user.password_salt,
-            failed_attempts: user.failed_attempts,
-            role: user.role,
-            spending_limits: user.spending_limits,
-            privacy_settings: user.privacy_settings,
-            is_active: user.is_active,
-            created_at: user.created_at,
-            updated_at: user.updated_at,
-          },
-        };
-      } catch (error) {
-        console.error("NIP-07 authentication error:", error);
-        return { success: false, error: "NIP-07 authentication failed" };
-      }
+      const json = (await response.json()) as AuthResult;
+      return json;
     } catch (error) {
       console.error("NIP-07 authentication error:", error);
       return { success: false, error: "NIP-07 authentication failed" };
@@ -469,128 +411,55 @@ export class UserIdentitiesAuth {
   }
 
   /**
-   * Authenticate user with NIP-05 and password
+   * Authenticate user with NIP-05 and password (server-only flow)
+   * Delegates authentication to /api/auth/signin to avoid client-side DUID generation
    */
   async authenticateNIP05Password(
     credentials: AuthCredentials
   ): Promise<AuthResult> {
-    try {
-      if (!credentials.nip05 || !credentials.password) {
-        return { success: false, error: "Missing NIP-05 or password" };
-      }
+    if (!credentials.nip05 || !credentials.password) {
+      return { success: false, error: "Missing NIP-05 or password" };
+    }
 
-      // Validate NIP-05 format and domain
-      const validation = NIP05Utils.validateNIP05(credentials.nip05);
-      if (!validation.valid) {
-        await this.logAuthAttempt({
-          nip05: credentials.nip05,
-          attempt_result: "invalid_nip05",
-        });
-        return {
-          success: false,
-          error: validation.error || "Invalid NIP-05 identifier",
-        };
-      }
-
-      // DETERMINISTIC USER ID: O(1) authentication lookup using DUID
-      // Import DUID generation utilities
-      const { generateDUIDFromNIP05 } = await import(
-        "../../../lib/security/duid-generator"
-      );
-
-      // Generate DUID from NIP-05 (password is not part of DUID derivation)
-      const deterministicUserId = await generateDUIDFromNIP05(
-        credentials.nip05.trim().toLowerCase()
-      );
-
-      if (!deterministicUserId) {
-        await this.logAuthAttempt({
-          nip05: credentials.nip05,
-          attempt_result: "invalid_nip05",
-        });
-        return { success: false, error: "Failed to resolve NIP-05 identifier" };
-      }
-
-      // Direct O(1) database lookup using DUID
-      const { data: user, error: userError } = await (await getSupabaseClient())
-        .from("user_identities")
-        .select("*")
-        .eq("id", deterministicUserId)
-        .eq("is_active", true)
-        .single();
-
-      if (userError || !user) {
-        await this.logAuthAttempt({
-          nip05: credentials.nip05,
-          attempt_result: "invalid_nip05",
-        });
-        return { success: false, error: "Invalid credentials" };
-      }
-
-      if (!user) {
-        await this.logAuthAttempt({
-          nip05: credentials.nip05,
-          attempt_result: "invalid_nip05",
-        });
-        return { success: false, error: "Invalid credentials" };
-      }
-
-      // Check if account is locked
-      if (user.locked_until && new Date(user.locked_until) > new Date()) {
-        await this.logAuthAttempt({
-          user_id: user.id,
-          nip05: credentials.nip05,
-          attempt_result: "account_locked",
-        });
-        return {
-          success: false,
-          error:
-            "Account is temporarily locked due to too many failed attempts",
-        };
-      }
-
-      // Verify password
-      const isValidPassword = await PasswordUtils.verifyPassword(
-        credentials.password,
-        user.password_hash,
-        user.password_salt
-      );
-
-      if (!isValidPassword) {
-        await this.handleFailedAttempt(user.id, credentials.nip05);
-        return { success: false, error: "Invalid credentials" };
-      }
-
-      // Password is valid - reset failed attempts and update last auth
-      await this.handleSuccessfulAuth(user.id, credentials.nip05);
-
-      // Session tokens are issued by server; perform server-side signin to get token
-      try {
-        const response = await fetch("/api/auth/signin", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nip05: credentials.nip05,
-            password: credentials.password,
-            authMethod: "nip05-password",
-          }),
-        });
-        if (response.ok) {
-          const json = await response.json();
-          return json as AuthResult;
-        }
-      } catch (e) {
-        // Fall through
-      }
-
+    // Basic NIP-05 format validation only (no DUID operations client-side)
+    const validation = NIP05Utils.validateNIP05(credentials.nip05);
+    if (!validation.valid) {
+      await this.logAuthAttempt({
+        nip05: credentials.nip05,
+        attempt_result: "invalid_nip05",
+      });
       return {
         success: false,
-        error: "NIP-05/password authentication failed at server endpoint",
+        error: validation.error || "Invalid NIP-05 identifier",
       };
+    }
+
+    try {
+      const response = await fetch("/api/auth/signin", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nip05: credentials.nip05,
+          password: credentials.password,
+          authMethod: "nip05-password",
+        }),
+      });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Server authentication failed (${response.status})`,
+        };
+      }
+
+      const json = (await response.json()) as AuthResult;
+      return json;
     } catch (error) {
-      console.error("Authentication error:", error);
-      return { success: false, error: "Authentication failed" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Authentication failed",
+      };
     }
   }
 
@@ -699,6 +568,9 @@ export class UserIdentitiesAuth {
    */
   async getUserById(userId: string): Promise<UserIdentity | null> {
     try {
+      console.log("🔐 UserIdentitiesAuth.getUserById: Starting user retrieval");
+      console.log("🔐 UserIdentitiesAuth.getUserById: userId:", userId);
+
       const { data: user, error } = await (await getSupabaseClient())
         .from("user_identities")
         .select("*")
@@ -706,14 +578,59 @@ export class UserIdentitiesAuth {
         .eq("is_active", true)
         .single();
 
+      console.log("🔐 UserIdentitiesAuth.getUserById: Query completed");
+      console.log("🔐 UserIdentitiesAuth.getUserById: Error:", error);
+      console.log("🔐 UserIdentitiesAuth.getUserById: User found:", !!user);
+
+      if (user) {
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: User keys:",
+          Object.keys(user)
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: Has encrypted_nsec:",
+          !!user.encrypted_nsec
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: Has user_salt:",
+          !!user.user_salt
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: encrypted_nsec type:",
+          typeof user.encrypted_nsec
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: encrypted_nsec length:",
+          user.encrypted_nsec?.length
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: encrypted_nsec first 50 chars:",
+          user.encrypted_nsec?.substring(0, 50)
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: user_salt type:",
+          typeof user.user_salt
+        );
+        console.log(
+          "🔐 UserIdentitiesAuth.getUserById: user_salt length:",
+          user.user_salt?.length
+        );
+      }
+
       if (error || !user) {
-        console.error("Failed to retrieve user:", error);
+        console.error(
+          "🔐 UserIdentitiesAuth.getUserById: Failed to retrieve user:",
+          error
+        );
         return null;
       }
 
       return user as UserIdentity;
     } catch (error) {
-      console.error("Error retrieving user:", error);
+      console.error(
+        "🔐 UserIdentitiesAuth.getUserById: Error retrieving user:",
+        error
+      );
       return null;
     }
   }

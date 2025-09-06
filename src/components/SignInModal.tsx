@@ -103,102 +103,94 @@ const SignInModal: React.FC<SignInModalProps> = ({
     };
   }, []);
 
-  // Prevent body scroll when modal is open
+  // Prevent body scroll when modal is open and handle escape key
   useEffect(() => {
-    if (isOpen) {
-      document.body.classList.add('modal-open');
-      return () => {
-        document.body.classList.remove('modal-open');
-      };
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
 
-  // Handle escape key to close modal
-  useEffect(() => {
+    // Prevent body scroll
+    document.body.classList.add('modal-open');
+
+    // Handle escape key
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
+      if (event.key === 'Escape') {
         handleClose();
       }
     };
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      return () => {
-        document.removeEventListener('keydown', handleEscape);
-      };
-    }
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.classList.remove('modal-open');
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [isOpen]);
 
-  // Check for NIP-07 browser extensions on component mount
+  // Check for NIP-07 browser extensions and reset state when modal opens (combined to reduce re-renders)
   useEffect(() => {
-    if (isOpen) {
-      const checkExtensions = async () => {
-        setIsCheckingExtension(true);
+    if (!isOpen) return;
 
-        try {
-          // Add timeout to prevent hanging on unresponsive extensions
-          const extensionCheckPromise = new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              reject(new Error('Extension check timeout'));
-            }, 3000); // 3 second timeout
+    // Reset state when modal opens
+    setAuthStep('method-selection');
+    setIsClosing(false);
+    setShowTooltip(false);
+    setShowPostAuthInvitation(false);
+    setSessionInfo(null);
 
-            try {
-              if (typeof window !== 'undefined' && window.nostr) {
-                const nostr = window.nostr;
+    const checkExtensions = async () => {
+      setIsCheckingExtension(true);
 
-                if (typeof nostr.getPublicKey === 'function') {
-                  clearTimeout(timeout);
-                  resolve({
-                    available: true,
-                    name: 'Nostr Extension'
-                  });
-                } else {
-                  clearTimeout(timeout);
-                  resolve({
-                    available: false,
-                    error: 'Extension not fully compatible'
-                  });
-                }
+      try {
+        // Add timeout to prevent hanging on unresponsive extensions
+        const extensionCheckPromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Extension check timeout'));
+          }, 3000); // 3 second timeout
+
+          try {
+            if (typeof window !== 'undefined' && window.nostr) {
+              const nostr = window.nostr;
+
+              if (typeof nostr.getPublicKey === 'function') {
+                clearTimeout(timeout);
+                resolve({
+                  available: true,
+                  name: 'Nostr Extension'
+                });
               } else {
                 clearTimeout(timeout);
                 resolve({
                   available: false,
-                  error: 'No Nostr extension detected'
+                  error: 'Extension not fully compatible'
                 });
               }
-            } catch (error) {
+            } else {
               clearTimeout(timeout);
-              reject(error);
+              resolve({
+                available: false,
+                error: 'No Nostr extension detected'
+              });
             }
-          });
+          } catch (error) {
+            clearTimeout(timeout);
+            reject(error);
+          }
+        });
 
-          const result = await extensionCheckPromise;
-          setExtensionStatus(result as any);
-        } catch (error) {
-          console.warn('Browser extension check failed (non-critical):', error);
-          setExtensionStatus({
-            available: false,
-            error: 'Extension check failed - this is normal if no Nostr extension is installed'
-          });
-        } finally {
-          setIsCheckingExtension(false);
-        }
-      };
+        const result = await extensionCheckPromise;
+        setExtensionStatus(result as any);
+      } catch (error) {
+        console.warn('Browser extension check failed (non-critical):', error);
+        setExtensionStatus({
+          available: false,
+          error: 'Extension check failed - this is normal if no Nostr extension is installed'
+        });
+      } finally {
+        setIsCheckingExtension(false);
+      }
+    };
 
-      const timer = setTimeout(checkExtensions, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
-  // Reset state when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setAuthStep('method-selection');
-      setIsClosing(false);
-      setShowTooltip(false);
-      setShowPostAuthInvitation(false);
-      setSessionInfo(null);
-    }
+    const timer = setTimeout(checkExtensions, 100);
+    return () => clearTimeout(timer);
   }, [isOpen]);
 
   const handleNIP07Register = () => {

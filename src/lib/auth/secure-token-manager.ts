@@ -397,7 +397,14 @@ export class SecureTokenManager {
       const parts = token.split(".");
       if (parts.length !== 3) return null;
 
-      const payload = JSON.parse(atob(parts[1]));
+      // Decode base64url segment safely (handle -/_ and missing padding)
+      const b64url = parts[1];
+      const b64 = b64url
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(b64url.length + ((4 - (b64url.length % 4)) % 4), "=");
+      const payloadJson = atob(b64);
+      const payload = JSON.parse(payloadJson);
 
       // Basic validation
       if (!payload.hashedId || !payload.exp || !payload.type) {
@@ -406,7 +413,10 @@ export class SecureTokenManager {
 
       return payload as TokenPayload;
     } catch (error) {
-      console.error("Invalid token format:", error);
+      console.error(
+        "Invalid token format:",
+        error instanceof Error ? error.message : String(error)
+      );
       return null;
     }
   }

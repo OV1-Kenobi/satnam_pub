@@ -125,36 +125,34 @@ export class PrivacyFirstMessagingService
     config: GiftwrappedMessageConfig
   ): Promise<MessageResponse> {
     try {
-      const response = await fetch(
-        `${this.apiBaseUrl}/communications/giftwrapped`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ...config,
-            sessionId: this.sessionId,
-            timestamp: new Date().toISOString(),
-          }),
-        }
+      console.log(
+        "🔐 SatnamPrivacyFirstCommunications: Using ClientMessageService for hybrid signing"
       );
 
-      const result = await response.json();
+      // Use the ClientMessageService which handles hybrid signing
+      const { clientMessageService } = await import(
+        "../messaging/client-message-service"
+      );
 
-      if (response.ok) {
-        return {
-          success: true,
-          messageId: result.messageId,
-          encryptionUsed: result.encryptionUsed,
-          deliveryMethod: result.deliveryMethod,
-        };
-      } else {
-        return {
-          success: false,
-          error: result.error || "Failed to send message",
-        };
-      }
+      const messageData = {
+        recipient: config.recipient,
+        content: config.content,
+        messageType: "direct" as const,
+        encryptionLevel: config.encryptionLevel || "maximum",
+        communicationType: config.communicationType || "individual",
+      };
+
+      const result = await clientMessageService.sendGiftWrappedMessage(
+        messageData
+      );
+
+      return {
+        success: result.success,
+        messageId: result.messageId,
+        error: result.error,
+        encryptionUsed: messageData.encryptionLevel,
+        deliveryMethod: result.signingMethod || "hybrid",
+      };
     } catch (error) {
       console.error("Privacy-first messaging error:", error);
       return {

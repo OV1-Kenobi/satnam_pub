@@ -300,10 +300,8 @@ export class NostrKeyRecoveryService {
       }
 
       // Decrypt nsec using user's salt
-      const { decryptNsecSimpleToBuffer } = await import(
-        "../privacy/encryption"
-      );
-      const decryptedNsecBuf = await decryptNsecSimpleToBuffer(
+      const { decryptNsecBytes } = await import("../privacy/encryption");
+      const decryptedNsecBuf = await decryptNsecBytes(
         encryptedNsec,
         authResult.user.user_salt
       );
@@ -578,38 +576,30 @@ export class NostrKeyRecoveryService {
     relays: string[] = []
   ): Promise<NIP41EventPublishResult> {
     try {
-      const { getPublicKey, getEventHash, signEvent } = await import(
-        "nostr-tools"
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
       );
 
-      // Create whitelist event (without id and sig initially)
+      // Create whitelist event (unsigned)
       const whitelistEventUnsigned = {
         kind: 1776 as const,
-        pubkey: getPublicKey(currentNsec),
-        content: "", // Content should be ignored per NIP-41
+        content: "",
         tags: [
           ["p", whitelistPubkey],
           ["alt", "pubkey whitelisting event"],
         ],
         created_at: Math.floor(Date.now() / 1000),
-      };
+      } as any;
 
-      // Sign the event
-      const eventId = getEventHash(whitelistEventUnsigned);
-      const signature = signEvent(whitelistEventUnsigned, currentNsec);
+      // Sign via CEPS
+      const signed = await CEPS.signEventWithActiveSession(
+        whitelistEventUnsigned
+      ).catch(async () => CEPS.signEvent(whitelistEventUnsigned, currentNsec));
 
-      // Create final signed event
-      const whitelistEvent: NIP41WhitelistEvent = {
-        ...whitelistEventUnsigned,
-        id: eventId,
-        sig: signature,
-      };
-
-      // Publish to relays
-      const publishResult = await this.publishEventToRelays(
-        whitelistEvent,
-        relays
-      );
+      // Publish via CEPS
+      const id = await CEPS.publishEvent(signed as any, relays);
+      const eventId = typeof id === "string" ? id : (signed as any)?.id;
+      const publishResult = { success: !!eventId };
 
       // Note: OpenTimestamp attestation (NIP-03) would be implemented here
       // for full NIP-41 compliance. This requires integration with OpenTimestamp
@@ -620,9 +610,7 @@ export class NostrKeyRecoveryService {
 
       return {
         success: publishResult.success,
-        eventId: whitelistEvent.id,
-        relayResults: publishResult.relayResults,
-        error: publishResult.error,
+        eventId,
       };
     } catch (error) {
       console.error("Failed to create whitelist event:", error);
@@ -649,14 +637,13 @@ export class NostrKeyRecoveryService {
     relays: string[] = []
   ): Promise<NIP41EventPublishResult> {
     try {
-      const { getPublicKey, getEventHash, signEvent } = await import(
-        "nostr-tools"
+      // Create migration event (without id and sig initially)
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
       );
 
-      // Create migration event (without id and sig initially)
       const migrationEventUnsigned = {
         kind: 1777 as const,
-        pubkey: getPublicKey(newNsec),
         content: reason || "Key rotation for security purposes",
         tags: [
           ["p", oldPubkey],
@@ -666,24 +653,15 @@ export class NostrKeyRecoveryService {
           ["relays", ...relays],
         ],
         created_at: Math.floor(Date.now() / 1000),
-      };
+      } as any;
 
-      // Sign the event
-      const eventId = getEventHash(migrationEventUnsigned);
-      const signature = signEvent(migrationEventUnsigned, newNsec);
+      const signed = await CEPS.signEventWithActiveSession(
+        migrationEventUnsigned
+      ).catch(async () => CEPS.signEvent(migrationEventUnsigned, newNsec));
 
-      // Create final signed event
-      const migrationEvent: NIP41MigrationEvent = {
-        ...migrationEventUnsigned,
-        id: eventId,
-        sig: signature,
-      };
-
-      // Publish to relays
-      const publishResult = await this.publishEventToRelays(
-        migrationEvent,
-        relays
-      );
+      const id = await CEPS.publishEvent(signed as any, relays);
+      const eventId = typeof id === "string" ? id : (signed as any)?.id;
+      const publishResult = { success: !!eventId };
 
       // Note: OpenTimestamp attestation (NIP-03) would be implemented here
       // for full NIP-41 compliance. This requires integration with OpenTimestamp
@@ -694,9 +672,7 @@ export class NostrKeyRecoveryService {
 
       return {
         success: publishResult.success,
-        eventId: migrationEvent.id,
-        relayResults: publishResult.relayResults,
-        error: publishResult.error,
+        eventId: eventId,
       };
     } catch (error) {
       console.error("Failed to create migration event:", error);
@@ -722,7 +698,9 @@ export class NostrKeyRecoveryService {
     error?: string;
   }> {
     try {
-      const { SimplePool } = await import("nostr-tools");
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
+      );
 
       // Use default relays if none provided
       const targetRelays =
@@ -735,7 +713,6 @@ export class NostrKeyRecoveryService {
               "wss://relay.nostr.band",
             ];
 
-      const pool = new SimplePool();
       const relayResults: {
         relay: string;
         success: boolean;
@@ -743,12 +720,12 @@ export class NostrKeyRecoveryService {
       }[] = [];
       let successCount = 0;
 
-      // Publish to each relay individually using the correct API
+      // Publish to each relay individually via CEPS
       const publishPromises = targetRelays.map(async (relayUrl) => {
         try {
-          await pool.publish([relayUrl], event);
-          relayResults.push({ relay: relayUrl, success: true });
-          successCount++;
+          const id = await CEPS.publishEvent(event, [relayUrl]);
+          relayResults.push({ relay: relayUrl, success: !!id });
+          successCount += id ? 1 : 0;
         } catch (error) {
           const errorMsg =
             error instanceof Error ? error.message : "Unknown error";
@@ -763,8 +740,7 @@ export class NostrKeyRecoveryService {
       // Wait for all publish attempts
       await Promise.allSettled(publishPromises);
 
-      // Close pool connections
-      pool.close(targetRelays);
+      // Using CEPS; no local pool to close here.
 
       return {
         success: successCount > 0,
@@ -849,8 +825,7 @@ export class NostrKeyRecoveryService {
         });
       });
 
-      // Close subscription and pool
-      pool.close(targetRelays);
+      // Using CEPS; no local pool to close here.
 
       if (events.length === 0) {
         return {
@@ -904,13 +879,9 @@ export class NostrKeyRecoveryService {
     error?: string;
   }> {
     try {
-      const { getPublicKey, getEventHash, signEvent } = await import(
-        "nostr-tools"
-      );
       const now = Math.floor(Date.now() / 1000);
       const whitelistUnsigned = {
         kind: 1776 as const,
-        pubkey: getPublicKey(currentNsec),
         content: "Key rotation whitelist",
         tags: [
           ["p", targetPubkey],
@@ -918,11 +889,16 @@ export class NostrKeyRecoveryService {
         ],
         created_at: now,
       };
-      const id = getEventHash(whitelistUnsigned);
-      const sig = signEvent(whitelistUnsigned, currentNsec);
-      const event = { ...whitelistUnsigned, id, sig } as any;
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
+      );
+      const event = await CEPS.signEventWithActiveSession(
+        whitelistUnsigned as any
+      ).catch(async () =>
+        CEPS.signEvent(whitelistUnsigned as any, currentNsec)
+      );
 
-      const publish = await this.publishEventToRelays(event, relays);
+      const publish = await this.publishEventToRelays(event as any, relays);
       if (!publish.success) {
         return {
           success: false,
@@ -930,7 +906,11 @@ export class NostrKeyRecoveryService {
         };
       }
 
-      return { success: true, whitelistEventId: id, waitingPeriod: 60 };
+      return {
+        success: true,
+        whitelistEventId: (event as any)?.id,
+        waitingPeriod: 60,
+      };
     } catch (error) {
       return {
         success: false,
@@ -977,18 +957,24 @@ export class NostrKeyRecoveryService {
         created_at: now,
       };
 
-      const eventId = nt.getEventHash(delegNoteUnsigned);
-      const sig = nt.signEvent(delegNoteUnsigned, oldNsecHex);
-      const delegEvent = { ...delegNoteUnsigned, id: eventId, sig } as any;
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
+      );
+      const delegEvent = await CEPS.signEventWithActiveSession(
+        delegNoteUnsigned as any
+      ).catch(async () => CEPS.signEvent(delegNoteUnsigned as any, oldNsecHex));
 
-      const publishRes = await this.publishEventToRelays(delegEvent, relays);
+      const publishRes = await this.publishEventToRelays(
+        delegEvent as any,
+        relays
+      );
       if (!publishRes.success) {
         return {
           success: false,
           error: publishRes.error || "Delegation publish failed",
         };
       }
-      return { success: true, eventId };
+      return { success: true, eventId: (delegEvent as any)?.id };
     } catch (error) {
       return {
         success: false,
@@ -1058,16 +1044,15 @@ export class NostrKeyRecoveryService {
         ],
       };
 
-      const oldEvent = {
-        ...oldUnsigned,
-        id: nt.getEventHash(oldUnsigned),
-        sig: nt.signEvent(oldUnsigned, oldNsecHex),
-      } as any;
-      const newEvent = {
-        ...newUnsigned,
-        id: nt.getEventHash(newUnsigned),
-        sig: nt.signEvent(newUnsigned, newNsecHex),
-      } as any;
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
+      );
+      const oldEvent = await CEPS.signEventWithActiveSession(
+        oldUnsigned as any
+      ).catch(async () => CEPS.signEvent(oldUnsigned as any, oldNsecHex));
+      const newEvent = await CEPS.signEventWithActiveSession(
+        newUnsigned as any
+      ).catch(async () => CEPS.signEvent(newUnsigned as any, newNsecHex));
 
       const oldRes = await this.publishEventToRelays(oldEvent, relays);
       if (!oldRes.success)
@@ -1189,17 +1174,7 @@ export class NostrKeyRecoveryService {
           };
         }
 
-        // Step 5: Create and publish NIP-41 migration event
-        const migrationResult = await this.createMigrationEvent(
-          CryptoUtils.bytesToHex(newSec.toBytes()),
-          oldPubkey,
-          whitelistEventId!,
-          whitelistEventId!, // Using whitelist event as proof (in full implementation, this would be OpenTimestamp proof)
-          reason,
-          relays
-        );
-
-        // Step 6: Complete the rotation in our system
+        // Step 5: Complete the rotation in our system (publishes NIP-26, metadata, and NIP-41 migration)
         const completionResult = await this.completeKeyRotation(
           rotationResult.rotationId!,
           userId
@@ -1220,7 +1195,7 @@ export class NostrKeyRecoveryService {
             nsec: CryptoUtils.bytesToHex(newSec.toBytes()),
           },
           whitelistEventId,
-          migrationEventId: migrationResult.eventId,
+          migrationEventId: completionResult.nip41EventId,
           migrationSteps: [
             "✅ New keypair generated",
             "✅ Whitelist event verified (60+ days old)",
@@ -1280,7 +1255,7 @@ export class NostrKeyRecoveryService {
         return { success: false, error: "User not found" };
       }
 
-      const { encryptNsecSimple, decryptNsecSimpleToBuffer } = await import(
+      const { encryptNsecSimple, decryptNsecBytes } = await import(
         "../privacy/encryption"
       );
       const { CryptoUtils } = await import("../frost/crypto-utils");
@@ -1290,7 +1265,7 @@ export class NostrKeyRecoveryService {
       let oldNsecHex = "";
       try {
         if (user.hashed_encrypted_nsec) {
-          const oldBuf = await decryptNsecSimpleToBuffer(
+          const oldBuf = await decryptNsecBytes(
             user.hashed_encrypted_nsec,
             user.user_salt
           );
@@ -1340,7 +1315,47 @@ export class NostrKeyRecoveryService {
         effectiveNewNpub = nip19.npubEncode(pub);
       }
 
-      // Publish NIP-26 delegation and cross-referenced metadata BEFORE DB update
+      // Step 2: Encrypt and update DB with new keys FIRST; publish after DB commit
+      if (!effectiveNewNsecHex) {
+        throw new Error(
+          "Missing new nsec for DB update. Provide options.newNsecBech32 or persist rotationData.newNsecBuffer."
+        );
+      }
+      const encryptedNewNsec = await encryptNsecSimple(
+        effectiveNewNsecHex,
+        user.user_salt
+      );
+      const { error: updateError } = await supabase
+        .from("user_identities")
+        .update({
+          npub: effectiveNewNpub || rotationData.newNpub,
+          hashed_encrypted_nsec: encryptedNewNsec,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+      if (updateError) {
+        throw new Error(`Failed to update user keys: ${updateError.message}`);
+      }
+
+      // Step 3: Create SecureNsecManager session with the new nsec (policy-driven)
+      try {
+        const { central_event_publishing_service: CEPS } = await import(
+          "../../../lib/central_event_publishing_service"
+        );
+        const policy = await CEPS.getSigningPolicy();
+        await (
+          await import("../secure-nsec-manager")
+        ).secureNsecManager.createPostRegistrationSession(
+          effectiveNewNsecHex,
+          policy.sessionDurationMs,
+          policy.maxOperations,
+          policy.browserLifetime
+        );
+      } catch (e) {
+        console.warn("Failed to create signing session with new nsec:", e);
+      }
+
+      // Step 4: Publish NIP-26 delegation and metadata cross-references AFTER DB update
       if (oldNsecHex && effectiveNewNsecHex && effectiveNewNpub) {
         try {
           const newPubkey = getPublicKey(
@@ -1356,28 +1371,18 @@ export class NostrKeyRecoveryService {
             []
           );
         } catch (e) {
-          console.warn("Delegation/metadata publishing failed:", e);
+          console.warn(
+            "Delegation/metadata publishing failed AFTER DB update; please retry later.",
+            e
+          );
+          try {
+            const { showToast } = await import("../../services/toastService");
+            showToast.warning(
+              "Key rotation database update completed, but delegation/metadata publishing to relays failed. Please retry later or contact support.",
+              { title: "Publishing Failed" }
+            );
+          } catch {}
         }
-      }
-
-      // Encrypt new nsec with user's salt for DB storage
-      const encryptedNewNsec = await encryptNsecSimple(
-        effectiveNewNsecHex,
-        user.user_salt
-      );
-
-      // Update user record with new keys
-      const { error: updateError } = await supabase
-        .from("user_identities")
-        .update({
-          npub: effectiveNewNpub || rotationData.newNpub,
-          hashed_encrypted_nsec: encryptedNewNsec,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
-
-      if (updateError) {
-        throw new Error(`Failed to update user keys: ${updateError.message}`);
       }
 
       // Update NIP-05 record to point to new npub
@@ -1453,6 +1458,15 @@ export class NostrKeyRecoveryService {
         }
       } catch (error) {
         console.warn("⚠️ NIP-41 migration event creation failed:", error);
+        try {
+          const { showToast } = await import("../../services/toastService");
+          showToast.warning(
+            "Key rotation database update completed, but publishing NIP-41 migration event failed. Please retry later or contact support.",
+            { title: "Publishing Failed" }
+          );
+        } catch {
+          // ignore toast errors
+        }
       }
 
       // Mark rotation as completed

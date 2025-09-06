@@ -8,7 +8,7 @@
  * - Dynamic route: /api/qr/[token]
  */
 
-import QRCode from 'qrcode';
+// Use maintained 'qrcode' lib for server-side QR generation (backward compatible, no util._extend)
 import { config } from '../../config.js';
 import db from '../../lib/db';
 
@@ -53,29 +53,17 @@ export default async function handler(req, res) {
 
     // Generate the invitation URL (Master Context compliant)
     const baseUrl = config.api.baseUrl;
-    const invitationUrl = `${baseUrl}?invite=${token}`;
-    
-    // Generate QR code as PNG data URL
-    const qrCodeDataUrl = await QRCode.toDataURL(invitationUrl, {
+    const tokenStr = Array.isArray(token) ? token[0] : token;
+    const invitationUrl = `${baseUrl}?invite=${encodeURIComponent(tokenStr)}`;    
+    // Generate real QR assets server-side for backward compatibility
+    const qrOptions = {
+      errorCorrectionLevel: 'M',
       margin: 1,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      },
-      width: 256
-    });
-
-    // Generate QR code as SVG for better scalability
-    const qrCodeSvg = await QRCode.toString(invitationUrl, {
-      type: 'svg',
-      margin: 1,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      },
-      width: 256
-    });
-
+      width: 256,
+      color: { dark: '#000000', light: '#FFFFFF' }
+    };
+    const qrCodeDataUrl = await QRCode.toDataURL(invitationUrl, qrOptions);
+    const qrCodeSvg     = await QRCode.toString(invitationUrl, { ...qrOptions, type: 'svg' });
     const qrCodeResponse = {
       url: invitationUrl,
       token: token,

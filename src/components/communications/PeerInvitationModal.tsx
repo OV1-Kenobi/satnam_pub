@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSendResult, nostrMessageService } from '../../lib/nostr-message-service';
+import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
+import type { MessageSendResult } from '../../types/privacy';
 import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 
 interface SenderProfile {
@@ -53,13 +54,20 @@ export function PeerInvitationModal({
   // Enhanced message sending function using authenticated user's keys
   const sendMessage = async (content: string, recipient: string, privacyLevel: PrivacyLevel): Promise<MessageSendResult> => {
     try {
-      const result = await nostrMessageService.sendMessage({
-        content,
-        recipientNpub: recipient,
-        privacyLevel,
-        messageType: 'invitation'
-      });
-
+      const eventId = await CEPS.sendGiftWrappedDirectMessage(
+        {
+          sessionId: 'client-ui',
+          displayNameHash: 'peer',
+          encryptedNpub: recipient,
+          familyRole: 'private',
+          trustLevel: 'known',
+          supportsGiftWrap: true,
+          preferredEncryption: 'auto',
+          addedByHash: 'client-ui'
+        } as any,
+        { type: 'invitation', content, meta: { privacyLevel } }
+      );
+      const result: MessageSendResult = { success: true, messageId: eventId, method: 'giftwrapped' as any };
       return result;
     } catch (error) {
       console.error('Message sending failed:', error);

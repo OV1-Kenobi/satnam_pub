@@ -23,15 +23,18 @@ async function getSupabase() {
   return supabase;
 }
 
-// DUID generation for user identification
+// DUID generation for user identification (must match canonical generator)
 async function generateDUID(nip05Identifier) {
   const secret = process.env.DUID_SERVER_SECRET;
   if (!secret) {
     throw new Error('DUID_SERVER_SECRET not configured');
   }
-  
+
+  // CRITICAL: Must normalize exactly like canonical generator
+  const identifier = nip05Identifier.trim().toLowerCase();
+
   const hmac = crypto.createHmac('sha256', secret);
-  hmac.update(nip05Identifier);
+  hmac.update(identifier);
   return hmac.digest('hex');
 }
 
@@ -124,10 +127,27 @@ const handler = async (event, context) => {
 
     // Generate DUID for user lookup
     const userDUID = await generateDUID(nip05);
-    
+
     // Get database client
     const db = await getSupabase();
-    
+
+    // Set per-request RLS context for SELECT by DUID (safe fallback if helper missing)
+    try {
+      await db.rpc('app_set_config', {
+        setting_name: 'app.lookup_user_duid',
+        setting_value: userDUID,
+        is_local: true,
+      });
+    } catch (e) {
+      try {
+        await db.rpc('set_app_config', {
+          setting_name: 'app.lookup_user_duid',
+          setting_value: userDUID,
+          is_local: true,
+        });
+      } catch {}
+    }
+
     // Look up user by DUID
     const { data: user, error: userError } = await db
       .from('user_identities')

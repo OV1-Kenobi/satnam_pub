@@ -102,7 +102,7 @@ import { supabase } from "../../netlify/functions/supabase.js";
  */
 
 // MEMORY OPTIMIZATION: Lazy load heavy dependencies
-let RATE_LIMITS, z, qr, formatTimeWindow;
+let RATE_LIMITS, z, formatTimeWindow;
 
 async function loadDependencies() {
   if (!RATE_LIMITS) {
@@ -114,9 +114,7 @@ async function loadDependencies() {
     const zodModule = await import("zod");
     z = zodModule.z;
   }
-  if (!qr) {
-    qr = await import("qr-image");
-  }
+  // FIXED: Removed qr-image dependency - QR generation moved to frontend
 }
 
 // Rate limiting configuration (loaded dynamically)
@@ -225,7 +223,7 @@ async function getUserIdentityForSigning(sessionToken, options = {}) {
     // Get user identity from database
     const { data: userIdentity, error: userError } = await supabase
       .from('user_identities')
-      .select('id, npub, encrypted_nsec, nip05, auth_method, user_salt, hashed_encrypted_nsec')
+      .select('id, npub, encrypted_nsec, nip05, auth_method, user_salt')
       .eq('id', sessionData.userId)
       .eq('is_active', true)
       .single();
@@ -276,11 +274,7 @@ async function getUserIdentityForSigning(sessionToken, options = {}) {
           const { decryptNsecSimple } = await import('../../src/lib/privacy/encryption.js');
           decryptedNsec = await decryptNsecSimple(userIdentity.encrypted_nsec, userIdentity.user_salt);
         }
-        // Try password-based decryption if simple format fails
-        else if (userIdentity.hashed_encrypted_nsec) {
-          const { decryptCredentials } = await import('../../netlify/security.js');
-          decryptedNsec = await decryptCredentials(userIdentity.hashed_encrypted_nsec, options.userPassword);
-        }
+        // Remove password-based path tied to hashed_encrypted_nsec (deprecated)
         else {
           throw new Error('No encrypted nsec data found');
         }
@@ -340,26 +334,18 @@ async function generateHashedInviteId() {
 }
 
 /**
- * Generate QR code for invitation URL
+ * Generate QR code placeholder for invitation URL
+ * FIXED: QR generation moved to frontend for browser compatibility
  * @param {string} inviteUrl - URL to encode in QR code
- * @returns {Promise<string>} QR code data URL
+ * @returns {Promise<string>} QR code placeholder data URL
  */
 async function generateQRCode(inviteUrl) {
   try {
-    // Generate QR code as PNG buffer
-    const qrBuffer = qr.imageSync(inviteUrl, {
-      type: 'png',
-      size: 10,
-      margin: 2
-    });
-
-    // Convert buffer to base64 data URL
-    const base64 = qrBuffer.toString('base64');
-    const qrCodeDataUrl = `data:image/png;base64,${base64}`;
-
-    return qrCodeDataUrl;
+    // Return a simple placeholder - actual QR generation happens on frontend
+    const placeholder = `data:text/plain;charset=utf-8,${encodeURIComponent(inviteUrl)}`;
+    return placeholder;
   } catch (error) {
-    throw new Error("Failed to generate QR code");
+    throw new Error("Failed to generate QR code placeholder");
   }
 }
 

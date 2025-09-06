@@ -203,7 +203,7 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
       };
     }
 
-    // Step 6: Return successful authentication response (following established format)
+    // Step 6: Return successful authentication response (include fields for recovery session)
     return {
       statusCode: 200,
       headers: corsHeaders,
@@ -214,7 +214,11 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
             id: user.id,
             nip05: requestData.nip05,
             role: user.role || 'private',
-            is_active: true
+            is_active: true,
+            // Include fields needed by RecoverySessionBridge for immediate session creation
+            user_salt: user.user_salt || null,
+            encrypted_nsec: user.encrypted_nsec || null,
+            encrypted_nsec_iv: user.encrypted_nsec_iv || null
           },
           authenticated: true,
           sessionToken: sessionResult

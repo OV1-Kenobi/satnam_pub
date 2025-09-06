@@ -1,7 +1,8 @@
 import { Copy, Download, XCircle } from "lucide-react";
-import * as qr from "qr-image";
 import React, { useEffect, useRef, useState } from "react";
+// FIXED: Replace Node.js-only qr-image with browser-compatible QR generation
 import { FamilyMember } from "../../types/shared";
+import { generateQRCodeDataURL, getRecommendedErrorCorrection } from "../../utils/qr-code-browser";
 
 interface QRCodeModalProps {
   isOpen: boolean;
@@ -36,20 +37,20 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
       // Generate QR code with lightning: prefix for better wallet compatibility
       const qrData = `lightning:${lightningAddress}`;
 
-      // Generate QR code as PNG buffer
-      const qrBuffer = qr.imageSync(qrData, {
-        type: 'png',
-        size: 10,
-        margin: 2
+      // FIXED: Use browser-compatible QR generation
+      const dataURL = await generateQRCodeDataURL(qrData, {
+        size: 256,
+        margin: 4,
+        errorCorrectionLevel: getRecommendedErrorCorrection('payment'),
+        foregroundColor: '#000000',
+        backgroundColor: '#FFFFFF'
       });
-
-      // Convert buffer to base64 data URL
-      const base64 = qrBuffer.toString('base64');
-      const dataURL = `data:image/png;base64,${base64}`;
 
       setQrCodeDataURL(dataURL);
     } catch (error) {
       console.error('Error generating QR code:', error);
+      // Fallback: show error message
+      setQrCodeDataURL('');
     }
   };
 

@@ -1,18 +1,18 @@
--- NIP-05 Identity Disclosure Configuration Migration
--- This migration adds support for NIP-05 identity disclosure settings
+-- NIP05 Identity Disclosure Configuration Migration
+-- This migration adds support for NIP05 identity disclosure settings
 -- Run this script in the Supabase SQL editor
 
 -- Add nip05_disclosure_config column to user_identities table
--- This stores the user's NIP-05 disclosure preferences as JSONB
-ALTER TABLE user_identities 
+-- This stores the user's NIP05 disclosure preferences as JSONB
+ALTER TABLE user_identities
 ADD COLUMN IF NOT EXISTS nip05_disclosure_config JSONB DEFAULT NULL;
 
 -- Create index for efficient querying of disclosure configurations
-CREATE INDEX IF NOT EXISTS idx_user_identities_nip05_disclosure 
+CREATE INDEX IF NOT EXISTS idx_user_identities_nip05_disclosure
 ON user_identities USING GIN (nip05_disclosure_config);
 
 -- Add comment to document the column structure
-COMMENT ON COLUMN user_identities.nip05_disclosure_config IS 
+COMMENT ON COLUMN user_identities.nip05_disclosure_config IS
 'NIP-05 identity disclosure configuration stored as JSONB with structure:
 {
   "enabled": boolean,
@@ -32,39 +32,39 @@ BEGIN
   IF config IS NULL THEN
     RETURN TRUE;
   END IF;
-  
+
   -- Validate required fields
   IF NOT (config ? 'enabled') THEN
     RETURN FALSE;
   END IF;
-  
+
   -- Validate enabled field is boolean
   IF NOT (jsonb_typeof(config->'enabled') = 'boolean') THEN
     RETURN FALSE;
   END IF;
-  
+
   -- If enabled is true, validate additional fields
   IF (config->>'enabled')::boolean = true THEN
     -- nip05 must be present and be a string
     IF NOT (config ? 'nip05') OR NOT (jsonb_typeof(config->'nip05') = 'string') THEN
       RETURN FALSE;
     END IF;
-    
+
     -- scope must be present and be one of the allowed values
-    IF NOT (config ? 'scope') OR 
+    IF NOT (config ? 'scope') OR
        NOT (config->>'scope' IN ('direct', 'groups', 'specific-groups')) THEN
       RETURN FALSE;
     END IF;
-    
+
     -- If scope is specific-groups, specificGroupIds must be present and be an array
     IF config->>'scope' = 'specific-groups' THEN
-      IF NOT (config ? 'specificGroupIds') OR 
+      IF NOT (config ? 'specificGroupIds') OR
          NOT (jsonb_typeof(config->'specificGroupIds') = 'array') THEN
         RETURN FALSE;
       END IF;
     END IF;
   END IF;
-  
+
   RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql;
@@ -86,10 +86,14 @@ BEGIN
   END IF;
 END $$;
 
+
+-- Ensure previous version with different return type is removed
+DROP FUNCTION IF EXISTS get_users_with_nip05_disclosure();
+
 -- Create function to get users with active NIP-05 disclosure
 CREATE OR REPLACE FUNCTION get_users_with_nip05_disclosure()
 RETURNS TABLE (
-  id UUID,
+  id TEXT,
   npub TEXT,
   nip05 TEXT,
   scope TEXT,
@@ -100,8 +104,8 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
   RETURN QUERY
-  SELECT 
-    ui.id,
+  SELECT
+    ui.id::TEXT,
     ui.npub,
     (ui.nip05_disclosure_config->>'nip05')::TEXT as nip05,
     (ui.nip05_disclosure_config->>'scope')::TEXT as scope,
@@ -141,7 +145,7 @@ BEGIN
       true
     );
   END IF;
-  
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -171,7 +175,7 @@ BEGIN
   ) THEN
     CREATE POLICY "Users can read own nip05 disclosure config"
     ON user_identities FOR SELECT
-    USING (auth.uid() = user_identities.id);
+    USING (auth.uid()::text = user_identities.id);
   END IF;
 END $$;
 
@@ -185,18 +189,19 @@ BEGIN
   ) THEN
     CREATE POLICY "Users can update own nip05 disclosure config"
     ON user_identities FOR UPDATE
-    USING (auth.uid() = user_identities.id);
+    USING (auth.uid()::text = user_identities.id)
+    WITH CHECK (auth.uid()::text = user_identities.id);
   END IF;
 END $$;
 
 -- Add helpful comments for maintenance
-COMMENT ON FUNCTION validate_nip05_disclosure_config(JSONB) IS 
+COMMENT ON FUNCTION validate_nip05_disclosure_config(JSONB) IS
 'Validates the structure and content of NIP-05 disclosure configuration JSONB';
 
-COMMENT ON FUNCTION get_users_with_nip05_disclosure() IS 
+COMMENT ON FUNCTION get_users_with_nip05_disclosure() IS
 'Returns all users who have active NIP-05 disclosure enabled with their configuration details';
 
-COMMENT ON FUNCTION audit_nip05_disclosure_change() IS 
+COMMENT ON FUNCTION audit_nip05_disclosure_change() IS
 'Trigger function that logs changes to NIP-05 disclosure configuration for audit purposes';
 
 -- Migration completed successfully

@@ -20,6 +20,8 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { recoverySessionBridge } from '../../lib/auth/recovery-session-bridge';
+import type { UserIdentity } from '../../lib/auth/user-identities-auth';
 import { useAuth } from './AuthProvider';
 
 interface NIP05PasswordAuthProps {
@@ -134,6 +136,29 @@ export function NIP05PasswordAuth({
       if (success) {
         if (process.env.NODE_ENV !== 'production') {
           console.debug('✅ Authentication successful');
+        }
+        // Immediately create a secure signing session (15 min default) using direct user data
+        try {
+          const raw = await fetch('/api/auth/session-user', { method: 'GET', credentials: 'include' });
+          const json = await raw.json().catch(() => null) as { success?: boolean; data?: { user?: UserIdentity } } | null;
+          const user: UserIdentity | undefined = json?.data?.user as any;
+
+          if (user && (user as any).encrypted_nsec && user.user_salt) {
+            const session = await recoverySessionBridge.createRecoverySessionFromUser(user, { duration: 15 * 60 * 1000 });
+            if (!session.success) {
+              console.warn('🔐 NSEC session creation after signin failed:', session.error);
+            } else {
+              await new Promise((r) => setTimeout(r, 50));
+            }
+          } else {
+            console.warn('🔐 No user payload available for direct session creation; falling back to credentials-based');
+            // Fallback to credentials-based creation to maintain backward compatibility
+            const { createRecoverySession } = await import('../../lib/auth/recovery-session-bridge');
+            const session = await createRecoverySession({ nip05: nip05.trim(), password }, { duration: 15 * 60 * 1000 });
+            if (!session.success) console.warn('🔐 NSEC session creation after signin failed:', session.error);
+          }
+        } catch (sessErr) {
+          console.warn('🔐 NSEC session creation threw:', sessErr);
         }
         handleAuthSuccess();
       } else {

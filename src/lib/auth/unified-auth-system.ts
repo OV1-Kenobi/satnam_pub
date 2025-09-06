@@ -13,8 +13,7 @@
  * - Seamless integration with Identity Forge and Nostrich Signin
  */
 
-import { useCallback, useEffect, useState } from "react";
-import type { SessionData } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
 import SecureTokenManager from "./secure-token-manager";
 import { AuthResult, UserIdentity } from "./user-identities-auth";
 
@@ -61,12 +60,6 @@ export interface UnifiedAuthActions {
     pubkey: string
   ) => Promise<boolean>;
 
-  // OTP authentication methods
-  initiateOTP: (
-    identifier: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  authenticateOTP: (identifier: string, otpCode: string) => Promise<boolean>;
-
   // Session management
   validateSession: () => Promise<boolean>;
   refreshSession: () => Promise<boolean>;
@@ -100,6 +93,14 @@ const SESSION_STORAGE_KEYS = {
  * Replaces usePrivacyFirstAuth with comprehensive functionality
  */
 export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
+  // CRITICAL FIX: Track initialization to prevent state conflicts
+  const initializationRef = useRef({
+    hasInitialized: false,
+    isInitializing: false,
+  });
+  // CRITICAL FIX: Track authenticated state synchronously to avoid race conditions
+  const authenticatedRef = useRef(false);
+
   const [state, setState] = useState<UnifiedAuthState>({
     user: null,
     sessionToken: null,
@@ -124,11 +125,52 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
    * Load and validate stored session on mount
    */
   const initializeAuth = useCallback(async () => {
+    console.log("🔄 Initializing authentication state...");
+
+    // CRITICAL FIX: Prevent multiple initializations and state conflicts
+    if (
+      initializationRef.current.hasInitialized ||
+      initializationRef.current.isInitializing
+    ) {
+      console.log(
+        "✅ Auth already initialized or in progress, skipping to prevent state reset"
+      );
+      return;
+    }
+
+    // CRITICAL FIX: Synchronous guard to avoid race with async state
+    if (authenticatedRef.current) {
+      console.log(
+        "✅ User already authenticated (ref), skipping initialization"
+      );
+      initializationRef.current.hasInitialized = true;
+      return;
+    }
+
+    // CRITICAL FIX: Don't reset state if user is already authenticated
+    if (state.authenticated && state.user && state.sessionToken) {
+      console.log(
+        "✅ User already authenticated, skipping initialization to prevent state reset"
+      );
+      initializationRef.current.hasInitialized = true;
+      authenticatedRef.current = true;
+      return;
+    }
+
+    initializationRef.current.isInitializing = true;
+
     try {
       const accessToken = SecureTokenManager.getAccessToken();
+      console.log("🔍 Auth initialization check:", { hasToken: !!accessToken });
 
       if (accessToken) {
         const tokenPayload = SecureTokenManager.parseTokenPayload(accessToken);
+        console.log("🔍 Token payload parsed:", {
+          hasPayload: !!tokenPayload,
+          exp: tokenPayload?.exp
+            ? new Date(tokenPayload.exp * 1000).toISOString()
+            : "none",
+        });
 
         if (tokenPayload) {
           // Check if token is expired
@@ -162,6 +204,15 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
                   }
                 }
 
+                console.log(
+                  "✅ Valid session found, restoring authentication state:",
+                  {
+                    userId: user.id?.substring(0, 20) + "...",
+                    authenticated: true,
+                    accountActive: user.is_active,
+                  }
+                );
+
                 setState((prev) => ({
                   ...prev,
                   user,
@@ -173,6 +224,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
                   loading: false,
                   error: null,
                 }));
+                authenticatedRef.current = true;
               } catch (parseError) {
                 console.error("Failed to parse stored user data:", parseError);
                 await clearStoredSession();
@@ -209,76 +261,120 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         }
       } else {
         // No tokens available
-        setState((prev) => ({ ...prev, loading: false }));
+        console.log(
+          "ℹ️ No authentication tokens found, user not authenticated"
+        );
+        setState((prev) => ({ ...prev, loading: false, authenticated: false }));
       }
     } catch (error) {
-      console.error("Failed to initialize auth state:", error);
+      console.error("❌ Failed to initialize auth state:", error);
       setState((prev) => ({
         ...prev,
         loading: false,
+        authenticated: false,
         error: "Failed to initialize authentication",
       }));
+    } finally {
+      // CRITICAL FIX: Mark initialization as complete
+      initializationRef.current.isInitializing = false;
+      initializationRef.current.hasInitialized = true;
+      console.log("✅ Auth initialization completed");
     }
-  }, [clearStoredSession]);
+  }, []); // CRITICAL FIX: Remove dependencies to prevent re-initialization
 
   /**
    * Handle successful authentication result
    */
-  const handleAuthSuccess = useCallback(async (result: AuthResult) => {
-    if (result.success && result.user && result.sessionToken) {
-      const now = Date.now();
+  const handleAuthSuccess = useCallback(
+    async (result: AuthResult): Promise<boolean> => {
+      console.log("🔐 handleAuthSuccess called with:", {
+        success: result.success,
+        hasUser: !!result.user,
+        hasToken: !!result.sessionToken,
+        userId: result.user?.id?.substring(0, 20) + "...",
+      });
 
-      // Parse token to get expiry information
-      const tokenPayload = SecureTokenManager.parseTokenPayload(
-        result.sessionToken
-      );
-      if (!tokenPayload) {
+      if (result.success && result.user && result.sessionToken) {
+        const now = Date.now();
+
+        // Parse token to get expiry information
+        const tokenPayload = SecureTokenManager.parseTokenPayload(
+          result.sessionToken
+        );
+        if (!tokenPayload) {
+          console.error(
+            "❌ Invalid token format received in handleAuthSuccess"
+          );
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: "Invalid token format received",
+          }));
+          authenticatedRef.current = false;
+          return false;
+        }
+
+        // Store access token securely (in memory)
+        SecureTokenManager.setAccessToken(
+          result.sessionToken,
+          tokenPayload.exp * 1000
+        );
+
+        // Normalize/augment user data with hashedId from token payload
+        const userToStore = {
+          ...(result.user || {}),
+          hashedId: tokenPayload.hashedId,
+          is_active: result.user ? result.user.is_active !== false : true,
+        } as UserIdentity;
+
+        // Store user data in sessionStorage (survives page reload, cleared on tab close)
+        sessionStorage.setItem(
+          SESSION_STORAGE_KEYS.USER,
+          JSON.stringify(userToStore)
+        );
+        sessionStorage.setItem(
+          SESSION_STORAGE_KEYS.LAST_VALIDATED,
+          now.toString()
+        );
+
+        // CRITICAL FIX: Update state synchronously to prevent race conditions
+        setState((prev) => ({
+          ...prev,
+          user: userToStore,
+          sessionToken: result.sessionToken as string,
+          authenticated: true,
+          accountActive: !!userToStore.is_active,
+          sessionValid: true,
+          lastValidated: now,
+          loading: false,
+          error: null,
+        }));
+        authenticatedRef.current = true;
+
+        console.log("✅ Authentication state updated successfully:", {
+          authenticated: true,
+          userId: result.user.id?.substring(0, 20) + "...",
+          accountActive: !!result.user.is_active,
+          tokenExpiry: new Date(tokenPayload.exp * 1000).toISOString(),
+        });
+
+        return true;
+      } else {
+        console.error(
+          "❌ Authentication failed in handleAuthSuccess:",
+          result.error
+        );
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: "Invalid token format received",
+          error: result.error || "Authentication failed",
         }));
+        authenticatedRef.current = false;
         return false;
       }
-
-      // Store access token securely (in memory)
-      SecureTokenManager.setAccessToken(
-        result.sessionToken,
-        tokenPayload.exp * 1000
-      );
-
-      // Store user data in sessionStorage (survives page reload, cleared on tab close)
-      sessionStorage.setItem(
-        SESSION_STORAGE_KEYS.USER,
-        JSON.stringify(result.user)
-      );
-      sessionStorage.setItem(
-        SESSION_STORAGE_KEYS.LAST_VALIDATED,
-        now.toString()
-      );
-
-      setState((prev) => ({
-        ...prev,
-        user: result.user ?? null,
-        sessionToken: result.sessionToken ?? null,
-        authenticated: true,
-        accountActive: result.user ? !!result.user.is_active : false,
-        sessionValid: true,
-        lastValidated: now,
-        loading: false,
-        error: null,
-      }));
-
-      return true;
-    } else {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: result.error || "Authentication failed",
-      }));
-      return false;
-    }
-  }, []);
+    },
+    []
+  );
 
   /**
    * Logout user and clear all session data
@@ -341,26 +437,26 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
 
         const raw = await response.json();
         console.log("🔐 AUTH TRACE: /api/auth/signin response json", raw);
-        const normalized: AuthResult =
-          raw && raw.data && raw.data.sessionToken
-            ? {
-                success: !!raw.success,
-                user: raw.data.user
-                  ? {
-                      id: raw.data.user.id,
-                      user_salt: "",
-                      password_hash: "",
-                      password_salt: "",
-                      failed_attempts: 0,
-                      role: (raw.data.user.role as any) || "private",
-                      is_active: raw.data.user.is_active !== false,
-                      hashedId: raw.data.user.id,
-                      authMethod: "nip05-password",
-                    }
-                  : undefined,
-                sessionToken: raw.data.sessionToken,
-              }
-            : raw;
+        const token = raw?.data?.sessionToken;
+        const userResp = raw?.data?.user;
+        const normalized: AuthResult = token
+          ? {
+              success: !!raw.success,
+              user: userResp
+                ? {
+                    id: userResp.id,
+                    user_salt: "",
+                    password_hash: "",
+                    password_salt: "",
+                    failed_attempts: 0,
+                    role: (userResp.role as any) || "private",
+                    is_active: userResp.is_active !== false,
+                    authMethod: "nip05-password",
+                  }
+                : undefined,
+              sessionToken: token,
+            }
+          : raw;
         return handleAuthSuccess(normalized);
       } catch (error) {
         setState((prev) => ({
@@ -403,26 +499,26 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         }
 
         const raw = await response.json();
-        const normalized: AuthResult =
-          raw && raw.data && raw.data.sessionToken
-            ? {
-                success: !!raw.success,
-                user: raw.data.user
-                  ? {
-                      id: raw.data.user.id,
-                      user_salt: "",
-                      password_hash: "",
-                      password_salt: "",
-                      failed_attempts: 0,
-                      role: (raw.data.user.role as any) || "private",
-                      is_active: raw.data.user.is_active !== false,
-                      hashedId: raw.data.user.id,
-                      authMethod: "nip07",
-                    }
-                  : undefined,
-                sessionToken: raw.data.sessionToken,
-              }
-            : raw;
+        const token = raw?.data?.sessionToken;
+        const userResp = raw?.data?.user;
+        const normalized: AuthResult = token
+          ? {
+              success: !!raw.success,
+              user: userResp
+                ? {
+                    id: userResp.id,
+                    user_salt: "",
+                    password_hash: "",
+                    password_salt: "",
+                    failed_attempts: 0,
+                    role: (userResp.role as any) || "private",
+                    is_active: userResp.is_active !== false,
+                    authMethod: "nip07",
+                  }
+                : undefined,
+              sessionToken: token,
+            }
+          : raw;
         return handleAuthSuccess(normalized);
       } catch (error) {
         setState((prev) => ({
@@ -432,133 +528,6 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             error instanceof Error
               ? error.message
               : "NIP-07 authentication failed",
-        }));
-        return false;
-      }
-    },
-    [handleAuthSuccess]
-  );
-
-  /**
-   * Initiate OTP authentication
-   */
-  const initiateOTP = useCallback(
-    async (
-      identifier: string
-    ): Promise<{ success: boolean; error?: string }> => {
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
-
-        const { authAPI } = await import("../api");
-
-        // Determine the correct field based on input format
-        let otpRequestData;
-        if (identifier.startsWith("npub")) {
-          otpRequestData = { npub: identifier };
-        } else if (identifier.includes("@")) {
-          otpRequestData = { nip05: identifier };
-        } else {
-          // Assume it's a pubkey if not npub or nip05 format
-          otpRequestData = { pubkey: identifier };
-        }
-
-        const response = await authAPI.initiateOTP(otpRequestData);
-
-        if (response.success) {
-          // Store session ID for verification
-          const data = response.data as { sessionId: string };
-          localStorage.setItem("otp_session_id", data.sessionId);
-          setState((prev) => ({ ...prev, loading: false }));
-          return { success: true };
-        } else {
-          const errorMessage = response.error || "Failed to send OTP";
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            error: errorMessage,
-          }));
-          return { success: false, error: errorMessage };
-        }
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to initiate OTP";
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          error: errorMessage,
-        }));
-        return { success: false, error: errorMessage };
-      }
-    },
-    []
-  );
-
-  /**
-   * Authenticate with OTP
-   */
-  const authenticateOTP = useCallback(
-    async (_identifier: string, otpCode: string): Promise<boolean> => {
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
-
-        const storedSessionId = localStorage.getItem("otp_session_id");
-        if (!storedSessionId) {
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            error: "No OTP session found. Please initiate OTP first.",
-          }));
-          return false;
-        }
-
-        const { authAPI } = await import("../api");
-        const verifyData = {
-          sessionId: storedSessionId,
-          otp: otpCode,
-        };
-
-        const response = await authAPI.verifyOTP(verifyData);
-
-        if (response.success) {
-          // Clean up session ID after successful verification
-          localStorage.removeItem("otp_session_id");
-
-          // Create a result compatible with handleAuthSuccess
-          // Build minimal AuthResult compatible object
-          const data = response.data as SessionData;
-          const authResult: AuthResult = {
-            success: true,
-            user: {
-              id: data.user.id,
-              user_salt: "",
-              password_hash: "",
-              password_salt: "",
-              failed_attempts: 0,
-              role: (data.user.role as any) || "private",
-              is_active: !!data.user.is_active,
-              hashedId: data.user.id,
-              authMethod: "otp",
-            },
-            sessionToken: data.sessionToken,
-          };
-
-          return handleAuthSuccess(authResult);
-        } else {
-          const errorMessage = response.error || "OTP verification failed";
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            error: errorMessage,
-          }));
-          return false;
-        }
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "OTP authentication failed";
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          error: errorMessage,
         }));
         return false;
       }
@@ -719,10 +688,11 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     setState((prev) => ({ ...prev, error: null }));
   }, []);
 
-  // Initialize authentication state on mount
+  // Initialize authentication state on mount - CRITICAL FIX: Only run once
   useEffect(() => {
+    console.log("🔄 Auth system mounting - initializing authentication state");
     initializeAuth();
-  }, [initializeAuth]);
+  }, []); // Empty dependency array - only run once on mount
 
   return {
     // State
@@ -731,8 +701,6 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     // Actions
     authenticateNIP05Password,
     authenticateNIP07,
-    initiateOTP,
-    authenticateOTP,
     validateSession,
     refreshSession,
     logout,

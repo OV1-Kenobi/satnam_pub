@@ -25,7 +25,9 @@ import { apiClient } from '../utils/api-client';
 import { SessionInfo } from '../utils/secureSession';
 import { useAuth, useIdentityForge } from "./auth/AuthProvider";
 
+import { recoverySessionBridge } from "../lib/auth/recovery-session-bridge";
 import SecureTokenManager from "../lib/auth/secure-token-manager";
+import type { UserIdentity } from "../lib/auth/user-identities-auth";
 import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 
@@ -631,9 +633,17 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         lud16: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined,
       };
 
-      // Sign a real kind:0 profile event locally using ephemeral nsec (no NIP-07)
-      // Prepare profile content and publish centrally (no local finalizeEvent here)
-      // Centralized publishing via central_event_publishing_service (no NIP-07)
+      // Ensure a SecureSession exists before publishing; create one from ephemeralNsec if needed
+      try {
+        const preSession = secureNsecManager.getActiveSessionId?.();
+        if (!preSession && ephemeralNsec) {
+          await secureNsecManager.createPostRegistrationSession(ephemeralNsec, 15 * 60 * 1000);
+        }
+      } catch (sessErr) {
+        console.warn('Unable to create temporary SecureSession for profile publish:', sessErr);
+      }
+
+      // Publish centrally using the active SecureSession
       try {
         const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
         await central_event_publishing_service.publishProfile(ephemeralNsec, profileMetadata);
@@ -772,7 +782,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         try {
           setUsernameAvailable(null); // Set to loading state
 
-          const response = await fetch('/api/auth/check-username-availability', {
+          const response = await fetch('/.netlify/functions/check-username-availability', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -782,9 +792,29 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             })
           });
 
-          const result = await response.json();
+          const contentType = response.headers.get('content-type') || '';
+          let result: any = null;
 
-          if (result.success) {
+          if (contentType.includes('application/json')) {
+            try {
+              result = await response.json();
+            } catch (parseErr) {
+              const text = await response.text().catch(() => '');
+              throw new Error(`Invalid JSON from server: ${text?.slice(0, 200)}`);
+            }
+          } else {
+            const text = await response.text().catch(() => '');
+            throw new Error(`Non-JSON response (status ${response.status}): ${text?.slice(0, 200)}`);
+          }
+
+          if (!response.ok) {
+            console.error('Username check HTTP error:', response.status, result?.error || result);
+            setUsernameAvailable(null);
+            setUsernameSuggestion(null);
+            return;
+          }
+
+          if (result?.success) {
             setUsernameAvailable(result.available);
             if (!result.available && result.suggestion) {
               // Store suggestion for user feedback
@@ -793,12 +823,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               setUsernameSuggestion(null);
             }
           } else {
-            console.error('Username availability check failed:', result.error);
-            setUsernameAvailable(false);
+            console.error('Username availability check failed:', result?.error);
+            setUsernameAvailable(null);
+            setUsernameSuggestion(null);
           }
         } catch (error) {
-          console.error('Error checking username availability:', error);
-          setUsernameAvailable(false);
+          console.error('Error checking username availability:', error instanceof Error ? error.message : String(error));
+          setUsernameAvailable(null);
+          setUsernameSuggestion(null);
         }
       }, 500); // Debounce API calls
 
@@ -844,13 +876,27 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         throw new Error("Failed to generate Nostr keypair");
       }
 
-      // STEP 3: Validate generated keys meet Nostr standards
-      if (!keyPair.npub.startsWith('npub1') || keyPair.npub.length !== 63) {
+      // STEP 3: Validate generated keys meet Nostr standards (decode-based, not string length)
+      if (!keyPair.npub.startsWith('npub1')) {
         throw new Error(`Invalid npub format: ${keyPair.npub}`);
       }
-
-      if (!keyPair.nsec.startsWith('nsec1') || keyPair.nsec.length !== 63) {
+      if (!keyPair.nsec.startsWith('nsec1')) {
         throw new Error(`Invalid nsec format: ${keyPair.nsec}`);
+      }
+      try {
+        // Decode npub to hex and ensure 64-hex length
+        const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
+        const pubHexFromNpub = CEPS.decodeNpub(keyPair.npub);
+        if (!pubHexFromNpub || pubHexFromNpub.length !== 64) {
+          throw new Error(`Invalid underlying pubkey length from npub: ${pubHexFromNpub?.length}`);
+        }
+        // Decode nsec to bytes and ensure 32-byte length
+        const privateKeyBytes = CEPS.decodeNsec(keyPair.nsec);
+        if (!privateKeyBytes || privateKeyBytes.length !== 32) {
+          throw new Error(`Invalid underlying private key length from nsec: ${privateKeyBytes?.length}`);
+        }
+      } catch (decodeErr) {
+        throw new Error(`Invalid Nostr key encoding: ${decodeErr instanceof Error ? decodeErr.message : 'decode failed'}`);
       }
 
       // Ensure the underlying public key hex is 66 chars with 02/03 prefix,
@@ -961,8 +1007,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
 
 
-      // Import encryption and security functions
-      const { encryptData, secureMemoryWipe, validateSecureStorage } = await import('../../utils/crypto-factory');
+      // Import security functions
+      const { secureMemoryWipe, validateSecureStorage } = await import('../../utils/crypto-factory');
 
       // SECURITY ENHANCEMENT: Validate no sensitive data in storage before proceeding
       const storageClean = await validateSecureStorage();
@@ -970,12 +1016,17 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         console.warn('⚠️ Potential sensitive data detected in browser storage');
       }
 
-      // Encrypt the nsec using user's password (Zero-Knowledge Protocol with unique salt)
-      const encryptedNsec = await encryptData(ephemeralNsec, formData.password);
+      console.log('🔐 Sending raw nsec to server for Noble V2 encryption with proper salt');
 
-      // SECURITY ENHANCEMENT: Immediately wipe the ephemeral nsec from memory after encryption
+      // Send raw nsec to server - let register-identity function handle Noble V2 encryption
+      // This ensures the userSalt used for encryption matches what's stored in the database
+      const encryptedNsec = ephemeralNsec; // Server will encrypt with Noble V2
+
+      console.log('✅ Raw nsec prepared for server-side Noble V2 encryption');
+
+      // SECURITY ENHANCEMENT: Immediately wipe the ephemeral nsec from memory after preparing
       secureMemoryWipe(ephemeralNsec);
-      console.log('🛡️ SECURITY: Ephemeral nsec wiped from memory after encryption');
+      console.log('🛡️ SECURITY: Ephemeral nsec wiped from memory after preparation');
 
       const requestData = {
         username: formData.username,
@@ -1163,26 +1214,52 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           };
 
           // Update the global auth state using the unified auth system
-          await auth.handleAuthSuccess(authResult);
-          console.log('✅ Global authentication state updated after registration');
+          const ok = await auth.handleAuthSuccess(authResult);
+          console.log('✅ Global authentication state updated after registration:', { ok });
+
+          if (!ok) {
+            throw new Error('Authentication state update failed - user not authenticated after registration');
+          }
+
+          // Post-registration verification (lightweight)
+          const token = SecureTokenManager.getAccessToken();
+          const tokenPayload = token ? SecureTokenManager.parseTokenPayload(token) : null;
+          console.log('🔍 Post-registration auth verification:', {
+            hasToken: !!token,
+            tokenExp: tokenPayload?.exp ? new Date(tokenPayload.exp * 1000).toISOString() : 'none'
+          });
+
         } catch (authStateError) {
-          console.warn('⚠️ Failed to update global auth state:', authStateError);
-          // Non-critical - the local session is still valid
+          console.error('❌ CRITICAL: Failed to update global auth state:', authStateError);
+          // This is actually critical - if auth state isn't updated, user will see SignInModal
+          throw new Error('Authentication state update failed after registration');
         }
 
-        // Retain nsec for immediate peer invitations (15-minute session)
-        if (ephemeralNsec) {
-          try {
+        // Create robust SecureSession immediately after registration
+        try {
+          // Prefer server-sourced user payload for decryption-based session
+          const raw = await fetch('/api/auth/session-user', { method: 'GET', credentials: 'include' });
+          const json = await raw.json().catch(() => null) as { success?: boolean; data?: { user?: UserIdentity } } | null;
+          const user: UserIdentity | undefined = json?.data?.user as any;
+          if (user && (user as any).encrypted_nsec && user.user_salt) {
+            const session = await recoverySessionBridge.createRecoverySessionFromUser(user, { duration: 15 * 60 * 1000 });
+            if (!session.success) {
+              console.warn('🔐 Post-registration session creation failed:', session.error);
+            } else {
+              setNsecRetentionSessionId(session.sessionId || null);
+            }
+          } else if (ephemeralNsec) {
+            // Fallback to in-memory ephemeral nsec retention (no re-auth)
             const retentionSessionId = await secureNsecManager.createPostRegistrationSession(
               ephemeralNsec,
-              15 * 60 * 1000 // 15 minutes
+              15 * 60 * 1000
             );
             setNsecRetentionSessionId(retentionSessionId);
-
-          } catch (retentionError) {
-            console.warn('Failed to retain nsec for peer invitations:', retentionError);
-            // Non-critical error - user can still create invitations with password
+          } else {
+            console.warn('🔐 No user payload or ephemeral nsec available for session creation');
           }
+        } catch (retentionError) {
+          console.warn('Failed to initialize SecureSession after registration:', retentionError);
         }
       } catch (e) {
         console.error('Failed to authenticate after registration:', e);

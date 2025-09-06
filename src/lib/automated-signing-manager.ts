@@ -569,23 +569,16 @@ export class AutomatedSigningManager {
         throw new Error("Invalid encrypted nsec data or decryption failed");
       }
 
-      // Import nostr-tools for event signing
-      const { finalizeEvent, getPublicKey } = await import("nostr-tools");
+      // Delegate signing to CEPS to centralize private key usage
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../lib/central_event_publishing_service"
+      );
 
-      // Convert nsec to bytes for signing
-      const nsecBytes = this.hexToBytes(decryptedNsec);
-
-      // Get public key from private key
-      const pubkey = getPublicKey(nsecBytes);
-
-      // Create complete event with pubkey
       const eventToSign = {
         ...unsignedEvent,
-        pubkey,
       };
 
-      // Sign the event
-      const signedEvent = finalizeEvent(eventToSign, nsecBytes);
+      const signedEvent = await CEPS.signEventWithActiveSession(eventToSign);
 
       console.log("Event signed successfully with NIP-05 context");
       return signedEvent;

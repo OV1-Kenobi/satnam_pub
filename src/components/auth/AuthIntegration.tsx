@@ -3,7 +3,7 @@
  *
  * Provides seamless integration between the unified authentication system
  * and existing Identity Forge (registration) and Nostrich Signin (login) components.
- * 
+ *
  * SECURITY ARCHITECTURE:
  * - Uses zero-knowledge DUID-based authentication (no plaintext credential storage)
  * - Credentials are passed to auth system which immediately generates DUIDs and hashes
@@ -17,6 +17,8 @@ import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, useIdentityForge, useNostrichSignin } from './AuthProvider';
+
+import { createRecoverySession } from '../../lib/auth/recovery-session-bridge';
 
 interface AuthIntegrationProps {
   children: React.ReactNode;
@@ -56,6 +58,20 @@ export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
       const authSuccess = auth.authenticated;
 
       if (authSuccess) {
+        // Initialize NSEC session for hybrid message signing (if nsec available)
+        try {
+          // Note: In a real implementation, you'd get the nsec from the registration flow
+          // For now, we'll just log that session-based signing setup is needed
+          console.log('🔐 AuthIntegration: Registration successful, NSEC session setup needed for message signing');
+
+          // TODO: If nsec is available from registration, initialize session:
+          // const sessionId = await nsecSessionBridge.initializeAfterAuth(userNsec);
+          // console.log('🔐 AuthIntegration: NSEC session initialized:', sessionId);
+        } catch (nsecError) {
+          console.warn('🔐 AuthIntegration: Failed to initialize NSEC session:', nsecError);
+          // Don't fail the entire auth flow for NSEC session issues
+        }
+
         identityForge.completeRegistration();
         onAuthSuccess?.('individual'); // Default to individual for new users
 
@@ -147,12 +163,21 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
   }, []);
 
   // Handle successful authentication
-  const handleAuthSuccess = (destination?: 'individual' | 'family') => {
+  const handleAuthSuccess = async (destination?: 'individual' | 'family') => {
+    try {
+      console.log('🔐 AuthIntegration: Signin successful, creating secure session');
+      // Attempt automatic secure session creation via recovery bridge using stored signin context
+      // We don't have plaintext password here; session creation is handled directly in the modal flow (NIP05PasswordAuth)
+      // This handler focuses on navigation only to avoid duplicating sensitive flows
+    } catch (nsecError) {
+      console.warn('🔐 AuthIntegration: Session setup note:', nsecError);
+    }
+
     nostrichSignin.completeLogin();
     onAuthSuccess?.(destination);
 
-    // Navigate to intended destination or default
-    const from = (location.state as any)?.from?.pathname || '/profile';
+    // Respect intended destination from route state
+    const from = (location.state as any)?.from?.pathname || '/';
     navigate(from, { replace: true });
   };
 
@@ -172,6 +197,17 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
       const success = await nostrichSignin.authenticateNIP05Password(nip05, password);
 
       if (success) {
+        // Immediately create a secure signing session (default 15 minutes)
+        try {
+          const session = await createRecoverySession({ nip05: nip05.trim(), password }, { duration: 15 * 60 * 1000 });
+          if (!session.success) {
+            console.warn('🔐 AuthIntegration: Auto session creation failed:', session.error);
+          } else {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+        } catch (sessErr) {
+          console.warn('🔐 AuthIntegration: Auto session creation threw:', sessErr);
+        }
         handleAuthSuccess('individual');
       } else {
         handleAuthFailure(auth.error || 'NIP-05/Password authentication failed');

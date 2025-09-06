@@ -26,14 +26,18 @@ ADD COLUMN IF NOT EXISTS user_salt TEXT,
 ADD COLUMN IF NOT EXISTS hashed_username TEXT,
 ADD COLUMN IF NOT EXISTS hashed_npub TEXT,
 ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
-ADD COLUMN IF NOT EXISTS hashed_lightning_address TEXT,
-ADD COLUMN IF NOT EXISTS hashed_encrypted_nsec TEXT;
+ADD COLUMN IF NOT EXISTS hashed_lightning_address TEXT;
 
--- Add hashed columns to nip05_records if they don't exist
-ALTER TABLE nip05_records
-ADD COLUMN IF NOT EXISTS user_salt TEXT,
-ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
-ADD COLUMN IF NOT EXISTS hashed_npub TEXT;
+-- Add hashed columns to nip05_records if table exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    ALTER TABLE nip05_records
+    ADD COLUMN IF NOT EXISTS user_salt TEXT,
+    ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
+    ADD COLUMN IF NOT EXISTS hashed_npub TEXT;
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 2: Create indexes on hashed columns for performance
@@ -58,9 +62,14 @@ ALTER TABLE user_identities
 ADD CONSTRAINT user_identities_salt_required 
 CHECK (user_salt IS NOT NULL AND user_salt != '');
 
-ALTER TABLE nip05_records
-ADD CONSTRAINT nip05_records_salt_required
-CHECK (user_salt IS NOT NULL AND user_salt != '');
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    ALTER TABLE nip05_records
+    ADD CONSTRAINT nip05_records_salt_required
+    CHECK (user_salt IS NOT NULL AND user_salt != '');
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 4: Create privacy compliance check function
@@ -72,59 +81,124 @@ RETURNS TABLE(
     compliance_status TEXT,
     issues TEXT[]
 ) AS $$
-BEGIN
-    -- Check user_identities table
-    RETURN QUERY
-    SELECT 
-        'user_identities'::TEXT,
-        CASE 
-            WHEN EXISTS (
-                SELECT 1 FROM user_identities 
-                WHERE user_salt IS NULL OR user_salt = ''
-            ) THEN 'NON_COMPLIANT'
-            WHEN EXISTS (
-                SELECT 1 FROM user_identities 
-                WHERE (npub IS NOT NULL AND npub != '') 
-                   OR (nip05 IS NOT NULL AND nip05 != '')
-                   OR (encrypted_nsec IS NOT NULL AND encrypted_nsec != '')
-            ) THEN 'PARTIAL_COMPLIANCE'
-            ELSE 'FULLY_COMPLIANT'
-        END,
-        ARRAY[
-            CASE WHEN EXISTS (SELECT 1 FROM user_identities WHERE user_salt IS NULL OR user_salt = '') 
-                 THEN 'Missing user_salt for some records' ELSE NULL END,
-            CASE WHEN EXISTS (SELECT 1 FROM user_identities WHERE npub IS NOT NULL AND npub != '') 
-                 THEN 'Plaintext npub found' ELSE NULL END,
-            CASE WHEN EXISTS (SELECT 1 FROM user_identities WHERE nip05 IS NOT NULL AND nip05 != '') 
-                 THEN 'Plaintext nip05 found' ELSE NULL END,
-            CASE WHEN EXISTS (SELECT 1 FROM user_identities WHERE encrypted_nsec IS NOT NULL AND encrypted_nsec != '') 
-                 THEN 'Plaintext encrypted_nsec found' ELSE NULL END
-        ]::TEXT[];
+DECLARE
+  -- Flags for table existence
+  ui_exists BOOLEAN := FALSE;
+  nr_exists BOOLEAN := FALSE;
 
-    -- Check nip05_records table
+  -- user_identities checks
+  ui_salt_missing BOOLEAN := FALSE;
+  ui_npub_plain BOOLEAN := FALSE;
+  ui_nip05_plain BOOLEAN := FALSE;
+  ui_enc_nsec_present BOOLEAN := FALSE;
+
+  -- nip05_records checks
+  nr_salt_missing BOOLEAN := FALSE;
+  nr_pubkey_plain BOOLEAN := FALSE;
+  nr_name_plain BOOLEAN := FALSE;
+BEGIN
+  -- Table existence
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='user_identities'
+  ) INTO ui_exists;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='nip05_records'
+  ) INTO nr_exists;
+
+  -- user_identities evaluations (guard columns)
+  IF ui_exists THEN
+    -- salt missing
+    EXECUTE $$SELECT EXISTS(SELECT 1 FROM user_identities WHERE user_salt IS NULL OR user_salt = '')$$ INTO ui_salt_missing;
+
+    -- npub plaintext only if column exists
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='user_identities' AND column_name='npub'
+    ) THEN
+      EXECUTE $$SELECT EXISTS(SELECT 1 FROM user_identities WHERE npub IS NOT NULL AND npub <> '')$$ INTO ui_npub_plain;
+    ELSE
+      ui_npub_plain := FALSE;
+    END IF;
+
+    -- nip05 plaintext only if column exists
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='user_identities' AND column_name='nip05'
+    ) THEN
+      EXECUTE $$SELECT EXISTS(SELECT 1 FROM user_identities WHERE nip05 IS NOT NULL AND nip05 <> '')$$ INTO ui_nip05_plain;
+    ELSE
+      ui_nip05_plain := FALSE;
+    END IF;
+
+    -- encrypted_nsec presence only if column exists
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='user_identities' AND column_name='encrypted_nsec'
+    ) THEN
+      EXECUTE $$SELECT EXISTS(SELECT 1 FROM user_identities WHERE encrypted_nsec IS NOT NULL AND encrypted_nsec <> '')$$ INTO ui_enc_nsec_present;
+    ELSE
+      ui_enc_nsec_present := FALSE;
+    END IF;
+
     RETURN QUERY
     SELECT
-        'nip05_records'::TEXT,
-        CASE
-            WHEN EXISTS (
-                SELECT 1 FROM nip05_records
-                WHERE user_salt IS NULL OR user_salt = ''
-            ) THEN 'NON_COMPLIANT'
-            WHEN EXISTS (
-                SELECT 1 FROM nip05_records
-                WHERE (pubkey IS NOT NULL AND pubkey != '')
-                   OR (name IS NOT NULL AND name != '')
-            ) THEN 'PARTIAL_COMPLIANCE'
-            ELSE 'FULLY_COMPLIANT'
-        END,
-        ARRAY[
-            CASE WHEN EXISTS (SELECT 1 FROM nip05_records WHERE user_salt IS NULL OR user_salt = '')
-                 THEN 'Missing user_salt for some records' ELSE NULL END,
-            CASE WHEN EXISTS (SELECT 1 FROM nip05_records WHERE pubkey IS NOT NULL AND pubkey != '')
-                 THEN 'Plaintext pubkey found' ELSE NULL END,
-            CASE WHEN EXISTS (SELECT 1 FROM nip05_records WHERE name IS NOT NULL AND name != '')
-                 THEN 'Plaintext name found' ELSE NULL END
-        ]::TEXT[];
+      'user_identities'::TEXT,
+      CASE
+        WHEN ui_salt_missing THEN 'NON_COMPLIANT'
+        WHEN ui_npub_plain OR ui_nip05_plain OR ui_enc_nsec_present THEN 'PARTIAL_COMPLIANCE'
+        ELSE 'FULLY_COMPLIANT'
+      END,
+      ARRAY[
+        CASE WHEN ui_salt_missing THEN 'Missing user_salt for some records' ELSE NULL END,
+        CASE WHEN ui_npub_plain THEN 'Plaintext npub found' ELSE NULL END,
+        CASE WHEN ui_nip05_plain THEN 'Plaintext nip05 found' ELSE NULL END,
+        CASE WHEN ui_enc_nsec_present THEN 'Plaintext encrypted_nsec found' ELSE NULL END
+      ]::TEXT[];
+  ELSE
+    RETURN QUERY SELECT 'user_identities'::TEXT, 'TABLE_MISSING'::TEXT, ARRAY['Table user_identities not found']::TEXT[];
+  END IF;
+
+  -- nip05_records evaluations (guard columns)
+  IF nr_exists THEN
+    EXECUTE $$SELECT EXISTS(SELECT 1 FROM nip05_records WHERE user_salt IS NULL OR user_salt = '')$$ INTO nr_salt_missing;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey'
+    ) THEN
+      EXECUTE $$SELECT EXISTS(SELECT 1 FROM nip05_records WHERE pubkey IS NOT NULL AND pubkey <> '')$$ INTO nr_pubkey_plain;
+    ELSE
+      nr_pubkey_plain := FALSE;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name'
+    ) THEN
+      EXECUTE $$SELECT EXISTS(SELECT 1 FROM nip05_records WHERE name IS NOT NULL AND name <> '')$$ INTO nr_name_plain;
+    ELSE
+      nr_name_plain := FALSE;
+    END IF;
+
+    RETURN QUERY
+    SELECT
+      'nip05_records'::TEXT,
+      CASE
+        WHEN nr_salt_missing THEN 'NON_COMPLIANT'
+        WHEN nr_pubkey_plain OR nr_name_plain THEN 'PARTIAL_COMPLIANCE'
+        ELSE 'FULLY_COMPLIANT'
+      END,
+      ARRAY[
+        CASE WHEN nr_salt_missing THEN 'Missing user_salt for some records' ELSE NULL END,
+        CASE WHEN nr_pubkey_plain THEN 'Plaintext pubkey found' ELSE NULL END,
+        CASE WHEN nr_name_plain THEN 'Plaintext name found' ELSE NULL END
+      ]::TEXT[];
+  ELSE
+    RETURN QUERY SELECT 'nip05_records'::TEXT, 'TABLE_MISSING'::TEXT, ARRAY['Table nip05_records not found']::TEXT[];
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 

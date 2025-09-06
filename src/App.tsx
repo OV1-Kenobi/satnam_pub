@@ -22,14 +22,17 @@ import IndividualFinancesDashboard from "./components/IndividualFinancesDashboar
 import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
+import { useAuth } from "./components/auth/AuthProvider";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
 import IdentityForgeGuard from "./components/auth/IdentityForgeGuard";
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
-import { useUnifiedAuth } from "./lib/auth/unified-auth-system";
+import SecureTokenManager from "./lib/auth/secure-token-manager";
 import { validateInvitation } from "./lib/invitation-validator";
+
+
 
 function App() {
   const [currentView, setCurrentView] = useState<
@@ -71,8 +74,8 @@ function App() {
   const [invitationDetails, setInvitationDetails] = useState<any>(null);
   const [isInvitedUser, setIsInvitedUser] = useState(false);
 
-  // Authentication hook - using unified auth system
-  const auth = useUnifiedAuth();
+  // Authentication hook - use AuthProvider context (single source of truth)
+  const auth = useAuth();
   const { authenticated } = auth;
 
   // Initialize credential cleanup system (only after authentication)
@@ -152,11 +155,32 @@ function App() {
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
-    if (!authenticated) {
-      setSignInModalOpen(true);
-      setPendingDestination(destination);
+    // CRITICAL FIX: Add loading check to prevent race conditions
+    if (auth.loading) {
+      console.log('🔄 Auth still loading, waiting before route protection check');
       return;
     }
+
+    // Defensive route protection: allow proceed if a valid token exists even if flag lags
+    if (!authenticated) {
+      const token = SecureTokenManager.getAccessToken();
+      const payload = token ? SecureTokenManager.parseTokenPayload(token) : null;
+      const tokenValid = !!payload && payload.exp * 1000 > Date.now();
+
+      console.log('🧭 Route guard state:', { authenticated, hasToken: !!token, tokenValid });
+
+      if (tokenValid) {
+        console.log('🔐 Valid token detected, proceeding despite auth flag lag:', destination);
+        // fall through to navigation below
+      } else {
+        console.log('🚫 User not authenticated, showing SignInModal for destination:', destination);
+        setSignInModalOpen(true);
+        setPendingDestination(destination);
+        return;
+      }
+    }
+
+    console.log('✅ User authenticated (or token valid), proceeding to destination:', destination);
 
     switch (destination) {
       case 'dashboard':
@@ -210,33 +234,48 @@ function App() {
 
   // Handle successful authentication
   const handleAuthSuccess = () => {
+    console.log('🎉 Authentication success handler called');
+    console.log('🔍 Current auth state:', { authenticated, loading: auth.loading, hasUser: !!auth.user });
+    console.log('📍 Pending destination:', pendingDestination);
     setSignInModalOpen(false);
-    if (pendingDestination) {
-      if (pendingDestination === 'communications' || pendingDestination === 'giftwrapped-messaging') {
-        setShowCommunications(true);
-      } else if (pendingDestination === 'family-foundry') {
-        setCurrentView("onboarding");
-      } else if (pendingDestination === 'educational-dashboard') {
-        setCurrentView("education");
-      } else if (pendingDestination === 'sovereignty-controls') {
-        setCurrentView("dashboard"); // Will show sovereignty controls in family dashboard
-      } else if (pendingDestination === 'privacy-preferences') {
-        setCurrentView("dashboard"); // Will show privacy preferences in family dashboard
-      } else if (pendingDestination === 'atomic-swaps') {
-        setCurrentView("dashboard"); // Will show atomic swaps in family dashboard
-      } else if (pendingDestination === 'cross-mint-operations') {
-        setCurrentView("individual-finances"); // Will show cross-mint in individual dashboard
-      } else if (pendingDestination === 'payment-cascade') {
-        setCurrentView("individual-finances"); // Will show payment cascade in individual dashboard
-      } else if (pendingDestination === 'contacts') {
-        setShowContactsModal(true);
-      } else if (pendingDestination === 'ln-node-management') {
-        setCurrentView('ln-node-management');
+
+    // Respect pending destination for all secure sections (incl. Communications)
+    const dest = pendingDestination || 'communications';
+
+    // Small delay to ensure auth state is fully updated
+    setTimeout(() => {
+      if (dest) {
+        console.log('📍 Navigating to destination after signin:', dest);
+
+        if (dest === 'communications' || dest === 'giftwrapped-messaging') {
+          setShowCommunications(true);
+          setCurrentView('communications');
+        } else if (dest === 'family-foundry') {
+          setCurrentView("onboarding");
+        } else if (dest === 'educational-dashboard') {
+          setCurrentView("education");
+        } else if (dest === 'sovereignty-controls') {
+          setCurrentView("dashboard");
+        } else if (dest === 'privacy-preferences') {
+          setCurrentView("dashboard");
+        } else if (dest === 'atomic-swaps') {
+          setCurrentView("dashboard");
+        } else if (dest === 'cross-mint-operations') {
+          setCurrentView("individual-finances");
+        } else if (dest === 'payment-cascade') {
+          setCurrentView("individual-finances");
+        } else if (dest === 'contacts') {
+          setShowContactsModal(true);
+        } else if (dest === 'ln-node-management') {
+          setCurrentView('ln-node-management');
+        } else {
+          setCurrentView(dest);
+        }
+        setPendingDestination(null);
       } else {
-        setCurrentView(pendingDestination);
+        console.log('📍 No destination provided, staying on current view');
       }
-      setPendingDestination(null);
-    }
+    }, 100);
   };
 
   if (currentView === "forge") {

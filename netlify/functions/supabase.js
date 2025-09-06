@@ -15,15 +15,14 @@ function requireEnv(key) {
 }
 
 // Allow both SUPABASE_* (functions) and VITE_SUPABASE_* (if configured) names
-// PREFER ANON KEY for all runtime operations; service role is not required here
+// PRODUCTION SECURITY: ANON KEY ONLY with custom JWT authentication (SecureSessionManager)
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY
-  || process.env.VITE_SUPABASE_ANON_KEY
-  || process.env.SUPABASE_SERVICE_ROLE_KEY; // fallback only if anon is not provided
+const supabaseKey = process.env.SUPABASE_ANON_KEY          // REQUIRED: Use anon key only
+  || process.env.VITE_SUPABASE_ANON_KEY;                   // Maintains zero-knowledge architecture
 
 const supabaseKeyType = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY)
   ? 'anon'
-  : (process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service' : 'unknown');
+  : 'missing';
 
 if (!supabaseUrl) {
   throw new Error("Supabase URL not configured (SUPABASE_URL or VITE_SUPABASE_URL)");
@@ -32,6 +31,8 @@ if (!supabaseKey) {
   throw new Error("Supabase key not configured (SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY, fallback SUPABASE_SERVICE_ROLE_KEY)");
 }
 
+console.log(`🔐 DEBUG: Supabase server client using ${supabaseKeyType} key`);
+
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
@@ -39,7 +40,21 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   },
 });
 
-const isServiceRoleKey = () => supabaseKeyType === 'service';
+// Create a per-request client with Authorization header for RLS
+function getRequestClient(accessToken) {
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    global: {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    },
+  });
+}
 
-export { isServiceRoleKey, supabase, supabaseKeyType };
+// Always returns false in anon-key-only architecture
+const isServiceRoleKey = () => false;
+
+export { getRequestClient, isServiceRoleKey, supabase, supabaseKeyType };
 

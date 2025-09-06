@@ -6,7 +6,6 @@
 
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { bytesToHex, hexToBytes } from "@noble/curves/utils";
-import { finalizeEvent } from "nostr-tools";
 
 /**
  * Generate a random hex string of specified length

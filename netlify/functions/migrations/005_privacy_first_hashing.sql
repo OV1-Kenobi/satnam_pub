@@ -17,28 +17,41 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 ALTER TABLE user_identities 
 ADD COLUMN IF NOT EXISTS user_salt TEXT;
 
--- Add hashed columns for sensitive data
-ALTER TABLE user_identities 
+-- Add hashed columns for sensitive data (nsec storage now uses encrypted_nsec only)
+ALTER TABLE user_identities
 ADD COLUMN IF NOT EXISTS hashed_npub TEXT,
-ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
-ADD COLUMN IF NOT EXISTS hashed_encrypted_nsec TEXT;
+ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT;
 
 -- =====================================================
 -- STEP 2: Add new hashed columns to profiles table
 -- =====================================================
 
-ALTER TABLE profiles 
-ADD COLUMN IF NOT EXISTS user_salt TEXT,
-ADD COLUMN IF NOT EXISTS hashed_npub TEXT,
-ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='profiles'
+  ) THEN
+    ALTER TABLE profiles
+    ADD COLUMN IF NOT EXISTS user_salt TEXT,
+    ADD COLUMN IF NOT EXISTS hashed_npub TEXT,
+    ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT;
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 3: Add new hashed columns to nip05_records table
 -- =====================================================
 
-ALTER TABLE nip05_records 
-ADD COLUMN IF NOT EXISTS user_salt TEXT,
-ADD COLUMN IF NOT EXISTS hashed_pubkey TEXT;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records'
+  ) THEN
+    ALTER TABLE nip05_records
+    ADD COLUMN IF NOT EXISTS user_salt TEXT,
+    ADD COLUMN IF NOT EXISTS hashed_pubkey TEXT;
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 4: Create secure hashing function
@@ -83,55 +96,88 @@ UPDATE user_identities
 SET user_salt = generate_user_salt()
 WHERE user_salt IS NULL OR user_salt = '';
 
--- Hash existing npub values with explicit type casting
-UPDATE user_identities
-SET hashed_npub = hash_user_data(CAST(npub AS TEXT), CAST(user_salt AS TEXT))
-WHERE npub IS NOT NULL AND npub != '' AND hashed_npub IS NULL;
+-- Hash existing npub values if plaintext column exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='user_identities' AND column_name='npub'
+  ) THEN
+    UPDATE user_identities
+    SET hashed_npub = hash_user_data(CAST(npub AS TEXT), CAST(user_salt AS TEXT))
+    WHERE npub IS NOT NULL AND npub != '' AND hashed_npub IS NULL;
+  END IF;
+END $$;
 
--- Hash existing nip05 values with explicit type casting
-UPDATE user_identities
-SET hashed_nip05 = hash_user_data(CAST(nip05 AS TEXT), CAST(user_salt AS TEXT))
-WHERE nip05 IS NOT NULL AND nip05 != '' AND hashed_nip05 IS NULL;
+-- Hash existing nip05 values if plaintext column exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='user_identities' AND column_name='nip05'
+  ) THEN
+    UPDATE user_identities
+    SET hashed_nip05 = hash_user_data(CAST(nip05 AS TEXT), CAST(user_salt AS TEXT))
+    WHERE nip05 IS NOT NULL AND nip05 != '' AND hashed_nip05 IS NULL;
+  END IF;
+END $$;
 
--- Hash existing encrypted_nsec values with explicit type casting
-UPDATE user_identities
-SET hashed_encrypted_nsec = hash_user_data(CAST(encrypted_nsec AS TEXT), CAST(user_salt AS TEXT))
-WHERE encrypted_nsec IS NOT NULL AND encrypted_nsec != '' AND hashed_encrypted_nsec IS NULL;
+-- DEPRECATED: hashed_encrypted_nsec removed from schema
 
 -- =====================================================
 -- STEP 6: Migrate existing profiles data (UNIQUE SALTS)
 -- =====================================================
 
--- SECURITY FIX: Generate UNIQUE salts for profiles table (NO REUSE)
--- Each table gets completely independent salts to prevent correlation attacks
-UPDATE profiles
-SET user_salt = generate_user_salt()
-WHERE user_salt IS NULL OR user_salt = '';
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='profiles'
+  ) THEN
+    -- SECURITY FIX: Generate UNIQUE salts for profiles table (NO REUSE)
+    UPDATE profiles SET user_salt = generate_user_salt() WHERE user_salt IS NULL OR user_salt = '';
 
--- Hash existing npub values in profiles with UNIQUE salts and explicit type casting
-UPDATE profiles
-SET hashed_npub = hash_user_data(CAST(npub AS TEXT), CAST(user_salt AS TEXT))
-WHERE npub IS NOT NULL AND npub != '' AND hashed_npub IS NULL;
+    -- Hash existing npub values in profiles (only if plaintext column exists)
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='profiles' AND column_name='npub'
+    ) THEN
+      UPDATE profiles SET hashed_npub = hash_user_data(CAST(npub AS TEXT), CAST(user_salt AS TEXT))
+      WHERE npub IS NOT NULL AND npub != '' AND hashed_npub IS NULL;
+    END IF;
 
--- Hash existing nip05 values in profiles with UNIQUE salts and explicit type casting
-UPDATE profiles
-SET hashed_nip05 = hash_user_data(CAST(nip05 AS TEXT), CAST(user_salt AS TEXT))
-WHERE nip05 IS NOT NULL AND nip05 != '' AND hashed_nip05 IS NULL;
+    -- Hash existing nip05 values in profiles (only if plaintext column exists)
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='profiles' AND column_name='nip05'
+    ) THEN
+      UPDATE profiles SET hashed_nip05 = hash_user_data(CAST(nip05 AS TEXT), CAST(user_salt AS TEXT))
+      WHERE nip05 IS NOT NULL AND nip05 != '' AND hashed_nip05 IS NULL;
+    END IF;
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 7: Migrate existing nip05_records data (UNIQUE SALTS)
 -- =====================================================
 
--- SECURITY FIX: Generate UNIQUE salts for nip05_records table (NO REUSE)
--- Each table gets completely independent salts to prevent correlation attacks
-UPDATE nip05_records
-SET user_salt = generate_user_salt()
-WHERE user_salt IS NULL OR user_salt = '';
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records'
+  ) THEN
+    -- SECURITY FIX: Generate UNIQUE salts for nip05_records table (NO REUSE)
+    UPDATE nip05_records SET user_salt = generate_user_salt() WHERE user_salt IS NULL OR user_salt = '';
 
--- Hash existing pubkey values with UNIQUE salts and explicit type casting
-UPDATE nip05_records
-SET hashed_pubkey = hash_user_data(CAST(pubkey AS TEXT), CAST(user_salt AS TEXT))
-WHERE pubkey IS NOT NULL AND pubkey != '' AND hashed_pubkey IS NULL;
+    -- Hash existing pubkey values with UNIQUE salts (only if plaintext column exists)
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey'
+    ) THEN
+      UPDATE nip05_records SET hashed_pubkey = hash_user_data(CAST(pubkey AS TEXT), CAST(user_salt AS TEXT))
+      WHERE pubkey IS NOT NULL AND pubkey != '' AND hashed_pubkey IS NULL;
+    END IF;
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 8: Create indexes for performance
@@ -140,9 +186,16 @@ WHERE pubkey IS NOT NULL AND pubkey != '' AND hashed_pubkey IS NULL;
 -- Indexes on hashed columns for fast lookups
 CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_npub ON user_identities(hashed_npub);
 CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_nip05 ON user_identities(hashed_nip05);
-CREATE INDEX IF NOT EXISTS idx_profiles_hashed_npub ON profiles(hashed_npub);
-CREATE INDEX IF NOT EXISTS idx_profiles_hashed_nip05 ON profiles(hashed_nip05);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_hashed_pubkey ON nip05_records(hashed_pubkey);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='profiles') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_profiles_hashed_npub ON profiles(hashed_npub)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_profiles_hashed_nip05 ON profiles(hashed_nip05)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_hashed_pubkey ON nip05_records(hashed_pubkey)';
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 9: Update RLS policies for user sovereignty
@@ -161,21 +214,35 @@ CREATE POLICY "Users have full CRUD access to own identity" ON user_identities
 -- Enable RLS
 ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
 
--- Similar policies for profiles
-DROP POLICY IF EXISTS "Users can manage own profile" ON profiles;
-CREATE POLICY "Users have full CRUD access to own profile" ON profiles
-  FOR ALL USING (CAST(auth.uid() AS text) = CAST(id AS text));
-
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- Similar policies for profiles (conditional)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='profiles') THEN
+    DROP POLICY IF EXISTS "Users can manage own profile" ON profiles;
+    CREATE POLICY "Users have full CRUD access to own profile" ON profiles
+      FOR ALL USING (CAST(auth.uid() AS text) = CAST(id AS text));
+    ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 
 -- =====================================================
 -- STEP 10: Add constraints and validation
 -- =====================================================
 
 -- Ensure all active users have salts and hashed data
-ALTER TABLE user_identities 
-ADD CONSTRAINT check_active_users_have_salt 
-CHECK (NOT is_active OR (user_salt IS NOT NULL AND user_salt != ''));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints tc
+    WHERE tc.constraint_name = 'check_active_users_have_salt'
+      AND tc.table_schema = 'public'
+      AND tc.table_name = 'user_identities'
+  ) THEN
+    ALTER TABLE user_identities
+    ADD CONSTRAINT check_active_users_have_salt
+    CHECK (NOT is_active OR (user_salt IS NOT NULL AND user_salt != ''));
+  END IF;
+END $$;
 
 -- =====================================================
 -- VERIFICATION QUERIES (for testing)

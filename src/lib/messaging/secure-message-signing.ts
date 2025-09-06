@@ -204,8 +204,8 @@ export function useSecureMessageSigning() {
       setPendingSigningRequest({
         event: {} as UnsignedEvent, // Will be set by the calling function
         messageType,
-        resolve: (result: SigningResult) => {
-          // This is handled differently - the modal calls handleConsentResponse
+        resolve: () => {
+          // This is handled by handleConsentResponse
         },
       });
 
@@ -233,14 +233,14 @@ export function useSecureMessageSigning() {
       // Get user's encrypted nsec from database
       const userRecord = await userIdentitiesAuth.getUserById(auth.user.id);
 
-      if (!userRecord || !userRecord.hashed_encrypted_nsec) {
+      if (!userRecord || !(userRecord as any).encrypted_nsec) {
         throw new Error("No encrypted nsec found for user");
       }
 
       // Decrypt the nsec using user's unique salt, returning bytes only
       const { decryptNsecBytes } = await import("../privacy/encryption");
       const decryptedBytes = await decryptNsecBytes(
-        userRecord.hashed_encrypted_nsec,
+        (userRecord as any).encrypted_nsec,
         auth.user.user_salt || ""
       );
 
@@ -290,20 +290,19 @@ export function useSecureMessageSigning() {
         };
       }
 
-      // Import nostr tools for signing
-      const { finalizeEvent, getPublicKey } = await import("nostr-tools");
+      // Delegate signing to CEPS to centralize nsec usage
+      const { central_event_publishing_service: CEPS } = await import(
+        "../../../lib/central_event_publishing_service"
+      );
 
-      const pubkey = getPublicKey(nsecBytes);
-
-      // Prepare event for signing
       const eventToSign = {
         ...event,
         created_at: event.created_at || Math.floor(Date.now() / 1000),
-        pubkey: event.pubkey || pubkey,
       };
 
-      // Sign the event using the same byte buffer
-      const signedEvent = finalizeEvent(eventToSign as any, nsecBytes);
+      const signedEvent = await CEPS.signEventWithActiveSession(
+        eventToSign as any
+      );
 
       return {
         success: true,

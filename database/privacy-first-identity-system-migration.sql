@@ -139,9 +139,10 @@ BEGIN
         CREATE TABLE user_identities (
             id TEXT PRIMARY KEY, -- DUID index for secure O(1) authentication (Phase 2)
             user_salt TEXT NOT NULL UNIQUE,
+            encrypted_nsec TEXT,
+            encrypted_nsec_iv TEXT,
             hashed_username TEXT NOT NULL,
             hashed_npub TEXT NOT NULL,
-            hashed_encrypted_nsec TEXT,
             hashed_nip05 TEXT,
             hashed_lightning_address TEXT,
             password_hash TEXT NOT NULL,
@@ -619,26 +620,45 @@ CREATE TABLE IF NOT EXISTS reward_redemptions (
 -- =====================================================
 
 -- Enable RLS on all tables
-ALTER TABLE nip05_records ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    ALTER TABLE nip05_records ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE family_federations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE family_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE nostr_backups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reward_redemptions ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='family_federations') THEN
+    ALTER TABLE family_federations ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='family_members') THEN
+    ALTER TABLE family_members ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nostr_backups') THEN
+    ALTER TABLE nostr_backups ENABLE ROW LEVEL SECURITY;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='reward_redemptions') THEN
+    ALTER TABLE reward_redemptions ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 
--- NIP05_RECORDS: Public read access for verification (DUID-based)
-DROP POLICY IF EXISTS "nip05_records_public_read" ON nip05_records;
-CREATE POLICY "nip05_records_public_read" ON nip05_records
-    FOR SELECT
-    TO anon, authenticated
-    USING (is_active = true);
+-- NIP05_RECORDS policies (conditional if table exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    DROP POLICY IF EXISTS "nip05_records_public_read" ON nip05_records;
+    CREATE POLICY "nip05_records_public_read" ON nip05_records
+        FOR SELECT
+        TO anon, authenticated
+        USING (is_active = true);
 
--- NIP05_RECORDS: Anonymous insert during registration
-DROP POLICY IF EXISTS "nip05_records_anon_insert" ON nip05_records;
-CREATE POLICY "nip05_records_anon_insert" ON nip05_records
-    FOR INSERT
-    TO anon
-    WITH CHECK (true);
+    DROP POLICY IF EXISTS "nip05_records_anon_insert" ON nip05_records;
+    CREATE POLICY "nip05_records_anon_insert" ON nip05_records
+        FOR INSERT
+        TO anon
+        WITH CHECK (true);
+  END IF;
+END $$;
 
 -- USER_IDENTITIES: Users can access their own data via DUID matching
 DROP POLICY IF EXISTS "user_identities_own_data" ON user_identities;
@@ -692,20 +712,36 @@ CREATE POLICY "reward_redemptions_own_data" ON reward_redemptions
 -- GRANT PERMISSIONS TO ROLES
 -- =====================================================
 
--- Grant SELECT on nip05_records to anon (NIP-05 verification)
-GRANT SELECT ON nip05_records TO anon;
-GRANT SELECT ON nip05_records TO authenticated;
-GRANT INSERT ON nip05_records TO anon; -- Registration flow
+-- Grant permissions on nip05_records (conditional)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    GRANT SELECT ON nip05_records TO anon;
+    GRANT SELECT ON nip05_records TO authenticated;
+    GRANT INSERT ON nip05_records TO anon; -- Registration flow
+  END IF;
+END $$;
 
--- Grant appropriate permissions on user_identities
+-- Grant appropriate permissions on user_identities (table exists by design)
 GRANT INSERT ON user_identities TO anon; -- Registration flow
 GRANT ALL ON user_identities TO authenticated; -- Own data management
 
--- Grant permissions on other tables
-GRANT ALL ON family_federations TO authenticated;
-GRANT ALL ON family_members TO authenticated;
-GRANT ALL ON nostr_backups TO authenticated;
-GRANT ALL ON reward_redemptions TO authenticated;
+-- Grant permissions on other tables (conditional)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='family_federations') THEN
+    GRANT ALL ON family_federations TO authenticated;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='family_members') THEN
+    GRANT ALL ON family_members TO authenticated;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nostr_backups') THEN
+    GRANT ALL ON nostr_backups TO authenticated;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='reward_redemptions') THEN
+    GRANT ALL ON reward_redemptions TO authenticated;
+  END IF;
+END $$;
 
 
 -- =====================================================
@@ -739,11 +775,16 @@ END;
 $$ language 'plpgsql';
 
 -- Apply triggers to all tables
-DROP TRIGGER IF EXISTS update_nip05_records_updated_at ON nip05_records;
-CREATE TRIGGER update_nip05_records_updated_at
-    BEFORE UPDATE ON nip05_records
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    DROP TRIGGER IF EXISTS update_nip05_records_updated_at ON nip05_records;
+    CREATE TRIGGER update_nip05_records_updated_at
+        BEFORE UPDATE ON nip05_records
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS update_user_identities_updated_at ON user_identities;
 CREATE TRIGGER update_user_identities_updated_at
@@ -773,9 +814,14 @@ BEGIN
 END $$;
 
 -- NIP05 records indexes (DUID-based for availability checking)
-CREATE INDEX IF NOT EXISTS idx_nip05_records_domain ON nip05_records(domain);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_is_active ON nip05_records(is_active);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_name_duid ON nip05_records(name_duid);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_domain ON nip05_records(domain)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_is_active ON nip05_records(is_active)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_name_duid ON nip05_records(name_duid)';
+  END IF;
+END $$;
 
 -- User identities indexes (DUID-based) - simplified approach
 DO $$
@@ -834,12 +880,20 @@ BEGIN
 END $$;
 
 -- Nostr backups indexes (DUID-based)
-CREATE INDEX IF NOT EXISTS idx_nostr_backups_user_duid ON nostr_backups(user_duid);
-CREATE INDEX IF NOT EXISTS idx_nostr_backups_created_at ON nostr_backups(created_at);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nostr_backups') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nostr_backups_user_duid ON nostr_backups(user_duid)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nostr_backups_created_at ON nostr_backups(created_at)';
+  END IF;
+END $$;
 
 -- Reward redemptions indexes (DUID-based)
-CREATE INDEX IF NOT EXISTS idx_reward_redemptions_student_duid ON reward_redemptions(student_duid);
-CREATE INDEX IF NOT EXISTS idx_reward_redemptions_redeemed_at ON reward_redemptions(redeemed_at);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='reward_redemptions') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_reward_redemptions_student_duid ON reward_redemptions(student_duid)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_reward_redemptions_redeemed_at ON reward_redemptions(redeemed_at)';
+  END IF;
+END $$;
 
 -- =====================================================
 -- PRIVACY-FIRST DATA POLICY - NO SAMPLE DATA
@@ -870,9 +924,9 @@ DO $$
 DECLARE
     table_count INTEGER;
     expected_tables TEXT[] := ARRAY[
-        'nip05_records', 'user_identities', 'family_federations',
-        'family_members', 'nostr_backups', 'reward_redemptions'
+        'user_identities', 'family_federations', 'family_members', 'nostr_backups', 'reward_redemptions'
     ];
+    optional_tables TEXT[] := ARRAY['nip05_records'];
     current_table TEXT;
     policy_count INTEGER;
     index_count INTEGER;
@@ -880,11 +934,15 @@ DECLARE
     eliminated_table TEXT;
     eliminated_count INTEGER := 0;
 BEGIN
-    -- Check that expected tables exist
+    -- Check that expected tables exist (core only)
     SELECT COUNT(*) INTO table_count
     FROM information_schema.tables
     WHERE table_name = ANY(expected_tables)
     AND table_schema = 'public';
+
+    -- Check optional tables (e.g., nip05_records)
+    PERFORM 1 FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY(optional_tables);
+    -- No failure if missing; informational notices printed earlier
 
     -- Check that eliminated tables don't exist
     FOREACH eliminated_table IN ARRAY eliminated_tables
