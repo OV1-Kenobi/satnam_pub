@@ -53,17 +53,51 @@ async function deriveKeyFromSalt(salt) {
   return new Uint8Array(digest.slice(0, 32));
 }
 
-// Serialize as: n2enc:<iv_hex>:<cipher_hex>
-function serialize(iv, cipher) {
-  return `n2enc:${toHex(iv)}:${toHex(cipher)}`;
+// Base64url helpers for Noble V2 compact format
+function b64urlEncode(bytes) {
+  return Buffer.from(bytes)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
 }
+function b64urlDecode(s) {
+  const pad = s.length % 4;
+  const normalized = (pad ? s + '='.repeat(4 - pad) : s)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  return new Uint8Array(Buffer.from(normalized, 'base64'));
+}
+
+// Serialize as Noble V2: noble-v2.<salt_b64url>.<iv_b64url>.<cipher_b64url>
+function serializeNobleV2(iv, cipher, userSalt) {
+  const saltBytes = utf8Bytes(String(userSalt || ''));
+  const saltSeg = b64urlEncode(saltBytes);
+  const ivSeg = b64urlEncode(iv);
+  const ctSeg = b64urlEncode(cipher);
+  return `noble-v2.${saltSeg}.${ivSeg}.${ctSeg}`;
+}
+
+// Backward compatibility parser: supports both n2enc and noble-v2 formats
 function parseSerialized(s) {
-  if (typeof s !== 'string' || !s.startsWith('n2enc:')) return null;
-  const parts = s.split(':');
-  if (parts.length !== 3) return null;
-  const iv = fromHex(parts[1]);
-  const cipher = fromHex(parts[2]);
-  return { iv, cipher };
+  if (typeof s !== 'string') return null;
+  // Legacy format: n2enc:<iv_hex>:<cipher_hex>
+  if (s.startsWith('n2enc:')) {
+    const parts = s.split(':');
+    if (parts.length !== 3) return null;
+    const iv = fromHex(parts[1]);
+    const cipher = fromHex(parts[2]);
+    return { iv, cipher };
+  }
+  // Noble V2 format: noble-v2.<salt>.<iv>.<cipher> (all base64url)
+  if (s.startsWith('noble-v2.')) {
+    const parts = s.split('.');
+    if (parts.length !== 4) return null;
+    const iv = b64urlDecode(parts[2]);
+    const cipher = b64urlDecode(parts[3]);
+    return { iv, cipher };
+  }
+  return null;
 }
 
 export async function encryptNsecSimple(nsecBech32, userSalt) {
@@ -80,7 +114,8 @@ export async function encryptNsecSimple(nsecBech32, userSalt) {
     const aead = _gcm(key, iv);
     const pt = utf8Bytes(nsecBech32);
     const ct = aead.encrypt(pt);
-    return serialize(iv, ct);
+    // Return Noble V2 compliant compact format to satisfy DB constraint
+    return serializeNobleV2(iv, ct, userSalt);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     throw new Error(`encryptNsecSimple failed: ${msg}`);
