@@ -403,13 +403,13 @@ async function createUserIdentity(userData, spendingLimits) {
     console.log('🔐 Encrypting nsec with Noble V2 using generated user salt');
     let encryptedNsecNoble;
     try {
-      // Import Noble V2 encryption from the client-side module
-      const { encryptNsecSimple } = await import('../../src/lib/privacy/encryption.js');
+      // Import Noble V2 encryption from Netlify-safe server module
+      const { encryptNsecSimple } = await import('../../netlify/functions/security/noble-encryption.js');
       encryptedNsecNoble = await encryptNsecSimple(userData.encryptedNsec, userSalt);
       console.log('✅ Noble V2 nsec encryption successful, format:', encryptedNsecNoble.substring(0, 20) + '...');
     } catch (encryptError) {
       console.error('❌ Noble V2 nsec encryption failed:', encryptError);
-      throw new Error('Failed to encrypt nsec with Noble V2: ' + encryptError.message);
+      throw new Error('Failed to encrypt nsec with Noble V2: ' + (encryptError instanceof Error ? encryptError.message : String(encryptError)));
     }
 
     // Generate secure password salt and hash

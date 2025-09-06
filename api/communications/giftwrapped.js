@@ -656,14 +656,28 @@ export default async function handler(event, context) {
         const pTag = Array.isArray(innerEvent?.tags) ? innerEvent.tags.find(t => Array.isArray(t) && t[0] === 'p') : null;
         if (pTag && typeof pTag[1] === 'string') {
           const intendedRecipient = validatedData.recipient;
-          let normalizedRecipientPubkey;
-          if (intendedRecipient.startsWith('npub1')) {
-            normalizedRecipientPubkey = extractPubkeyFromNpub(intendedRecipient);
-          } else {
-            const npub = convertHashedIdToNpub(intendedRecipient);
-            normalizedRecipientPubkey = extractPubkeyFromNpub(npub);
-          }
-          if (pTag[1] !== intendedRecipient && pTag[1] !== normalizedRecipientPubkey) {
+
+          // Normalize both sides to hex only when possible (npub -> hex or already-hex).
+          let svc = null;
+          try {
+            const mod = await import('../../lib/central_event_publishing_service.js');
+            svc = mod.central_event_publishing_service || new mod.CentralEventPublishingService();
+          } catch {}
+
+          const toHex = (val) => {
+            try {
+              if (typeof val !== 'string') return null;
+              if (/^[0-9a-fA-F]{64}$/.test(val)) return val;
+              if (val.startsWith('npub1') && svc?.npubToHex) return svc.npubToHex(val);
+              return null;
+            } catch { return null; }
+          };
+
+          const intendedHex = toHex(intendedRecipient);
+          const innerHex = toHex(pTag[1]);
+
+          // Only enforce strict equality when both normalize to definite hex.
+          if (intendedHex && innerHex && intendedHex !== innerHex) {
             return {
               statusCode: 400,
               headers: corsHeaders,

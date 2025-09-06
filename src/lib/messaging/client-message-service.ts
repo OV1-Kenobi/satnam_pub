@@ -8,6 +8,8 @@
 
 import { Event as NostrEvent } from "nostr-tools";
 import { hybridMessageSigning, SigningResult } from "./hybrid-message-signing";
+// Use CEPS for npub->hex conversion to avoid direct nostr-tools usage here
+import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 
 export interface MessageData {
   recipient: string;
@@ -140,12 +142,17 @@ export class ClientMessageService {
   private async createUnsignedGiftWrappedEvent(
     messageData: MessageData
   ): Promise<Partial<NostrEvent>> {
+    // Normalize recipient to hex for p-tag to satisfy nostr-tools validation
+    const recipientHex = messageData.recipient.startsWith("npub1")
+      ? CEPS.npubToHex(messageData.recipient)
+      : messageData.recipient;
+
     // Create the inner event (actual message)
     const innerEvent = {
       kind: 14, // Direct message kind
       content: messageData.content,
       tags: [
-        ["p", messageData.recipient],
+        ["p", recipientHex],
         ["message-type", messageData.messageType],
         ["encryption-level", messageData.encryptionLevel],
         ["communication-type", messageData.communicationType],
@@ -158,7 +165,7 @@ export class ClientMessageService {
       kind: 1059, // Gift-wrapped event kind
       content: JSON.stringify(innerEvent), // Inner event as content
       tags: [
-        ["p", messageData.recipient], // Recipient
+        ["p", recipientHex], // Recipient must be 64-hex
         ["protocol", "nip59"], // Protocol version
         ["encryption", messageData.encryptionLevel],
       ],

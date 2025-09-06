@@ -1197,33 +1197,98 @@ export class CentralEventPublishingService {
     } catch {}
   }
 
+  private sanitizeFixedTags(ev: Event): Event {
+    try {
+      const clone: any = { ...ev };
+      const tags: any[] = Array.isArray(clone.tags) ? clone.tags.slice() : [];
+      const sanitized: any[] = [];
+      for (const t of tags) {
+        if (!Array.isArray(t) || t.length < 2) continue;
+        const key = t[0];
+        let val = t[1];
+        if (key === "p" || key === "e") {
+          try {
+            if (typeof val === "string" && val.startsWith("npub1")) {
+              val = this.npubToHex(val);
+            } else if (
+              typeof val === "string" &&
+              val.startsWith("note1") &&
+              key === "e"
+            ) {
+              const dec = nip19.decode(val);
+              val =
+                typeof dec.data === "string"
+                  ? dec.data
+                  : bytesToHex(dec.data as Uint8Array);
+            }
+          } catch {
+            // fall through; will validate length below
+          }
+          if (typeof val === "string" && /^[0-9a-fA-F]{64}$/.test(val)) {
+            sanitized.push([key, val, ...(t.slice(2) || [])]);
+          } else {
+            console.warn(`[CEPS] Dropping invalid '${key}' tag value`, {
+              value: t[1],
+            });
+          }
+        } else {
+          sanitized.push(t);
+        }
+      }
+      clone.tags = sanitized;
+      // Ensure pubkey is hex if present as npub
+      if (
+        typeof clone.pubkey === "string" &&
+        clone.pubkey.startsWith("npub1")
+      ) {
+        try {
+          clone.pubkey = this.npubToHex(clone.pubkey);
+        } catch {}
+      }
+      return clone as Event;
+    } catch {
+      return ev;
+    }
+  }
+
   async publishEvent(ev: Event, relays?: string[]): Promise<string> {
+    // Sanitize event tags to prevent nostr-tools fixed-size tag errors
+    ev = this.sanitizeFixedTags(ev);
     const list = relays && relays.length ? relays : this.relays;
 
-    // Publish to each relay individually to tolerate partial failures (e.g., PoW required, duplicate)
-    const results: Array<{ relay: string; ok: boolean; error?: string }> = [];
-    for (const r of list) {
-      try {
-        // Add timeout to prevent hanging on failed connections
-        const publishPromise = this.pool.publish([r], ev);
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Connection timeout")), 10000)
-        );
+    // Optional PoW support: publish to non-PoW relays first, then attempt PoW relays best-effort
+    const powDifficulty: Record<string, number> = {
+      "wss://relay.0xchat.com": 20,
+    };
 
-        await Promise.race([publishPromise, timeoutPromise]);
+    const nonPow = list.filter((r) => !(r in powDifficulty));
+    const powRelays = list.filter((r) => r in powDifficulty);
+
+    const results: Array<{ relay: string; ok: boolean; error?: string }> = [];
+
+    // Helper to publish with timeout
+    const publishWithTimeout = async (relay: string, event: Event) => {
+      const publishPromise = (this.pool as any).publish([relay], event);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Connection timeout")), 10000)
+      );
+      await Promise.race([publishPromise, timeoutPromise]);
+    };
+
+    // 1) Non-PoW relays
+    for (const r of nonPow) {
+      try {
+        await publishWithTimeout(r, ev);
         results.push({ relay: r, ok: true });
         console.log(`[CEPS] Successfully published to ${r}`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        // Treat "duplicate" acknowledgements as non-fatal success
         if (/duplicate/i.test(msg)) {
           results.push({ relay: r, ok: true });
           console.log(`[CEPS] Duplicate event on ${r} (treated as success)`);
         } else {
-          // Suppress WebSocket connection errors to prevent UI disruption
           if (
-            msg.includes("websocket") ||
-            msg.includes("WebSocket") ||
+            msg.toLowerCase().includes("websocket") ||
             msg.includes("Connection timeout")
           ) {
             console.warn(
@@ -1237,16 +1302,72 @@ export class CentralEventPublishingService {
       }
     }
 
+    // 2) PoW relays (best-effort): mine in a worker if available in browser; skip in Node envs
+    if (powRelays.length) {
+      try {
+        const isBrowser =
+          typeof window !== "undefined" && typeof document !== "undefined";
+        if (isBrowser) {
+          // Dynamic import of worker at runtime
+          const worker = new Worker(
+            new URL("../src/workers/pow-worker.ts", import.meta.url),
+            { type: "module" } as any
+          );
+          // For each PoW relay, mine and publish
+          await Promise.allSettled(
+            powRelays.map(
+              (relay) =>
+                new Promise<void>((resolve) => {
+                  const difficulty = powDifficulty[relay] || 20;
+                  worker.onmessage = async (evt: MessageEvent) => {
+                    const { success, event, error } = evt.data || {};
+                    if (!success) {
+                      results.push({ relay, ok: false, error });
+                      return resolve();
+                    }
+                    try {
+                      await publishWithTimeout(relay, event as Event);
+                      results.push({ relay, ok: true });
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : String(e);
+                      results.push({ relay, ok: false, error: msg });
+                    }
+                    resolve();
+                  };
+                  worker.postMessage({ event: ev, difficulty });
+                })
+            )
+          );
+          try {
+            (worker as any).terminate?.();
+          } catch {}
+        } else {
+          // Node/Netlify Functions: skip PoW mining (non-blocking best-effort)
+          console.log("[CEPS] Skipping PoW relays in server environment");
+          for (const r of powRelays)
+            results.push({
+              relay: r,
+              ok: false,
+              error: "PoW not available in server env",
+            });
+        }
+      } catch (e) {
+        console.warn(
+          "[CEPS] PoW handling failed:",
+          e instanceof Error ? e.message : String(e)
+        );
+        for (const r of powRelays)
+          results.push({ relay: r, ok: false, error: "PoW worker failed" });
+      }
+    }
+
     if (!results.some((r) => r.ok)) {
       console.warn(
         "[CEPS] Publish failed on all relays; proceeding without hard failure",
-        {
-          errors: results,
-        }
+        { errors: results }
       );
     }
 
-    // Always return event id to avoid bubbling uncaught promise rejections to UI
     return (ev as any).id as string;
   }
 

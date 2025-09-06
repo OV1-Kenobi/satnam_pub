@@ -234,7 +234,7 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
     # Content Security Policy - MAXIMUM SECURITY (removed unsafe-eval and unused CDNs; unsafe-inline kept for Google Fonts)
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nostr.wine wss://relay.satnam.pub; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nostr.wine wss://relay.satnam.pub wss://relay.0xchat.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self';"
 
     # CORS headers for API - SECURITY HARDENED (restricted to production domain)
     Access-Control-Allow-Origin = "https://www.satnam.pub"
