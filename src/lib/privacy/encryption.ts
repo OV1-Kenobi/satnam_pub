@@ -4,6 +4,8 @@
  * Browser-compatible version - uses Web Crypto API instead of Node.js crypto
  */
 
+import { NobleEncryption } from "../crypto/noble-encryption";
+
 /**
  * CRITICAL SECURITY: Master Context environment variable access pattern
  * Ensures browser compatibility with import.meta.env while maintaining serverless support
@@ -486,9 +488,6 @@ export async function decryptNsecSimple(
       throw new Error("Invalid userSalt: must be a non-empty string");
     }
 
-    // Import Noble V2 encryption
-    const { NobleEncryption } = await import("../crypto/noble-encryption");
-
     console.log("🔐 decryptNsecSimple: Calling Noble V2 decryptNsec...");
     const result = await NobleEncryption.decryptNsec(encryptedNsec, userSalt);
 
@@ -572,9 +571,6 @@ export async function encryptNsecSimple(
   userSalt: string
 ): Promise<string> {
   try {
-    // Import Noble V2 encryption
-    const { NobleEncryption } = await import("../crypto/noble-encryption");
-
     console.log("🔐 encryptNsecSimple: Using Noble V2 implementation");
     const result = await NobleEncryption.encryptNsec(nsec, userSalt);
 
