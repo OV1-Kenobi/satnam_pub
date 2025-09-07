@@ -1,6 +1,7 @@
 // src/components/communications/GiftwrappedMessaging.tsx - KEEP EXISTING NAME
 import { useEffect, useRef, useState } from 'react';
-import { nsecSessionBridge } from '../../lib/auth/nsec-session-bridge';
+import { initializeNSECSessionAfterAuth, nsecSessionBridge } from '../../lib/auth/nsec-session-bridge';
+import { NobleEncryption } from '../../lib/crypto/noble-encryption';
 import secureNsecManager from '../../lib/secure-nsec-manager';
 import { DashboardNotification, NotificationService } from '../../services/notificationService';
 import { showToast } from '../../services/toastService';
@@ -60,6 +61,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const [remainingMs, setRemainingMs] = useState<number>(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [showSessionModal, setShowSessionModal] = useState<boolean>(false);
+  const [creatingSession, setCreatingSession] = useState<boolean>(false);
 
   // Poll session status every second
   useEffect(() => {
@@ -438,13 +440,22 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                   ? 'No Session'
                   : `Session active: ${formatRemaining(ms)}`;
               return (
-                <button
-                  onClick={() => setShowRecoverySession(true)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${bg}`}
-                  title="Manage signing session"
-                >
-                  {label}
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowRecoverySession(true)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${bg}`}
+                    title="Manage signing session"
+                  >
+                    {label}
+                  </button>
+                  <button
+                    onClick={() => setShowSigningSetup(true)}
+                    className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    title="Session settings"
+                  >
+                    Settings
+                  </button>
+                </div>
               );
             })()}
           </div>
@@ -545,6 +556,14 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 placeholder="Type your private message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!isLoading && newMessage.trim() && recipient) {
+                      void sendGiftwrappedMessage();
+                    }
+                  }
+                }}
                 className="flex-1 p-2 border border-purple-300 rounded-lg text-sm resize-none bg-white"
                 rows={2}
               />
@@ -734,13 +753,43 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 {/* Create new session */}
                 {!sessionActive && (
                   <button
-                    onClick={() => {
-                      setShowRecoverySession(false);
-                      setShowRecoverySession(true);
+                    onClick={async () => {
+                      try {
+                        setCreatingSession(true);
+                        // Try to fetch encrypted nsec + salt from server using cookie/session
+                        const res = await fetch('/api/auth/session-user', {
+                          method: 'GET',
+                          credentials: 'include',
+                          headers: { 'Accept': 'application/json' },
+                        });
+                        if (!res.ok) {
+                          throw new Error(`Session lookup failed (${res.status})`);
+                        }
+                        const payload = await res.json();
+                        const user = payload?.data?.user;
+                        const enc = user?.encrypted_nsec;
+                        const salt = user?.user_salt;
+                        if (!enc || !salt) {
+                          throw new Error('Missing encrypted credentials in session; please re-authenticate');
+                        }
+                        // Decrypt to bech32 nsec
+                        const nsec = await NobleEncryption.decryptNsec(enc, String(salt));
+                        // Initialize temporary signing session (bech32 accepted)
+                        const session = await initializeNSECSessionAfterAuth(nsec, { duration: 15 * 60 * 1000 });
+                        if (!session) throw new Error('Failed to create signing session');
+                        showToast.success('New signing session started', { title: 'Session', duration: 3500 });
+                        setShowRecoverySession(false);
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Failed to start session';
+                        showToast.error(msg, { title: 'Session', duration: 5000 });
+                      } finally {
+                        setCreatingSession(false);
+                      }
                     }}
-                    className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                    disabled={creatingSession}
+                    className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                   >
-                    Create New Session
+                    {creatingSession ? 'Starting…' : 'Start New Session'}
                   </button>
                 )}
 

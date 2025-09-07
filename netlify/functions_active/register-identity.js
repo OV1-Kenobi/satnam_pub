@@ -81,16 +81,16 @@ function generatePasswordSalt() {
  * Hash password using PBKDF2 with SHA-512
  * @param {string} password - Plain text password
  * @param {string} salt - Base64-encoded salt
- * @returns {Promise<string>} Base64-encoded password hash
+ * @returns {Promise<string>} Hex-encoded password hash
  */
 async function hashPassword(password, salt) {
   const iterations = 100000; // PBKDF2 iterations (minimum recommended)
-  const keyLength = 64; // SHA-512 output length
+  const keyLength = 64; // SHA-512 output length (bytes)
   const algorithm = 'sha512';
 
   const pbkdf2 = promisify(crypto.pbkdf2);
   const hash = await pbkdf2(password, salt, iterations, keyLength, algorithm);
-  return hash.toString('base64');
+  return hash.toString('hex');
 }
 
 /**
@@ -106,8 +106,8 @@ async function verifyPassword(password, storedHash, salt) {
 
     // Timing-safe comparison to prevent timing attacks
     return crypto.timingSafeEqual(
-      Buffer.from(computedHash, 'base64'),
-      Buffer.from(storedHash, 'base64')
+      Buffer.from(computedHash, 'hex'),
+      Buffer.from(storedHash, 'hex')
     );
   } catch (error) {
     console.error('Password verification failed:', error);

@@ -161,11 +161,12 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
 
     const user = users[0];
 
-    // Step 4: Verify password using PBKDF2 (following register-identity pattern)
-    const pbkdf2 = crypto.pbkdf2Sync(requestData.password, user.password_salt, 100000, 64, 'sha512');
-    const providedHash = pbkdf2.toString('hex');
-
-    if (providedHash !== user.password_hash) {
+    // Step 4: Verify password using PBKDF2 (standardized params)
+    const derived = crypto.pbkdf2Sync(requestData.password, user.password_salt, 100000, 64, 'sha512');
+    const hashHex = derived.toString('hex');
+    const hashB64 = derived.toString('base64');
+    // Backward compatibility: accept either hex (new standard) or base64 (legacy rows)
+    if (user.password_hash !== hashHex && user.password_hash !== hashB64) {
       return {
         statusCode: 401,
         headers: corsHeaders,

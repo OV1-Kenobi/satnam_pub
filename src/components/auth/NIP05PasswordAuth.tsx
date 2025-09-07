@@ -50,8 +50,14 @@ export function NIP05PasswordAuth({
 
   // Form states
   const [nip05, setNip05] = useState("");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState(""); // current password
   const [showPassword, setShowPassword] = useState(false);
+  // Change password states
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isChanging, setIsChanging] = useState(false);
 
   const mountedRef = useRef(true);
   const closeTimerRef = useRef<number | null>(null);
@@ -71,9 +77,13 @@ export function NIP05PasswordAuth({
     // Clear sensitive data
     setPassword("");
     setNip05("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setShowChangePassword(false);
     setError(null);
     setSuccess(null);
     setIsLoading(false);
+    setIsChanging(false);
     onClose();
   };
 
@@ -178,8 +188,73 @@ export function NIP05PasswordAuth({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isLoading) {
+    if (e.key === 'Enter' && !isLoading && !isChanging && !showChangePassword) {
       handleNIP05PasswordAuth();
+    }
+  };
+
+  // Change password flow
+  const handleChangePassword = async () => {
+    if (!nip05.trim() || !password.trim()) {
+      setError('Please enter your NIP-05 and current password');
+      return;
+    }
+    const validation = validateNIP05(nip05.trim());
+    if (!validation.valid) {
+      setError(validation.error || 'Invalid NIP-05 identifier');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters long');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+
+    setIsChanging(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ nip05: nip05.trim(), currentPassword: password, newPassword }),
+      });
+      const json = await res.json().catch(() => null) as any;
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Password change failed (${res.status})`);
+      }
+
+      // Try to create recovery session immediately using returned user data
+      try {
+        const user = json?.data?.user as UserIdentity | undefined;
+        if (user && (user as any).encrypted_nsec && user.user_salt) {
+          const session = await recoverySessionBridge.createRecoverySessionFromUser(user, { duration: 15 * 60 * 1000 });
+          if (!session.success) {
+            console.warn('NSEC session after password change failed:', session.error);
+          }
+        }
+      } catch (sessErr) {
+        console.warn('Session init after password change threw:', sessErr);
+      }
+
+      setSuccess('Password changed successfully. You are now signed in.');
+      // Navigate after short delay
+      closeTimerRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) return;
+        onAuthSuccess(destination);
+        handleClose();
+      }, 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Password change failed');
+    } finally {
+      setIsChanging(false);
+      // Clear sensitive fields
+      setPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
     }
   };
 
@@ -295,6 +370,76 @@ export function NIP05PasswordAuth({
                 </>
               )}
             </button>
+
+            {/* Change Password toggle */}
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={() => setShowChangePassword((v) => !v)}
+                className="text-purple-200 hover:text-white text-sm underline"
+                disabled={isLoading}
+              >
+                {showChangePassword ? 'Hide Change Password' : 'Change Password'}
+              </button>
+            </div>
+
+            {/* Change Password form */}
+            {showChangePassword && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">New Password</label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      disabled={isChanging}
+                      className="w-full pl-10 pr-12 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-400 hover:text-purple-300"
+                    >
+                      {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-purple-200 mb-2">Confirm New Password</label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      disabled={isChanging}
+                      className="w-full pl-10 pr-12 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={isChanging || !nip05.trim() || !password.trim() || !newPassword.trim() || newPassword !== confirmNewPassword}
+                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isChanging ? (
+                    <>
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                      <span>Updating Password...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-5 w-5" />
+                      <span>Change Password</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Privacy Guarantee */}

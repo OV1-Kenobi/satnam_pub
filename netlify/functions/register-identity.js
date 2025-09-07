@@ -383,7 +383,7 @@ export const handler = async (event) => {
         pictureType: typeof userDataForHashing.picture
       });
 
-      // Derive PBKDF2/SHA-512 password hash & base64 salt for password-based signin
+      // Derive PBKDF2/SHA-512 password hash (hex) & base64 salt for password-based signin
       const { pbkdf2, randomBytes } = await import('node:crypto');
       const password_salt = randomBytes(24).toString('base64');
       const iterations = 100000;
@@ -394,7 +394,7 @@ export const handler = async (event) => {
           if (err) reject(err); else resolve(derivedKey);
         });
       });
-      const password_hash = Buffer.from(hashBuf).toString('base64');
+      const password_hash = Buffer.from(hashBuf).toString('hex');
 
       // Build hashed user data (server-side)
       let hashedUserData;

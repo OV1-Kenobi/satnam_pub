@@ -803,6 +803,27 @@ export default async function handler(event, context) {
 
     console.log("🔐 DEBUG: giftwrapped - delivery result:", deliveryResult.success ? 'SUCCESS' : 'FAILED');
 
+    // Persist delivery status to DB so UI doesn't stay at "pending"
+    try {
+      const newStatus = deliveryResult.success ? 'delivered' : 'failed';
+      const updatePayload = { status: newStatus };
+      // Optional delivered_at if column exists; safe update even if ignored by schema
+      if (deliveryResult.success) {
+        updatePayload.delivered_at = new Date().toISOString();
+      }
+      const { error: updateError } = await client
+        .from('gift_wrapped_messages')
+        .update(updatePayload)
+        .eq('id', messageId);
+      if (updateError) {
+        console.warn('🔐 DEBUG: giftwrapped - failed to update delivery status:', updateError);
+      } else {
+        console.log('🔐 DEBUG: giftwrapped - delivery status updated to', newStatus);
+      }
+    } catch (e) {
+      console.warn('🔐 DEBUG: giftwrapped - unexpected error updating delivery status', e);
+    }
+
     // Zero out ephemeral key for security (only if it exists)
     if (ephemeralKey) {
       ephemeralKey.split('').forEach((_, i, arr) => arr[i] = '0');
