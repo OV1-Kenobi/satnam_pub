@@ -55,6 +55,36 @@ export const handler = async (event, context) => {
       return await handleSessionUserInline(event, context, cors);
     }
 
+    if (target.inline && target.endpoint === 'check-refresh') {
+      console.log('🔍 Using inline check-refresh implementation');
+      return await handleCheckRefreshInline(event, context, cors);
+    }
+
+    if (target.inline && target.endpoint === 'nip07-challenge') {
+      console.log('🔍 Using inline nip07-challenge implementation');
+      return await handleNip07ChallengeInline(event, context, cors);
+    }
+
+    if (target.inline && target.endpoint === 'nip07-signin') {
+      console.log('🔍 Using inline nip07-signin implementation');
+      return await handleNip07SigninInline(event, context, cors);
+    }
+
+    if (target.inline && target.endpoint === 'logout') {
+      console.log('🔍 Using inline logout implementation');
+      return await handleLogoutInline(event, context, cors);
+    }
+
+    if (target.inline && target.endpoint === 'refresh') {
+      console.log('🔍 Using inline refresh implementation');
+      return await handleRefreshInline(event, context, cors);
+    }
+
+    if (target.inline && target.endpoint === 'check-username-availability') {
+      console.log('🔍 Using inline check-username-availability implementation');
+      return await handleCheckUsernameAvailabilityInline(event, context, cors);
+    }
+
     // MEMORY OPTIMIZATION: Use runtime dynamic import to prevent bundling heavy modules
     let targetHandler;
     let modulePath; // make visible to catch scope
@@ -251,14 +281,14 @@ function resolveAuthRoute(path, method) {
   // NIP-07 browser extension authentication
   if ((normalizedPath.endsWith('/auth/nip07-challenge') || normalizedPath.endsWith('/api/auth/nip07-challenge')) && method === 'GET') {
     return {
-      module: '../../api/auth/nip07-challenge.js',
+      inline: true,
       endpoint: 'nip07-challenge'
     };
   }
 
   if ((normalizedPath.endsWith('/auth/nip07-signin') || normalizedPath.endsWith('/api/auth/nip07-signin')) && method === 'POST') {
     return {
-      module: '../../api/auth/nip07-signin.js',
+      inline: true,
       endpoint: 'nip07-signin'
     };
   }
@@ -280,21 +310,21 @@ function resolveAuthRoute(path, method) {
 
   if ((normalizedPath.endsWith('/auth/logout') || normalizedPath.endsWith('/api/auth/logout')) && method === 'POST') {
     return {
-      module: '../../api/auth/logout.js',
+      inline: true,
       endpoint: 'logout'
     };
   }
 
   if ((normalizedPath.endsWith('/auth/refresh') || normalizedPath.endsWith('/api/auth/refresh')) && method === 'POST') {
     return {
-      module: '../../api/auth/refresh.js',
+      inline: true,
       endpoint: 'refresh'
     };
   }
 
   if ((normalizedPath.endsWith('/auth/check-refresh') || normalizedPath.endsWith('/api/auth/check-refresh')) && method === 'GET') {
     return {
-      module: '../../api/auth/check-refresh.js',
+      inline: true,
       endpoint: 'check-refresh'
     };
   }
@@ -302,7 +332,7 @@ function resolveAuthRoute(path, method) {
   // Username availability check (auth-related utility)
   if ((normalizedPath.endsWith('/auth/check-username-availability') || normalizedPath.endsWith('/api/auth/check-username-availability')) && method === 'GET') {
     return {
-      module: '../../api/auth/check-username-availability.js',
+      inline: true,
       endpoint: 'check-username-availability'
     };
   }
@@ -865,4 +895,473 @@ async function handleSessionInline(event, context, corsHeaders) {
       })
     };
   }
+
+// Inline check-refresh implementation
+async function handleCheckRefreshInline(event, context, corsHeaders) {
+  if ((event.httpMethod || 'GET').toUpperCase() !== 'GET') {
+    return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+  }
+
+  // Lightweight IP rate limiting via Supabase RPC
+  try {
+    const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
+    const windowSec = 60;
+    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+    const { supabase } = await import('../supabase.js');
+    const { data, error } = await supabase.rpc('increment_auth_rate', {
+      p_identifier: clientIp,
+      p_scope: 'ip',
+      p_window_start: windowStart,
+      p_limit: 60,
+    });
+    const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+    if (error || limited) {
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+    }
+  } catch {
+    return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+  }
+
+  const parseCookies = (cookieHeader) => {
+    if (!cookieHeader) return {};
+    return cookieHeader.split(';').reduce((acc, c) => {
+      const [name, ...rest] = c.trim().split('=');
+      acc[name] = rest.join('=');
+      return acc;
+    }, {});
+  };
+
+  try {
+    const cookies = parseCookies(event.headers?.cookie);
+    const refreshToken = cookies?.['satnam_refresh_token'];
+
+    if (!refreshToken) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, available: false }) };
+    }
+
+    const jwt = await import('jsonwebtoken');
+    const { getJwtSecret } = await import('../utils/jwt-secret.js');
+    const secret = getJwtSecret();
+
+    let payload;
+    try {
+      payload = jwt.default.verify(refreshToken, secret, {
+        algorithms: ['HS256'],
+        issuer: 'satnam.pub',
+        audience: 'satnam.pub-users',
+      });
+    } catch {
+      return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, available: false }) };
+    }
+
+    const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    const isValid = !!obj && obj.type === 'refresh';
+
+    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, available: isValid }) };
+  } catch (error) {
+    console.error('check-refresh inline error:', error);
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, available: false, error: 'Check refresh failed' }) };
+  }
 }
+
+// Inline NIP-07 challenge implementation
+async function handleNip07ChallengeInline(event, context, corsHeaders) {
+  const method = (event.httpMethod || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'POST') {
+    return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+  }
+
+  // Rate limiting: 60s window, 30 attempts
+  try {
+    const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
+    const windowSec = 60;
+    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+    const { supabase } = await import('../supabase.js');
+    const { data, error } = await supabase.rpc('increment_auth_rate', {
+      p_identifier: clientIp,
+      p_scope: 'ip',
+      p_window_start: windowStart,
+      p_limit: 30,
+    });
+    const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+    if (error || limited) {
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+    }
+  } catch {
+    return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+  }
+
+  try {
+    const qp = event.queryStringParameters || {};
+    const legacyRole = String(qp.userRole || 'private');
+    const includeMetadata = String(qp.includeMetadata || 'false') === 'true';
+
+    const convertRole = (role) => {
+      switch (role) {
+        case 'admin': return 'guardian';
+        case 'user': return 'adult';
+        case 'parent': return 'adult';
+        case 'child':
+        case 'teen': return 'offspring';
+        case 'steward':
+        case 'guardian':
+        case 'private':
+        case 'offspring':
+        case 'adult': return role;
+        default: return 'private';
+      }
+    };
+    const role = convertRole(legacyRole);
+
+    // Sovereignty: authorize all roles; flag offspring as requiring approval
+    const sovereigntyStatus = {
+      role,
+      hasUnlimitedAccess: role !== 'offspring',
+      requiresApproval: role === 'offspring',
+    };
+
+    // Generate challenge and nonce via Web Crypto (Node 18+ has globalThis.crypto)
+    const challengeBytes = new Uint8Array(32);
+    globalThis.crypto.getRandomValues(challengeBytes);
+    const challenge = Array.from(challengeBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    challengeBytes.fill(0);
+
+    const nonceBytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(nonceBytes);
+    const nonce = Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    nonceBytes.fill(0);
+
+    const domain = event.headers?.host || process.env.FRONTEND_URL || 'localhost:3000';
+    const timestamp = Date.now();
+    const expiresAt = timestamp + 5 * 60 * 1000;
+
+    // Persist challenge best-effort
+    try {
+      const { supabase } = await import('../supabase.js');
+      const sessionId = qp.sessionId || nonce;
+      await supabase.from('auth_challenges').delete().lt('expires_at', new Date().toISOString());
+      await supabase.from('auth_challenges').insert({
+        session_id: sessionId,
+        nonce,
+        challenge,
+        domain,
+        issued_at: new Date(timestamp).toISOString(),
+        expires_at: new Date(expiresAt).toISOString(),
+        is_used: false,
+      });
+    } catch {}
+
+    const data = { challenge, domain, timestamp, expiresAt, nonce };
+    if (includeMetadata) {
+      data.metadata = { version: '1.0.0', algorithm: 'secp256k1', encoding: 'hex' };
+    }
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({ success: true, data, sovereigntyStatus, meta: { timestamp: new Date().toISOString(), protocol: 'NIP-07', privacyCompliant: true } })
+    };
+  } catch (error) {
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Failed to generate NIP-07 challenge' }) };
+  }
+}
+
+
+// Inline NIP-07 signin implementation
+async function handleNip07SigninInline(event, context, corsHeaders) {
+  if ((event.httpMethod || 'POST').toUpperCase() !== 'POST') {
+    return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Method not allowed' }) };
+  }
+  try {
+    const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+    const windowSec = 60;
+    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+    const { supabase } = await import('../supabase.js');
+    try {
+      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 30 });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    } catch { return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) }; }
+
+    let body;
+    try { body = JSON.parse(event.body || '{}'); } catch { return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Invalid JSON body' }) }; }
+    const { signedEvent, challenge, domain, userRole = 'private', sessionId, nonce } = body || {};
+    if (!signedEvent || !sessionId || !nonce) {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Missing required fields' }) };
+    }
+
+    // Load challenge
+    const { data: chRows, error: chErr } = await supabase
+      .from('auth_challenges')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('nonce', nonce)
+      .limit(1);
+    if (chErr || !chRows || chRows.length === 0) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Challenge not found' }) };
+    }
+    const ch = chRows[0];
+    if (ch.is_used) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Challenge already used' }) };
+    if (Date.now() > new Date(ch.expires_at).getTime()) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Challenge expired' }) };
+    if (domain && ch.domain && domain !== ch.domain) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Domain mismatch' }) };
+
+    // Validate event basics
+    if (signedEvent.kind !== 22242 || signedEvent.content !== ch.challenge) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Invalid auth event' }) };
+    }
+    // Verify signature
+    const hexToBytes = (hex) => {
+      if (!hex || hex.length % 2 !== 0 || /[^0-9a-fA-F]/.test(hex)) return null;
+      const out = new Uint8Array(hex.length / 2);
+      for (let i=0;i<hex.length;i+=2) out[i/2] = parseInt(hex.slice(i,i+2),16);
+      return out;
+    };
+    try {
+      const { secp256k1 } = await import('@noble/curves/secp256k1');
+      const sig = hexToBytes(signedEvent.sig);
+      const msg = hexToBytes(signedEvent.id);
+      const pub = hexToBytes(signedEvent.pubkey);
+      if (!sig || !msg || !pub) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Invalid event encoding' }) };
+      const ok = secp256k1.verify(sig, msg, pub);
+      if (!ok) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Invalid event signature' }) };
+    } catch {
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Signature verification failed' }) };
+    }
+
+    // Convert pubkey to npub and resolve DUID via nip05_records
+    let npub;
+    try { const { nip19 } = await import('nostr-tools'); npub = nip19.npubEncode(signedEvent.pubkey); } catch { npub = `npub${String(signedEvent.pubkey||'').slice(0,16)}...`; }
+
+    // Resolve DUID from npub using hashed_npub -> hashed_nip05
+    const { createHmac } = await import('node:crypto');
+    const duidSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
+    if (!duidSecret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+    const hashed_npub = createHmac('sha256', duidSecret).update(npub).digest('hex');
+    const { data: rec, error: recErr } = await supabase
+      .from('nip05_records').select('hashed_nip05, nip05').eq('hashed_npub', hashed_npub).eq('is_active', true).single();
+    if (recErr || !rec) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Authentication failed' }) };
+    }
+    const duid = rec.hashed_nip05;
+
+    // Lookup user
+    const { data: user, error: userErr } = await supabase
+      .from('user_identities')
+      .select('id, role, nip05')
+      .eq('id', duid)
+      .eq('is_active', true)
+      .single();
+    if (userErr || !user) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Authentication failed' }) };
+    }
+
+    // Mark challenge used
+    await supabase.from('auth_challenges').update({ is_used: true, event_id: signedEvent.id }).eq('id', ch.id);
+
+    // Create JWTs
+    const { getJwtSecret } = await import('../utils/jwt-secret.js');
+    const jwtSecret = getJwtSecret();
+    const jwt = (await import('jsonwebtoken')).default;
+    const newSessionId = crypto.randomUUID();
+    const protectedId = createHmac('sha256', duidSecret).update(String(duid) + newSessionId).digest('hex');
+    const ACCESS = 15*60, REFRESH = 7*24*60*60;
+    const sign = (payload, exp) => jwt.sign({ ...payload, jti: crypto.randomUUID() }, jwtSecret, { expiresIn: exp, algorithm: 'HS256', issuer: 'satnam.pub', audience: 'satnam.pub-users' });
+    const accessToken = sign({ hashedId: protectedId, nip05: user.nip05, type:'access', sessionId: newSessionId }, ACCESS);
+    const refreshToken = sign({ hashedId: protectedId, nip05: user.nip05, type:'refresh', sessionId: newSessionId }, REFRESH);
+
+    // Set HttpOnly refresh cookie
+    const isDev = process.env.NODE_ENV !== 'production';
+    const cookie = [
+      `satnam_refresh_token=${refreshToken}`,
+      `Max-Age=${REFRESH}`,
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Strict',
+      ...(isDev ? [] : ['Secure'])
+    ].join('; ');
+
+    return {
+      statusCode: 200,
+      headers: { ...corsHeaders, 'Set-Cookie': cookie },
+      body: JSON.stringify({
+        success: true,
+        data: {
+          user: { id: protectedId, npub, nip05: user.nip05, role: user.role || 'private', is_active: true },
+          authenticated: true,
+          sessionToken: accessToken,
+        },
+        meta: { timestamp: new Date().toISOString(), protocol: 'NIP-07', privacyCompliant: true }
+      })
+    };
+  } catch (error) {
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Authentication verification failed' }) };
+  }
+}
+
+// Inline logout implementation
+async function handleLogoutInline(event, context, corsHeaders) {
+  if ((event.httpMethod || 'POST').toUpperCase() === 'OPTIONS') {
+    return { statusCode: 204, headers: corsHeaders, body: '' };
+  }
+  if ((event.httpMethod || 'POST').toUpperCase() !== 'POST') {
+    return { statusCode: 405, headers: { ...corsHeaders, Allow: 'POST, OPTIONS' }, body: JSON.stringify({ success:false, error:'Method not allowed' }) };
+  }
+  try {
+    // rate limit
+    try {
+      const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+      const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+      const windowSec = 60;
+      const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+      const { supabase } = await import('../supabase.js');
+      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 60 });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    } catch { return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) }; }
+
+    const domainAttr = process.env.COOKIE_DOMAIN ? `Domain=${process.env.COOKIE_DOMAIN}; ` : '';
+    const isDev = process.env.NODE_ENV !== 'production';
+    const base = `${domainAttr}Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    const cookieHeaders = [
+      `satnam_refresh_token=; ${base}${isDev ? '' : '; Secure'}`.trim(),
+      `satnam_session_id=; ${base}${isDev ? '' : '; Secure'}`.trim(),
+    ];
+    return { statusCode: 200, headers: { ...corsHeaders, 'Set-Cookie': cookieHeaders }, body: JSON.stringify({ success:true, message:'Logged out successfully', meta:{ timestamp: new Date().toISOString() } }) };
+  } catch (error) {
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Logout failed' }) };
+  }
+}
+
+// Inline refresh implementation
+async function handleRefreshInline(event, context, corsHeaders) {
+  if ((event.httpMethod || 'POST').toUpperCase() !== 'POST') {
+    return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Method not allowed' }) };
+  }
+  const parseCookies = (cookieHeader) => {
+    if (!cookieHeader) return {};
+    return cookieHeader.split(';').reduce((acc, c) => { const [n,...r]=c.trim().split('='); acc[n]=r.join('='); return acc; }, {});
+  };
+  try {
+    // rate limit
+    try {
+      const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+      const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+      const windowSec = 60;
+      const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+      const { supabase } = await import('../supabase.js');
+      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 30 });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
+    } catch { return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) }; }
+
+    const cookies = parseCookies(event.headers?.cookie);
+    const refreshToken = cookies['satnam_refresh_token'];
+    if (!refreshToken) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'No refresh token found' }) };
+
+    const { getJwtSecret } = await import('../utils/jwt-secret.js');
+    const jwtSecret = getJwtSecret();
+    const duidSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
+    if (!duidSecret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+    const jwt = (await import('jsonwebtoken')).default;
+    let payload;
+    try {
+      payload = jwt.verify(refreshToken, jwtSecret, { algorithms:['HS256'], issuer:'satnam.pub', audience:'satnam.pub-users' });
+      payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      if (payload.type !== 'refresh') throw new Error('Not a refresh token');
+    } catch (e) {
+      const clear = `satnam_refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      return { statusCode: 401, headers: { ...corsHeaders, 'Set-Cookie': clear }, body: JSON.stringify({ success:false, error:'Invalid refresh token' }) };
+    }
+
+    const now = Math.floor(Date.now()/1000);
+    if (payload.iat && now - payload.iat < 60) {
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Token refresh rate limit exceeded' }) };
+    }
+
+    const newSessionId = crypto.randomUUID();
+    const subject = payload.userId || payload.hashedId || 'user';
+    const protectedId = (await import('node:crypto')).createHmac('sha256', duidSecret).update(String(subject)+newSessionId).digest('hex');
+    const ACCESS = 15*60, REFRESH = 7*24*60*60;
+    const sign = (pl, exp) => jwt.sign({ ...pl, jti: crypto.randomUUID() }, jwtSecret, { expiresIn: exp, algorithm:'HS256', issuer:'satnam.pub', audience:'satnam.pub-users' });
+    const newAccess = sign({ userId: payload.userId, hashedId: protectedId, nip05: payload.nip05, type:'access', sessionId: newSessionId }, ACCESS);
+    const newRefresh = sign({ userId: payload.userId, hashedId: protectedId, nip05: payload.nip05, type:'refresh', sessionId: newSessionId }, REFRESH);
+
+    const isDev = process.env.NODE_ENV !== 'production';
+    const cookie = [
+      `satnam_refresh_token=${newRefresh}`,
+      `Max-Age=${REFRESH}`,
+      'Path=/',
+      'HttpOnly',
+      'SameSite=Strict',
+      ...(isDev ? [] : ['Secure'])
+    ].join('; ');
+
+    return { statusCode: 200, headers: { ...corsHeaders, 'Set-Cookie': cookie }, body: JSON.stringify({ success:true, data:{ user:{ id: payload.userId || protectedId, nip05: payload.nip05, is_active: true }, authenticated:true, sessionToken: newAccess, expiresAt: new Date((now+ACCESS)*1000).toISOString() }, meta:{ timestamp: new Date().toISOString(), sessionId: newSessionId } }) };
+  } catch (error) {
+    const clear = `satnam_refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    return { statusCode: 500, headers: { ...corsHeaders, 'Set-Cookie': clear }, body: JSON.stringify({ success:false, error:'Token refresh failed' }) };
+  }
+}
+
+// Inline username availability implementation (GET)
+async function handleCheckUsernameAvailabilityInline(event, context, corsHeaders) {
+  if ((event.httpMethod || 'GET').toUpperCase() !== 'GET') {
+    return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Method not allowed' }) };
+  }
+  try {
+    // Rate limit
+    try {
+      const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+      const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
+      const windowSec = 60;
+      const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+      const { supabase } = await import('../supabase.js');
+      const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 10 });
+      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+      if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many requests' }) };
+    } catch { return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many requests' }) }; }
+
+    const qp = event.queryStringParameters || {};
+    const username = String(qp.username || '').trim().toLowerCase();
+    if (!username) return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Username is required' }) };
+    if (username.length < 3 || username.length > 20) return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Username must be between 3 and 20 characters' }) };
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Username can only contain letters, numbers, underscores, and hyphens' }) };
+
+    const domain = 'satnam.pub';
+    const { createHmac } = await import('node:crypto');
+    const secret = (process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY || '').trim();
+    if (!secret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+    const identifier = `${username}@${domain}`;
+    const hashed_nip05 = createHmac('sha256', secret).update(identifier).digest('hex');
+
+    const { supabase } = await import('../supabase.js');
+    const { data, error } = await supabase
+      .from('nip05_records')
+      .select('id')
+      .eq('domain', domain)
+      .eq('hashed_nip05', hashed_nip05)
+      .eq('is_active', true)
+      .limit(1);
+
+    let available = !error && (!data || data.length === 0);
+
+    // Cross-check against user_identities using canonical DUID when possible
+    if (available) {
+      try {
+        const { generateDUIDFromNIP05 } = await import('../../lib/security/duid-generator.js');
+        const duid = await generateDUIDFromNIP05(identifier);
+        const { data: users } = await supabase.from('user_identities').select('id').eq('id', duid).limit(1);
+        if (users && users.length > 0) available = false;
+      } catch {}
+    }
+
+    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success:true, available }) };
+  } catch (error) {
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Internal server error' }) };
+  }
+}
+
+
