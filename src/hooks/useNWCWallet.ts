@@ -144,8 +144,29 @@ export function useNWCWallet(): UseNWCWalletReturn {
     isConnected: false,
   });
 
-  // API base URL
-  const API_BASE = getEnvVar("REACT_APP_API_BASE_URL") || "/.netlify/functions";
+  // API base URL (standardized to /api via Netlify redirects)
+  const API_BASE = getEnvVar("VITE_API_BASE_URL") || "/api";
+
+  // Helper to get Authorization header with JWT from SecureTokenManager
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    try {
+      const { SecureTokenManager } = await import(
+        "../lib/auth/secure-token-manager"
+      );
+      const accessToken = SecureTokenManager.getAccessToken();
+      if (typeof window !== "undefined") {
+        const preview = accessToken ? accessToken.slice(0, 12) + "\u2026" : "";
+        console.debug(
+          "[useNWCWallet] JWT present:",
+          Boolean(accessToken),
+          preview
+        );
+      }
+      return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+    } catch {
+      return {};
+    }
+  }
 
   /**
    * Make API request to NWC wallet endpoint
@@ -155,13 +176,14 @@ export function useNWCWallet(): UseNWCWalletReturn {
       operationRequest: NWCOperationRequest
     ): Promise<NWCOperationResult> => {
       try {
+        const authHeaders = await getAuthHeaders();
         const response = await fetch(
-          `${API_BASE}/api/wallet/nostr-wallet-connect`,
+          `${API_BASE}/wallet/nostr-wallet-connect`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${user?.id || ""}`,
+              ...authHeaders,
             },
             body: JSON.stringify({
               ...operationRequest,
@@ -193,9 +215,10 @@ export function useNWCWallet(): UseNWCWalletReturn {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const response = await fetch(`${API_BASE}/api/user/nwc-connections`, {
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/user/nwc-connections`, {
         headers: {
-          Authorization: `Bearer ${user.id}`,
+          ...authHeaders,
         },
       });
 
@@ -429,11 +452,12 @@ export function useNWCWallet(): UseNWCWalletReturn {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
-        const response = await fetch(`${API_BASE}/api/user/nwc-connections`, {
+        const authHeaders = await getAuthHeaders();
+        const response = await fetch(`${API_BASE}/user/nwc-connections`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${user.id}`,
+            ...authHeaders,
           },
           body: JSON.stringify({
             connectionString,

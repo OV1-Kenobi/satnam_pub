@@ -53,6 +53,43 @@
   status = 200
   force = true
 
+
+# Individual unified wallet root endpoint (without type segment)
+[[redirects]]
+  from = "/api/individual/wallet"
+  to = "/.netlify/functions/individual-wallet-unified"
+  status = 200
+  force = true
+
+# NWC connections endpoint used by useNWCWallet hook
+[[redirects]]
+  from = "/api/user/nwc-connections"
+  to = "/.netlify/functions/individual-wallet-unified"
+  status = 200
+  force = true
+
+
+# NWC wallet operations endpoint
+[[redirects]]
+  from = "/api/wallet/nostr-wallet-connect"
+  to = "/.netlify/functions/individual-wallet-unified"
+  status = 200
+  force = true
+
+
+# Fix dev calls using '/.netlify/functions/api/*' paths
+[[redirects]]
+  from = "/api/individual/wallet"
+  to = "/.netlify/functions/individual-wallet-unified"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/user/nwc-connections"
+  to = "/.netlify/functions/individual-wallet-unified"
+  status = 200
+  force = true
+
 # Username availability check endpoint (MUST come before generic API routes)
 [[redirects]]
   from = "/api/auth/check-username-availability"

@@ -1,6 +1,6 @@
 /**
  * NIP-05/Password Authentication Component
- * 
+ *
  * Secure authentication using NIP-05 identifier and password
  * - Domain whitelist enforcement (satnam.pub, citadel.academy)
  * - Privacy-first architecture with hashed UUIDs
@@ -301,75 +301,82 @@ export function NIP05PasswordAuth({
 
           {/* NIP-05/Password Form */}
           <div className="space-y-4">
-            {/* NIP-05 Input */}
-            <div>
-              <label className="block text-sm font-medium text-purple-200 mb-2">
-                NIP-05 Identifier
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
-                <input
-                  type="text"
-                  value={nip05}
-                  onChange={(e) => setNip05(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="user@satnam.pub"
-                  disabled={isLoading}
-                  className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
-                />
-              </div>
-              <p className="text-purple-300 text-xs mt-1">
-                Only satnam.pub and citadel.academy domains are supported
-              </p>
-            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleNIP05PasswordAuth(); }}>
 
-            {/* Password Input */}
-            <div>
-              <label className="block text-sm font-medium text-purple-200 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Enter your password"
-                  disabled={isLoading}
-                  className="w-full pl-10 pr-12 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-400 hover:text-purple-300"
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
+              {/* NIP-05 Input */}
+              <div>
+                <label className="block text-sm font-medium text-purple-200 mb-2">
+                  NIP-05 Identifier
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
+                  <input
+                    type="text"
+                    value={nip05}
+                    onChange={(e) => setNip05(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="user@satnam.pub"
+                    disabled={isLoading}
+                    className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
+                  />
+                </div>
+                <p className="text-purple-300 text-xs mt-1">
+                  Only satnam.pub and citadel.academy domains are supported
+                </p>
               </div>
-              <p className="text-purple-300 text-xs mt-1">
-                Minimum 8 characters required
-              </p>
-            </div>
 
-            {/* Sign In Button */}
-            <button
-              onClick={handleNIP05PasswordAuth}
-              disabled={isLoading || !nip05.trim() || !password.trim()}
-              className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                  <span>Authenticating...</span>
-                </>
-              ) : (
-                <>
-                  <Shield className="h-5 w-5" />
-                  <span>Sign In</span>
-                </>
-              )}
-            </button>
+              {/* Password Input */}
+              <div>
+                <label className="block text-sm font-medium text-purple-200 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Enter your password"
+                    disabled={isLoading}
+                    className="w-full pl-10 pr-12 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-400 hover:text-purple-300"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+                <p className="text-purple-300 text-xs mt-1">
+                  Minimum 8 characters required
+                </p>
+              </div>
+
+              {/* Sign In Button */}
+              <button
+                type="submit"
+                disabled={isLoading || !nip05.trim() || !password.trim()}
+                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    <span>Authenticating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-5 w-5" />
+                    <span>Sign In</span>
+                  </>
+
+
+                )}
+              </button>
+
+
+            </form>
 
             {/* Change Password toggle */}
             <div className="mt-3 text-center">
@@ -385,7 +392,7 @@ export function NIP05PasswordAuth({
 
             {/* Change Password form */}
             {showChangePassword && (
-              <div className="mt-4 space-y-4">
+              <form className="mt-4 space-y-4" onSubmit={(e) => { e.preventDefault(); handleChangePassword(); }}>
                 <div>
                   <label className="block text-sm font-medium text-purple-200 mb-2">New Password</label>
                   <div className="relative">
@@ -422,7 +429,7 @@ export function NIP05PasswordAuth({
                   </div>
                 </div>
                 <button
-                  onClick={handleChangePassword}
+                  type="submit"
                   disabled={isChanging || !nip05.trim() || !password.trim() || !newPassword.trim() || newPassword !== confirmNewPassword}
                   className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -438,7 +445,7 @@ export function NIP05PasswordAuth({
                     </>
                   )}
                 </button>
-              </div>
+              </form>
             )}
           </div>
 
@@ -460,7 +467,7 @@ export function NIP05PasswordAuth({
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 

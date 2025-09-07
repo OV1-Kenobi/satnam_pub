@@ -190,6 +190,15 @@ export class IndividualApiService {
         "../lib/auth/secure-token-manager"
       );
       const accessToken = SecureTokenManager.getAccessToken();
+      // Debug (non-sensitive): log presence and short preview only
+      if (typeof window !== "undefined") {
+        const preview = accessToken ? accessToken.slice(0, 12) + "…" : "";
+        console.debug(
+          "[IndividualApi] JWT present:",
+          Boolean(accessToken),
+          preview
+        );
+      }
       if (accessToken) {
         authHeaders.Authorization = `Bearer ${accessToken}`;
       }

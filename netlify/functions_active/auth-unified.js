@@ -27,15 +27,15 @@ export const handler = async (event, context) => {
     console.log('🔍 Route resolved:', target);
 
     if (!target) {
-      return { 
-        statusCode: 404, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
+      return {
+        statusCode: 404,
+        headers: cors,
+        body: JSON.stringify({
+          success: false,
           error: 'Authentication endpoint not found',
           path: path,
           method: method
-        }) 
+        })
       };
     }
 
@@ -48,6 +48,11 @@ export const handler = async (event, context) => {
     if (target.inline && target.endpoint === 'session') {
       console.log('🔍 Using inline session validation implementation');
       return await handleSessionInline(event, context, cors);
+    }
+
+    if (target.inline && target.endpoint === 'session-user') {
+      console.log('🔍 Using inline session-user implementation');
+      return await handleSessionUserInline(event, context, cors);
     }
 
     // MEMORY OPTIMIZATION: Use runtime dynamic import to prevent bundling heavy modules
@@ -150,14 +155,14 @@ export const handler = async (event, context) => {
     }
 
     if (typeof targetHandler !== 'function') {
-      return { 
-        statusCode: 500, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
+      return {
+        statusCode: 500,
+        headers: cors,
+        body: JSON.stringify({
+          success: false,
           error: 'Authentication handler not available',
           endpoint: target.endpoint
-        }) 
+        })
       };
     }
 
@@ -202,21 +207,21 @@ export const handler = async (event, context) => {
       };
     }
 
-    return { 
-      statusCode: 200, 
-      headers: cors, 
-      body: typeof response === 'string' ? response : JSON.stringify(response) 
+    return {
+      statusCode: 200,
+      headers: cors,
+      body: typeof response === 'string' ? response : JSON.stringify(response)
     };
 
   } catch (error) {
     console.error('Unified auth handler error:', error);
-    return { 
-      statusCode: 500, 
-      headers: cors, 
-      body: JSON.stringify({ 
-        success: false, 
-        error: 'Authentication service error' 
-      }) 
+    return {
+      statusCode: 500,
+      headers: cors,
+      body: JSON.stringify({
+        success: false,
+        error: 'Authentication service error'
+      })
     };
   }
 };
@@ -268,7 +273,7 @@ function resolveAuthRoute(path, method) {
 
   if ((normalizedPath.endsWith('/auth/session-user') || normalizedPath.endsWith('/api/auth/session-user')) && method === 'GET') {
     return {
-      module: '../../api/auth/session-user.js',
+      inline: true,
       endpoint: 'session-user'
     };
   }
@@ -315,12 +320,12 @@ function resolveAuthRoute(path, method) {
 function buildCorsHeaders(event) {
   const origin = event.headers?.origin || event.headers?.Origin;
   const isProd = process.env.NODE_ENV === 'production';
-  
+
   // Use FRONTEND_URL with fallback to primary production origin per user preferences
-  const allowedOrigin = isProd 
-    ? (process.env.FRONTEND_URL || 'https://www.satnam.pub') 
+  const allowedOrigin = isProd
+    ? (process.env.FRONTEND_URL || 'https://www.satnam.pub')
     : (origin || '*');
-  
+
   const allowCredentials = allowedOrigin !== '*';
 
   return {
@@ -532,12 +537,27 @@ async function handleSigninInline(event, context, corsHeaders) {
       hasPasswordSalt: !!user.password_salt
     });
 
-    // Verify password (match registration format: base64 encoding) - SECURITY FIX: Use constant-time comparison
+    // Verify password with backward-compatible formats (hex or base64) using constant-time comparison
     const derivedKey = await pbkdf2(password, user.password_salt, 100000, 64, 'sha512');
-    const storedHash = Buffer.from(user.password_hash, 'base64');
-    const isValidPassword =
-      storedHash.length === derivedKey.length &&
-      timingSafeEqual(derivedKey, storedHash);
+
+    let isValidPassword = false;
+    // First, attempt hex comparison
+    try {
+      const storedHexBuf = Buffer.from(user.password_hash, 'hex');
+      if (storedHexBuf.length === derivedKey.length && timingSafeEqual(derivedKey, storedHexBuf)) {
+        isValidPassword = true;
+      }
+    } catch {}
+
+    // If not hex, attempt base64 comparison (legacy)
+    if (!isValidPassword) {
+      try {
+        const storedB64Buf = Buffer.from(user.password_hash, 'base64');
+        if (storedB64Buf.length === derivedKey.length && timingSafeEqual(derivedKey, storedB64Buf)) {
+          isValidPassword = true;
+        }
+      } catch {}
+    }
 
     if (!isValidPassword) {
       console.log('❌ Invalid password for user:', nip05);
@@ -605,13 +625,142 @@ async function handleSigninInline(event, context, corsHeaders) {
         success: false,
         error: 'Authentication service temporarily unavailable',
         debug: {
-          message: error.message,
+          message: (error && typeof error === 'object' && 'message' in error) ? /** @type {any} */ (error).message : String(error),
           timestamp: new Date().toISOString()
         }
       })
     };
   }
+
 }
+
+
+// Inline session-user implementation (resolves import errors to /api/auth/session-user)
+async function handleSessionUserInline(event, context, corsHeaders) {
+  if ((event.httpMethod || 'GET').toUpperCase() !== 'GET') {
+    return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+  }
+
+  function parseCookies(cookieHeader) {
+    if (!cookieHeader) return {};
+    return cookieHeader.split(';').reduce((acc, c) => {
+      const [name, ...rest] = c.trim().split('=');
+      acc[name] = rest.join('=');
+      return acc;
+    }, {});
+  }
+
+  // Lightweight IP rate limiting via Supabase RPC
+  try {
+    const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
+    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
+    const windowSec = 60;
+    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
+    const { supabase } = await import('../supabase.js');
+    const { data, error } = await supabase.rpc('increment_auth_rate', {
+      p_identifier: clientIp,
+      p_scope: 'ip',
+      p_window_start: windowStart,
+      p_limit: 60,
+    });
+    const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
+    if (error || limited) {
+      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+    }
+  } catch {
+    return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+  }
+
+  try {
+    // 1) Authorization: Bearer header
+    const headers = event.headers || {};
+    const authHeader = headers.authorization || headers.Authorization || headers['authorization'] || headers['Authorization'];
+    let nip05 = null;
+
+    if (authHeader && /^bearer\s+.+/i.test(String(authHeader))) {
+      const token = String(authHeader).replace(/^bearer\s+/i, '');
+      try {
+        const payload = await verifyJWT(token);
+        if (payload && payload.nip05) nip05 = payload.nip05;
+      } catch {}
+    }
+
+    // 2) Refresh cookie fallback
+    if (!nip05) {
+      const cookies = parseCookies(headers.cookie);
+      const refreshToken = cookies?.['satnam_refresh_token'];
+      if (!refreshToken) {
+        return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+      }
+      try {
+        const jwt = await import('jsonwebtoken');
+        const { getJwtSecret } = await import('../utils/jwt-secret.js');
+        const secret = getJwtSecret();
+        const payload = jwt.default.verify(refreshToken, secret, {
+          algorithms: ['HS256'],
+          issuer: 'satnam.pub',
+          audience: 'satnam.pub-users',
+        });
+        const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        if (obj?.type === 'refresh') nip05 = obj.nip05;
+      } catch {
+        return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+      }
+    }
+
+    if (!nip05) {
+      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+    }
+
+    // 3) DUID from nip05 via server secret
+    let duid;
+    try {
+      const { getEnvVar } = await import('../utils/env.js');
+      const secret = getEnvVar('DUID_SERVER_SECRET');
+      if (!secret) throw new Error('DUID_SERVER_SECRET not configured');
+      const { createHmac } = await import('node:crypto');
+      duid = createHmac('sha256', secret).update(nip05).digest('hex');
+    } catch (e) {
+      console.error('DUID generation failed:', e);
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication system error' }) };
+    }
+
+    // 4) Lookup user
+    const { supabase } = await import('../supabase.js');
+    const { data: user, error: userError, status } = await supabase
+      .from('user_identities')
+      .select('id, role, is_active, user_salt, encrypted_nsec, encrypted_nsec_iv, npub, username')
+      .eq('id', duid)
+      .single();
+
+    if (userError || !user) {
+      const code = status === 406 ? 404 : 500;
+      return { statusCode: code, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'User not found' }) };
+    }
+
+    const userPayload = {
+      id: user.id,
+      nip05,
+      role: user.role || 'private',
+      is_active: user.is_active !== false,
+      user_salt: user.user_salt || null,
+      encrypted_nsec: user.encrypted_nsec || null,
+      encrypted_nsec_iv: user.encrypted_nsec_iv || null,
+      npub: user.npub || null,
+      username: user.username || null,
+    };
+
+    return {
+      statusCode: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true, data: { user: userPayload } })
+    };
+  } catch (error) {
+    console.error('session-user inline error:', error);
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
+  }
+}
+
 
 // Inline session validation implementation
 async function handleSessionInline(event, context, corsHeaders) {
@@ -710,7 +859,7 @@ async function handleSessionInline(event, context, corsHeaders) {
         success: false,
         error: 'Session validation failed',
         debug: {
-          message: error.message,
+          message: (error && typeof error === 'object' && 'message' in error) ? /** @type {any} */ (error).message : String(error),
           timestamp: new Date().toISOString()
         }
       })
