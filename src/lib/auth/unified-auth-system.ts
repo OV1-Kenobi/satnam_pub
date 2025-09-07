@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { recoverySessionBridge } from "./recovery-session-bridge";
 import SecureTokenManager from "./secure-token-manager";
 import { AuthResult, UserIdentity } from "./user-identities-auth";
 
@@ -260,10 +261,28 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           setState((prev) => ({ ...prev, loading: false }));
         }
       } else {
-        // No tokens available
-        console.log(
-          "ℹ️ No authentication tokens found, user not authenticated"
+        // No tokens available — check if refresh cookie exists (prod persistence)
+        const hasRefresh = await SecureTokenManager.checkRefreshAvailable();
+        console.debug(
+          "ℹ️ Auth init: no access token in memory; refresh cookie available:",
+          hasRefresh
         );
+
+        // PRODUCTION PERSISTENCE FIX: If refresh cookie exists, attempt silent refresh
+        if (hasRefresh) {
+          const refreshedToken = await SecureTokenManager.silentRefresh();
+          if (refreshedToken) {
+            const isValid = await validateSession();
+            // Ensure loading is cleared regardless of validation result
+            setState((prev) => ({ ...prev, loading: false }));
+            if (isValid) {
+              // Successfully restored session; stop further initialization work
+              return;
+            }
+          }
+        }
+
+        // Fallback: no refresh cookie or refresh failed — remain unauthenticated
         setState((prev) => ({ ...prev, loading: false, authenticated: false }));
       }
     } catch (error) {
@@ -357,6 +376,34 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           accountActive: !!result.user.is_active,
           tokenExpiry: new Date(tokenPayload.exp * 1000).toISOString(),
         });
+
+        // Post-auth: automatically create SecureNsecManager session if encrypted nsec is available
+        try {
+          const u = result.user as unknown as {
+            encrypted_nsec?: string;
+            user_salt?: string;
+          };
+          if (u && u.encrypted_nsec && u.user_salt) {
+            const session =
+              await recoverySessionBridge.createRecoverySessionFromUser(
+                u as any,
+                { duration: 15 * 60 * 1000 }
+              );
+            if (!session?.success) {
+              console.warn(
+                "NSEC session creation after signin failed:",
+                session?.error
+              );
+            } else {
+              console.log("🔐 Post-auth: SecureNsecManager session created");
+            }
+          }
+        } catch (e) {
+          console.warn(
+            "Post-auth session hook error:",
+            e instanceof Error ? e.message : "Unknown error"
+          );
+        }
 
         return true;
       } else {

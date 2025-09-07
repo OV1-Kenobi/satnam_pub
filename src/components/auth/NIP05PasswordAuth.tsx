@@ -20,7 +20,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { recoverySessionBridge } from '../../lib/auth/recovery-session-bridge';
+import { createRecoverySession, recoverySessionBridge } from '../../lib/auth/recovery-session-bridge';
 import type { UserIdentity } from '../../lib/auth/user-identities-auth';
 import { useAuth } from './AuthProvider';
 
@@ -163,7 +163,6 @@ export function NIP05PasswordAuth({
           } else {
             console.warn('🔐 No user payload available for direct session creation; falling back to credentials-based');
             // Fallback to credentials-based creation to maintain backward compatibility
-            const { createRecoverySession } = await import('../../lib/auth/recovery-session-bridge');
             const session = await createRecoverySession({ nip05: nip05.trim(), password }, { duration: 15 * 60 * 1000 });
             if (!session.success) console.warn('🔐 NSEC session creation after signin failed:', session.error);
           }

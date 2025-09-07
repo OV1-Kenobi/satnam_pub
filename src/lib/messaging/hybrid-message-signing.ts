@@ -108,10 +108,9 @@ export class HybridMessageSigning {
         }
       }
     } else {
-      // No preferences found — SECURITY/UX: Do NOT auto-fallback to NIP-07
-      // Default behavior should prioritize session-based signing only.
+      // No preferences found — try session first, then NIP-07 if available
       console.log(
-        "🔐 HybridMessageSigning: No user preferences; attempting session-only (no NIP-07 auto-fallback)"
+        "🔐 HybridMessageSigning: No user preferences; trying session first, then NIP-07 if available"
       );
 
       const sessionResult = await this.attemptSessionSigning(event);
@@ -119,14 +118,22 @@ export class HybridMessageSigning {
         return sessionResult;
       }
 
-      // If session is unavailable, return a clear error instead of prompting NIP-07
+      // If session failed and NIP-07 is available, try it as fallback
+      if (typeof window !== "undefined" && window.nostr) {
+        console.log(
+          "🔐 HybridMessageSigning: Session unavailable, trying NIP-07 fallback"
+        );
+        return await this.attemptNIP07Signing(event);
+      }
+
+      // Both methods unavailable
       return {
         success: false,
         method: "session",
         securityLevel: "high",
-        error: "No active secure session available",
+        error: "No signing methods available",
         userMessage:
-          "Create a signing session (Recovery Session) to enable message signing without browser prompts.",
+          "Create a signing session (Recovery Session) or install a NIP-07 extension to enable message signing.",
         timestamp: Date.now(),
       };
     }
@@ -238,11 +245,18 @@ export class HybridMessageSigning {
         };
       }
 
-      // Delegate signing to CEPS central authority
-      const signedEvent = await CEPS.signEventWithActiveSession({
+      // Inject pubkey before delegating to CEPS
+      const pubkeyHex = await (
+        CEPS as unknown as {
+          getUserPubkeyHexForVerification: () => Promise<string>;
+        }
+      ).getUserPubkeyHexForVerification();
+      const eventToSign = {
         ...event,
+        pubkey: (event as any).pubkey ?? pubkeyHex,
         created_at: event.created_at || Math.floor(Date.now() / 1000),
-      });
+      };
+      const signedEvent = await CEPS.signEventWithActiveSession(eventToSign);
 
       return {
         success: true,

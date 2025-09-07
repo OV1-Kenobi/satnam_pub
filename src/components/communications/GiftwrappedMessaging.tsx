@@ -437,7 +437,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               const label = loading
                 ? 'Checking session…'
                 : !active
-                  ? 'No Session'
+                  ? 'Start Signing Session'
                   : `Session active: ${formatRemaining(ms)}`;
               return (
                 <div className="flex items-center space-x-2">
