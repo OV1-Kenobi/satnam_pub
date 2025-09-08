@@ -982,8 +982,7 @@ async function handleSigninInline(event, context, corsHeaders) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Look up user by DUID with explicit field selection to handle both schema types
-    // This ensures we get all required fields regardless of schema version
+    // CRITICAL FIX: Query using correct production schema column names (privacy-first with hashed fields)
     const { data: user, error: userError } = await supabase
       .from('user_identities')
       .select(`
@@ -995,14 +994,21 @@ async function handleSigninInline(event, context, corsHeaders) {
         user_salt,
         encrypted_nsec,
         encrypted_nsec_iv,
-        username,
-        npub,
-        nip05,
         hashed_username,
         hashed_npub,
         hashed_nip05,
+        hashed_lightning_address,
+        spending_limits,
+        privacy_settings,
+        family_federation_id,
+        encryption_version,
         created_at,
-        updated_at
+        updated_at,
+        password_created_at,
+        password_updated_at,
+        failed_attempts,
+        locked_until,
+        requires_password_change
       `)
       .eq('id', userDUID)
       .single();
@@ -1033,10 +1039,11 @@ async function handleSigninInline(event, context, corsHeaders) {
       };
     }
 
-    console.log('🔍 User data debug:', {
+    console.log('🔍 User data debug (privacy-first schema):', {
       id: user.id?.substring(0, 8),
-      username: user.username,
-      nip05: user.nip05,
+      hashedUsername: user.hashed_username ? `${user.hashed_username.substring(0, 8)}...` : 'MISSING',
+      hashedNip05: user.hashed_nip05 ? `${user.hashed_nip05.substring(0, 8)}...` : 'MISSING',
+      hashedNpub: user.hashed_npub ? `${user.hashed_npub.substring(0, 8)}...` : 'MISSING',
       role: user.role,
       hasPasswordHash: !!user.password_hash,
       hasPasswordSalt: !!user.password_salt,
@@ -1044,7 +1051,6 @@ async function handleSigninInline(event, context, corsHeaders) {
       hasUserSalt: !!user.user_salt,
       hasEncryptedNsec: !!user.encrypted_nsec,
       hasEncryptedNsecIv: !!user.encrypted_nsec_iv,
-      hasNpub: !!user.npub,
       // Debug all available fields to identify missing data
       availableFields: Object.keys(user || {})
     });
@@ -1053,7 +1059,7 @@ async function handleSigninInline(event, context, corsHeaders) {
     console.log('🔍 Complete user object keys:', Object.keys(user || {}));
     console.log('🔍 User salt preview:', user.user_salt ? `${user.user_salt.substring(0, 8)}...` : 'MISSING');
     console.log('🔍 Encrypted nsec preview:', user.encrypted_nsec ? `${user.encrypted_nsec.substring(0, 8)}...` : 'MISSING');
-    console.log('🔍 Npub preview:', user.npub ? `${user.npub.substring(0, 8)}...` : 'MISSING');
+    console.log('🔍 Hashed npub preview:', user.hashed_npub ? `${user.hashed_npub.substring(0, 8)}...` : 'MISSING');
 
     // CRITICAL FIX: Check if user has required encrypted credentials for SecureNsecManager session creation
     const hasRequiredCredentials = !!(user.user_salt && user.encrypted_nsec);
@@ -1115,40 +1121,47 @@ async function handleSigninInline(event, context, corsHeaders) {
       .update(`${user.id}|${sessionId}`)
       .digest('hex');
 
-    // Handle both privacy-first schema (hashed fields) and regular schema
+    // CRITICAL FIX: Create JWT using privacy-first schema (hashed fields)
     const token = await createSecureJWT({
       // FRONTEND-REQUIRED FIELDS (SecureTokenManager.parseTokenPayload expects these)
       userId: user.id,
       hashedId: hashedId, // Required by frontend - HMAC of userId|sessionId
       type: 'access', // Required by frontend - token type
       sessionId: sessionId, // Required by frontend - unique session identifier
-      nip05: user.nip05 || user.hashed_nip05 || 'unknown', // Required by frontend
+      nip05: nip05, // Use input nip05 (plaintext) for frontend compatibility
 
       // BACKEND-REQUIRED FIELDS (for compatibility with other endpoints)
-      username: user.username || user.hashed_username || 'unknown', // Handle both schemas
+      username: user.hashed_username || 'unknown', // Use hashed field from database
       role: user.role || 'private'
     });
 
-    // CRITICAL FIX: Prepare response data with proper field mapping for both schema types
+    // CRITICAL FIX: Prepare response data using correct privacy-first schema (hashed fields)
     const responseUserData = {
       id: user.id,
-      nip05: nip05, // Use the input nip05, not the potentially missing user.nip05
+      nip05: nip05, // Use the input nip05 (plaintext for client use)
       role: user.role,
-      is_active: true,
+      is_active: user.is_active !== false,
 
       // CRITICAL: Include encrypted credentials for SecureNsecManager session creation
       user_salt: user.user_salt || null,
       encrypted_nsec: user.encrypted_nsec || null,
       encrypted_nsec_iv: user.encrypted_nsec_iv || null,
 
-      // Handle both schema types for identity fields
-      npub: user.npub || user.hashed_npub || null,
-      username: user.username || user.hashed_username || null,
-
-      // Additional fields that might be needed
+      // Privacy-first schema uses hashed fields (database storage)
       hashed_npub: user.hashed_npub || null,
       hashed_username: user.hashed_username || null,
-      hashed_nip05: user.hashed_nip05 || null
+      hashed_nip05: user.hashed_nip05 || null,
+      hashed_lightning_address: user.hashed_lightning_address || null,
+
+      // Additional fields for client compatibility
+      username: user.hashed_username || null, // Map hashed to expected field name
+      npub: user.hashed_npub || null, // Map hashed to expected field name
+
+      // Privacy and federation settings
+      spending_limits: user.spending_limits || null,
+      privacy_settings: user.privacy_settings || null,
+      family_federation_id: user.family_federation_id || null,
+      encryption_version: user.encryption_version || null
     };
 
     console.log('🔍 Response user data debug:', {

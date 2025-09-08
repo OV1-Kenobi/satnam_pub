@@ -1275,16 +1275,37 @@ export class CentralEventPublishingService {
       (typeof window !== "undefined" &&
         window.location?.hostname === "localhost");
 
-    const nonPow = list.filter((r) => !(r in powDifficulty));
-    const powRelays = isDevelopment
-      ? []
-      : list.filter((r) => r in powDifficulty);
+    // CRITICAL FIX: Also skip PoW relays for registration events to prevent failures
+    const isRegistrationEvent =
+      ev.kind === 0 ||
+      (ev.tags &&
+        ev.tags.some(
+          (tag) =>
+            tag[0] === "client" && tag[1] && tag[1].includes("identity-forge")
+        ));
 
-    if (isDevelopment && list.some((r) => r in powDifficulty)) {
+    const nonPow = list.filter((r) => !(r in powDifficulty));
+    const powRelays =
+      isDevelopment || isRegistrationEvent
+        ? []
+        : list.filter((r) => r in powDifficulty);
+
+    if (
+      (isDevelopment || isRegistrationEvent) &&
+      list.some((r) => r in powDifficulty)
+    ) {
+      const reason = isDevelopment
+        ? "development environment"
+        : "registration event";
       console.log(
-        "🔨 PoW: Skipping PoW relays in development environment:",
+        `🔨 PoW: Skipping PoW relays for ${reason}:`,
         list.filter((r) => r in powDifficulty)
       );
+      if (isRegistrationEvent) {
+        console.log(
+          "🔨 PoW: Registration event detected, avoiding PoW mining to prevent failures"
+        );
+      }
     }
 
     const results: Array<{ relay: string; ok: boolean; error?: string }> = [];
