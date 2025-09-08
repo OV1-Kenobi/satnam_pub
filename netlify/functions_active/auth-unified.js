@@ -1104,3 +1104,50 @@ async function handleSigninInline(event, context, corsHeaders) {
 
 
 
+
+
+// Exported Netlify handler (ESM)
+export const handler = async (event, context) => {
+  const corsHeaders = buildCorsHeaders(event);
+
+  // CORS preflight
+  const method = (event.httpMethod || 'GET').toUpperCase();
+  if (method === 'OPTIONS') {
+    return { statusCode: 204, headers: corsHeaders, body: '' };
+  }
+
+  try {
+    const path = event.path || '';
+    const target = resolveAuthRoute(path, method);
+
+    if (!target || !target.inline) {
+      return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Not found' }) };
+    }
+
+    switch (target.endpoint) {
+      case 'signin':
+        return await handleSigninInline(event, context, corsHeaders);
+      case 'nip07-challenge':
+        return await handleNip07ChallengeInline(event, context, corsHeaders);
+      case 'nip07-signin':
+        return await handleNip07SigninInline(event, context, corsHeaders);
+      case 'session':
+        return await handleSessionInline(event, context, corsHeaders);
+      case 'session-user':
+        return await handleSessionUserInline(event, context, corsHeaders);
+      case 'logout':
+        return await handleLogoutInline(event, context, corsHeaders);
+      case 'refresh':
+        return await handleRefreshInline(event, context, corsHeaders);
+      case 'check-refresh':
+        return await handleCheckRefreshInline(event, context, corsHeaders);
+      case 'check-username-availability':
+        return await handleCheckUsernameAvailabilityInline(event, context, corsHeaders);
+      default:
+        return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Endpoint not found' }) };
+    }
+  } catch (error) {
+    console.error('auth-unified handler error:', error);
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication service error' }) };
+  }
+};
