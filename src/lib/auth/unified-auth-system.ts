@@ -397,6 +397,52 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             } else {
               console.log("🔐 Post-auth: SecureNsecManager session created");
             }
+          } else {
+            // Fallback: fetch session-user to retrieve encrypted credentials, then create session
+            try {
+              const res = await fetch("/api/auth/session-user", {
+                method: "GET",
+                credentials: "include",
+                headers: { Accept: "application/json" },
+              });
+              if (res.ok) {
+                const payload = await res.json();
+                const su = payload?.data?.user as
+                  | { encrypted_nsec?: string; user_salt?: string }
+                  | undefined;
+                if (su?.encrypted_nsec && su?.user_salt) {
+                  const session =
+                    await recoverySessionBridge.createRecoverySessionFromUser(
+                      su as any,
+                      { duration: 15 * 60 * 1000 }
+                    );
+                  if (!session?.success) {
+                    console.warn(
+                      "NSEC session (fallback) creation failed:",
+                      session?.error
+                    );
+                  } else {
+                    console.log(
+                      "🔐 Post-auth (fallback): SecureNsecManager session created"
+                    );
+                  }
+                } else {
+                  console.debug(
+                    "Post-auth: no encrypted credentials available from session-user"
+                  );
+                }
+              } else {
+                console.debug(
+                  "Post-auth: session-user request failed",
+                  res.status
+                );
+              }
+            } catch (e2) {
+              console.debug(
+                "Post-auth: session-user fetch error",
+                e2 instanceof Error ? e2.message : String(e2)
+              );
+            }
           }
         } catch (e) {
           console.warn(

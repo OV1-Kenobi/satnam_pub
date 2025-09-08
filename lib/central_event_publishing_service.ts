@@ -1258,7 +1258,8 @@ export class CentralEventPublishingService {
 
     // Optional PoW support: publish to non-PoW relays first, then attempt PoW relays best-effort
     const powDifficulty: Record<string, number> = {
-      "wss://relay.0xchat.com": 20,
+      // Known requirement as of current relay policy
+      "wss://relay.0xchat.com": 28,
     };
 
     const nonPow = list.filter((r) => !(r in powDifficulty));
@@ -1308,39 +1309,65 @@ export class CentralEventPublishingService {
         const isBrowser =
           typeof window !== "undefined" && typeof document !== "undefined";
         if (isBrowser) {
-          // Dynamic import of worker at runtime
-          const worker = new Worker(
-            new URL("../src/workers/pow-worker.ts", import.meta.url),
-            { type: "module" } as any
-          );
-          // For each PoW relay, mine and publish
+          // For each PoW relay, mine and publish (per-relay worker with dynamic difficulty retry)
           await Promise.allSettled(
-            powRelays.map(
-              (relay) =>
-                new Promise<void>((resolve) => {
-                  const difficulty = powDifficulty[relay] || 20;
-                  worker.onmessage = async (evt: MessageEvent) => {
-                    const { success, event, error } = evt.data || {};
-                    if (!success) {
-                      results.push({ relay, ok: false, error });
-                      return resolve();
-                    }
-                    try {
-                      await publishWithTimeout(relay, event as Event);
-                      results.push({ relay, ok: true });
-                    } catch (e) {
-                      const msg = e instanceof Error ? e.message : String(e);
-                      results.push({ relay, ok: false, error: msg });
-                    }
-                    resolve();
-                  };
-                  worker.postMessage({ event: ev, difficulty });
-                })
+            powRelays.map((relay) =>
+              (async () => {
+                const initial = powDifficulty[relay] || 28;
+
+                const mineAndPublish = (difficulty: number) =>
+                  new Promise<{ ok: boolean; error?: string }>((resolve) => {
+                    // Create a module Worker from inline source to avoid import.meta.url in CJS builds
+                    const workerSrc = `self.onmessage = async (e) => {\n  const { event, difficulty } = e.data || {};\n  try {\n    const mod = await import('nostr-tools/nip13');\n    const mined = await mod.minePow(event, difficulty);\n    self.postMessage({ success: true, event: mined });\n  } catch (err) {\n    const msg = (err && err.message) ? err.message : String(err);\n    self.postMessage({ success: false, error: msg });\n  }\n};`;
+                    const blob = new Blob([workerSrc], {
+                      type: "text/javascript",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const worker = new Worker(url, { type: "module" } as any);
+                    worker.onmessage = async (evt: MessageEvent) => {
+                      const { success, event, error } = (evt as any).data || {};
+                      if (!success) {
+                        try {
+                          (worker as any).terminate?.();
+                        } catch {}
+                        try {
+                          URL.revokeObjectURL(url);
+                        } catch {}
+                        return resolve({ ok: false, error });
+                      }
+                      try {
+                        await publishWithTimeout(relay, event as Event);
+                        resolve({ ok: true });
+                      } catch (e) {
+                        const msg = e instanceof Error ? e.message : String(e);
+                        resolve({ ok: false, error: msg });
+                      } finally {
+                        try {
+                          (worker as any).terminate?.();
+                        } catch {}
+                        try {
+                          URL.revokeObjectURL(url);
+                        } catch {}
+                      }
+                    };
+                    worker.postMessage({ event: ev, difficulty });
+                  });
+
+                let attempt = await mineAndPublish(initial);
+                if (!attempt.ok) {
+                  const m = /difficulty[^0-9]*([0-9]+)/i.exec(
+                    attempt.error || ""
+                  );
+                  const req = m ? parseInt(m[1], 10) : NaN;
+                  if (Number.isFinite(req) && req > initial) {
+                    attempt = await mineAndPublish(req);
+                  }
+                }
+
+                results.push({ relay, ok: attempt.ok, error: attempt.error });
+              })()
             )
           );
-          try {
-            (worker as any).terminate?.();
-          } catch {}
         } else {
           // Node/Netlify Functions: skip PoW mining (non-blocking best-effort)
           console.log("[CEPS] Skipping PoW relays in server environment");
