@@ -102,6 +102,17 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
   // CRITICAL FIX: Track authenticated state synchronously to avoid race conditions
   const authenticatedRef = useRef(false);
 
+  // Deduplicate session-user fallback fetches to avoid 429s
+  const sessionUserFetchRef = useRef<{
+    done: boolean;
+    inFlight: boolean;
+    retries: number;
+  }>({
+    done: false,
+    inFlight: false,
+    retries: 0,
+  });
+
   const [state, setState] = useState<UnifiedAuthState>({
     user: null,
     sessionToken: null,
@@ -399,49 +410,83 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             }
           } else {
             // Fallback: fetch session-user to retrieve encrypted credentials, then create session
-            try {
-              const res = await fetch("/api/auth/session-user", {
-                method: "GET",
-                credentials: "include",
-                headers: { Accept: "application/json" },
-              });
-              if (res.ok) {
-                const payload = await res.json();
-                const su = payload?.data?.user as
-                  | { encrypted_nsec?: string; user_salt?: string }
-                  | undefined;
-                if (su?.encrypted_nsec && su?.user_salt) {
-                  const session =
-                    await recoverySessionBridge.createRecoverySessionFromUser(
-                      su as any,
-                      { duration: 15 * 60 * 1000 }
-                    );
-                  if (!session?.success) {
-                    console.warn(
-                      "NSEC session (fallback) creation failed:",
-                      session?.error
-                    );
+            // Deduplicate and add light backoff to avoid 429 rate limits
+            if (
+              sessionUserFetchRef.current.done ||
+              sessionUserFetchRef.current.inFlight
+            ) {
+              if (process.env.NODE_ENV !== "production") {
+                console.debug("Post-auth: session-user fetch skipped (dedup)");
+              }
+            } else {
+              sessionUserFetchRef.current.inFlight = true;
+              try {
+                const token = SecureTokenManager.getAccessToken();
+                const fetchOnce = () =>
+                  fetch("/api/auth/session-user", {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                      Accept: "application/json",
+                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                  });
+
+                let res = await fetchOnce();
+                if (
+                  res.status === 429 &&
+                  sessionUserFetchRef.current.retries < 2
+                ) {
+                  sessionUserFetchRef.current.retries += 1;
+                  const backoff = Math.min(
+                    500 * 2 ** sessionUserFetchRef.current.retries,
+                    3000
+                  );
+                  await new Promise((r) => setTimeout(r, backoff));
+                  res = await fetchOnce();
+                }
+
+                if (res.ok) {
+                  const payload = await res.json();
+                  const su = payload?.data?.user as
+                    | { encrypted_nsec?: string; user_salt?: string }
+                    | undefined;
+                  if (su?.encrypted_nsec && su?.user_salt) {
+                    const session =
+                      await recoverySessionBridge.createRecoverySessionFromUser(
+                        su as any,
+                        { duration: 15 * 60 * 1000 }
+                      );
+                    if (!session?.success) {
+                      console.warn(
+                        "NSEC session (fallback) creation failed:",
+                        session?.error
+                      );
+                    } else {
+                      console.log(
+                        "🔐 Post-auth (fallback): SecureNsecManager session created"
+                      );
+                      sessionUserFetchRef.current.done = true;
+                    }
                   } else {
-                    console.log(
-                      "🔐 Post-auth (fallback): SecureNsecManager session created"
+                    console.debug(
+                      "Post-auth: no encrypted credentials available from session-user"
                     );
                   }
                 } else {
                   console.debug(
-                    "Post-auth: no encrypted credentials available from session-user"
+                    "Post-auth: session-user request failed",
+                    res.status
                   );
                 }
-              } else {
+              } catch (e2) {
                 console.debug(
-                  "Post-auth: session-user request failed",
-                  res.status
+                  "Post-auth: session-user fetch error",
+                  e2 instanceof Error ? e2.message : String(e2)
                 );
+              } finally {
+                sessionUserFetchRef.current.inFlight = false;
               }
-            } catch (e2) {
-              console.debug(
-                "Post-auth: session-user fetch error",
-                e2 instanceof Error ? e2.message : String(e2)
-              );
             }
           }
         } catch (e) {
