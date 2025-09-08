@@ -391,14 +391,51 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         // Post-auth: automatically create SecureNsecManager session if encrypted nsec is available
         try {
           const u = result.user as unknown as {
+            id?: string;
             encrypted_nsec?: string;
             user_salt?: string;
+            encrypted_nsec_iv?: string;
+            npub?: string;
+            nip05?: string;
+            username?: string;
           };
-          console.log("🔐 Post-auth: checking encrypted credentials", {
+
+          console.log("🔐 Post-auth: COMPREHENSIVE credential check", {
+            // Basic user info
+            userId: u?.id?.substring(0, 8) || "MISSING",
+            nip05: u?.nip05 || "MISSING",
+            username: u?.username || "MISSING",
+
+            // Critical encrypted credentials
             hasEncryptedNsec: !!u?.encrypted_nsec,
             hasUserSalt: !!u?.user_salt,
+            hasEncryptedNsecIv: !!u?.encrypted_nsec_iv,
+            hasNpub: !!u?.npub,
+
+            // Field lengths for debugging
             userSaltLength: u?.user_salt?.length || 0,
             encryptedNsecLength: u?.encrypted_nsec?.length || 0,
+            encryptedNsecIvLength: u?.encrypted_nsec_iv?.length || 0,
+            npubLength: u?.npub?.length || 0,
+
+            // Complete object structure
+            availableUserFields: Object.keys(u || {}),
+            completeResultStructure: Object.keys(result || {}),
+          });
+
+          // CRITICAL: Log the complete result.user object structure (sanitized)
+          const userAny = result.user as any;
+          console.log("🔐 Post-auth: Complete result.user object:", {
+            ...result.user,
+            encrypted_nsec: userAny.encrypted_nsec
+              ? `${userAny.encrypted_nsec.substring(0, 8)}...`
+              : "MISSING",
+            user_salt: userAny.user_salt
+              ? `${userAny.user_salt.substring(0, 8)}...`
+              : "MISSING",
+            npub: userAny.npub
+              ? `${userAny.npub.substring(0, 8)}...`
+              : "MISSING",
           });
 
           if (u && u.encrypted_nsec && u.user_salt) {

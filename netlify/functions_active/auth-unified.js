@@ -964,6 +964,13 @@ async function handleSigninInline(event, context, corsHeaders) {
     const { generateDUIDFromNIP05 } = await import('../../lib/security/duid-generator.js');
     const userDUID = await generateDUIDFromNIP05(nip05);
 
+    console.log('🔍 DUID generation debug:', {
+      nip05Input: nip05,
+      generatedDUID: userDUID?.substring(0, 8) + '...',
+      duidLength: userDUID?.length || 0,
+      duidType: typeof userDUID
+    });
+
     // Get Supabase client (try both prefixed and non-prefixed env vars)
     const { createClient } = await import('@supabase/supabase-js');
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -975,15 +982,46 @@ async function handleSigninInline(event, context, corsHeaders) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Look up user by DUID
+    // Look up user by DUID with explicit field selection to handle both schema types
+    // This ensures we get all required fields regardless of schema version
     const { data: user, error: userError } = await supabase
       .from('user_identities')
-      .select('*')
+      .select(`
+        id,
+        role,
+        is_active,
+        password_hash,
+        password_salt,
+        user_salt,
+        encrypted_nsec,
+        encrypted_nsec_iv,
+        username,
+        npub,
+        nip05,
+        hashed_username,
+        hashed_npub,
+        hashed_nip05,
+        created_at,
+        updated_at
+      `)
       .eq('id', userDUID)
       .single();
 
+    console.log('🔍 Database query result:', {
+      userFound: !!user,
+      userError: userError?.message || null,
+      userErrorCode: userError?.code || null,
+      userDUID: userDUID?.substring(0, 8) + '...',
+      querySuccess: !userError && !!user
+    });
+
     if (userError || !user) {
-      console.log('❌ User not found:', { nip05, userDUID: userDUID.substring(0, 8) });
+      console.log('❌ User not found:', {
+        nip05,
+        userDUID: userDUID.substring(0, 8) + '...',
+        error: userError?.message || 'No user data returned',
+        errorCode: userError?.code || 'NO_DATA'
+      });
       return {
         statusCode: 404,
         headers: corsHeaders,
@@ -1001,8 +1039,35 @@ async function handleSigninInline(event, context, corsHeaders) {
       nip05: user.nip05,
       role: user.role,
       hasPasswordHash: !!user.password_hash,
-      hasPasswordSalt: !!user.password_salt
+      hasPasswordSalt: !!user.password_salt,
+      // CRITICAL: Debug encrypted credentials for SecureNsecManager session creation
+      hasUserSalt: !!user.user_salt,
+      hasEncryptedNsec: !!user.encrypted_nsec,
+      hasEncryptedNsecIv: !!user.encrypted_nsec_iv,
+      hasNpub: !!user.npub,
+      // Debug all available fields to identify missing data
+      availableFields: Object.keys(user || {})
     });
+
+    // CRITICAL DEBUG: Log the complete user object (sanitized) to identify missing fields
+    console.log('🔍 Complete user object keys:', Object.keys(user || {}));
+    console.log('🔍 User salt preview:', user.user_salt ? `${user.user_salt.substring(0, 8)}...` : 'MISSING');
+    console.log('🔍 Encrypted nsec preview:', user.encrypted_nsec ? `${user.encrypted_nsec.substring(0, 8)}...` : 'MISSING');
+    console.log('🔍 Npub preview:', user.npub ? `${user.npub.substring(0, 8)}...` : 'MISSING');
+
+    // CRITICAL FIX: Check if user has required encrypted credentials for SecureNsecManager session creation
+    const hasRequiredCredentials = !!(user.user_salt && user.encrypted_nsec);
+    console.log('🔍 Required credentials check:', {
+      hasUserSalt: !!user.user_salt,
+      hasEncryptedNsec: !!user.encrypted_nsec,
+      hasRequiredCredentials,
+      canCreateSecureSession: hasRequiredCredentials
+    });
+
+    if (!hasRequiredCredentials) {
+      console.warn('⚠️ User missing encrypted credentials - SecureNsecManager session creation will fail');
+      console.warn('⚠️ This user may need to re-register or update their account with encrypted credentials');
+    }
 
     // Verify password with backward-compatible formats (hex or base64) using constant-time comparison
     const derivedKey = await pbkdf2(password, user.password_salt, 100000, 64, 'sha512');
@@ -1064,7 +1129,46 @@ async function handleSigninInline(event, context, corsHeaders) {
       role: user.role || 'private'
     });
 
-    console.log('✅ Inline signin successful:', { username: user.username, role: user.role });
+    // CRITICAL FIX: Prepare response data with proper field mapping for both schema types
+    const responseUserData = {
+      id: user.id,
+      nip05: nip05, // Use the input nip05, not the potentially missing user.nip05
+      role: user.role,
+      is_active: true,
+
+      // CRITICAL: Include encrypted credentials for SecureNsecManager session creation
+      user_salt: user.user_salt || null,
+      encrypted_nsec: user.encrypted_nsec || null,
+      encrypted_nsec_iv: user.encrypted_nsec_iv || null,
+
+      // Handle both schema types for identity fields
+      npub: user.npub || user.hashed_npub || null,
+      username: user.username || user.hashed_username || null,
+
+      // Additional fields that might be needed
+      hashed_npub: user.hashed_npub || null,
+      hashed_username: user.hashed_username || null,
+      hashed_nip05: user.hashed_nip05 || null
+    };
+
+    console.log('🔍 Response user data debug:', {
+      id: responseUserData.id?.substring(0, 8),
+      nip05: responseUserData.nip05,
+      role: responseUserData.role,
+      hasUserSalt: !!responseUserData.user_salt,
+      hasEncryptedNsec: !!responseUserData.encrypted_nsec,
+      hasEncryptedNsecIv: !!responseUserData.encrypted_nsec_iv,
+      hasNpub: !!responseUserData.npub,
+      username: responseUserData.username
+    });
+
+    console.log('✅ Inline signin successful:', {
+      username: user.username,
+      role: user.role,
+      nip05Input: nip05,
+      userNip05: user.nip05,
+      credentialsIncluded: !!(user.user_salt && user.encrypted_nsec && user.npub)
+    });
 
     return {
       statusCode: 200,
@@ -1072,18 +1176,7 @@ async function handleSigninInline(event, context, corsHeaders) {
       body: JSON.stringify({
         success: true,
         data: {
-          user: {
-            id: user.id,
-            nip05: nip05,
-            role: user.role,
-            is_active: true,
-            // Include encrypted credentials for SecureNsecManager session creation
-            user_salt: user.user_salt || null,
-            encrypted_nsec: user.encrypted_nsec || null,
-            encrypted_nsec_iv: user.encrypted_nsec_iv || null,
-            npub: user.npub || null,
-            username: user.username || null
-          },
+          user: responseUserData,
           sessionToken: token
         }
       })

@@ -253,29 +253,82 @@ export class RecoverySessionBridge {
   ): Promise<RecoverySessionResult> {
     try {
       console.log(
-        "🔐 RecoverySessionBridge: Creating session from user object"
-      );
-      console.log(
-        "🔐 RecoverySessionBridge: User object keys:",
-        Object.keys(user || {})
-      );
-      console.log(
-        "🔐 RecoverySessionBridge: Has user_salt:",
-        !!user?.user_salt
-      );
-      console.log(
-        "🔐 RecoverySessionBridge: Has encrypted_nsec:",
-        !!(user as any)?.encrypted_nsec
+        "🔐 RecoverySessionBridge: STARTING session creation from user object"
       );
 
+      // COMPREHENSIVE DEBUG: Log complete user object structure
+      const userAny = user as any;
+      console.log("🔐 RecoverySessionBridge: COMPREHENSIVE user analysis:", {
+        // Basic user info
+        userId: user?.id?.substring(0, 8) || "MISSING",
+        nip05: userAny?.nip05 || "MISSING",
+        username: userAny?.username || "MISSING",
+        role: user?.role || "MISSING",
+
+        // Critical encrypted credentials
+        hasUserSalt: !!user?.user_salt,
+        hasEncryptedNsec: !!userAny?.encrypted_nsec,
+        hasEncryptedNsecIv: !!userAny?.encrypted_nsec_iv,
+        hasNpub: !!userAny?.npub,
+
+        // Field lengths for debugging
+        userSaltLength: user?.user_salt?.length || 0,
+        encryptedNsecLength: userAny?.encrypted_nsec?.length || 0,
+        encryptedNsecIvLength: userAny?.encrypted_nsec_iv?.length || 0,
+        npubLength: userAny?.npub?.length || 0,
+
+        // Complete object structure
+        availableUserFields: Object.keys(user || {}),
+        userObjectType: typeof user,
+        isUserNull: user === null,
+        isUserUndefined: user === undefined,
+      });
+
+      // CRITICAL: Log sanitized field previews
+      console.log("🔐 RecoverySessionBridge: Field previews:", {
+        userSaltPreview: user?.user_salt
+          ? `${user.user_salt.substring(0, 8)}...`
+          : "MISSING",
+        encryptedNsecPreview: userAny?.encrypted_nsec
+          ? `${userAny.encrypted_nsec.substring(0, 8)}...`
+          : "MISSING",
+        npubPreview: userAny?.npub
+          ? `${userAny.npub.substring(0, 8)}...`
+          : "MISSING",
+      });
+
       // Step 1: Ensure required fields are present (encrypted nsec + user salt)
-      if (!user?.user_salt || !(user as any).encrypted_nsec) {
-        console.error("🔐 RecoverySessionBridge: Missing required fields");
-        console.error("🔐 RecoverySessionBridge: user_salt:", user?.user_salt);
+      console.log(
+        "🔐 RecoverySessionBridge: STEP 1 - Validating required fields"
+      );
+      const hasUserSalt = !!user?.user_salt;
+      const hasEncryptedNsec = !!(user as any)?.encrypted_nsec;
+
+      console.log("🔐 RecoverySessionBridge: Field validation results:", {
+        hasUserSalt,
+        hasEncryptedNsec,
+        userSaltType: typeof user?.user_salt,
+        encryptedNsecType: typeof (user as any)?.encrypted_nsec,
+        userSaltTruthy: user?.user_salt ? "truthy" : "falsy",
+        encryptedNsecTruthy: (user as any)?.encrypted_nsec ? "truthy" : "falsy",
+      });
+
+      if (!hasUserSalt || !hasEncryptedNsec) {
         console.error(
-          "🔐 RecoverySessionBridge: encrypted_nsec:",
-          (user as any)?.encrypted_nsec
+          "🔐 RecoverySessionBridge: CRITICAL - Missing required fields for session creation"
         );
+        console.error(
+          "🔐 RecoverySessionBridge: user_salt present:",
+          hasUserSalt
+        );
+        console.error(
+          "🔐 RecoverySessionBridge: encrypted_nsec present:",
+          hasEncryptedNsec
+        );
+        console.error(
+          "🔐 RecoverySessionBridge: This will prevent SecureNsecManager session creation"
+        );
+
         return {
           success: false,
           error: "Missing encrypted nsec or user salt",
@@ -284,12 +337,60 @@ export class RecoverySessionBridge {
         };
       }
 
+      console.log(
+        "🔐 RecoverySessionBridge: ✅ Required fields validation passed"
+      );
+
       // Step 2: Decrypt user's nsec using their salt
-      console.log("🔐 RecoverySessionBridge: Attempting nsec decryption...");
-      const nsecHex = await this.decryptUserNsec(user as any);
+      console.log(
+        "🔐 RecoverySessionBridge: STEP 2 - Starting nsec decryption"
+      );
+      console.log(
+        "🔐 RecoverySessionBridge: Calling decryptUserNsec with user object..."
+      );
+
+      let nsecHex: string | null = null;
+      try {
+        nsecHex = await this.decryptUserNsec(user as any);
+        console.log(
+          "🔐 RecoverySessionBridge: decryptUserNsec completed, result:",
+          {
+            success: !!nsecHex,
+            nsecLength: nsecHex?.length || 0,
+            nsecType: typeof nsecHex,
+            nsecPreview: nsecHex
+              ? `${nsecHex.substring(0, 8)}...`
+              : "NULL/EMPTY",
+          }
+        );
+      } catch (decryptError) {
+        console.error(
+          "🔐 RecoverySessionBridge: CRITICAL - Nsec decryption threw exception:",
+          {
+            error:
+              decryptError instanceof Error
+                ? decryptError.message
+                : String(decryptError),
+            stack:
+              decryptError instanceof Error
+                ? decryptError.stack
+                : "No stack trace",
+          }
+        );
+        return {
+          success: false,
+          error: "Failed to decrypt nsec - exception thrown",
+          userMessage:
+            "Unable to access your private key. Please contact support if this persists.",
+        };
+      }
+
       if (!nsecHex) {
         console.error(
-          "🔐 RecoverySessionBridge: Nsec decryption returned null/empty"
+          "🔐 RecoverySessionBridge: CRITICAL - Nsec decryption returned null/empty"
+        );
+        console.error(
+          "🔐 RecoverySessionBridge: This will prevent SecureNsecManager session creation"
         );
         return {
           success: false,
@@ -298,14 +399,15 @@ export class RecoverySessionBridge {
             "Unable to access your private key. Please contact support if this persists.",
         };
       }
+
       console.log(
-        "🔐 RecoverySessionBridge: Nsec decryption successful, length:",
+        "🔐 RecoverySessionBridge: ✅ Nsec decryption successful, length:",
         nsecHex.length
       );
 
       // Step 3: Create temporary session
       console.log(
-        "🔐 RecoverySessionBridge: Creating SecureNsecManager session..."
+        "🔐 RecoverySessionBridge: STEP 3 - Creating SecureNsecManager session"
       );
       let sessionId: string | null = null;
       try {
@@ -322,11 +424,27 @@ export class RecoverySessionBridge {
         const browserLifetime =
           prefs?.sessionLifetimeMode === "browser_session";
 
-        console.log("🔐 RecoverySessionBridge: Session config:", {
+        console.log("🔐 RecoverySessionBridge: Session configuration loaded:", {
           duration,
           maxOps,
           browserLifetime,
+          prefsLoaded: !!prefs,
+          sessionDurationMinutes: prefs?.sessionDurationMinutes,
+          maxOperationsPerSession: prefs?.maxOperationsPerSession,
+          sessionLifetimeMode: prefs?.sessionLifetimeMode,
         });
+
+        console.log(
+          "🔐 RecoverySessionBridge: Calling nsecSessionBridge.initializeAfterAuth..."
+        );
+        console.log(
+          "🔐 RecoverySessionBridge: nsecHex length:",
+          nsecHex.length
+        );
+        console.log(
+          "🔐 RecoverySessionBridge: nsecSessionBridge available:",
+          !!nsecSessionBridge
+        );
 
         sessionId = await nsecSessionBridge.initializeAfterAuth(nsecHex, {
           duration,
@@ -335,10 +453,28 @@ export class RecoverySessionBridge {
         } as any);
 
         console.log(
-          "🔐 RecoverySessionBridge: nsecSessionBridge.initializeAfterAuth result:",
+          "🔐 RecoverySessionBridge: nsecSessionBridge.initializeAfterAuth completed:",
+          {
+            sessionId,
+            sessionIdType: typeof sessionId,
+            sessionIdLength: sessionId?.length || 0,
+            success: !!sessionId,
+          }
+        );
+
+        if (!sessionId) {
+          console.error(
+            "🔐 RecoverySessionBridge: CRITICAL - nsecSessionBridge.initializeAfterAuth returned null/empty"
+          );
+          throw new Error(
+            "No session created - initializeAfterAuth returned null"
+          );
+        }
+
+        console.log(
+          "🔐 RecoverySessionBridge: ✅ Session creation successful, sessionId:",
           sessionId
         );
-        if (!sessionId) throw new Error("No session created");
       } catch (e) {
         console.warn(
           "🔐 RecoverySessionBridge: User preferences failed, using defaults:",
