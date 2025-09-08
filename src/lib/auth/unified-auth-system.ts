@@ -405,22 +405,52 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             console.log(
               "🔐 Post-auth: creating SecureNsecManager session directly from signin response"
             );
-            const session =
-              await recoverySessionBridge.createRecoverySessionFromUser(
-                u as any,
-                { duration: 15 * 60 * 1000 }
-              );
-            if (!session?.success) {
-              console.warn(
-                "NSEC session creation after signin failed:",
-                session?.error
-              );
-            } else {
+
+            try {
+              const session =
+                await recoverySessionBridge.createRecoverySessionFromUser(
+                  u as any,
+                  { duration: 15 * 60 * 1000 }
+                );
+
               console.log(
-                "🔐 Post-auth: SecureNsecManager session created successfully"
+                "🔐 Post-auth: RecoverySessionBridge result:",
+                session
               );
-              // Mark fallback as done to prevent duplicate calls
-              sessionUserFetchRef.current.done = true;
+
+              if (!session?.success) {
+                console.error(
+                  "🔐 Post-auth: NSEC session creation failed:",
+                  session?.error
+                );
+                console.error("🔐 Post-auth: Full session result:", session);
+              } else {
+                console.log(
+                  "🔐 Post-auth: SecureNsecManager session created successfully"
+                );
+                console.log("🔐 Post-auth: Session ID:", session.sessionId);
+                console.log(
+                  "🔐 Post-auth: Session expires at:",
+                  session.expiresAt
+                );
+                console.log("🔐 Post-auth: Environment:", process.env.NODE_ENV);
+                console.log(
+                  "🔐 Post-auth: User agent:",
+                  navigator.userAgent.substring(0, 50)
+                );
+
+                // Mark fallback as done to prevent duplicate calls
+                sessionUserFetchRef.current.done = true;
+              }
+            } catch (sessionError) {
+              console.error(
+                "🔐 Post-auth: Exception during session creation:",
+                sessionError
+              );
+              console.error(
+                "🔐 Post-auth: Session error stack:",
+                sessionError instanceof Error ? sessionError.stack : "No stack"
+              );
             }
           } else {
             // Fallback: fetch session-user to retrieve encrypted credentials, then create session

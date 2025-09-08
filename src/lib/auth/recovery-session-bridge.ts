@@ -255,9 +255,27 @@ export class RecoverySessionBridge {
       console.log(
         "🔐 RecoverySessionBridge: Creating session from user object"
       );
+      console.log(
+        "🔐 RecoverySessionBridge: User object keys:",
+        Object.keys(user || {})
+      );
+      console.log(
+        "🔐 RecoverySessionBridge: Has user_salt:",
+        !!user?.user_salt
+      );
+      console.log(
+        "🔐 RecoverySessionBridge: Has encrypted_nsec:",
+        !!(user as any)?.encrypted_nsec
+      );
 
       // Step 1: Ensure required fields are present (encrypted nsec + user salt)
       if (!user?.user_salt || !(user as any).encrypted_nsec) {
+        console.error("🔐 RecoverySessionBridge: Missing required fields");
+        console.error("🔐 RecoverySessionBridge: user_salt:", user?.user_salt);
+        console.error(
+          "🔐 RecoverySessionBridge: encrypted_nsec:",
+          (user as any)?.encrypted_nsec
+        );
         return {
           success: false,
           error: "Missing encrypted nsec or user salt",
@@ -267,8 +285,12 @@ export class RecoverySessionBridge {
       }
 
       // Step 2: Decrypt user's nsec using their salt
+      console.log("🔐 RecoverySessionBridge: Attempting nsec decryption...");
       const nsecHex = await this.decryptUserNsec(user as any);
       if (!nsecHex) {
+        console.error(
+          "🔐 RecoverySessionBridge: Nsec decryption returned null/empty"
+        );
         return {
           success: false,
           error: "Failed to decrypt nsec",
@@ -276,10 +298,20 @@ export class RecoverySessionBridge {
             "Unable to access your private key. Please contact support if this persists.",
         };
       }
+      console.log(
+        "🔐 RecoverySessionBridge: Nsec decryption successful, length:",
+        nsecHex.length
+      );
 
       // Step 3: Create temporary session
+      console.log(
+        "🔐 RecoverySessionBridge: Creating SecureNsecManager session..."
+      );
       let sessionId: string | null = null;
       try {
+        console.log(
+          "🔐 RecoverySessionBridge: Loading user signing preferences..."
+        );
         const { userSigningPreferences } = await import(
           "../user-signing-preferences"
         );
@@ -289,27 +321,61 @@ export class RecoverySessionBridge {
           prefs?.maxOperationsPerSession ?? this.DEFAULT_MAX_OPERATIONS;
         const browserLifetime =
           prefs?.sessionLifetimeMode === "browser_session";
+
+        console.log("🔐 RecoverySessionBridge: Session config:", {
+          duration,
+          maxOps,
+          browserLifetime,
+        });
+
         sessionId = await nsecSessionBridge.initializeAfterAuth(nsecHex, {
           duration,
           maxOperations: maxOps,
           browserLifetime,
         } as any);
+
+        console.log(
+          "🔐 RecoverySessionBridge: nsecSessionBridge.initializeAfterAuth result:",
+          sessionId
+        );
         if (!sessionId) throw new Error("No session created");
       } catch (e) {
+        console.warn(
+          "🔐 RecoverySessionBridge: User preferences failed, using defaults:",
+          e
+        );
+        console.log("🔐 RecoverySessionBridge: Fallback session config:", {
+          duration: options.duration || this.DEFAULT_SESSION_DURATION,
+          maxOperations: options.maxOperations || this.DEFAULT_MAX_OPERATIONS,
+        });
+
         sessionId = await nsecSessionBridge.initializeAfterAuth(nsecHex, {
           duration: options.duration || this.DEFAULT_SESSION_DURATION,
           maxOperations: options.maxOperations || this.DEFAULT_MAX_OPERATIONS,
         });
+
+        console.log(
+          "🔐 RecoverySessionBridge: Fallback nsecSessionBridge.initializeAfterAuth result:",
+          sessionId
+        );
       }
 
       const ensuredSessionId = sessionId;
       if (!ensuredSessionId) {
+        console.error(
+          "🔐 RecoverySessionBridge: Session creation failed - no session ID returned"
+        );
         return {
           success: false,
           error: "Failed to create session",
           userMessage: "Unable to create signing session. Please try again.",
         };
       }
+
+      console.log(
+        "🔐 RecoverySessionBridge: Session created successfully:",
+        ensuredSessionId
+      );
 
       const expiresAt = new Date(
         Date.now() + (options.duration || this.DEFAULT_SESSION_DURATION)

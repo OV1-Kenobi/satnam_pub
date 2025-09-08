@@ -1256,14 +1256,36 @@ export class CentralEventPublishingService {
     ev = this.sanitizeFixedTags(ev);
     const list = relays && relays.length ? relays : this.relays;
 
+    // Debug logging to identify where PoW relays are coming from
+    console.log("🔨 CEPS.publishEvent: Relay list:", list);
+    console.log("🔨 CEPS.publishEvent: Passed relays:", relays);
+    console.log("🔨 CEPS.publishEvent: Default relays:", this.relays);
+
     // Optional PoW support: publish to non-PoW relays first, then attempt PoW relays best-effort
     const powDifficulty: Record<string, number> = {
       // Known requirement as of current relay policy
       "wss://relay.0xchat.com": 28,
     };
 
+    // In development environments, completely skip PoW relays to prevent crashes
+    const isDevelopment =
+      (typeof process !== "undefined" && process.env?.NETLIFY_DEV === "true") ||
+      (typeof process !== "undefined" &&
+        process.env?.NODE_ENV === "development") ||
+      (typeof window !== "undefined" &&
+        window.location?.hostname === "localhost");
+
     const nonPow = list.filter((r) => !(r in powDifficulty));
-    const powRelays = list.filter((r) => r in powDifficulty);
+    const powRelays = isDevelopment
+      ? []
+      : list.filter((r) => r in powDifficulty);
+
+    if (isDevelopment && list.some((r) => r in powDifficulty)) {
+      console.log(
+        "🔨 PoW: Skipping PoW relays in development environment:",
+        list.filter((r) => r in powDifficulty)
+      );
+    }
 
     const results: Array<{ relay: string; ok: boolean; error?: string }> = [];
 
@@ -1317,6 +1339,19 @@ export class CentralEventPublishingService {
 
                 const mineAndPublish = (difficulty: number) =>
                   new Promise<{ ok: boolean; error?: string }>((resolve) => {
+                    // Safety check: Skip PoW in Netlify dev environment to prevent crashes
+                    if (
+                      typeof process !== "undefined" &&
+                      process.env?.NETLIFY_DEV === "true"
+                    ) {
+                      console.log(
+                        `🔨 PoW: Skipping mining in Netlify dev environment (difficulty ${difficulty})`
+                      );
+                      // Return the event without PoW for dev testing
+                      resolve({ ok: true });
+                      return;
+                    }
+
                     // Create a module Worker from inline source to avoid import.meta.url in CJS builds
                     const workerSrc = `self.onmessage = async (e) => {\n  const { event, difficulty } = e.data || {};\n  try {\n    const mod = await import('nostr-tools/nip13');\n    const mined = await mod.minePow(event, difficulty);\n    self.postMessage({ success: true, event: mined });\n  } catch (err) {\n    const msg = (err && err.message) ? err.message : String(err);\n    self.postMessage({ success: false, error: msg });\n  }\n};`;
                     const blob = new Blob([workerSrc], {
