@@ -1076,7 +1076,13 @@ async function handleSigninInline(event, context, corsHeaders) {
             id: user.id,
             nip05: nip05,
             role: user.role,
-            is_active: true
+            is_active: true,
+            // Include encrypted credentials for SecureNsecManager session creation
+            user_salt: user.user_salt || null,
+            encrypted_nsec: user.encrypted_nsec || null,
+            encrypted_nsec_iv: user.encrypted_nsec_iv || null,
+            npub: user.npub || null,
+            username: user.username || null
           },
           sessionToken: token
         }

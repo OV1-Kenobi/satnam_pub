@@ -394,7 +394,17 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             encrypted_nsec?: string;
             user_salt?: string;
           };
+          console.log("🔐 Post-auth: checking encrypted credentials", {
+            hasEncryptedNsec: !!u?.encrypted_nsec,
+            hasUserSalt: !!u?.user_salt,
+            userSaltLength: u?.user_salt?.length || 0,
+            encryptedNsecLength: u?.encrypted_nsec?.length || 0,
+          });
+
           if (u && u.encrypted_nsec && u.user_salt) {
+            console.log(
+              "🔐 Post-auth: creating SecureNsecManager session directly from signin response"
+            );
             const session =
               await recoverySessionBridge.createRecoverySessionFromUser(
                 u as any,
@@ -406,7 +416,11 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
                 session?.error
               );
             } else {
-              console.log("🔐 Post-auth: SecureNsecManager session created");
+              console.log(
+                "🔐 Post-auth: SecureNsecManager session created successfully"
+              );
+              // Mark fallback as done to prevent duplicate calls
+              sessionUserFetchRef.current.done = true;
             }
           } else {
             // Fallback: fetch session-user to retrieve encrypted credentials, then create session
@@ -546,6 +560,14 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
       console.log("🔐 AUTH TRACE: authenticateNIP05Password called", {
         nip05Preview: nip05?.slice(0, 16) + "…",
       });
+
+      // Reset session-user fetch state for new authentication
+      sessionUserFetchRef.current = {
+        done: false,
+        inFlight: false,
+        retries: 0,
+      };
+
       try {
         if (process.env.NODE_ENV !== "production") {
           console.trace("🔐 AUTH TRACE: authenticateNIP05Password call stack");
@@ -583,13 +605,18 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
               user: userResp
                 ? {
                     id: userResp.id,
-                    user_salt: "",
+                    user_salt: userResp.user_salt || "",
                     password_hash: "",
                     password_salt: "",
                     failed_attempts: 0,
                     role: (userResp.role as any) || "private",
                     is_active: userResp.is_active !== false,
                     authMethod: "nip05-password",
+                    // Include encrypted credentials for SecureNsecManager session creation
+                    encrypted_nsec: userResp.encrypted_nsec || undefined,
+                    encrypted_nsec_iv: userResp.encrypted_nsec_iv || undefined,
+                    npub: userResp.npub || undefined,
+                    username: userResp.username || undefined,
                   }
                 : undefined,
               sessionToken: token,
@@ -620,6 +647,13 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
       signature: string,
       pubkey: string
     ): Promise<boolean> => {
+      // Reset session-user fetch state for new authentication
+      sessionUserFetchRef.current = {
+        done: false,
+        inFlight: false,
+        retries: 0,
+      };
+
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
