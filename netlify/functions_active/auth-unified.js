@@ -267,16 +267,23 @@ async function handleNip07SigninInline(event, context, corsHeaders) {
     const accessToken = sign({ hashedId: protectedId, nip05: user.nip05, type:'access', sessionId: newSessionId }, ACCESS);
     const refreshToken = sign({ hashedId: protectedId, nip05: user.nip05, type:'refresh', sessionId: newSessionId }, REFRESH);
 
-    // Set HttpOnly refresh cookie
+    // Set HttpOnly refresh cookie - cross-subdomain, production-safe
     const isDev = process.env.NODE_ENV !== 'production';
-    const cookie = [
+    const baseAttrs = [
       `satnam_refresh_token=${refreshToken}`,
       `Max-Age=${REFRESH}`,
       'Path=/',
-      'HttpOnly',
-      'SameSite=Strict',
-      ...(isDev ? [] : ['Secure'])
-    ].join('; ');
+      'HttpOnly'
+    ];
+    const prodAttrs = [
+      'SameSite=None', // allow credentialed requests and subdomain usage
+      'Secure',        // required for SameSite=None on modern browsers
+      'Domain=.satnam.pub'
+    ];
+    const devAttrs = [
+      'SameSite=Lax' // local dev: avoid cross-site issues but not require Secure
+    ];
+    const cookie = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
 
     return {
       statusCode: 200,
@@ -318,8 +325,24 @@ async function handleLogoutInline(event, context, corsHeaders) {
       if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
     } catch { return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) }; }
 
-    const clear = `satnam_refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    return { statusCode: 200, headers: { ...corsHeaders, 'Set-Cookie': clear }, body: JSON.stringify({ success:true }) };
+    const isDev = process.env.NODE_ENV !== 'production';
+    const baseAttrs = [
+      'satnam_refresh_token=',
+      'Max-Age=0',
+      'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+      'Path=/',
+      'HttpOnly'
+    ];
+    const prodAttrs = [
+      'SameSite=None',
+      'Secure',
+      'Domain=.satnam.pub'
+    ];
+    const devAttrs = [
+      'SameSite=Lax'
+    ];
+    const cookieClear = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
+    return { statusCode: 200, headers: { ...corsHeaders, 'Set-Cookie': cookieClear }, body: JSON.stringify({ success:true }) };
   } catch (error) {
     return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Logout failed' }) };
   }
@@ -362,7 +385,23 @@ async function handleRefreshInline(event, context, corsHeaders) {
       payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
       if (payload.type !== 'refresh') throw new Error('Not a refresh token');
     } catch (e) {
-      const clear = `satnam_refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      const isDev = process.env.NODE_ENV !== 'production';
+      const baseAttrs = [
+        'satnam_refresh_token=',
+        'Max-Age=0',
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        'Path=/',
+        'HttpOnly'
+      ];
+      const prodAttrs = [
+        'SameSite=None',
+        'Secure',
+        'Domain=.satnam.pub'
+      ];
+      const devAttrs = [
+        'SameSite=Lax'
+      ];
+      const clear = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
       return { statusCode: 401, headers: { ...corsHeaders, 'Set-Cookie': clear }, body: JSON.stringify({ success:false, error:'Invalid refresh token' }) };
     }
 
@@ -380,18 +419,41 @@ async function handleRefreshInline(event, context, corsHeaders) {
     const newRefresh = sign({ userId: payload.userId, hashedId: protectedId, nip05: payload.nip05, type:'refresh', sessionId: newSessionId }, REFRESH);
 
     const isDev = process.env.NODE_ENV !== 'production';
-    const cookie = [
+    const baseAttrs = [
       `satnam_refresh_token=${newRefresh}`,
       `Max-Age=${REFRESH}`,
       'Path=/',
-      'HttpOnly',
-      'SameSite=Strict',
-      ...(isDev ? [] : ['Secure'])
-    ].join('; ');
+      'HttpOnly'
+    ];
+    const prodAttrs = [
+      'SameSite=None',
+      'Secure',
+      'Domain=.satnam.pub'
+    ];
+    const devAttrs = [
+      'SameSite=Lax'
+    ];
+    const cookie = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
 
     return { statusCode: 200, headers: { ...corsHeaders, 'Set-Cookie': cookie }, body: JSON.stringify({ success:true, data:{ user:{ id: payload.userId || protectedId, nip05: payload.nip05, is_active: true }, authenticated:true, sessionToken: newAccess, expiresAt: new Date((now+ACCESS)*1000).toISOString() }, meta:{ timestamp: new Date().toISOString(), sessionId: newSessionId } }) };
   } catch (error) {
-    const clear = `satnam_refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    const isDev = process.env.NODE_ENV !== 'production';
+    const baseAttrs = [
+      'satnam_refresh_token=',
+      'Max-Age=0',
+      'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+      'Path=/',
+      'HttpOnly'
+    ];
+    const prodAttrs = [
+      'SameSite=None',
+      'Secure',
+      'Domain=.satnam.pub'
+    ];
+    const devAttrs = [
+      'SameSite=Lax'
+    ];
+    const clear = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
     return { statusCode: 500, headers: { ...corsHeaders, 'Set-Cookie': clear }, body: JSON.stringify({ success:false, error:'Token refresh failed' }) };
   }
 }

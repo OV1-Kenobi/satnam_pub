@@ -22,6 +22,19 @@
 # Pepper endpoint removed - client now uses fallback (memory optimization)
 
 
+# Domain canonicalization: redirect apex to www in production
+[[redirects]]
+  from = "http://satnam.pub/*"
+  to = "https://www.satnam.pub/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://satnam.pub/*"
+  to = "https://www.satnam.pub/:splat"
+  status = 301
+  force = true
+
 
 
 
