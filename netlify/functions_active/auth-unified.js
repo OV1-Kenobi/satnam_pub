@@ -1,27 +1,21 @@
 // Inline check-refresh implementation (moved above handler for scope availability)
 async function handleCheckRefreshInline(event, context, corsHeaders) {
+  console.log('🔄 CHECK-REFRESH: Starting check-refresh handler');
+
   if ((event.httpMethod || 'GET').toUpperCase() !== 'GET') {
+    console.log('🔄 CHECK-REFRESH: Invalid method:', event.httpMethod);
     return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
   }
 
-  // Lightweight IP rate limiting via Supabase RPC
-  try {
-    const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
-    const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
-    const windowSec = 60;
-    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-    const { supabase } = await import('../supabase.js');
-    const { data, error } = await supabase.rpc('increment_auth_rate', {
-      p_identifier: clientIp,
-      p_scope: 'ip',
-      p_window_start: windowStart,
-      p_limit: 60,
-    });
-    const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
-    if (error || limited) {
-      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
-    }
-  } catch {
+  // CRITICAL FIX: Use lightweight in-memory rate limiting for check-refresh (more permissive)
+  const { allowRequest } = await import('../utils/rate-limiter.js');
+  const clientIp = event.headers?.["x-forwarded-for"] || event.headers?.["x-real-ip"] || "unknown";
+
+  console.log('🔄 CHECK-REFRESH: Rate limiting check for IP:', clientIp);
+
+  // More permissive rate limiting for check-refresh: 120 requests per 60 seconds
+  if (!allowRequest(clientIp, 120, 60_000)) {
+    console.log('🔄 CHECK-REFRESH: Rate limit exceeded for IP:', clientIp);
     return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
   }
 
@@ -1220,17 +1214,32 @@ async function handleSigninInline(event, context, corsHeaders) {
 
 // Exported Netlify handler (ESM)
 export const handler = async (event, context) => {
+  // CRITICAL DEBUG: Log all incoming requests to identify routing issues
+  console.log('🔄 AUTH-UNIFIED: Incoming request', {
+    path: event.path,
+    method: event.httpMethod,
+    headers: Object.keys(event.headers || {}),
+    timestamp: new Date().toISOString()
+  });
+
   const corsHeaders = buildCorsHeaders(event);
 
   // CORS preflight
   const method = (event.httpMethod || 'GET').toUpperCase();
   if (method === 'OPTIONS') {
+    console.log('🔄 AUTH-UNIFIED: CORS preflight for', event.path);
     return { statusCode: 204, headers: corsHeaders, body: '' };
   }
 
   try {
     const path = event.path || '';
     const target = resolveAuthRoute(path, method);
+
+    console.log('🔄 AUTH-UNIFIED: Route resolution', {
+      path,
+      method,
+      target: target ? target.endpoint : 'NOT_FOUND'
+    });
 
     if (!target || !target.inline) {
       return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Not found' }) };

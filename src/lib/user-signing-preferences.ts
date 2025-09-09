@@ -208,13 +208,30 @@ export class UserSigningPreferencesService {
    */
   async recordMethodUsage(method: SigningMethod): Promise<void> {
     try {
+      // Get current hashedId from token for owner_hash lookup
+      const token = SecureTokenManager.getAccessToken();
+      if (!token) {
+        console.error(
+          "🔐 UserSigningPreferences: No token available for method usage recording"
+        );
+        return;
+      }
+
+      const tokenPayload = SecureTokenManager.parseTokenPayload(token);
+      if (!tokenPayload?.hashedId) {
+        console.error(
+          "🔐 UserSigningPreferences: No hashedId in token for method usage recording"
+        );
+        return;
+      }
+
       await supabase
         .from("user_signing_preferences")
         .update({
           last_used_method: method,
           last_used_at: new Date().toISOString(),
         })
-        .eq("owner_hash", this.cachedPreferences?.userDuid); // Updated to match new schema
+        .eq("owner_hash", tokenPayload.hashedId); // Use hashedId from token
 
       console.log("🔐 UserSigningPreferences: Recorded method usage:", method);
     } catch (error) {
