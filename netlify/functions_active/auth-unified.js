@@ -8,7 +8,7 @@ async function handleCheckRefreshInline(event, context, corsHeaders) {
   }
 
   // CRITICAL FIX: Use lightweight in-memory rate limiting for check-refresh (more permissive)
-  const { allowRequest } = await import('../utils/rate-limiter.js');
+  const { allowRequest } = await import('./utils/rate-limiter.js');
   const clientIp = event.headers?.["x-forwarded-for"] || event.headers?.["x-real-ip"] || "unknown";
 
   console.log('🔄 CHECK-REFRESH: Rate limiting check for IP:', clientIp);
@@ -37,7 +37,7 @@ async function handleCheckRefreshInline(event, context, corsHeaders) {
     }
 
     const jwt = await import('jsonwebtoken');
-    const { getJwtSecret } = await import('../utils/jwt-secret.js');
+    const { getJwtSecret } = await import('./utils/jwt-secret.js');
     const secret = getJwtSecret();
 
     let payload;
@@ -74,7 +74,7 @@ async function handleNip07ChallengeInline(event, context, corsHeaders) {
     const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
     const windowSec = 60;
     const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-    const { supabase } = await import('../supabase.js');
+    const { supabase } = await import('./supabase.js');
     const { data, error } = await supabase.rpc('increment_auth_rate', {
       p_identifier: clientIp,
       p_scope: 'ip',
@@ -135,7 +135,7 @@ async function handleNip07ChallengeInline(event, context, corsHeaders) {
 
     // Persist challenge best-effort
     try {
-      const { supabase } = await import('../supabase.js');
+      const { supabase } = await import('./supabase.js');
       const sessionId = qp.sessionId || nonce;
       await supabase.from('auth_challenges').delete().lt('expires_at', new Date().toISOString());
       await supabase.from('auth_challenges').insert({
@@ -174,7 +174,7 @@ async function handleNip07SigninInline(event, context, corsHeaders) {
     const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
     const windowSec = 60;
     const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-    const { supabase } = await import('../supabase.js');
+    const { supabase } = await import('./supabase.js');
     try {
       const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 30 });
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
@@ -257,7 +257,7 @@ async function handleNip07SigninInline(event, context, corsHeaders) {
     await supabase.from('auth_challenges').update({ is_used: true, event_id: signedEvent.id }).eq('id', ch.id);
 
     // Create JWTs
-    const { getJwtSecret } = await import('../utils/jwt-secret.js');
+    const { getJwtSecret } = await import('./utils/jwt-secret.js');
     const jwtSecret = getJwtSecret();
     const jwt = (await import('jsonwebtoken')).default;
     const newSessionId = crypto.randomUUID();
@@ -312,7 +312,7 @@ async function handleLogoutInline(event, context, corsHeaders) {
       const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
       const windowSec = 60;
       const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-      const { supabase } = await import('../supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 60 });
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
       if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
@@ -341,7 +341,7 @@ async function handleRefreshInline(event, context, corsHeaders) {
       const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
       const windowSec = 60;
       const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-      const { supabase } = await import('../supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 30 });
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
       if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many attempts' }) };
@@ -351,7 +351,7 @@ async function handleRefreshInline(event, context, corsHeaders) {
     const refreshToken = cookies['satnam_refresh_token'];
     if (!refreshToken) return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'No refresh token found' }) };
 
-    const { getJwtSecret } = await import('../utils/jwt-secret.js');
+    const { getJwtSecret } = await import('./utils/jwt-secret.js');
     const jwtSecret = getJwtSecret();
     const duidSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
     if (!duidSecret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
@@ -418,7 +418,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
     const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
     const windowSec = 60;
     const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-    const { supabase } = await import('../supabase.js');
+    const { supabase } = await import('./supabase.js');
     const { data, error } = await supabase.rpc('increment_auth_rate', {
       p_identifier: clientIp,
       p_scope: 'ip',
@@ -456,7 +456,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
       }
       try {
         const jwt = await import('jsonwebtoken');
-        const { getJwtSecret } = await import('../utils/jwt-secret.js');
+        const { getJwtSecret } = await import('./utils/jwt-secret.js');
         const secret = getJwtSecret();
         const payload = jwt.default.verify(refreshToken, secret, {
           algorithms: ['HS256'],
@@ -477,7 +477,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
     // 3) DUID from nip05 via server secret
     let duid;
     try {
-      const { getEnvVar } = await import('../utils/env.js');
+      const { getEnvVar } = await import('./utils/env.js');
       const secret = getEnvVar('DUID_SERVER_SECRET');
       if (!secret) throw new Error('DUID_SERVER_SECRET not configured');
       const { createHmac } = await import('node:crypto');
@@ -488,7 +488,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
     }
 
     // 4) Lookup user
-    const { supabase } = await import('../supabase.js');
+    const { supabase } = await import('./supabase.js');
     const { data: user, error: userError, status } = await supabase
       .from('user_identities')
       .select('id, role, is_active, user_salt, encrypted_nsec, encrypted_nsec_iv, npub, username')
@@ -640,7 +640,7 @@ async function handleCheckUsernameAvailabilityInline(event, context, corsHeaders
       const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || '').split(',')[0]?.trim() || 'unknown';
       const windowSec = 60;
       const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-      const { supabase } = await import('../supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data, error } = await supabase.rpc('increment_auth_rate', { p_identifier: clientIp, p_scope: 'ip', p_window_start: windowStart, p_limit: 10 });
       const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
       if (error || limited) return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Too many requests' }) };
@@ -659,7 +659,7 @@ async function handleCheckUsernameAvailabilityInline(event, context, corsHeaders
     const identifier = `${username}@${domain}`;
     const hashed_nip05 = createHmac('sha256', secret).update(identifier).digest('hex');
 
-    const { supabase } = await import('../supabase.js');
+    const { supabase } = await import('./supabase.js');
     const { data, error } = await supabase
       .from('nip05_records')
       .select('id')
