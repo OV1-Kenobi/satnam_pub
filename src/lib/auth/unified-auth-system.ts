@@ -465,6 +465,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
                 console.log(
                   "🔐 Post-auth: SecureNsecManager session created successfully"
                 );
+                console.log(
+                  "🔐 Post-auth: SecureNsecManager session created (direct)"
+                );
                 console.log("🔐 Post-auth: Session ID:", session.sessionId);
                 console.log(
                   "🔐 Post-auth: Session expires at:",

@@ -32,7 +32,46 @@ async function handleCheckRefreshInline(event, context, corsHeaders) {
     const cookies = parseCookies(event.headers?.cookie);
     const refreshToken = cookies?.['satnam_refresh_token'];
 
+    // Self-heal: if no refresh cookie, but a valid Authorization token exists, mint a new refresh cookie
     if (!refreshToken) {
+      const headers = event.headers || {};
+      const authHeader = headers.authorization || headers.Authorization || headers['authorization'] || headers['Authorization'];
+      if (authHeader && /^bearer\s+.+/i.test(String(authHeader))) {
+        try {
+          const bearer = String(authHeader).replace(/^bearer\s+/i, '');
+          const accessPayload = await verifyJWT(bearer);
+
+          // Create a new refresh token using the same settings as other endpoints
+          const jwt = (await import('jsonwebtoken')).default;
+          const { getJwtSecret } = await import('./utils/jwt-secret.js');
+          const secret = getJwtSecret();
+
+          const REFRESH = 7 * 24 * 60 * 60; // 7 days
+          const newSessionId = (await import('node:crypto')).randomUUID();
+          const newRefresh = jwt.sign(
+            { hashedId: accessPayload.hashedId, nip05: accessPayload.nip05, type: 'refresh', sessionId: newSessionId },
+            secret,
+            { expiresIn: REFRESH, algorithm: 'HS256', issuer: 'satnam.pub', audience: 'satnam.pub-users' }
+          );
+
+          const isDev = process.env.NODE_ENV !== 'production';
+          const baseAttrs = [
+            `satnam_refresh_token=${newRefresh}`,
+            `Max-Age=${REFRESH}`,
+            'Path=/',
+            'HttpOnly'
+          ];
+          const prodAttrs = ['SameSite=None', 'Secure', 'Domain=.satnam.pub'];
+          const devAttrs = ['SameSite=Lax'];
+          const cookie = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
+
+          console.log('🔄 CHECK-REFRESH: Self-heal activated - created new refresh cookie from valid access token');
+          return { statusCode: 200, headers: { ...corsHeaders, 'Set-Cookie': cookie, 'X-Check-Refresh-Heal': '1' }, body: JSON.stringify({ success: true, available: true }) };
+        } catch (e) {
+          // Fall through to 401 when Authorization is invalid
+        }
+      }
+
       return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, available: false }) };
     }
 
@@ -284,10 +323,14 @@ async function handleNip07SigninInline(event, context, corsHeaders) {
       'SameSite=Lax' // local dev: avoid cross-site issues but not require Secure
     ];
     const cookie = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
+    const cookieHost = [...baseAttrs, ...(isDev ? ['SameSite=Lax'] : ['SameSite=Lax', 'Secure'])].join('; ');
 
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, 'Set-Cookie': cookie },
+      headers: { ...corsHeaders },
+      multiValueHeaders: {
+        'Set-Cookie': [cookie, cookieHost]
+      },
       body: JSON.stringify({
         success: true,
         data: {
@@ -1275,15 +1318,20 @@ async function handleSigninInline(event, context, corsHeaders) {
     ];
     const cookie = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
 
+    // Dual cookie fallback: set both domain cookie and host-only cookie for maximum compatibility
+    const cookieHost = [...baseAttrs, ...(isDev ? ['SameSite=Lax'] : ['SameSite=Lax', 'Secure'])].join('; ');
+
     return {
       statusCode: 200,
       headers: {
         ...corsHeaders,
-        'Set-Cookie': cookie,
         'X-Auth-Handler': 'auth-unified-inline',
         'X-Has-Encrypted': responseUserData.encrypted_nsec ? '1' : '0',
         'X-Has-Salt': responseUserData.user_salt ? '1' : '0',
         'X-Has-Encrypted-IV': responseUserData.encrypted_nsec_iv ? '1' : '0'
+      },
+      multiValueHeaders: {
+        'Set-Cookie': [cookie, cookieHost]
       },
       body: JSON.stringify({
         success: true,
