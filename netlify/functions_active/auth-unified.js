@@ -1246,10 +1246,40 @@ async function handleSigninInline(event, context, corsHeaders) {
       credentialsIncluded: !!(user.user_salt && user.encrypted_nsec && user.npub)
     });
 
+    // Create refresh token and set HttpOnly cookie (mirror NIP-07 handler)
+    const { getJwtSecret } = await import('./utils/jwt-secret.js');
+    const jwtSecret = getJwtSecret();
+    const jwt = (await import('jsonwebtoken')).default;
+    const REFRESH = 7 * 24 * 60 * 60; // 7 days
+    const refreshToken = jwt.sign(
+      { hashedId: hashedId, nip05: nip05, type: 'refresh', sessionId: sessionId },
+      jwtSecret,
+      { expiresIn: REFRESH, algorithm: 'HS256', issuer: 'satnam.pub', audience: 'satnam.pub-users' }
+    );
+
+    // Set HttpOnly refresh cookie - cross-subdomain, production-safe
+    const isDev = process.env.NODE_ENV !== 'production';
+    const baseAttrs = [
+      `satnam_refresh_token=${refreshToken}`,
+      `Max-Age=${REFRESH}`,
+      'Path=/',
+      'HttpOnly'
+    ];
+    const prodAttrs = [
+      'SameSite=None', // allow credentialed requests and subdomain usage
+      'Secure',        // required for SameSite=None on modern browsers
+      'Domain=.satnam.pub'
+    ];
+    const devAttrs = [
+      'SameSite=Lax' // local dev: avoid cross-site issues but not require Secure
+    ];
+    const cookie = [...baseAttrs, ...(isDev ? devAttrs : prodAttrs)].join('; ');
+
     return {
       statusCode: 200,
       headers: {
         ...corsHeaders,
+        'Set-Cookie': cookie,
         'X-Auth-Handler': 'auth-unified-inline',
         'X-Has-Encrypted': responseUserData.encrypted_nsec ? '1' : '0',
         'X-Has-Salt': responseUserData.user_salt ? '1' : '0',
