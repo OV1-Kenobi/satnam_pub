@@ -31,13 +31,13 @@ export const SigningStatusIndicator: React.FC<SigningStatusIndicatorProps> = ({
   const [sessionStatus, setSessionStatus] = useState<any>(null);
   const [currentMethod, setCurrentMethod] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [remainingTime, setRemainingTime] = useState<string>('');
+  const [elapsedTime, setElapsedTime] = useState<string>('');
   const [fixingSigning, setFixingSigning] = useState(false);
 
   useEffect(() => {
     loadStatus();
     const interval = setInterval(loadStatus, 30000); // Update every 30 seconds
-    const timeInterval = setInterval(updateRemainingTime, 1000); // Update time every second
+    const timeInterval = setInterval(updateElapsedTime, 1000); // Update time every second
 
     return () => {
       clearInterval(interval);
@@ -87,13 +87,21 @@ export const SigningStatusIndicator: React.FC<SigningStatusIndicatorProps> = ({
     }
   };
 
-  const updateRemainingTime = () => {
+  const updateElapsedTime = () => {
     if (sessionStatus?.hasSession && currentMethod?.id === 'session') {
-      // Calculate remaining time for session
-      // This would integrate with SecureNsecManager to get actual remaining time
-      setRemainingTime('14m 32s'); // Placeholder
+      const start = sessionStatus?.createdAt ? Number(sessionStatus.createdAt) : null;
+      if (start) {
+        const diff = Math.max(0, Date.now() - start);
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        const mm = String(minutes).padStart(2, '0');
+        const ss = String(seconds).padStart(2, '0');
+        setElapsedTime(`${mm}:${ss}`);
+      } else {
+        setElapsedTime('');
+      }
     } else {
-      setRemainingTime('');
+      setElapsedTime('');
     }
   };
 
@@ -181,7 +189,7 @@ export const SigningStatusIndicator: React.FC<SigningStatusIndicatorProps> = ({
                 {currentMethod ? (
                   <span>
                     {currentMethod.description}
-                    {remainingTime && ` • ${remainingTime} remaining`}
+                    {elapsedTime && ` • active for ${elapsedTime}`}
                   </span>
                 ) : (
                   'Message signing unavailable'
@@ -244,10 +252,10 @@ export const SigningStatusIndicator: React.FC<SigningStatusIndicatorProps> = ({
 
               <div className="text-sm text-gray-700">
                 <p>{currentMethod.description}</p>
-                {currentMethod.id === 'session' && remainingTime && (
+                {currentMethod.id === 'session' && elapsedTime && (
                   <p className="mt-1 text-blue-600">
                     <Clock className="w-3 h-3 inline mr-1" />
-                    Session expires in {remainingTime}
+                    Session active for {elapsedTime}
                   </p>
                 )}
               </div>

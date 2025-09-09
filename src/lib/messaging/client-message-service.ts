@@ -265,6 +265,8 @@ export class ClientMessageService {
       const { SecureTokenManager } = await import(
         "../auth/secure-token-manager"
       );
+      const token = await SecureTokenManager.silentRefresh();
+      if (token) return token;
       return SecureTokenManager.getAccessToken();
     } catch (error) {
       console.warn("Failed to get token from SecureTokenManager:", error);

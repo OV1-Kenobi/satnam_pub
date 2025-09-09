@@ -156,11 +156,13 @@ export class RecoverySessionBridge {
           "../user-signing-preferences"
         );
         const prefs = await userSigningPreferences.getUserPreferences();
-        const duration = (prefs?.sessionDurationMinutes ?? 15) * 60 * 1000;
+        const enableTimeout = prefs?.sessionLifetimeMode === "timed";
+        const duration = enableTimeout
+          ? (prefs?.sessionDurationMinutes ?? 15) * 60 * 1000
+          : 365 * 24 * 60 * 60 * 1000; // effectively tab-lifetime
         const maxOps =
           prefs?.maxOperationsPerSession ?? this.DEFAULT_MAX_OPERATIONS;
-        const browserLifetime =
-          prefs?.sessionLifetimeMode === "browser_session";
+        const browserLifetime = !enableTimeout; // default to tab-lifetime
         sessionId = await nsecSessionBridge.initializeAfterAuth(nsecHex, {
           duration,
           maxOperations: maxOps,
@@ -171,8 +173,9 @@ export class RecoverySessionBridge {
       } catch (e) {
         // Fallback: ensure we assign to outer sessionId, not shadow it
         sessionId = await nsecSessionBridge.initializeAfterAuth(nsecHex, {
-          duration: options.duration || this.DEFAULT_SESSION_DURATION,
+          duration: options.duration ?? 365 * 24 * 60 * 60 * 1000,
           maxOperations: options.maxOperations || this.DEFAULT_MAX_OPERATIONS,
+          browserLifetime: true,
         });
         if (!sessionId) {
           return {
@@ -418,11 +421,13 @@ export class RecoverySessionBridge {
           "../user-signing-preferences"
         );
         const prefs = await userSigningPreferences.getUserPreferences();
-        const duration = (prefs?.sessionDurationMinutes ?? 15) * 60 * 1000;
+        const enableTimeout = prefs?.sessionLifetimeMode === "timed";
+        const duration = enableTimeout
+          ? (prefs?.sessionDurationMinutes ?? 15) * 60 * 1000
+          : 365 * 24 * 60 * 60 * 1000; // effectively tab-lifetime
         const maxOps =
           prefs?.maxOperationsPerSession ?? this.DEFAULT_MAX_OPERATIONS;
-        const browserLifetime =
-          prefs?.sessionLifetimeMode === "browser_session";
+        const browserLifetime = !enableTimeout;
 
         console.log("🔐 RecoverySessionBridge: Session configuration loaded:", {
           duration,
@@ -486,8 +491,9 @@ export class RecoverySessionBridge {
         });
 
         sessionId = await nsecSessionBridge.initializeAfterAuth(nsecHex, {
-          duration: options.duration || this.DEFAULT_SESSION_DURATION,
+          duration: options.duration ?? 365 * 24 * 60 * 60 * 1000,
           maxOperations: options.maxOperations || this.DEFAULT_MAX_OPERATIONS,
+          browserLifetime: true,
         });
 
         console.log(

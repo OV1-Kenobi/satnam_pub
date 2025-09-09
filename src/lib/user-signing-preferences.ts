@@ -38,6 +38,10 @@ export interface UserSigningPreferences {
   // Session lifetime behavior
   sessionLifetimeMode?: "browser_session" | "timed";
 
+  // New derived controls (mapped onto sessionLifetimeMode/sessionDurationMinutes)
+  enableSessionTimeout?: boolean; // default false
+  customSessionTimeoutMinutes?: number; // default 15
+
   // Metadata
   createdAt: string;
   updatedAt: string;
@@ -145,6 +149,10 @@ export class UserSigningPreferencesService {
         nfcPinTimeoutSeconds: data.nfc_pin_timeout_seconds,
         nfcRequireConfirmation: data.nfc_require_confirmation,
         sessionLifetimeMode: data.session_lifetime_mode ?? undefined,
+        // Derived controls
+        enableSessionTimeout:
+          (data.session_lifetime_mode ?? undefined) === "timed",
+        customSessionTimeoutMinutes: data.session_duration_minutes ?? 15,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
         lastUsedMethod: data.last_used_method,
@@ -169,6 +177,16 @@ export class UserSigningPreferencesService {
     updates: Partial<UserSigningPreferences>
   ): Promise<boolean> {
     try {
+      const sessionLifetimeModeToSend =
+        typeof updates.enableSessionTimeout === "boolean"
+          ? updates.enableSessionTimeout
+            ? "timed"
+            : "browser_session"
+          : updates.sessionLifetimeMode;
+
+      const sessionDurationToSend =
+        updates.customSessionTimeoutMinutes ?? updates.sessionDurationMinutes;
+
       const { error } = await supabase
         .from("user_signing_preferences")
         .update({
@@ -177,12 +195,12 @@ export class UserSigningPreferencesService {
           auto_fallback: updates.autoFallback,
           show_security_warnings: updates.showSecurityWarnings,
           remember_choice: updates.rememberChoice,
-          session_duration_minutes: updates.sessionDurationMinutes,
+          session_duration_minutes: sessionDurationToSend,
           max_operations_per_session: updates.maxOperationsPerSession,
           nip07_auto_approve: updates.nip07AutoApprove,
           nfc_pin_timeout_seconds: updates.nfcPinTimeoutSeconds,
           nfc_require_confirmation: updates.nfcRequireConfirmation,
-          session_lifetime_mode: updates.sessionLifetimeMode,
+          session_lifetime_mode: sessionLifetimeModeToSend,
         })
         .eq("owner_hash", updates.userDuid || this.cachedPreferences?.userDuid); // Updated to match new schema
 
@@ -315,7 +333,7 @@ export class UserSigningPreferencesService {
         nip07_auto_approve: false,
         nfc_pin_timeout_seconds: 30,
         nfc_require_confirmation: true,
-        session_lifetime_mode: "timed" as const,
+        session_lifetime_mode: "browser_session" as const,
       };
 
       // Use RLS-friendly RPC to perform INSERT/UPSERT within the same transaction
@@ -370,6 +388,10 @@ export class UserSigningPreferencesService {
       nfcPinTimeoutSeconds: data.nfc_pin_timeout_seconds,
       nfcRequireConfirmation: data.nfc_require_confirmation,
       sessionLifetimeMode: data.session_lifetime_mode ?? undefined,
+      // Derived controls
+      enableSessionTimeout:
+        (data.session_lifetime_mode ?? undefined) === "timed",
+      customSessionTimeoutMinutes: data.session_duration_minutes ?? 15,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
       lastUsedMethod: data.last_used_method,

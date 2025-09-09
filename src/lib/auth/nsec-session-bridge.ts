@@ -17,6 +17,7 @@ export interface NSECSessionOptions {
 export class NSECSessionBridge {
   private static instance: NSECSessionBridge | null = null;
   private nsecManager: SecureNsecManager;
+  private sessionCreatedAt: number | null = null;
 
   private constructor() {
     this.nsecManager = SecureNsecManager.getInstance();
@@ -61,6 +62,10 @@ export class NSECSessionBridge {
         options?.browserLifetime
       );
 
+      if (sessionId) {
+        this.sessionCreatedAt = Date.now();
+      }
+
       console.log(
         "🔐 NSECSessionBridge: NSEC session created successfully:",
         sessionId
@@ -103,6 +108,7 @@ export class NSECSessionBridge {
   clearSession(): void {
     console.log("🔐 NSECSessionBridge: Clearing NSEC session");
     this.nsecManager.clearTemporarySession();
+    this.sessionCreatedAt = null;
   }
 
   /**
@@ -138,6 +144,7 @@ export class NSECSessionBridge {
     hasSession: boolean;
     sessionId: string | null;
     canSign: boolean;
+    createdAt?: number | null;
   } {
     const sessionId = this.nsecManager.getActiveSessionId();
     const hasSession = !!sessionId;
@@ -146,6 +153,7 @@ export class NSECSessionBridge {
       hasSession,
       sessionId,
       canSign: hasSession,
+      createdAt: hasSession ? this.sessionCreatedAt : null,
     };
   }
 }

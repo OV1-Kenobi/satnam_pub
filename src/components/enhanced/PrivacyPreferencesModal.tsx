@@ -8,6 +8,7 @@ import React, { useEffect, useState } from "react";
 import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
 import { PrivacyLevel } from "../../types/privacy";
 
+
 interface PrivacyPreferences {
   default_privacy_level: PrivacyLevel;
   auto_upgrade_threshold: number;
@@ -49,6 +50,10 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Signing session preferences
+  const [enableSessionTimeout, setEnableSessionTimeout] = useState<boolean>(false);
+  const [customSessionTimeoutMinutes, setCustomSessionTimeoutMinutes] = useState<number>(15);
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -63,7 +68,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
   const loadUserPreferences = async () => {
     try {
       setLoading(true);
-      
+
       // Mock loading user preferences - in real implementation, this would call the API
       const mockPreferences: PrivacyPreferences = {
         default_privacy_level: PrivacyLevel.GIFTWRAPPED,
@@ -77,8 +82,17 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
         lnproxy_preference: true,
         fedimint_preference: true,
       };
-      
+
       setPreferences(mockPreferences);
+
+      // Load signing preferences for session timeout controls
+      try {
+        const sp = await userSigningPreferences.getUserPreferences();
+        setEnableSessionTimeout(sp?.enableSessionTimeout ?? false);
+        setCustomSessionTimeoutMinutes(sp?.customSessionTimeoutMinutes ?? 15);
+      } catch (e) {
+        console.warn('Failed to load signing preferences:', e);
+      }
     } catch (error) {
       console.error('Failed to load privacy preferences:', error);
     } finally {
@@ -115,11 +129,21 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       setSaving(true);
       setValidationErrors([]);
 
-      // Mock saving preferences - in real implementation, this would call the API
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      // Mock saving privacy preferences - in real implementation, this would call the API
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      // Persist signing session preferences using signing preferences service
+      try {
+        await userSigningPreferences.updatePreferences({
+          enableSessionTimeout,
+          customSessionTimeoutMinutes,
+        });
+      } catch (e) {
+        console.warn('Failed to save signing preferences:', e);
+      }
+
       console.log('Saved privacy preferences:', preferences);
-      
+
       if (onPreferencesUpdate) {
         onPreferencesUpdate(preferences);
       }
@@ -192,6 +216,45 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
                 </div>
               </div>
             )}
+            {/* Secure Signing Session Preferences */}
+            <div className="space-y-3">
+              <label className="block text-white font-semibold">Secure Signing Session</label>
+              <p className="text-purple-200 text-sm">
+                By default, sessions last for the lifetime of this browser tab. Enable timeouts to increase security at the cost of convenience.
+              </p>
+              <div className="flex items-center space-x-2">
+                <input
+                  id="enableSessionTimeout"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={enableSessionTimeout}
+                  onChange={(e) => setEnableSessionTimeout(e.target.checked)}
+                />
+                <label htmlFor="enableSessionTimeout" className="text-white">Enable session timeout</label>
+              </div>
+              {enableSessionTimeout && (
+                <div className="flex items-center space-x-3">
+                  <label className="text-purple-200 text-sm" htmlFor="customSessionTimeoutMinutes">
+                    Timeout (minutes)
+                  </label>
+                  <input
+                    id="customSessionTimeoutMinutes"
+                    type="number"
+                    min={1}
+                    className="w-24 rounded-md border border-purple-700 bg-purple-800 text-white px-2 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={customSessionTimeoutMinutes}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setCustomSessionTimeoutMinutes(Number.isFinite(val) ? Math.max(1, Math.floor(val)) : 15);
+                    }}
+                  />
+                  <span className="text-purple-300 text-xs">
+                    Note: Enabling timeouts increases security but reduces convenience.
+                  </span>
+                </div>
+              )}
+            </div>
+
 
             {/* Default Privacy Level */}
             <div className="space-y-3">
@@ -258,7 +321,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
                   />
                   <label className="text-white font-semibold">Require Guardian Approval</label>
                 </div>
-                
+
                 {preferences.require_guardian_approval && (
                   <div className="ml-6 space-y-2">
                     <label className="block text-purple-200 text-sm">Approval threshold (sats)</label>
@@ -287,7 +350,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
             {showAdvanced && (
               <div className="space-y-4 pl-4 border-l-2 border-purple-600/30">
                 <h4 className="text-white font-semibold">Privacy Features</h4>
-                
+
                 {/* Metadata Protection */}
                 <div className="flex items-center space-x-3">
                   <input

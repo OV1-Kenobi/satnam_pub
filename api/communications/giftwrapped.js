@@ -57,9 +57,10 @@ async function getClientFromEvent(event) {
 
     console.log("🔐 DEBUG: giftwrapped - JWT validation successful, hashedId:", session.hashedId);
 
-    // Use server-side Supabase client (no per-request Authorization)
-    const { supabase } = await import('../../netlify/functions/supabase.js');
-    const client = supabase;
+    // Use per-request Supabase client with Authorization to attach apikey and align with RLS
+    const { getRequestClient } = await import('../../netlify/functions/supabase.js');
+    const accessToken = String(authHeader).slice(7).trim();
+    const client = getRequestClient(accessToken);
 
     // Return session hashedId as the only allowed hash for this user
     const allowedHashes = new Set([session.hashedId]);

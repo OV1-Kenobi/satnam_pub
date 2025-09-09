@@ -461,50 +461,30 @@ export async function decryptNsec(encryptedData: {
 }
 
 /**
- * Decrypt Nostr private key (nsec) - Noble V2 Implementation
- * Uses user's unique salt for zero-knowledge decryption
- * @deprecated Legacy function - now uses Noble V2 internally
+ * Decrypt Nostr private key (nsec)
+ * Primary and only supported method: Noble V2 compact format (noble-v2.<salt>.<iv>.<cipher>)
  */
 export async function decryptNsecSimple(
   encryptedNsec: string,
   userSalt: string
 ): Promise<string> {
+  // Input validation with clear errors
+  if (!encryptedNsec || typeof encryptedNsec !== "string") {
+    throw new Error("Invalid encryptedNsec: must be a non-empty string");
+  }
+  if (!userSalt || typeof userSalt !== "string") {
+    throw new Error("Invalid userSalt: must be a non-empty string");
+  }
+
   try {
-    console.log("🔐 decryptNsecSimple: Using Noble V2 implementation");
-    console.log(
-      "🔐 decryptNsecSimple: Input encryptedNsec length:",
-      encryptedNsec?.length
-    );
-    console.log(
-      "🔐 decryptNsecSimple: Input userSalt length:",
-      userSalt?.length
-    );
-
-    // Validate inputs
-    if (!encryptedNsec || typeof encryptedNsec !== "string") {
-      throw new Error("Invalid encryptedNsec: must be a non-empty string");
-    }
-    if (!userSalt || typeof userSalt !== "string") {
-      throw new Error("Invalid userSalt: must be a non-empty string");
-    }
-
-    console.log("🔐 decryptNsecSimple: Calling Noble V2 decryptNsec...");
+    console.log("🔐 decryptNsecSimple: Using Noble V2 format...");
     const result = await NobleEncryption.decryptNsec(encryptedNsec, userSalt);
-
     console.log("🔐 decryptNsecSimple: Noble V2 decryption successful");
-    console.log(
-      "🔐 decryptNsecSimple: Result starts with 'nsec':",
-      result.startsWith("nsec")
-    );
-
     return result;
   } catch (error) {
-    console.error("🔐 decryptNsecSimple: Noble V2 decryption failed:", error);
-    throw new Error(
-      `Nsec decryption failed: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
-    );
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("🔐 decryptNsecSimple: Noble V2 decryption failed:", msg);
+    throw new Error(`Nsec decryption failed (Noble V2 only): ${msg}`);
   }
 }
 
