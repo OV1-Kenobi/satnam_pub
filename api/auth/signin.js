@@ -207,7 +207,13 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
     // Step 6: Return successful authentication response (include fields for recovery session)
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: {
+        ...corsHeaders,
+        'X-Auth-Handler': 'api-auth-signin-js',
+        'X-Has-Encrypted': (user.encrypted_nsec ? '1' : '0'),
+        'X-Has-Salt': (user.user_salt ? '1' : '0'),
+        'X-Has-Encrypted-IV': (user.encrypted_nsec_iv ? '1' : '0')
+      },
       body: JSON.stringify({
         success: true,
         data: {

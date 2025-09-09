@@ -67,7 +67,7 @@ export const handler = async (event) => {
       const cookies = parseCookies(event.headers?.cookie);
       const refresh = cookies?.["satnam_refresh_token"];
       if (!refresh) {
-        return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
+        return { statusCode: 401, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn' }, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
       }
       try {
         const { getJwtSecret } = await import("./utils/jwt-secret.js");
@@ -81,12 +81,12 @@ export const handler = async (event) => {
         }
         nip05 = obj.nip05;
       } catch {
-        return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
+        return { statusCode: 401, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn' }, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
       }
     }
 
     if (!nip05) {
-      return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
+      return { statusCode: 401, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn' }, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
     }
 
     // 3) Look up user by DUID derived from nip05 (server-side)
@@ -130,7 +130,7 @@ export const handler = async (event) => {
       hashed_nip05: user.hashed_nip05 || null,
     };
 
-    return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { user: userPayload } }) };
+    return { statusCode: 200, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn', 'X-Has-Encrypted': userPayload.encrypted_nsec ? '1' : '0', 'X-Has-Salt': userPayload.user_salt ? '1' : '0', 'X-Has-Encrypted-IV': userPayload.encrypted_nsec_iv ? '1' : '0' }, body: JSON.stringify({ success: true, data: { user: userPayload } }) };
   } catch (error) {
     console.error("auth-session-user error:", error);
     return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Internal server error" }) };

@@ -514,7 +514,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
       const cookies = parseCookies(headers.cookie);
       const refreshToken = cookies?.['satnam_refresh_token'];
       if (!refreshToken) {
-        return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+        return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
       }
       try {
         const jwt = await import('jsonwebtoken');
@@ -528,12 +528,12 @@ async function handleSessionUserInline(event, context, corsHeaders) {
         const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
         if (obj?.type === 'refresh') nip05 = obj.nip05;
       } catch {
-        return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+        return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
       }
     }
 
     if (!nip05) {
-      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+      return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
     }
 
     // 3) DUID from nip05 via server secret
@@ -576,7 +576,14 @@ async function handleSessionUserInline(event, context, corsHeaders) {
 
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'X-Auth-Handler': 'auth-unified-inline',
+        'X-Has-Encrypted': userPayload.encrypted_nsec ? '1' : '0',
+        'X-Has-Salt': userPayload.user_salt ? '1' : '0',
+        'X-Has-Encrypted-IV': userPayload.encrypted_nsec_iv ? '1' : '0'
+      },
       body: JSON.stringify({ success: true, data: { user: userPayload } })
     };
   } catch (error) {
@@ -1241,7 +1248,13 @@ async function handleSigninInline(event, context, corsHeaders) {
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: {
+        ...corsHeaders,
+        'X-Auth-Handler': 'auth-unified-inline',
+        'X-Has-Encrypted': responseUserData.encrypted_nsec ? '1' : '0',
+        'X-Has-Salt': responseUserData.user_salt ? '1' : '0',
+        'X-Has-Encrypted-IV': responseUserData.encrypted_nsec_iv ? '1' : '0'
+      },
       body: JSON.stringify({
         success: true,
         data: {
@@ -1255,7 +1268,7 @@ async function handleSigninInline(event, context, corsHeaders) {
     console.error('❌ Inline signin error:', error);
     return {
       statusCode: 500,
-      headers: corsHeaders,
+      headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' },
       body: JSON.stringify({
         success: false,
         error: 'Authentication service temporarily unavailable',
