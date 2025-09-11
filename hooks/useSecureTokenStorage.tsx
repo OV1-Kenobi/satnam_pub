@@ -4,7 +4,7 @@
  * XSS protection, and automatic cleanup
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 export interface TokenData {
   accessToken: string;
@@ -179,7 +179,7 @@ export function useSecureTokenStorage(
 
       let attempt = 0;
       let response: Response;
-      
+
       do {
         response = await fetch(config.refreshEndpoint, {
           method: "POST",
@@ -218,7 +218,7 @@ export function useSecureTokenStorage(
 
       // Clear invalid tokens
       await clearTokens();
-      
+
       if (refreshResolveRef.current) {
         refreshResolveRef.current(false);
       }
@@ -415,8 +415,7 @@ export interface SecureTokenProviderProps {
   config: SecureTokenConfig;
 }
 
-export const SecureTokenContext =
-  React.createContext<UseSecureTokenStorageReturn | null>(null);
+export const SecureTokenContext = createContext<UseSecureTokenStorageReturn | null>(null);
 
 export function SecureTokenProvider({
   children,
@@ -432,7 +431,7 @@ export function SecureTokenProvider({
 }
 
 export function useSecureToken(): UseSecureTokenStorageReturn {
-  const context = React.useContext(SecureTokenContext);
+  const context = useContext(SecureTokenContext);
   if (!context) {
     throw new Error("useSecureToken must be used within a SecureTokenProvider");
   }
