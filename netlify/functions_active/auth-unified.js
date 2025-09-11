@@ -508,6 +508,10 @@ async function handleSessionUserInline(event, context, corsHeaders) {
     return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
   }
 
+  const t0 = Date.now();
+  let traceStep = 'start';
+  let source = 'unknown';
+
   function parseCookies(cookieHeader) {
     if (!cookieHeader) return {};
     return cookieHeader.split(';').reduce((acc, c) => {
@@ -517,29 +521,25 @@ async function handleSessionUserInline(event, context, corsHeaders) {
     }, {});
   }
 
-  // Lightweight IP rate limiting via Supabase RPC
+  // Lightweight IP rate limiting (in-memory; avoid DB dependency in dev)
   try {
+    traceStep = 'rate-limit';
     const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
     const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
-    const windowSec = 60;
-    const windowStart = new Date(Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)).toISOString();
-    const { supabase } = await import('./supabase.js');
-    const { data, error } = await supabase.rpc('increment_auth_rate', {
-      p_identifier: clientIp,
-      p_scope: 'ip',
-      p_window_start: windowStart,
-      p_limit: 60,
-    });
-    const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
-    if (error || limited) {
-      return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+    const { allowRequest } = await import('./utils/rate-limiter.js');
+    // Allow 60 requests per 60s window
+    if (!allowRequest(clientIp, 60, 60_000)) {
+      console.warn('session-user: rate limited', { clientIp });
+      return { statusCode: 429, headers: { ...corsHeaders, 'X-Session-User-Trace': `${traceStep}` }, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
     }
-  } catch {
-    return { statusCode: 429, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Too many attempts' }) };
+  } catch (e) {
+    console.warn('session-user: rate limit check failed', e);
+    // Be permissive on limiter failure
   }
 
   try {
     // 1) Authorization: Bearer header
+    traceStep = 'auth-bearer';
     const headers = event.headers || {};
     const authHeader = headers.authorization || headers.Authorization || headers['authorization'] || headers['Authorization'];
     let nip05 = null;
@@ -548,16 +548,23 @@ async function handleSessionUserInline(event, context, corsHeaders) {
       const token = String(authHeader).replace(/^bearer\s+/i, '');
       try {
         const payload = await verifyJWT(token);
-        if (payload && payload.nip05) nip05 = payload.nip05;
-      } catch {}
+        if (payload && payload.nip05) {
+          nip05 = payload.nip05;
+          source = 'bearer';
+          console.log('session-user: bearer verified');
+        }
+      } catch (e) {
+        console.warn('session-user: bearer verification failed', e);
+      }
     }
 
     // 2) Refresh cookie fallback
+    traceStep = 'auth-cookie';
     if (!nip05) {
       const cookies = parseCookies(headers.cookie);
       const refreshToken = cookies?.['satnam_refresh_token'];
       if (!refreshToken) {
-        return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+        return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline', 'X-Session-User-Trace': `${traceStep}-missing` }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
       }
       try {
         const jwt = await import('jsonwebtoken');
@@ -569,17 +576,22 @@ async function handleSessionUserInline(event, context, corsHeaders) {
           audience: 'satnam.pub-users',
         });
         const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
-        if (obj?.type === 'refresh') nip05 = obj.nip05;
-      } catch {
-        return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+        if (obj?.type === 'refresh') {
+          nip05 = obj.nip05;
+          source = 'cookie';
+          console.log('session-user: cookie verified');
+        }
+      } catch (e) {
+        return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline', 'X-Session-User-Trace': `${traceStep}-invalid` }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
       }
     }
 
     if (!nip05) {
-      return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline' }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
+      return { statusCode: 401, headers: { ...corsHeaders, 'X-Auth-Handler': 'auth-unified-inline', 'X-Session-User-Trace': `${traceStep}-none` }, body: JSON.stringify({ success: false, error: 'Unauthorized' }) };
     }
 
     // 3) DUID from nip05 via server secret
+    traceStep = 'duid';
     let duid;
     try {
       const { getEnvVar } = await import('./utils/env.js');
@@ -589,22 +601,25 @@ async function handleSessionUserInline(event, context, corsHeaders) {
       duid = createHmac('sha256', secret).update(nip05).digest('hex');
     } catch (e) {
       console.error('DUID generation failed:', e);
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication system error' }) };
+      return { statusCode: 500, headers: { ...corsHeaders, 'X-Session-User-Trace': `${traceStep}-fail` }, body: JSON.stringify({ success: false, error: 'Authentication system error' }) };
     }
 
     // 4) Lookup user
+    traceStep = 'db-query';
     const { supabase } = await import('./supabase.js');
     const { data: user, error: userError, status } = await supabase
       .from('user_identities')
-      .select('id, role, is_active, user_salt, encrypted_nsec, encrypted_nsec_iv, npub, username')
+      .select('id, role, is_active, user_salt, encrypted_nsec, hashed_npub, hashed_username')
       .eq('id', duid)
       .single();
 
     if (userError || !user) {
       const code = status === 406 ? 404 : 500;
-      return { statusCode: code, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'User not found' }) };
+      console.warn('session-user: user lookup failed', { status, userError });
+      return { statusCode: code, headers: { ...corsHeaders, 'X-Session-User-Trace': `${traceStep}-fail` }, body: JSON.stringify({ success: false, error: 'User not found' }) };
     }
 
+    traceStep = 'success';
     const userPayload = {
       id: user.id,
       nip05,
@@ -612,10 +627,20 @@ async function handleSessionUserInline(event, context, corsHeaders) {
       is_active: user.is_active !== false,
       user_salt: user.user_salt || null,
       encrypted_nsec: user.encrypted_nsec || null,
-      encrypted_nsec_iv: user.encrypted_nsec_iv || null,
-      npub: user.npub || null,
-      username: user.username || null,
+
+      // Privacy-first: plaintext npub/username are not stored; hashed variants are available if needed
+      hashed_npub: user.hashed_npub || null,
+      hashed_username: user.hashed_username || null,
     };
+
+    const durationMs = Date.now() - t0;
+    console.log('session-user: success', {
+      source,
+      durationMs,
+      hasEncrypted: !!userPayload.encrypted_nsec,
+      hasSalt: !!userPayload.user_salt,
+
+    });
 
     return {
       statusCode: 200,
@@ -623,15 +648,20 @@ async function handleSessionUserInline(event, context, corsHeaders) {
         ...corsHeaders,
         'Content-Type': 'application/json',
         'X-Auth-Handler': 'auth-unified-inline',
+        'X-Session-User-Source': source || 'unknown',
+        'X-Session-User-Time': String(durationMs),
+        'X-Session-User-Trace': traceStep,
         'X-Has-Encrypted': userPayload.encrypted_nsec ? '1' : '0',
         'X-Has-Salt': userPayload.user_salt ? '1' : '0',
-        'X-Has-Encrypted-IV': userPayload.encrypted_nsec_iv ? '1' : '0'
+        
       },
       body: JSON.stringify({ success: true, data: { user: userPayload } })
     };
   } catch (error) {
-    console.error('session-user inline error:', error);
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
+    const durationMs = Date.now() - t0;
+    console.error('session-user inline error:', error instanceof Error ? error.message : String(error));
+    console.error('session-user inline error stack:', error instanceof Error ? error.stack : 'No stack');
+    return { statusCode: 500, headers: { ...corsHeaders, 'X-Session-User-Trace': `${traceStep}-exception`, 'X-Session-User-Time': String(durationMs) }, body: JSON.stringify({ success: false, error: 'Internal server error' }) };
   }
 }
 

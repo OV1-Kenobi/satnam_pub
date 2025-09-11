@@ -28,6 +28,9 @@ import { useAuth, useIdentityForge } from "./auth/AuthProvider";
 import { recoverySessionBridge } from "../lib/auth/recovery-session-bridge";
 import SecureTokenManager from "../lib/auth/secure-token-manager";
 import type { UserIdentity } from "../lib/auth/user-identities-auth";
+
+import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
+
 import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 
@@ -1238,7 +1241,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         // Create robust SecureSession immediately after registration
         try {
           // Prefer server-sourced user payload for decryption-based session
-          const raw = await fetch('/api/auth/session-user', { method: 'GET', credentials: 'include' });
+          const raw = await fetchWithAuth('/api/auth/session-user', {
+            method: 'GET',
+            credentials: 'include',
+          });
           const json = await raw.json().catch(() => null) as { success?: boolean; data?: { user?: UserIdentity } } | null;
           const user: UserIdentity | undefined = json?.data?.user as any;
           if (user && (user as any).encrypted_nsec && user.user_salt) {

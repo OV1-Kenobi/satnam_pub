@@ -26,15 +26,6 @@ import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 
 // Import automated signing and notification services
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import('../lib/supabase');
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
 
 // Basic type definitions for the modal
 interface NotificationSettings {

@@ -29,15 +29,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
 import { FederationRole } from '../types/auth';
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import('../lib/supabase');
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
 
 interface NTAG424AuthModalProps {
   isOpen: boolean;

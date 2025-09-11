@@ -5,17 +5,9 @@
  * It handles authentication flows securely using Supabase's built-in session management.
  */
 
-import { authManager } from "./authManager";
+import { supabase } from "../lib/supabase";
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("../lib/supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
+import { authManager } from "./authManager";
 
 export interface SessionInfo {
   isAuthenticated: boolean;
@@ -43,10 +35,9 @@ export async function getSessionInfo(): Promise<SessionInfo> {
     // Supabase JWT lives only in memory; extract it once if caller explicitly needs it
     let sessionToken: string | undefined;
     try {
-      const client = await getSupabaseClient();
       const {
         data: { session },
-      } = await client.auth.getSession();
+      } = await supabase.auth.getSession();
       sessionToken = session?.access_token;
     } catch {
       /* ignore — token remains undefined */
@@ -79,8 +70,7 @@ export async function getSessionInfo(): Promise<SessionInfo> {
  */
 export async function secureLogout(): Promise<boolean> {
   try {
-    const client = await getSupabaseClient();
-    const { error } = await client.auth.signOut();
+    const { error } = await supabase.auth.signOut();
 
     // Clear auth manager cache after logout
     authManager.clearCache();
@@ -100,10 +90,9 @@ export async function authenticatedFetch(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const client = await getSupabaseClient();
   const {
     data: { session },
-  } = await client.auth.getSession();
+  } = await supabase.auth.getSession();
 
   return fetch(endpoint, {
     ...options,
@@ -121,11 +110,10 @@ export async function authenticatedFetch(
  */
 export async function refreshSession(): Promise<SessionInfo> {
   try {
-    const client = await getSupabaseClient();
     const {
       data: { session },
       error,
-    } = await client.auth.refreshSession();
+    } = await supabase.auth.refreshSession();
 
     if (error || !session) {
       return { isAuthenticated: false };

@@ -11,15 +11,7 @@
  * - No exposure of user identifiers or sensitive information
  */
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("./supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
+import { supabase } from "./supabase";
 
 // Client-side rate limiting for validation requests
 const validationRateLimit = new Map<
@@ -169,9 +161,7 @@ async function trackInvitationView(inviteToken: string): Promise<void> {
     };
 
     // Store the view event in Supabase (privacy-preserving)
-    await (await getSupabaseClient())
-      .from("invitation_analytics")
-      .insert(eventData);
+    await supabase.from("invitation_analytics").insert(eventData);
 
     console.log("Invitation view tracked", {
       inviteToken,

@@ -4,15 +4,7 @@
  * Maintains all security features while using the correct database schema
  */
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("../supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
+import { supabase } from "../supabase";
 
 /**
  * Web Crypto API utilities for browser-only serverless architecture
@@ -473,7 +465,7 @@ export class UserIdentitiesAuth {
     try {
       // MAXIMUM ENCRYPTION: Use user ID instead of plaintext nip05
       // Get current user data by ID (which is already hashed)
-      const { data: user } = await (await getSupabaseClient())
+      const { data: user } = await supabase
         .from("user_identities")
         .select("failed_attempts")
         .eq("id", userId)
@@ -485,9 +477,7 @@ export class UserIdentitiesAuth {
           newFailedAttempts >= UserIdentitiesAuth.MAX_FAILED_ATTEMPTS;
 
         // Update failed attempts and potentially lock account using user ID
-        await (
-          await getSupabaseClient()
-        )
+        await supabase
           .from("user_identities")
           .update({
             failed_attempts: newFailedAttempts,
@@ -521,9 +511,7 @@ export class UserIdentitiesAuth {
   ): Promise<void> {
     try {
       // Reset failed attempts and update last successful auth
-      await (
-        await getSupabaseClient()
-      )
+      await supabase
         .from("user_identities")
         .update({
           failed_attempts: 0,
@@ -548,7 +536,7 @@ export class UserIdentitiesAuth {
    */
   private async logAuthAttempt(attempt: AuthAttempt): Promise<void> {
     try {
-      await (await getSupabaseClient()).from("user_auth_attempts").insert([
+      await supabase.from("user_auth_attempts").insert([
         {
           user_id: attempt.user_id || null,
           nip05: attempt.nip05 || null,
@@ -571,7 +559,7 @@ export class UserIdentitiesAuth {
       console.log("🔐 UserIdentitiesAuth.getUserById: Starting user retrieval");
       console.log("🔐 UserIdentitiesAuth.getUserById: userId:", userId);
 
-      const { data: user, error } = await (await getSupabaseClient())
+      const { data: user, error } = await supabase
         .from("user_identities")
         .select("*")
         .eq("id", userId)

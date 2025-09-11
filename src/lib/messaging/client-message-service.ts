@@ -11,6 +11,8 @@ import { hybridMessageSigning, SigningResult } from "./hybrid-message-signing";
 // Use CEPS for npub->hex conversion to avoid direct nostr-tools usage here
 import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 
+import { fetchWithAuth } from "../auth/fetch-with-auth";
+
 export interface MessageData {
   recipient: string;
   content: string;
@@ -188,14 +190,12 @@ export class ClientMessageService {
     signingResult: SigningResult
   ): Promise<MessageSendResult> {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `${this.baseUrl}/api/communications/giftwrapped`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            // Include authentication headers if available
-            ...(await this.getAuthHeaders()),
           },
           body: JSON.stringify({
             // Original message data for server processing

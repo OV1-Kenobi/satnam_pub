@@ -111,6 +111,21 @@
   status = 200
   force = true
 
+# Explicit auth refresh endpoint (higher priority than generic)
+[[redirects]]
+  from = "/api/auth/refresh"
+  to = "/.netlify/functions/auth-refresh"
+  status = 200
+  force = true
+
+# Explicit auth logout endpoint (higher priority than generic)
+[[redirects]]
+  from = "/api/auth/logout"
+  to = "/.netlify/functions/auth-logout"
+  status = 200
+  force = true
+
+
 # Consolidated auth endpoints (specific routes override below)
 [[redirects]]
   from = "/api/auth/*"

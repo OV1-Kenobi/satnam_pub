@@ -1,13 +1,16 @@
 /**
  * Authentication Provider
- * 
+ *
  * Provides unified authentication context throughout the application.
  * Integrates with Identity Forge (registration) and Nostrich Signin (login)
  * while maintaining privacy-first architecture with comprehensive protection.
  */
 
 import React, { createContext, useContext, useEffect } from 'react';
+import { setPassphraseProvider } from '../../lib/auth/client-session-vault';
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
+
+import PassphraseVaultModal from './PassphraseVaultModal';
 
 // Authentication context type
 type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
@@ -33,6 +36,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const auth = useUnifiedAuth();
   const [isRegistrationFlow, setIsRegistrationFlow] = React.useState(false);
   const [isLoginFlow, setIsLoginFlow] = React.useState(false);
+
+  // ClientSessionVault PBKDF2 passphrase modal wiring
+  const [vaultOpen, setVaultOpen] = React.useState(false);
+  const vaultResolverRef = React.useRef<((value: string | null) => void) | null>(null);
+
+  useEffect(() => {
+    // Install passphrase provider once at mount
+    setPassphraseProvider(() => {
+      return new Promise<string | null>((resolve) => {
+        vaultResolverRef.current = resolve;
+        setVaultOpen(true);
+      });
+    });
+  }, []);
 
   // Monitor authentication state changes
   useEffect(() => {
@@ -75,6 +92,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   return (
     <AuthContext.Provider value={contextValue}>
       {children}
+      <PassphraseVaultModal
+        open={vaultOpen}
+        onSubmit={(passphrase) => {
+          vaultResolverRef.current?.(passphrase);
+          vaultResolverRef.current = null;
+          setVaultOpen(false);
+        }}
+        onCancel={() => {
+          vaultResolverRef.current?.(null);
+          vaultResolverRef.current = null;
+          setVaultOpen(false);
+        }}
+      />
     </AuthContext.Provider>
   );
 };

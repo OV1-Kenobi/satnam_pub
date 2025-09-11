@@ -5,6 +5,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../src/lib/supabase";
 
 interface VaultSecret {
   name: string;
@@ -350,17 +351,9 @@ export class VaultConfigManager {
       return; // Already initialized
     }
 
-    // Try to import and use the main Supabase client to prevent multiple instances
-    try {
-      // Dynamic import to avoid circular dependencies
-      const { supabase } = await import("../src/lib/supabase");
-      this.supabase = supabase;
-      console.log("✅ Using main Supabase client for vault operations");
-    } catch (error) {
-      // Fallback to creating a new client if import fails
-      console.log("⚠️ Main client import failed, using fallback");
-      this.createFallbackClient();
-    }
+    // Initialize using the singleton Supabase client
+    this.supabase = supabase;
+    console.log("✅ Using main Supabase client for vault operations");
   }
 
   /**

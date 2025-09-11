@@ -1,12 +1,10 @@
 // src/components/communications/GiftwrappedMessaging.tsx - KEEP EXISTING NAME
 import { useEffect, useRef, useState } from 'react';
-import { initializeNSECSessionAfterAuth, nsecSessionBridge } from '../../lib/auth/nsec-session-bridge';
-import { NobleEncryption } from '../../lib/crypto/noble-encryption';
-import secureNsecManager from '../../lib/secure-nsec-manager';
 import { DashboardNotification, NotificationService } from '../../services/notificationService';
 import { showToast } from '../../services/toastService';
 import { useAuth } from '../auth/AuthProvider';
 import { SecurePeerInvitationModal } from '../SecurePeerInvitationModal';
+
 
 interface FamilyMember {
   id: string;
@@ -55,50 +53,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const auth = useAuth();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSigningSetup, setShowSigningSetup] = useState(false);
-  // Session status indicator state
-  const [sessionLoading, setSessionLoading] = useState<boolean>(true);
-  const [sessionActive, setSessionActive] = useState<boolean>(false);
-  const [remainingMs, setRemainingMs] = useState<number>(0);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [showSessionModal, setShowSessionModal] = useState<boolean>(false);
-  const [creatingSession, setCreatingSession] = useState<boolean>(false);
-
-  // Poll session status every second
-  useEffect(() => {
-    let timer: number | null = null;
-    const poll = () => {
-      try {
-        const status = nsecSessionBridge.getSessionStatus();
-        setSessionActive(status.hasSession && status.canSign);
-        setSessionId(status.sessionId);
-        // Derive remaining time via secureNsecManager formatting helper when possible
-        const activeId = status.sessionId || undefined;
-        const stat = secureNsecManager.getSessionStatus(activeId);
-        setRemainingMs(stat.active && stat.remainingTime ? stat.remainingTime : 0);
-        setSessionLoading(false);
-      } catch (e) {
-        setSessionActive(false);
-        setRemainingMs(0);
-        setSessionId(null);
-        setSessionLoading(false);
-      }
-    };
-    poll();
-    timer = window.setInterval(poll, 1000);
-    return () => {
-      if (timer) window.clearInterval(timer);
-    };
-  }, []);
-
-  const formatRemaining = (ms: number): string => {
-    if (ms <= 0) return '00:00';
-    const total = Math.ceil(ms / 1000);
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
-
-  const [showRecoverySession, setShowRecoverySession] = useState(false);
   const inviteBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Notifications
@@ -251,25 +205,9 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
     }
   };
 
-  const addContact = async (contactData: Omit<Contact, 'id' | 'supportsGiftWrap'>) => {
-    try {
-      const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
-      const giftWrapService = new GiftwrappedCommunicationService();
-      const result = await giftWrapService.addContact(contactData, familyMember.id);
-      if (result.success && result.contact) {
-        setContacts(prev => [...prev, result.contact]);
-        showToast.success('Contact added to Communications', { title: 'Contact Added', duration: 3000 });
-      }
-    } catch (error) {
-      console.error('Failed to add contact:', error);
-      setError('Failed to add contact');
-      showToast.error('Failed to add contact', { title: 'Contacts Error', duration: 0 });
-    }
-  };
+  // addContact removed (unused)
 
-  const handleContactSelect = (contact: Contact) => {
-    setRecipient(contact.npub);
-  };
+  // handleContactSelect removed (unused)
 
   if (isModal) {
     // Modal-specific behaviors: body scroll lock + ESC to close
@@ -419,45 +357,14 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           <h3 className="text-lg font-semibold text-gray-900">
             Private Family Communications
           </h3>
-          {/* Session Status Pill (top-right) */}
           <div className="flex items-center space-x-3">
-            {/* Notifications envelope inside New Message block is handled below */}
-            {(() => {
-              const ms = remainingMs;
-              const loading = sessionLoading;
-              const active = sessionActive && ms > 0;
-              const warn = active && ms <= 5 * 60 * 1000;
-              const bg = loading
-                ? 'bg-gray-200 text-gray-700'
-                : !active
-                  ? 'bg-red-100 text-red-700'
-                  : warn
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-green-100 text-green-700';
-              const label = loading
-                ? 'Checking session…'
-                : !active
-                  ? 'Start Signing Session'
-                  : `Session active: ${formatRemaining(ms)}`;
-              return (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setShowRecoverySession(true)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${bg}`}
-                    title="Manage signing session"
-                  >
-                    {label}
-                  </button>
-                  <button
-                    onClick={() => setShowSigningSetup(true)}
-                    className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    title="Session settings"
-                  >
-                    Settings
-                  </button>
-                </div>
-              );
-            })()}
+            <button
+              onClick={() => setShowSigningSetup(true)}
+              className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
+              title="Session settings"
+            >
+              Settings
+            </button>
           </div>
         </div>
 
@@ -712,101 +619,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           )}
         </div>
 
-        {/* Recovery Session Modal (Create/Extend/Settings) */}
-        {showRecoverySession && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowRecoverySession(false)}>
-            <div className="bg-white rounded-lg p-4 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-gray-900">Signing Session</h4>
-                <button onClick={() => setShowRecoverySession(false)} className="text-gray-500 hover:text-gray-700">✕</button>
-              </div>
-
-              {/* Session state */}
-              <div className="mb-3">
-                <div className="text-sm text-gray-700">
-                  {sessionActive && remainingMs > 0 ? (
-                    <>Active session — {formatRemaining(remainingMs)} remaining</>
-                  ) : (
-                    <>No active session</>
-                  )}
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Active session = nsec available for signing without extra approvals. NIP-07 removes per-event approvals but requires the extension. Physical MFA is the most secure and always requires approvals.
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {/* Extend */}
-                {sessionActive && remainingMs > 0 && (
-                  <button
-                    onClick={() => {
-                      const ok = secureNsecManager.extendSession(5 * 60 * 1000);
-                      if (ok) showToast.success('Session extended by 5 minutes', { title: 'Session' });
-                      else showToast.error('Failed to extend session', { title: 'Session' });
-                    }}
-                    className="w-full px-3 py-2 bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200 text-sm"
-                  >
-                    Extend Session (+5 min)
-                  </button>
-                )}
-
-                {/* Create new session */}
-                {!sessionActive && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        setCreatingSession(true);
-                        // Try to fetch encrypted nsec + salt from server using cookie/session
-                        const res = await fetch('/api/auth/session-user', {
-                          method: 'GET',
-                          credentials: 'include',
-                          headers: { 'Accept': 'application/json' },
-                        });
-                        if (!res.ok) {
-                          throw new Error(`Session lookup failed (${res.status})`);
-                        }
-                        const payload = await res.json();
-                        const user = payload?.data?.user;
-                        const enc = user?.encrypted_nsec;
-                        const salt = user?.user_salt;
-                        if (!enc || !salt) {
-                          throw new Error('Missing encrypted credentials in session; please re-authenticate');
-                        }
-                        // Decrypt to bech32 nsec
-                        const nsec = await NobleEncryption.decryptNsec(enc, String(salt));
-                        // Initialize temporary signing session (bech32 accepted)
-                        const session = await initializeNSECSessionAfterAuth(nsec, { duration: 15 * 60 * 1000 });
-                        if (!session) throw new Error('Failed to create signing session');
-                        showToast.success('New signing session started', { title: 'Session', duration: 3500 });
-                        setShowRecoverySession(false);
-                      } catch (err) {
-                        const msg = err instanceof Error ? err.message : 'Failed to start session';
-                        showToast.error(msg, { title: 'Session', duration: 5000 });
-                      } finally {
-                        setCreatingSession(false);
-                      }
-                    }}
-                    disabled={creatingSession}
-                    className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
-                  >
-                    {creatingSession ? 'Starting…' : 'Start New Session'}
-                  </button>
-                )}
-
-                {/* Preferences / settings */}
-                <button
-                  onClick={() => {
-                    setShowRecoverySession(false);
-                    setShowSigningSetup(true);
-                  }}
-                  className="w-full px-3 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 text-sm"
-                >
-                  Session Security Settings
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
 
         {showInviteModal && auth.sessionToken && auth.user && (

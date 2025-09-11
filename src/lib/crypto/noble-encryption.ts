@@ -4,11 +4,11 @@
  * @security Cure53 audited (Q3 2024), zero dependencies, browser-compatible
  */
 
-import { gcm } from '@noble/ciphers/aes';
-import { randomBytes } from '@noble/ciphers/webcrypto';
-import { pbkdf2 } from '@noble/hashes/pbkdf2';
-import { sha256 } from '@noble/hashes/sha256';
-import { bytesToHex, hexToBytes } from '@noble/curves/utils';
+import { gcm } from "@noble/ciphers/aes";
+import { randomBytes } from "@noble/ciphers/webcrypto";
+import { bytesToHex } from "@noble/curves/utils";
+import { pbkdf2 } from "@noble/hashes/pbkdf2";
+import { sha256 } from "@noble/hashes/sha256";
 
 /**
  * Noble V2 Encryption Configuration
@@ -17,25 +17,25 @@ import { bytesToHex, hexToBytes } from '@noble/curves/utils';
 export const NOBLE_CONFIG = {
   // AES-256-GCM Configuration
   keyLength: 32, // 256-bit keys
-  ivLength: 12,  // 96-bit IV for GCM
+  ivLength: 12, // 96-bit IV for GCM
   tagLength: 16, // 128-bit authentication tag
-  
+
   // PBKDF2 Configuration
   pbkdf2Iterations: 100000, // NIST recommended minimum
   saltLength: 32, // 256-bit salt
-  
+
   // Encoding
-  encoding: 'base64url' as const, // URL-safe base64
+  encoding: "base64url" as const, // URL-safe base64
 } as const;
 
 /**
  * Encryption result format
  */
 export interface NobleEncryptionResult {
-  encrypted: string;    // base64url encoded ciphertext
-  salt: string;        // base64url encoded salt
-  iv: string;          // base64url encoded IV
-  version: 'noble-v2'; // Format version for future compatibility
+  encrypted: string; // base64url encoded ciphertext
+  salt: string; // base64url encoded salt
+  iv: string; // base64url encoded IV
+  version: "noble-v2"; // Format version for future compatibility
 }
 
 /**
@@ -57,26 +57,30 @@ export class NobleEncryption {
       // Generate cryptographic parameters
       const salt = randomBytes(NOBLE_CONFIG.saltLength);
       const iv = randomBytes(NOBLE_CONFIG.ivLength);
-      
+
       // Derive key using PBKDF2
       const key = pbkdf2(sha256, password, salt, {
         c: NOBLE_CONFIG.pbkdf2Iterations,
-        dkLen: NOBLE_CONFIG.keyLength
+        dkLen: NOBLE_CONFIG.keyLength,
       });
-      
+
       // Encrypt using AES-256-GCM
       const cipher = gcm(key, iv);
       const plainBytes = new TextEncoder().encode(plaintext);
       const encrypted = cipher.encrypt(plainBytes);
-      
+
       return {
         encrypted: this.bytesToBase64Url(encrypted),
         salt: this.bytesToBase64Url(salt),
         iv: this.bytesToBase64Url(iv),
-        version: 'noble-v2'
+        version: "noble-v2",
       };
     } catch (error) {
-      throw new Error(`Noble V2 encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Noble V2 encryption failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -95,20 +99,24 @@ export class NobleEncryption {
       const salt = this.base64UrlToBytes(encryptionResult.salt);
       const iv = this.base64UrlToBytes(encryptionResult.iv);
       const encrypted = this.base64UrlToBytes(encryptionResult.encrypted);
-      
+
       // Derive key using same parameters
       const key = pbkdf2(sha256, password, salt, {
         c: NOBLE_CONFIG.pbkdf2Iterations,
-        dkLen: NOBLE_CONFIG.keyLength
+        dkLen: NOBLE_CONFIG.keyLength,
       });
-      
+
       // Decrypt using AES-256-GCM
       const cipher = gcm(key, iv);
       const decrypted = cipher.decrypt(encrypted);
-      
+
       return new TextDecoder().decode(decrypted);
     } catch (error) {
-      throw new Error(`Noble V2 decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Noble V2 decryption failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -121,17 +129,21 @@ export class NobleEncryption {
   static async encryptNsec(nsec: string, userSalt: string): Promise<string> {
     try {
       // Validate nsec format
-      if (!nsec.startsWith('nsec1')) {
-        throw new Error('Invalid nsec format - must start with nsec1');
+      if (!nsec.startsWith("nsec1")) {
+        throw new Error("Invalid nsec format - must start with nsec1");
       }
-      
+
       // Use userSalt directly as password for zero-knowledge encryption
       const result = await this.encrypt(nsec, userSalt);
-      
+
       // Return compact format for database storage: version.salt.iv.encrypted
       return `${result.version}.${result.salt}.${result.iv}.${result.encrypted}`;
     } catch (error) {
-      throw new Error(`Nsec encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Nsec encryption failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -141,35 +153,50 @@ export class NobleEncryption {
    * @param userSalt User's unique salt
    * @returns Decrypted nsec in bech32 format
    */
-  static async decryptNsec(encryptedNsec: string, userSalt: string): Promise<string> {
+  static async decryptNsec(
+    encryptedNsec: string,
+    userSalt: string
+  ): Promise<string> {
     try {
       // Parse compact format: version.salt.iv.encrypted
-      const parts = encryptedNsec.split('.');
-      if (parts.length !== 4 || parts[0] !== 'noble-v2') {
-        throw new Error('Invalid encrypted nsec format - expected noble-v2.salt.iv.encrypted');
+      const parts = encryptedNsec.split(".");
+      if (parts.length !== 4 || parts[0] !== "noble-v2") {
+        throw new Error(
+          "Invalid encrypted nsec format - expected noble-v2.salt.iv.encrypted"
+        );
       }
-      
-      const [version, salt, iv, encrypted] = parts;
-      
-      // Reconstruct encryption result
-      const encryptionResult: NobleEncryptionResult = {
-        encrypted,
-        salt,
-        iv,
-        version: 'noble-v2'
-      };
-      
-      // Decrypt using userSalt
-      const decrypted = await this.decrypt(encryptionResult, userSalt);
-      
-      // Validate result
-      if (!decrypted.startsWith('nsec1')) {
-        throw new Error('Decrypted data is not a valid nsec');
+
+      const [, saltB64u, ivB64u, ctB64u] = parts;
+
+      // Decode params (salt must be 32 bytes per spec)
+      const saltBytes = this.base64UrlToBytes(saltB64u);
+      if (saltBytes.length !== NOBLE_CONFIG.saltLength) {
+        throw new Error("Invalid salt length in encrypted nsec");
       }
-      
-      return decrypted;
+      const ivBytes = this.base64UrlToBytes(ivB64u);
+      const ctBytes = this.base64UrlToBytes(ctB64u);
+
+      // Derive key using PBKDF2 (SHA-256), 100k iters, 32-byte key
+      const key = pbkdf2(sha256, userSalt, saltBytes, {
+        c: NOBLE_CONFIG.pbkdf2Iterations,
+        dkLen: NOBLE_CONFIG.keyLength,
+      });
+
+      // Decrypt using AES-GCM
+      const cipher = gcm(key, ivBytes);
+      const decrypted = cipher.decrypt(ctBytes);
+
+      const plain = new TextDecoder().decode(decrypted);
+      if (!plain.startsWith("nsec1")) {
+        throw new Error("Decrypted data is not a valid nsec");
+      }
+      return plain;
     } catch (error) {
-      throw new Error(`Nsec decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Nsec decryption failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -208,9 +235,9 @@ export class NobleEncryption {
    */
   private static bytesToBase64Url(bytes: Uint8Array): string {
     return btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "");
   }
 
   /**
@@ -218,11 +245,13 @@ export class NobleEncryption {
    */
   private static base64UrlToBytes(base64url: string): Uint8Array {
     // Add padding if needed
-    const padding = '='.repeat((4 - base64url.length % 4) % 4);
-    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + padding;
-    
+    const padding = "=".repeat((4 - (base64url.length % 4)) % 4);
+    const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/") + padding;
+
     return new Uint8Array(
-      atob(base64).split('').map(c => c.charCodeAt(0))
+      atob(base64)
+        .split("")
+        .map((c) => c.charCodeAt(0))
     );
   }
 
@@ -231,19 +260,19 @@ export class NobleEncryption {
    * @param sensitiveData Array of sensitive strings to clear
    */
   static secureWipe(sensitiveData: string[]): void {
-    sensitiveData.forEach(data => {
-      if (typeof data === 'string') {
+    sensitiveData.forEach((data) => {
+      if (typeof data === "string") {
         // Best effort to clear string from memory
         try {
-          (data as any) = '\0'.repeat(data.length);
+          (data as any) = "\0".repeat(data.length);
         } catch {
           // Ignore if string is immutable
         }
       }
     });
-    
+
     // Force garbage collection if available
-    if (typeof window !== 'undefined' && 'gc' in window) {
+    if (typeof window !== "undefined" && "gc" in window) {
       try {
         (window as any).gc();
       } catch {
@@ -262,7 +291,8 @@ export const NobleUtils = {
   encryptNsec: NobleEncryption.encryptNsec.bind(NobleEncryption),
   decryptNsec: NobleEncryption.decryptNsec.bind(NobleEncryption),
   hash: NobleEncryption.hash.bind(NobleEncryption),
-  generateRandomBytes: NobleEncryption.generateRandomBytes.bind(NobleEncryption),
+  generateRandomBytes:
+    NobleEncryption.generateRandomBytes.bind(NobleEncryption),
   generateRandomHex: NobleEncryption.generateRandomHex.bind(NobleEncryption),
   secureWipe: NobleEncryption.secureWipe.bind(NobleEncryption),
 };

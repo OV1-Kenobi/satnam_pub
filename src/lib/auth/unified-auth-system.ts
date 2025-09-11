@@ -14,9 +14,33 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ClientSessionVault,
+  hasVaultRecord,
+  setNFCPolicy,
+} from "./client-session-vault";
+import { fetchWithAuth } from "./fetch-with-auth";
+import { awaitNFC } from "./nfc-auth-bridge";
+import { nsecSessionBridge } from "./nsec-session-bridge";
 import { recoverySessionBridge } from "./recovery-session-bridge";
 import SecureTokenManager from "./secure-token-manager";
 import { AuthResult, UserIdentity } from "./user-identities-auth";
+
+const USE_VAULT =
+  (import.meta.env.VITE_USE_CLIENT_SESSION_VAULT ?? "true") === "true";
+
+// Local helper to read vault auto-prompt preference (opt-in)
+function shouldAutoPromptVault(): boolean {
+  try {
+    if (typeof window === "undefined") return false;
+    const raw = localStorage.getItem("satnam.vault.config");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return !!parsed?.autoPrompt;
+  } catch {
+    return false;
+  }
+}
 
 // Protected areas that require authentication
 export const PROTECTED_AREAS = {
@@ -60,6 +84,8 @@ export interface UnifiedAuthActions {
     signature: string,
     pubkey: string
   ) => Promise<boolean>;
+  // Physical MFA (NFC) unlock/signing readiness
+  authenticateNFC: () => Promise<boolean>;
 
   // Session management
   validateSession: () => Promise<boolean>;
@@ -123,6 +149,72 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     sessionValid: false,
     lastValidated: null,
   });
+  // Vault rehydrate on app load (no server calls)
+  useEffect(() => {
+    if (USE_VAULT) {
+      try {
+        // Configure NFC policy for vault gating
+        try {
+          const NFC_ENABLED =
+            (import.meta.env.VITE_ENABLE_NFC_MFA ?? "false") === "true";
+          const NFC_SUPPORTED =
+            typeof window !== "undefined" && "NDEFReader" in window;
+          if (NFC_ENABLED && NFC_SUPPORTED) {
+            setNFCPolicy({
+              policy: "nfc",
+              awaitNfcAuth: awaitNFC,
+              config: {
+                pinTimeoutMs: parseInt(
+                  import.meta.env.VITE_NFC_PIN_TIMEOUT ?? "120000"
+                ),
+                confirmationMode: (import.meta.env.VITE_NFC_CONFIRMATION_MODE ??
+                  "per_unlock") as "per_unlock" | "per_operation",
+              },
+            });
+          } else {
+            setNFCPolicy({ policy: "none" });
+          }
+        } catch (e) {
+          // If config or env missing, disable NFC gating
+          setNFCPolicy({ policy: "none" });
+        }
+
+        const status = (nsecSessionBridge as any)?.getSessionStatus?.();
+        const hasSession = !!status?.hasSession;
+        if (!hasSession) {
+          (async () => {
+            const allowPrompt = shouldAutoPromptVault();
+            let unlocked = await ClientSessionVault.unlock({
+              interactive: allowPrompt,
+            }).catch(() => false);
+            if (!unlocked && (await hasVaultRecord())) {
+              // Respect opt-in; only prompt if enabled
+              unlocked = await ClientSessionVault.unlock({
+                interactive: allowPrompt,
+              }).catch(() => false);
+            }
+            if (unlocked) {
+              const nsecHex = await ClientSessionVault.getNsecHex();
+              if (nsecHex) {
+                await nsecSessionBridge.initializeAfterAuth(nsecHex, {
+                  browserLifetime: true,
+                  maxOperations: 50,
+                });
+                console.log(
+                  "🔐 Rehydrated signing session from ClientSessionVault"
+                );
+              }
+            }
+          })();
+        }
+      } catch (e) {
+        console.debug(
+          "Vault rehydrate attempt skipped:",
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+    }
+  }, []);
 
   /**
    * Clear stored session data
@@ -272,14 +364,36 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
           setState((prev) => ({ ...prev, loading: false }));
         }
       } else {
-        // No tokens available — check if refresh cookie exists (prod persistence)
-        const hasRefresh = await SecureTokenManager.checkRefreshAvailable();
-        console.debug(
-          "ℹ️ Auth init: no access token in memory; refresh cookie available:",
-          hasRefresh
+        // No access token in memory — avoid calling check-refresh on public/landing pages
+        // Gate refresh attempts to either (a) previously stored user exists, or (b) current route is protected
+        const currentPath =
+          typeof window !== "undefined" ? window.location.pathname : "";
+        const protectedPaths = Object.values(PROTECTED_AREAS) as string[];
+        const isProtectedPath = protectedPaths.some(
+          (p) => currentPath === p || currentPath.startsWith(p + "/")
+        );
+        const hasStoredUser = !!sessionStorage.getItem(
+          SESSION_STORAGE_KEYS.USER
         );
 
-        // PRODUCTION PERSISTENCE FIX: If refresh cookie exists, attempt silent refresh
+        if (!hasStoredUser && !isProtectedPath) {
+          // Unauthenticated visitor on public route — do not ping check-refresh
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            authenticated: false,
+          }));
+          return;
+        }
+
+        // Only now check if refresh cookie exists (server will confirm). This may 401 if no cookie; that's expected on protected routes.
+        const hasRefresh = await SecureTokenManager.checkRefreshAvailable();
+        console.debug(
+          "ℹ️ Auth init: gated refresh check; refresh cookie available:",
+          hasRefresh,
+          { currentPath, isProtectedPath, hasStoredUser }
+        );
+
         if (hasRefresh) {
           const refreshedToken = await SecureTokenManager.silentRefresh();
           if (refreshedToken) {
@@ -443,6 +557,49 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
               "🔐 Post-auth: creating SecureNsecManager session directly from signin response"
             );
 
+            // ClientSessionVault (feature-flagged): prefer local vault session
+            if (USE_VAULT) {
+              try {
+                await ClientSessionVault.bootstrapFromSignin(
+                  u.encrypted_nsec,
+                  u.user_salt,
+                  u.npub
+                );
+                // First try silent, no-prompt unlock to populate device vault by default
+                let unlocked = await ClientSessionVault.unlock({
+                  interactive: false,
+                }).catch(() => false);
+                // If opted-in to prompts, allow interactive methods as a follow-up
+                if (!unlocked) {
+                  const allowPromptPostAuth = shouldAutoPromptVault();
+                  if (allowPromptPostAuth) {
+                    unlocked = await ClientSessionVault.unlock({
+                      interactive: true,
+                    }).catch(() => false);
+                  }
+                }
+                if (unlocked) {
+                  const nsecHex = await ClientSessionVault.getNsecHex();
+                  if (nsecHex) {
+                    await nsecSessionBridge.initializeAfterAuth(nsecHex, {
+                      browserLifetime: true,
+                      maxOperations: 50,
+                    });
+                    console.log(
+                      "🔐 Post-auth: SecureNsecManager session created (vault)"
+                    );
+                    sessionUserFetchRef.current.done = true;
+                    return true;
+                  }
+                }
+              } catch (e) {
+                console.warn(
+                  "Vault direct init failed; falling back to session bridge",
+                  e instanceof Error ? e.message : String(e)
+                );
+              }
+            }
+
             try {
               const session =
                 await recoverySessionBridge.createRecoverySessionFromUser(
@@ -505,15 +662,10 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             } else {
               sessionUserFetchRef.current.inFlight = true;
               try {
-                const token = SecureTokenManager.getAccessToken();
                 const fetchOnce = () =>
-                  fetch("/api/auth/session-user", {
+                  fetchWithAuth("/api/auth/session-user", {
                     method: "GET",
                     credentials: "include",
-                    headers: {
-                      Accept: "application/json",
-                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    },
                   });
 
                 let res = await fetchOnce();
@@ -536,21 +688,67 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
                     | { encrypted_nsec?: string; user_salt?: string }
                     | undefined;
                   if (su?.encrypted_nsec && su?.user_salt) {
-                    const session =
-                      await recoverySessionBridge.createRecoverySessionFromUser(
-                        su as any,
-                        { duration: 15 * 60 * 1000 }
-                      );
-                    if (!session?.success) {
-                      console.warn(
-                        "NSEC session (fallback) creation failed:",
-                        session?.error
-                      );
-                    } else {
-                      console.log(
-                        "🔐 Post-auth (fallback): SecureNsecManager session created"
-                      );
-                      sessionUserFetchRef.current.done = true;
+                    let created = false;
+                    if (USE_VAULT) {
+                      try {
+                        await ClientSessionVault.bootstrapFromSignin(
+                          su.encrypted_nsec,
+                          su.user_salt,
+                          (su as any).npub
+                        );
+                        // First attempt silent, no-prompt unlock for default device vault
+                        let unlocked = await ClientSessionVault.unlock({
+                          interactive: false,
+                        }).catch(() => false);
+                        if (!unlocked) {
+                          const allowPromptFallback = shouldAutoPromptVault();
+                          if (allowPromptFallback) {
+                            unlocked = await ClientSessionVault.unlock({
+                              interactive: true,
+                            }).catch(() => false);
+                          }
+                        }
+                        if (unlocked) {
+                          const nsecHex = await ClientSessionVault.getNsecHex();
+                          if (nsecHex) {
+                            await nsecSessionBridge.initializeAfterAuth(
+                              nsecHex,
+                              {
+                                browserLifetime: true,
+                                maxOperations: 50,
+                              }
+                            );
+                            console.log(
+                              "🔐 Post-auth (fallback): SecureNsecManager session created (vault)"
+                            );
+                            sessionUserFetchRef.current.done = true;
+                            created = true;
+                          }
+                        }
+                      } catch (e) {
+                        console.debug(
+                          "Vault fallback init failed; attempting RecoverySessionBridge",
+                          e instanceof Error ? e.message : String(e)
+                        );
+                      }
+                    }
+                    if (!created) {
+                      const session =
+                        await recoverySessionBridge.createRecoverySessionFromUser(
+                          su as any,
+                          { duration: 15 * 60 * 1000 }
+                        );
+                      if (!session?.success) {
+                        console.warn(
+                          "NSEC session (fallback) creation failed:",
+                          session?.error
+                        );
+                      } else {
+                        console.log(
+                          "🔐 Post-auth (fallback): SecureNsecManager session created"
+                        );
+                        sessionUserFetchRef.current.done = true;
+                      }
                     }
                   } else {
                     console.debug(
@@ -645,7 +843,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
         // Call server endpoint for NIP-05/password authentication
-        const response = await fetch("/api/auth/signin", {
+        const response = await fetchWithAuth("/api/auth/signin", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -728,7 +926,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
         // Call server NIP-07 signin endpoint
-        const response = await fetch("/api/auth/nip07-signin", {
+        const response = await fetchWithAuth("/api/auth/nip07-signin", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -776,6 +974,60 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     },
     [handleAuthSuccess]
   );
+
+  /**
+   * Authenticate via Physical MFA (NFC) to unlock vault and enable signing
+   * Client-side only; does not modify platform authentication state
+   */
+  const authenticateNFC = useCallback(async (): Promise<boolean> => {
+    // Reset fetch state for any dependent flows
+    sessionUserFetchRef.current = { done: false, inFlight: false, retries: 0 };
+    try {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      const NFC_ENABLED =
+        (import.meta.env.VITE_ENABLE_NFC_MFA ?? "false") === "true";
+      const NFC_SUPPORTED =
+        typeof window !== "undefined" && "NDEFReader" in window;
+      if (!NFC_ENABLED || !NFC_SUPPORTED) {
+        setState((prev) => ({ ...prev, loading: false }));
+        return false;
+      }
+
+      const okNfc = await awaitNFC();
+      if (!okNfc) {
+        setState((prev) => ({ ...prev, loading: false }));
+        return false;
+      }
+
+      let unlocked = await ClientSessionVault.unlock().catch(() => false);
+      if (!unlocked && (await hasVaultRecord())) {
+        unlocked = await ClientSessionVault.unlock().catch(() => false);
+      }
+      if (unlocked) {
+        const nsecHex = await ClientSessionVault.getNsecHex();
+        if (nsecHex) {
+          await nsecSessionBridge.initializeAfterAuth(nsecHex, {
+            browserLifetime: true,
+            maxOperations: 50,
+          });
+          setState((prev) => ({ ...prev, loading: false }));
+          return true;
+        }
+      }
+
+      setState((prev) => ({ ...prev, loading: false }));
+      return false;
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error:
+          error instanceof Error ? error.message : "NFC authentication failed",
+      }));
+      return false;
+    }
+  }, []);
 
   /**
    * Validate current session
@@ -943,6 +1195,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     // Actions
     authenticateNIP05Password,
     authenticateNIP07,
+    authenticateNFC,
     validateSession,
     refreshSession,
     logout,

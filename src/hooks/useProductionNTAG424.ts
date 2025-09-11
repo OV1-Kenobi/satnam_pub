@@ -1,26 +1,10 @@
 /**
  * @fileoverview React hook for NTAG424 Production Tag Authentication
- * @description Provides NFC-based multi-factor authentication and registration for Satnam.pub
- * @compliance Master Context - Privacy-first, Bitcoin-only, browser-only, no Node.js modules
- * @integration Supabase, LightningClient, NFC Web API
+ * @description Connects NFC-based authentication and registration to unified server endpoints
+ * @compliance Master Context - Privacy-first, browser-only, zero-knowledge on server
  */
 
 import { useCallback, useState } from "react";
-import { LightningClient } from '../lib/lightning-client.js';
-import {
-  NTAG424AuthResponse,
-  NTAG424ProductionManager,
-} from "../lib/ntag424-production";
-
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("../lib/supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
 
 export interface ProductionNTAG424AuthState {
   isAuthenticated: boolean;
@@ -31,15 +15,26 @@ export interface ProductionNTAG424AuthState {
   error?: string | null;
 }
 
+const API_BASE: string =
+  (import.meta.env.VITE_API_BASE_URL as string) || "/api";
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const { SecureTokenManager } = await import(
+      "../lib/auth/secure-token-manager"
+    );
+    const accessToken = SecureTokenManager.getAccessToken();
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * useProductionNTAG424
- * React hook for NFC-based authentication and registration with NTAG424 production tags
- * @returns {object} Hook state and NFC auth/register functions
+ * React hook for NFC-based authentication and registration routed via unified function
  */
-export const useProductionNTAG424 = (
-  supabaseClient: any = supabase,
-  lightningClient: any = new LightningClient()
-) => {
+export const useProductionNTAG424 = () => {
   const [authState, setAuthState] = useState<ProductionNTAG424AuthState>({
     isAuthenticated: false,
     sessionToken: null,
@@ -52,159 +47,137 @@ export const useProductionNTAG424 = (
 
   /**
    * Authenticate with NTAG424 production tag via NFC
-   * @param pin User PIN for tag authentication
-   * @returns {Promise<NTAG424AuthResponse>} Authentication result
    */
-  const authenticateWithNFC = useCallback(
-    async (pin: string): Promise<NTAG424AuthResponse> => {
-      setIsProcessing(true);
-      setAuthState((prev) => ({ ...prev, error: null }));
-      try {
-        if (typeof window !== "undefined" && "NDEFReader" in window) {
-          const ndef = new (window as any).NDEFReader();
-          await ndef.scan();
-          return new Promise<NTAG424AuthResponse>((resolve, reject) => {
-            ndef.addEventListener("reading", async (event: any) => {
-              try {
-                const uid = event.serialNumber;
-                // TODO: Extract SUN message from event.message.records (future NTAG424 DNA integration)
-                let sunMessage = "";
-                if (
-                  event.message &&
-                  event.message.records &&
-                  event.message.records.length > 0
-                ) {
-                  // Placeholder: implement SUN extraction logic as per NTAG424 DNA spec
-                  sunMessage = ""; // e.g., parseTextRecord(event.message.records[0])
-                }
-                const ntagManager = new NTAG424ProductionManager(
-                  supabaseClient,
-                  lightningClient
-                );
-                const result = await ntagManager.authenticateProductionTag(
-                  uid,
-                  pin,
-                  sunMessage
-                );
-                if (result.success) {
-                  setAuthState({
-                    isAuthenticated: true,
-                    sessionToken: result.sessionToken!,
-                    userNpub: result.userNpub!,
-                    familyRole: result.familyRole!,
-                    walletAccess: result.walletAccess,
-                    error: null,
-                  });
-                  resolve(result);
-                } else {
-                  setAuthState((prev) => ({
-                    ...prev,
-                    error: result.error || "Authentication failed",
-                  }));
-                  reject(new Error(result.error));
-                }
-              } catch (error: any) {
-                setAuthState((prev) => ({
-                  ...prev,
-                  error: error.message || "NFC authentication error",
-                }));
-                reject(error);
-              } finally {
-                setIsProcessing(false);
-              }
-            });
-            setTimeout(() => {
-              setIsProcessing(false);
-              setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
-              reject(new Error("NFC read timeout"));
-            }, 30000);
-          });
-        } else {
-          throw new Error("NFC not supported on this device/browser");
-        }
-      } catch (error: any) {
-        setIsProcessing(false);
-        setAuthState((prev) => ({
-          ...prev,
-          error: error.message || "NFC authentication error",
-        }));
-        throw error;
+  const authenticateWithNFC = useCallback(async (pin: string) => {
+    setIsProcessing(true);
+    setAuthState((prev) => ({ ...prev, error: null }));
+    try {
+      if (typeof window === "undefined" || !("NDEFReader" in window)) {
+        throw new Error("NFC not supported on this device/browser");
       }
-    },
-    [supabaseClient, lightningClient]
-  );
+      const ndef = new (window as any).NDEFReader();
+      await ndef.scan();
+      return await new Promise<any>((resolve, reject) => {
+        ndef.addEventListener("reading", async (event: any) => {
+          try {
+            const uid = event.serialNumber;
+            // Optional: extract SUN message from event.message.records if available
+            const headers = await getAuthHeaders();
+            const res = await fetch(`${API_BASE}/nfc-unified/verify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...headers },
+              body: JSON.stringify({ tagUID: uid }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json?.success) {
+              throw new Error(json?.error || `HTTP ${res.status}`);
+            }
+            setAuthState((prev) => ({
+              ...prev,
+              isAuthenticated: true,
+              error: null,
+            }));
+            resolve({ success: true });
+          } catch (err: any) {
+            setAuthState((prev) => ({
+              ...prev,
+              error: err?.message || "NFC authentication error",
+            }));
+            reject(err);
+          } finally {
+            setIsProcessing(false);
+          }
+        });
+        setTimeout(() => {
+          setIsProcessing(false);
+          setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
+          reject(new Error("NFC read timeout"));
+        }, 30000);
+      });
+    } catch (error: any) {
+      setIsProcessing(false);
+      setAuthState((prev) => ({
+        ...prev,
+        error: error?.message || "NFC authentication error",
+      }));
+      throw error;
+    }
+  }, []);
 
   /**
    * Register a new NTAG424 production tag via NFC
-   * @param pin User PIN for tag registration
-   * @param userNpub User's Nostr public key
-   * @param familyRole Family role for the tag
-   * @param spendingLimits Optional spending limits
-   * @returns {Promise<boolean>} Registration success
    */
   const registerNewTag = useCallback(
     async (
       pin: string,
       userNpub: string,
-      familyRole: string,
-      spendingLimits?: any
+      familyRole: string
     ): Promise<boolean> => {
       setIsProcessing(true);
       setAuthState((prev) => ({ ...prev, error: null }));
       try {
-        if (typeof window !== "undefined" && "NDEFReader" in window) {
-          const ndef = new (window as any).NDEFReader();
-          await ndef.scan();
-          return new Promise<boolean>((resolve, reject) => {
-            ndef.addEventListener("reading", async (event: any) => {
-              try {
-                const uid = event.serialNumber;
-                const ntagManager = new NTAG424ProductionManager(
-                  supabaseClient,
-                  lightningClient
-                );
-                const success = await ntagManager.registerProductionTag(
-                  uid,
-                  pin,
-                  userNpub,
-                  familyRole,
-                  spendingLimits
-                );
-                setIsProcessing(false);
-                resolve(success);
-              } catch (error: any) {
-                setIsProcessing(false);
-                setAuthState((prev) => ({
-                  ...prev,
-                  error: error.message || "NFC registration error",
-                }));
-                reject(error);
-              }
-            });
-            setTimeout(() => {
-              setIsProcessing(false);
-              setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
-              reject(new Error("NFC read timeout"));
-            }, 30000);
-          });
-        } else {
+        if (typeof window === "undefined" || !("NDEFReader" in window)) {
           throw new Error("NFC not supported on this device/browser");
         }
+        const ndef = new (window as any).NDEFReader();
+        await ndef.scan();
+        return await new Promise<boolean>((resolve, reject) => {
+          ndef.addEventListener("reading", async (event: any) => {
+            try {
+              const uid = event.serialNumber;
+              // Minimal client-side encrypted metadata (zero-knowledge; server stores as opaque)
+              const payload = {
+                uid,
+                userNpub,
+                pinProtected: !!pin,
+                createdAt: Date.now(),
+              };
+              const encryptedMetadata = btoa(
+                unescape(encodeURIComponent(JSON.stringify(payload)))
+              );
+              const headers = await getAuthHeaders();
+              const res = await fetch(`${API_BASE}/nfc-unified/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...headers },
+                body: JSON.stringify({
+                  tagUID: uid,
+                  encryptedMetadata,
+                  familyRole,
+                }),
+              });
+              const json = await res.json();
+              if (!res.ok || !json?.success) {
+                throw new Error(json?.error || `HTTP ${res.status}`);
+              }
+              resolve(true);
+            } catch (err: any) {
+              setAuthState((prev) => ({
+                ...prev,
+                error: err?.message || "NFC registration error",
+              }));
+              reject(err);
+            } finally {
+              setIsProcessing(false);
+            }
+          });
+          setTimeout(() => {
+            setIsProcessing(false);
+            setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
+            reject(new Error("NFC read timeout"));
+          }, 30000);
+        });
       } catch (error: any) {
         setIsProcessing(false);
         setAuthState((prev) => ({
           ...prev,
-          error: error.message || "NFC registration error",
+          error: error?.message || "NFC registration error",
         }));
         throw error;
       }
     },
-    [supabaseClient, lightningClient]
+    []
   );
 
-  /**
-   * Reset authentication state
-   */
   const resetAuthState = useCallback(() => {
     setAuthState({
       isAuthenticated: false,

@@ -8,6 +8,11 @@ import React, { useEffect, useState } from "react";
 import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
 import { PrivacyLevel } from "../../types/privacy";
 
+import ClientSessionVault, { getVaultFeatureFlags, getVaultStatus, isWebAuthnAvailable, setVaultFeatureFlags } from "../../lib/auth/client-session-vault";
+import { userSigningPreferences } from "../../lib/user-signing-preferences";
+import { showToast } from "../../services/toastService";
+
+
 
 interface PrivacyPreferences {
   default_privacy_level: PrivacyLevel;
@@ -54,8 +59,107 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
   const [enableSessionTimeout, setEnableSessionTimeout] = useState<boolean>(false);
   const [customSessionTimeoutMinutes, setCustomSessionTimeoutMinutes] = useState<number>(15);
 
+  // Device Vault status
+  // NFC Physical MFA scaffolding
+  type NfcMfaStatus = "not_configured" | "configured" | "coming_soon";
+  interface NfcMfaConfig {
+    tagId?: string;
+    pinProtected?: boolean;
+    lastConfiguredAt?: number;
+  }
+  const [nfcStatus, setNfcStatus] = useState<NfcMfaStatus>("coming_soon");
+  const [nfcConfig, setNfcConfig] = useState<NfcMfaConfig | null>(null);
+
+  const [vaultStatus, setVaultStatus] = useState<"none" | "device" | "pbkdf2" | "webauthn">("none");
+  const [webauthnAvail, setWebauthnAvail] = useState<boolean>(false);
+
+  // Vault feature opt-in controls
+  const [optInWebAuthn, setOptInWebAuthn] = useState<boolean>(false);
+  const [optInPassphrase, setOptInPassphrase] = useState<boolean>(false);
+  const [autoPrompt, setAutoPrompt] = useState<boolean>(false);
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+
+  // NFC Physical MFA management state
+  const NFC_ENABLED = (import.meta.env.VITE_ENABLE_NFC_MFA as string) === 'true';
+  type RegisteredTag = { id: string; hashed_tag_uid?: string; family_role?: string; created_at?: string; last_used?: string };
+  const [registeredTags, setRegisteredTags] = useState<RegisteredTag[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (NFC_ENABLED) {
+      loadNfcPreferences();
+    }
+  }, [isOpen]);
+
+  const [nfcTimeoutMs, setNfcTimeoutMs] = useState<number>(120000);
+  const [confirmationMode, setConfirmationMode] = useState<'per_unlock' | 'per_operation'>('per_unlock');
+  const [preferredMethod, setPreferredMethod] = useState<'nfc' | 'webauthn' | 'pbkdf2'>('webauthn');
+  const [fallbackMethod, setFallbackMethod] = useState<'nfc' | 'webauthn' | 'pbkdf2'>('pbkdf2');
+
+  const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    try {
+      const { SecureTokenManager } = await import("../../lib/auth/secure-token-manager");
+      const token = SecureTokenManager.getAccessToken();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  }
+
+  const loadNfcPreferences = async () => {
+    if (!NFC_ENABLED) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/nfc-unified/preferences`, { headers });
+      if (!res.ok) return;
+      const json = await res.json();
+      // Expect shape: { success, data: { preferences: {...}, tags: [...] } }
+      const prefs = json?.data?.preferences || {};
+      const tags = json?.data?.tags || [];
+      if (typeof prefs.pinTimeoutMs === 'number') setNfcTimeoutMs(prefs.pinTimeoutMs);
+      if (prefs.confirmationMode === 'per_unlock' || prefs.confirmationMode === 'per_operation') setConfirmationMode(prefs.confirmationMode);
+      if (prefs.preferredMethod) setPreferredMethod(prefs.preferredMethod);
+      if (prefs.fallbackMethod) setFallbackMethod(prefs.fallbackMethod);
+      setRegisteredTags(tags as RegisteredTag[]);
+    } catch (e) {
+      console.warn('Failed to load NFC preferences:', e);
+    }
+  };
+
+  const saveNfcPreferences = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/nfc-unified/preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ pinTimeoutMs: nfcTimeoutMs, confirmationMode, preferredMethod, fallbackMethod })
+      });
+      if (!res.ok) throw new Error('Failed to save NFC preferences');
+      showToast.success('Saved NFC preferences', { title: 'NFC' });
+    } catch (e) {
+      showToast.error('Failed to save NFC preferences', { title: 'NFC' });
+    }
+  };
+
+  const deleteNfcTag = async (tagId: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/nfc-unified/preferences`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ tagId })
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+      setRegisteredTags((prev) => prev.filter((t) => t.id !== tagId));
+      showToast.success('Deleted NFC tag', { title: 'NFC' });
+    } catch (e) {
+      showToast.error('Failed to delete NFC tag', { title: 'NFC' });
+    }
+  };
 
   const apiService = new PrivacyEnhancedApiService();
 
@@ -63,6 +167,26 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
     if (isOpen) {
       loadUserPreferences();
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    (async () => {
+      try {
+        setWebauthnAvail(isWebAuthnAvailable());
+        const status = await getVaultStatus();
+        setVaultStatus(status);
+        // Load persisted vault feature flags
+        try {
+          const flags = getVaultFeatureFlags();
+          setOptInWebAuthn(!!flags.webauthnEnabled);
+          setOptInPassphrase(!!flags.passphraseEnabled);
+          setAutoPrompt(!!flags.autoPrompt);
+        } catch { }
+      } catch {
+        setVaultStatus("none");
+      }
+    })();
   }, [isOpen]);
 
   const loadUserPreferences = async () => {
@@ -178,6 +302,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
     }
   };
 
+
   if (!isOpen) return null;
 
   return (
@@ -239,6 +364,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
                   </label>
                   <input
                     id="customSessionTimeoutMinutes"
+
                     type="number"
                     min={1}
                     className="w-24 rounded-md border border-purple-700 bg-purple-800 text-white px-2 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -306,7 +432,133 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
               <p className="text-purple-200 text-sm">
                 Automatically upgrade to higher privacy levels for transactions above this amount
               </p>
+
+              {/* Opt-in controls for Vault features (no automatic prompts by default) */}
+              <div className="space-y-2 mt-2 text-sm text-purple-200">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="optInWebAuthn"
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={optInWebAuthn}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setOptInWebAuthn(v);
+                      try {
+                        setVaultFeatureFlags({ webauthnEnabled: v });
+                        showToast.info(v ? "Biometric unlock enabled" : "Biometric unlock disabled", { title: "Vault" });
+                      } catch (err) {
+                        showToast.error('Failed to update vault settings', { title: 'Vault' });
+                      }
+                    }}
+                  />
+                  <label htmlFor="optInWebAuthn" className="select-none">
+                    Enable biometrics (WebAuthn) for vault unlock
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="optInPassphrase"
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={optInPassphrase}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setOptInPassphrase(v);
+                      try {
+                        setVaultFeatureFlags({ passphraseEnabled: v });
+                        showToast.info(v ? "Passphrase unlock enabled" : "Passphrase unlock disabled", { title: "Vault" });
+                      } catch (err) {
+                        showToast.error('Failed to update vault settings', { title: 'Vault' });
+                      }
+                    }}
+                  />
+                  <label htmlFor="optInPassphrase" className="select-none">
+                    Enable passphrase (PBKDF2) for vault unlock
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="autoPrompt"
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={autoPrompt}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setAutoPrompt(v);
+                      try {
+                        setVaultFeatureFlags({ autoPrompt: v });
+                        showToast.info(v ? "Auto prompt on sign-in enabled" : "Auto prompt on sign-in disabled", { title: "Vault" });
+                      } catch (err) {
+                        showToast.error('Failed to update vault settings', { title: 'Vault' });
+                      }
+                    }}
+                  />
+                  <label htmlFor="autoPrompt" className="select-none">
+                    Automatically prompt to unlock on sign-in/app-load
+                  </label>
+                </div>
+                <p className="text-xs text-purple-300">
+                  Tip: Leave these off for a smoother default experience. You can still start signing sessions manually from Communications.
+                </p>
+              </div>
             </div>
+
+            {/* Device Vault Management */}
+            <div className="space-y-3 pt-4 border-t border-white/10 mt-2">
+              <label className="block text-white font-semibold">Device Vault Management</label>
+              <p className="text-purple-200 text-sm">
+                Manage your local signing vault. Clearing the vault removes wrapped credentials from this device only.
+              </p>
+
+              <div className="text-purple-100 text-sm">
+                <span className="font-medium">Status:</span>{" "}
+                {vaultStatus === "webauthn" && (<span>WebAuthn enabled</span>)}
+                {vaultStatus === "pbkdf2" && (<span>PBKDF2 fallback</span>)}
+                {vaultStatus === "device" && (<span>Device key (no prompts)</span>)}
+                {vaultStatus === "none" && (<span>No vault</span>)}
+                {webauthnAvail && vaultStatus !== "webauthn" && (
+                  <span className="ml-2 text-xs text-purple-300">(Biometrics available)</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white"
+                  onClick={async () => {
+                    try {
+                      await ClientSessionVault.clear();
+                      setVaultStatus("none");
+                      showToast.success("Device vault cleared", { title: "Vault" });
+                    } catch (e) {
+                      showToast.error("Failed to clear device vault", { title: "Vault" });
+                    }
+                  }}
+                >
+                  Clear Device Vault
+                </button>
+
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded bg-yellow-600 hover:bg-yellow-700 text-white"
+                  onClick={async () => {
+
+
+                    try {
+                      await ClientSessionVault.clear();
+                      setVaultStatus("none");
+                      showToast.info("WebAuthn credential reset. Re-enroll on next sign-in.", { title: "Vault" });
+                    } catch (e) {
+                      showToast.error("Failed to reset WebAuthn credential", { title: "Vault" });
+                    }
+                  }}
+                >
+                  Reset WebAuthn Credential
+                </button>
+              </div>
+            </div>
+
 
             {/* Guardian Approval Settings */}
             {(userRole === 'offspring' || userRole === 'adult') && (
@@ -323,6 +575,8 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
                 </div>
 
                 {preferences.require_guardian_approval && (
+
+
                   <div className="ml-6 space-y-2">
                     <label className="block text-purple-200 text-sm">Approval threshold (sats)</label>
                     <input
@@ -350,6 +604,106 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
             {showAdvanced && (
               <div className="space-y-4 pl-4 border-l-2 border-purple-600/30">
                 <h4 className="text-white font-semibold">Privacy Features</h4>
+
+
+                {/* Physical MFA (NFC) */}
+                <div className="space-y-3 pt-4 border-t border-white/10 mt-2">
+                  <label className="block text-white font-semibold">Physical MFA (NFC)</label>
+                  {!NFC_ENABLED ? (
+                    <>
+                      <p className="text-purple-200 text-sm">Enable VITE_ENABLE_NFC_MFA to manage NFC authentication.</p>
+                      <div className="flex items-center gap-2 text-purple-100 text-sm">
+                        <span className="font-medium">Status:</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-white/10 text-purple-200 text-xs">Disabled</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Preferences */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-purple-200 text-sm mb-1">NFC Timeout (seconds)</label>
+                          <input
+                            type="number"
+                            min={10}
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-yellow-400"
+                            value={Math.round(nfcTimeoutMs / 1000)}
+                            onChange={(e) => setNfcTimeoutMs(Math.max(10, parseInt(e.target.value) || 120) * 1000)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-purple-200 text-sm mb-1">Confirmation Mode</label>
+                          <div className="flex items-center gap-4 text-sm text-purple-200">
+                            <label className="flex items-center gap-2">
+                              <input type="radio" checked={confirmationMode === 'per_unlock'} onChange={() => setConfirmationMode('per_unlock')} /> Per unlock
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="radio" checked={confirmationMode === 'per_operation'} onChange={() => setConfirmationMode('per_operation')} /> Per operation
+                            </label>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-purple-200 text-sm mb-1">Preferred Signing Method</label>
+                          <select
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-yellow-400"
+                            value={preferredMethod}
+                            onChange={(e) => setPreferredMethod(e.target.value as any)}
+                          >
+                            <option value="webauthn">WebAuthn</option>
+                            <option value="nfc">NFC</option>
+                            <option value="pbkdf2">Passphrase (PBKDF2)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-purple-200 text-sm mb-1">Fallback Signing Method</label>
+                          <select
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-yellow-400"
+                            value={fallbackMethod}
+                            onChange={(e) => setFallbackMethod(e.target.value as any)}
+                          >
+                            <option value="webauthn">WebAuthn</option>
+                            <option value="nfc">NFC</option>
+                            <option value="pbkdf2">Passphrase (PBKDF2)</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded bg-purple-700 hover:bg-purple-800 text-white"
+                          onClick={saveNfcPreferences}
+                        >
+                          Save NFC Preferences
+                        </button>
+                      </div>
+
+                      {/* Registered Tags */}
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-white font-semibold">Registered Tags</span>
+                          <button onClick={loadNfcPreferences} className="text-xs text-purple-300 hover:text-white flex items-center gap-1">
+                            <RefreshCw className="h-3 w-3" /> Refresh
+                          </button>
+                        </div>
+                        {registeredTags.length === 0 ? (
+                          <p className="text-purple-300 text-sm mt-2">No tags registered yet.</p>
+                        ) : (
+                          <ul className="mt-2 space-y-2">
+                            {registeredTags.map((t) => (
+                              <li key={t.id} className="flex items-center justify-between bg-white/5 border border-white/10 rounded p-2 text-sm text-purple-100">
+                                <div>
+                                  <div>UID: {(t.hashed_tag_uid || '').slice(0, 10)}…</div>
+                                  {t.family_role && <div className="text-xs text-purple-300">Role: {t.family_role}</div>}
+                                </div>
+                                <button className="text-red-300 hover:text-red-200" onClick={() => deleteNfcTag(t.id)}>Delete</button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Metadata Protection */}
                 <div className="flex items-center space-x-3">
@@ -445,7 +799,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 };
 

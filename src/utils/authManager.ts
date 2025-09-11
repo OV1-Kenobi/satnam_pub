@@ -6,15 +6,7 @@
  * components initialize simultaneously.
  */
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("../lib/supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
+import { supabase } from "../lib/supabase";
 
 interface AuthResult {
   authenticated: boolean;
@@ -67,11 +59,10 @@ class AuthManager {
   private async performAuthCheck(): Promise<AuthResult> {
     try {
       // Use Supabase directly for authentication in React app
-      const client = await getSupabaseClient();
       const {
         data: { session },
         error,
-      } = await client.auth.getSession();
+      } = await supabase.auth.getSession();
 
       if (error) {
         console.debug("Supabase session error:", error.message);

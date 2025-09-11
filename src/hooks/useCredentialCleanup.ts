@@ -6,16 +6,7 @@
  */
 
 import { useCallback, useEffect } from "react";
-
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("../lib/supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
+import { supabase } from "../lib/supabase";
 
 interface UseCredentialCleanupReturn {
   cleanupExpiredCredentials: () => Promise<{
@@ -51,12 +42,9 @@ export const useCredentialCleanup = (
 
       console.log("🧹 Starting client-side credential cleanup...");
 
-      // Call the database cleanup function using lazy client
-      const client = await getSupabaseClient();
-
       // Prefer count-returning variant for observability; fall back to legacy name
       let rpcName = "cleanup_expired_nostr_credentials_count";
-      let { data, error } = await client.rpc(rpcName);
+      let { data, error } = await supabase.rpc(rpcName);
 
       // Backward compatibility: if new RPC is missing, try the legacy function
       if (error) {
@@ -70,7 +58,7 @@ export const useCredentialCleanup = (
         if (missing) {
           // Try legacy RPC (may return void); if still missing, disable gracefully
           rpcName = "cleanup_expired_nostr_credentials";
-          ({ data, error } = await client.rpc(rpcName));
+          ({ data, error } = await supabase.rpc(rpcName));
         }
       }
 

@@ -27,6 +27,21 @@ async function allowRate(ip) {
   }
   return allowRequestFn(ip, 10, 60_000);
 }
+
+// Helper to set RLS context (app.current_user_hash) for this request
+async function setRlsContext(client, ownerHash) {
+  try {
+    await client.rpc('set_app_current_user_hash', { val: ownerHash });
+  } catch {
+    try {
+      await client.rpc('set_app_config', { setting_name: 'app.current_user_hash', setting_value: ownerHash, is_local: true });
+    } catch {
+      try {
+        await client.rpc('app_set_config', { setting_name: 'app.current_user_hash', setting_value: ownerHash, is_local: true });
+      } catch {}
+    }
+  }
+}
 /**
  * Note: Per-user rate limiting is not implemented here to avoid misleading behavior.
  * IP-based rate limiting is enforced in the handler using netlify/functions/utils/rate-limiter.js.
@@ -57,10 +72,12 @@ async function getClientFromEvent(event) {
 
     console.log("🔐 DEBUG: giftwrapped - JWT validation successful, hashedId:", session.hashedId);
 
-    // Use per-request Supabase client with Authorization to attach apikey and align with RLS
-    const { getRequestClient } = await import('../../netlify/functions/supabase.js');
-    const accessToken = String(authHeader).slice(7).trim();
-    const client = getRequestClient(accessToken);
+    // Use server-side Supabase client (no Authorization header with app JWT)
+    const { supabase } = await import('../../netlify/functions/supabase.js');
+    const client = supabase;
+
+    // Set RLS context for this request to bind policies to the authenticated user
+    await setRlsContext(client, session.hashedId);
 
     // Return session hashedId as the only allowed hash for this user
     const allowedHashes = new Set([session.hashedId]);

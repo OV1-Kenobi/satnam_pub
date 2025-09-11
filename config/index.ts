@@ -198,6 +198,7 @@ interface FeatureFlags {
   privacyMode: boolean;
   federatedSigning: boolean;
   guardianNotifications: boolean;
+  nfcMfa: boolean;
 }
 
 interface DevelopmentConfig {
@@ -892,6 +893,22 @@ export const supabaseConfig: SupabaseConfig = {
 };
 
 /**
+ * NFC Physical MFA configuration
+ */
+interface NFCConfig {
+  enabled: boolean;
+  pinTimeoutMs: number;
+  confirmationMode: "per_unlock" | "per_operation";
+}
+
+export const nfcConfig: NFCConfig = {
+  enabled: (getEnvVar("VITE_ENABLE_NFC_MFA") || "false") === "true",
+  pinTimeoutMs: parseInt(getEnvVar("VITE_NFC_PIN_TIMEOUT") || "120000"),
+  confirmationMode: (getEnvVar("VITE_NFC_CONFIRMATION_MODE") ||
+    "per_unlock") as "per_unlock" | "per_operation",
+};
+
+/**
  * Feature flags configuration
  */
 export const features: FeatureFlags = {
@@ -899,6 +916,7 @@ export const features: FeatureFlags = {
   privacyMode: getEnvVar("ENABLE_PRIVACY_MODE") !== "false",
   federatedSigning: getEnvVar("ENABLE_FEDERATED_SIGNING") !== "false",
   guardianNotifications: getEnvVar("ENABLE_GUARDIAN_NOTIFICATIONS") !== "false",
+  nfcMfa: (getEnvVar("VITE_ENABLE_NFC_MFA") || "false") === "true",
 };
 
 /**
@@ -1087,6 +1105,7 @@ export const config = {
   lightning: lightningConfig,
   nip05: nip05Config,
   family: familyConfig,
+  nfc: nfcConfig,
   server: serverConfig,
   pubky: pubkyConfig,
   pkarr: pkarrConfig,

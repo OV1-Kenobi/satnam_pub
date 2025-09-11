@@ -8,6 +8,7 @@ import * as nodeCrypto from 'node:crypto';
 // Lazy-load noble libs to keep cold starts reasonable when tree-shaken
 let _gcm;
 let _sha256;
+let _pbkdf2;
 
 async function ensureLibs() {
   if (!_gcm) {
@@ -17,6 +18,10 @@ async function ensureLibs() {
   if (!_sha256) {
     const mod = await import('@noble/hashes/sha256');
     _sha256 = mod.sha256;
+  }
+  if (!_pbkdf2) {
+    const mod = await import('@noble/hashes/pbkdf2');
+    _pbkdf2 = mod.pbkdf2;
   }
 }
 
@@ -44,13 +49,14 @@ function getRandomIv() {
   return iv;
 }
 
-async function deriveKeyFromSalt(salt) {
+async function deriveKeyPBKDF2(userSalt, randomSaltBytes) {
   await ensureLibs();
-  // Simple KDF: key = sha256(utf8(salt))
-  // Caller must provide high-entropy per-user salt (24-byte+ base64 recommended)
-  const digest = _sha256(utf8Bytes(String(salt)));
-  // Use first 32 bytes as AES-256 key
-  return new Uint8Array(digest.slice(0, 32));
+  // PBKDF2 (SHA-256), 100k iterations, 32-byte key – matches client Noble V2 spec
+  const key = _pbkdf2(_sha256, String(userSalt), randomSaltBytes, {
+    c: 100000,
+    dkLen: 32,
+  });
+  return key; // Uint8Array length 32
 }
 
 // Base64url helpers for Noble V2 compact format
@@ -70,15 +76,14 @@ function b64urlDecode(s) {
 }
 
 // Serialize as Noble V2: noble-v2.<salt_b64url>.<iv_b64url>.<cipher_b64url>
-function serializeNobleV2(iv, cipher, userSalt) {
-  const saltBytes = utf8Bytes(String(userSalt || ''));
-  const saltSeg = b64urlEncode(saltBytes);
+function serializeNobleV2(iv, cipher, randomSaltBytes) {
+  const saltSeg = b64urlEncode(randomSaltBytes);
   const ivSeg = b64urlEncode(iv);
   const ctSeg = b64urlEncode(cipher);
   return `noble-v2.${saltSeg}.${ivSeg}.${ctSeg}`;
 }
 
-// Backward compatibility parser: supports both n2enc and noble-v2 formats
+// Parser: supports noble-v2 format (and legacy n2enc only for completeness)
 function parseSerialized(s) {
   if (typeof s !== 'string') return null;
   // Legacy format: n2enc:<iv_hex>:<cipher_hex>
@@ -93,9 +98,10 @@ function parseSerialized(s) {
   if (s.startsWith('noble-v2.')) {
     const parts = s.split('.');
     if (parts.length !== 4) return null;
+    const salt = b64urlDecode(parts[1]);
     const iv = b64urlDecode(parts[2]);
     const cipher = b64urlDecode(parts[3]);
-    return { iv, cipher };
+    return { salt, iv, cipher };
   }
   return null;
 }
@@ -109,13 +115,22 @@ export async function encryptNsecSimple(nsecBech32, userSalt) {
       throw new Error('encryptNsecSimple: invalid salt');
     }
     await ensureLibs();
-    const key = await deriveKeyFromSalt(userSalt);
+    // Generate 32-byte random salt (PBKDF2 salt)
+    const randomSalt = new Uint8Array(32);
+    const wc = nodeCrypto.webcrypto;
+    if (wc && wc.getRandomValues) wc.getRandomValues(randomSalt); else nodeCrypto.randomFillSync(randomSalt);
+
+    // Derive key via PBKDF2-SHA256 (100k, 32 bytes)
+    const key = await deriveKeyPBKDF2(userSalt, randomSalt);
+
+    // Encrypt
     const iv = getRandomIv();
     const aead = _gcm(key, iv);
     const pt = utf8Bytes(nsecBech32);
     const ct = aead.encrypt(pt);
-    // Return Noble V2 compliant compact format to satisfy DB constraint
-    return serializeNobleV2(iv, ct, userSalt);
+
+    // Serialize noble-v2 with RANDOM salt (not userSalt)
+    return serializeNobleV2(iv, ct, randomSalt);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     throw new Error(`encryptNsecSimple failed: ${msg}`);
