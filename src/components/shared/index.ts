@@ -3,7 +3,7 @@
  */
 
 // Navigation and layout components
-export type { default as ContactsSelector } from "./ContactsSelector";
+export { default as ContactsSelector } from "./ContactsSelector";
 export { default as Navigation } from "./Navigation";
 export { default as PageWrapper } from "./PageWrapper";
 export { default as PaymentModal } from "./PaymentModal";
