@@ -75,7 +75,8 @@ export default defineConfig({
 
   build: {
     outDir: "dist",
-    sourcemap: isDevelopment,
+    // Enable source maps in production to debug white-screen errors
+    sourcemap: true,
     minify: isProduction ? "terser" : false,
     target: "esnext",
     chunkSizeWarningLimit: 600, // Slightly increase from 500kb to 600kb
