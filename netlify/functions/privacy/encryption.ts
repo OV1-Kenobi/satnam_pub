@@ -123,7 +123,11 @@ export async function encryptSensitiveData(plaintext: string): Promise<{
     const key = await deriveKey(getMasterKey(), salt);
 
     // SECURITY FIX: Use createCipherGCM for proper authenticated encryption
-    const cipher = crypto.createCipherGCM(ENCRYPTION_CONFIG.algorithm, key, iv);
+    const cipher = crypto.createCipheriv(
+      ENCRYPTION_CONFIG.algorithm,
+      key,
+      iv
+    ) as unknown as crypto.CipherGCM;
     cipher.setAAD(Buffer.from("family-nostr-data")); // Additional authenticated data
 
     let encrypted = cipher.update(plaintext, "utf8", "base64");
@@ -162,11 +166,11 @@ export async function decryptSensitiveData(encryptedData: {
     const key = await deriveKey(getMasterKey(), salt);
 
     // SECURITY FIX: Use createDecipherGCM for proper authenticated decryption
-    const decipher = crypto.createDecipherGCM(
+    const decipher = crypto.createDecipheriv(
       ENCRYPTION_CONFIG.algorithm,
       key,
       iv
-    );
+    ) as unknown as crypto.DecipherGCM;
     decipher.setAAD(Buffer.from("family-nostr-data"));
     decipher.setAuthTag(tag);
 

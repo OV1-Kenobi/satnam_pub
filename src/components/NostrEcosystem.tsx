@@ -19,7 +19,7 @@ import {
   Video,
   Zap
 } from "lucide-react";
-import React from "react";
+import { useState, type FC, type ReactNode } from "react";
 import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 
 interface NostrEcosystemProps {
@@ -32,17 +32,17 @@ interface NostrApp {
   name: string;
   description: string;
   url: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   category: "mobile" | "web" | "media" | "publishing" | "social" | "tools";
   platform?: string;
 }
 
-const NostrEcosystem: React.FC<NostrEcosystemProps> = ({
+const NostrEcosystem: FC<NostrEcosystemProps> = ({
   onBack,
   userIdentity,
 }) => {
   const { user } = useAuth();
-  const [copiedIdentity, setCopiedIdentity] = React.useState(false);
+  const [copiedIdentity, setCopiedIdentity] = useState(false);
 
   // Use actual user NIP-05 from authentication state, fallback to prop, then default
   const actualUserIdentity = user?.nip05 || userIdentity || "yourname@satnam.pub";

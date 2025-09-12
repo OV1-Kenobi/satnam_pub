@@ -1,7 +1,7 @@
 // React provider for crypto utilities with lazy loading
 // File: src/components/CryptoProvider.tsx
 
-import * as React from 'react';
+import { createContext, useContext, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 
 // Dynamic import types - define locally to avoid static import
 interface CryptoLoadingState {
@@ -23,14 +23,14 @@ interface CryptoContextValue extends CryptoLoadingState {
   configure: (strategy: Partial<CryptoLoadingStrategy>) => void;
 }
 
-const CryptoContext = React.createContext<CryptoContextValue | null>(null);
+const CryptoContext = createContext<CryptoContextValue | null>(null);
 
 interface CryptoProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
   strategy?: Partial<CryptoLoadingStrategy>;
   preload?: boolean;
-  fallback?: React.ReactNode;
-  errorFallback?: (error: Error, retry: () => void) => React.ReactNode;
+  fallback?: ReactNode;
+  errorFallback?: (error: Error, retry: () => void) => ReactNode;
 }
 
 /**
@@ -64,16 +64,16 @@ export function CryptoProvider({
   fallback,
   errorFallback
 }: CryptoProviderProps) {
-  const [state, setState] = React.useState<CryptoLoadingState>(() => ({
+  const [state, setState] = useState<CryptoLoadingState>(() => ({
     isLoading: false,
     isLoaded: true, // Always loaded in browser-only version
     error: null
   }));
 
-  const [isLoadingRef, setIsLoadingRef] = React.useState(false);
+  const [isLoadingRef, setIsLoadingRef] = useState(false);
 
   // Configure strategy on mount
-  React.useEffect(() => {
+  useEffect(() => {
     if (strategy) {
       import('../../utils/crypto-factory.js').then(({ configureCryptoStrategy }) => {
         configureCryptoStrategy(strategy);
@@ -98,7 +98,7 @@ export function CryptoProvider({
   };
 
   // Preload on mount if requested
-  React.useEffect(() => {
+  useEffect(() => {
     if (preload) {
       loadCrypto();
     }
@@ -133,7 +133,7 @@ export function CryptoProvider({
  * Must be used within a CryptoProvider
  */
 export function useCryptoContext(): CryptoContextValue {
-  const context = React.useContext(CryptoContext);
+  const context = useContext(CryptoContext);
   if (!context) {
     throw new Error('useCryptoContext must be used within a CryptoProvider');
   }
@@ -145,7 +145,7 @@ export function useCryptoContext(): CryptoContextValue {
  * before rendering the wrapped component
  */
 export function withCrypto<P extends object>(
-  Component: React.ComponentType<P>,
+  Component: ComponentType<P>,
   options: {
     fallback?: ReactNode;
     errorFallback?: (error: Error, retry: () => void) => ReactNode;
@@ -184,9 +184,9 @@ export function withCrypto<P extends object>(
  * Component that conditionally renders children based on crypto loading state
  */
 interface CryptoGateProps {
-  children: ReactNode;
-  fallback?: ReactNode;
-  errorFallback?: (error: Error, retry: () => void) => ReactNode;
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+  errorFallback?: (error: Error, retry: () => void) => React.ReactNode;
   autoLoad?: boolean;
 }
 
@@ -199,7 +199,7 @@ export function CryptoGate({
   const crypto = useCryptoContext();
 
   // Auto-load crypto if requested and not already loaded/loading
-  React.useEffect(() => {
+  useEffect(() => {
     if (autoLoad && !crypto.isLoaded && !crypto.isLoading && !crypto.error) {
       crypto.loadCrypto();
     }

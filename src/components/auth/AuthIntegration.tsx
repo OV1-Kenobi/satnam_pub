@@ -14,14 +14,14 @@
  */
 
 import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { cloneElement, useEffect, useState, type FC, type ReactElement, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, useIdentityForge, useNostrichSignin } from './AuthProvider';
 
 import { createRecoverySession } from '../../lib/auth/recovery-session-bridge';
 
 interface AuthIntegrationProps {
-  children: React.ReactNode;
+  children: ReactNode;
   onAuthSuccess?: (destination?: 'individual' | 'family') => void;
   onAuthFailure?: (error: string) => void;
 }
@@ -30,7 +30,7 @@ interface AuthIntegrationProps {
  * Identity Forge Integration
  * Wraps Identity Forge component to integrate with unified auth
  */
-export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
+export const IdentityForgeIntegration: FC<AuthIntegrationProps> = ({
   children,
   onAuthSuccess,
   onAuthFailure
@@ -129,7 +129,7 @@ export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
       )}
 
       {/* Wrap children with registration handlers */}
-      {React.cloneElement(children as React.ReactElement, {
+      {cloneElement(children as ReactElement, {
         onRegistrationSuccess: handleRegistrationSuccess,
         onRegistrationFailure: handleRegistrationFailure,
         isAuthenticating: auth.loading,
@@ -143,7 +143,7 @@ export const IdentityForgeIntegration: React.FC<AuthIntegrationProps> = ({
  * Nostrich Signin Integration
  * Wraps Nostrich Signin component to integrate with unified auth
  */
-export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
+export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
   children,
   onAuthSuccess,
   onAuthFailure
@@ -276,7 +276,7 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
       )}
 
       {/* Wrap children with authentication handlers */}
-      {React.cloneElement(children as React.ReactElement, {
+      {cloneElement(children as ReactElement, {
         onNIP05Auth: handleNIP05Auth,
         onNIP07Auth: handleNIP07Auth,
         onAuthSuccess: handleAuthSuccess,
@@ -292,7 +292,7 @@ export const NostrichSigninIntegration: React.FC<AuthIntegrationProps> = ({
  * Session Monitor Component
  * Monitors session health and provides user feedback
  */
-export const SessionMonitor: React.FC = () => {
+export const SessionMonitor: FC = () => {
   const auth = useAuth();
   const [showSessionWarning, setShowSessionWarning] = useState(false);
 
@@ -361,12 +361,12 @@ export const SessionMonitor: React.FC = () => {
  * Provides a simple way to protect any component
  */
 interface AuthGuardProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+  children: ReactNode;
+  fallback?: ReactNode;
   requireActive?: boolean;
 }
 
-export const AuthGuard: React.FC<AuthGuardProps> = ({
+export const AuthGuard: FC<AuthGuardProps> = ({
   children,
   fallback,
   requireActive = true

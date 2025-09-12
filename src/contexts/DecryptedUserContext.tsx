@@ -9,7 +9,7 @@
  * - Uses existing supabase client for database operations
  */
 
-import * as React from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useDecryptedCurrentUser } from '../hooks/useClientDecryption';
 import type { DecryptedUserProfile } from '../lib/client-decryption';
 
@@ -29,7 +29,7 @@ interface DecryptedUserContextType {
   isAuthenticated: boolean;
 }
 
-const DecryptedUserContext = React.createContext<DecryptedUserContextType | undefined>(undefined);
+const DecryptedUserContext = createContext<DecryptedUserContextType | undefined>(undefined);
 
 /**
  * PRIVACY-FIRST: Decrypted User Provider
@@ -37,7 +37,7 @@ const DecryptedUserContext = React.createContext<DecryptedUserContextType | unde
  * Provides decrypted user data to the entire application while maintaining
  * strict privacy principles and zero-knowledge architecture.
  */
-export function DecryptedUserProvider({ children }: { children: React.ReactNode }) {
+export function DecryptedUserProvider({ children }: { children: ReactNode }) {
   const {
     decryptedProfile,
     isLoading,
@@ -46,17 +46,17 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
     logout: performLogout
   } = useDecryptedCurrentUser();
 
-  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Update authentication state based on decrypted profile
-  React.useEffect(() => {
+  useEffect(() => {
     setIsAuthenticated(!!decryptedProfile);
   }, [decryptedProfile]);
 
   /**
    * Refresh current user data
    */
-  const refreshUser = React.useCallback(async () => {
+  const refreshUser = useCallback(async () => {
     console.log('🔄 Refreshing decrypted user data...');
     await refetch();
   }, [refetch]);
@@ -64,7 +64,7 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
   /**
    * Logout and clear all decrypted data
    */
-  const logout = React.useCallback(async () => {
+  const logout = useCallback(async () => {
     console.log('🚪 Logging out and clearing decrypted data...');
     await performLogout();
     setIsAuthenticated(false);
@@ -119,7 +119,7 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
  * Hook to use decrypted user context
  */
 export function useDecryptedUser(): DecryptedUserContextType {
-  const context = React.useContext(DecryptedUserContext);
+  const context = useContext(DecryptedUserContext);
 
   if (context === undefined) {
     throw new Error('useDecryptedUser must be used within a DecryptedUserProvider');
@@ -138,8 +138,8 @@ export function RequireDecryptedAuth({
   children,
   fallback
 }: {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+  children: ReactNode;
+  fallback?: ReactNode;
 }) {
   const { isAuthenticated, isLoading, user } = useDecryptedUser();
 
@@ -187,27 +187,27 @@ export function useDecryptedUserField<K extends keyof DecryptedUserProfile>(
 export function useUserPermissions() {
   const { user } = useDecryptedUser();
 
-  const hasRole = React.useCallback((role: string): boolean => {
+  const hasRole = useCallback((role: string): boolean => {
     return user?.role === role;
   }, [user?.role]);
 
-  const isPrivateUser = React.useCallback((): boolean => {
+  const isPrivateUser = useCallback((): boolean => {
     return user?.role === 'private';
   }, [user?.role]);
 
-  const isOffspring = React.useCallback((): boolean => {
+  const isOffspring = useCallback((): boolean => {
     return user?.role === 'offspring';
   }, [user?.role]);
 
-  const isAdult = React.useCallback((): boolean => {
+  const isAdult = useCallback((): boolean => {
     return user?.role === 'adult';
   }, [user?.role]);
 
-  const isSteward = React.useCallback((): boolean => {
+  const isSteward = useCallback((): boolean => {
     return user?.role === 'steward';
   }, [user?.role]);
 
-  const isGuardian = React.useCallback((): boolean => {
+  const isGuardian = useCallback((): boolean => {
     return user?.role === 'guardian';
   }, [user?.role]);
 

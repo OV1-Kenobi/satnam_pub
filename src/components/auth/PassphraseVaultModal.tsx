@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import {
   getVaultStatus,
   isWebAuthnAvailable,
@@ -12,14 +12,14 @@ interface PassphraseVaultModalProps {
   onCancel: () => void;
 }
 
-const PassphraseVaultModal: React.FC<PassphraseVaultModalProps> = ({ open, onSubmit, onCancel }) => {
+const PassphraseVaultModal: FC<PassphraseVaultModalProps> = ({ open, onSubmit, onCancel }) => {
   const [pass, setPass] = useState("");
   const [show, setShow] = useState(false);
   const [failCount, setFailCount] = useState(0);
-  const lastClosedAtRef = React.useRef<number | null>(null);
+  const lastClosedAtRef = useRef<number | null>(null);
   const [webauthnReady, setWebauthnReady] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setShow(open);
     if (open) {
       setPass("");

@@ -1,7 +1,8 @@
 // lib/citadel/relay.ts
-import { bytesToHex } from "@noble/hashes/utils";
 import type { Event as NostrEvent } from "nostr-tools"; // Type-only
 import { supabase } from "../../src/lib/supabase";
+import { CentralEventPublishingService } from "../central_event_publishing_service";
+const CEPS = new CentralEventPublishingService();
 
 export interface RelayPublishResponse {
   success: boolean;
@@ -13,7 +14,6 @@ export interface RelayPublishResponse {
 export class CitadelRelay {
   // For archival backup, prefer publishing through CEPS to the target relay
   // Server keys/signing are handled centrally in CEPS when needed
-  private static pool: any = null; // legacy pool removed; CEPS manages pool internally
 
   /**
    * Get relay URL from Supabase database or use default
@@ -93,7 +93,7 @@ export class CitadelRelay {
       const signed = await CEPS.signEventWithActiveSession(unsignedEvent).catch(
         async () => {
           // fallback: sign via CEPS server keys if no active session
-          const srv = await CEPS["serverKeys" as any]?.();
+          const srv = await (CEPS as any)?.serverKeys?.();
           if (!srv?.nsec) throw new Error("No signing context available");
           return CEPS.signEvent(unsignedEvent, srv.nsec);
         }
@@ -108,7 +108,7 @@ export class CitadelRelay {
       if (confirmed) {
         return {
           success: true,
-          eventId: identityEvent.id,
+          eventId: signed.id,
           relayUrl: relay,
         };
       } else {
@@ -133,14 +133,11 @@ export class CitadelRelay {
     familyId?: string
   ): Promise<NostrEvent | null> {
     try {
-      const relay = relayUrl || (await this.getRelayUrl(familyId));
-
-      return new Promise((resolve) => {
-        // Using CEPS pool internally; here we fallback to a simple fetch-based confirmation if available in future
-        // For now, assume published when CEPS returns id; return null to indicate no further data
-        resolve(null);
-        return;
-      });
+      // Mark parameters as used to satisfy noUnusedParameters/noUnusedLocals
+      void eventId;
+      void relayUrl;
+      void familyId;
+      return Promise.resolve(null);
     } catch (error) {
       console.error("Error retrieving identity event:", error);
       return null;
@@ -174,7 +171,7 @@ export class CitadelRelay {
 
       const signed = await CEPS.signEventWithActiveSession(unsignedEvent).catch(
         async () => {
-          const srv = await CEPS["serverKeys" as any]?.();
+          const srv = await (CEPS as any)?.serverKeys?.();
           if (!srv?.nsec) throw new Error("No signing context available");
           return CEPS.signEvent(unsignedEvent, srv.nsec);
         }
@@ -186,7 +183,7 @@ export class CitadelRelay {
       if (confirmed) {
         return {
           success: true,
-          eventId: backupEvent.id,
+          eventId: signed.id,
           relayUrl: relay,
         };
       } else {
@@ -215,7 +212,7 @@ export class CitadelRelay {
       const backups: NostrEvent[] = [];
 
       return new Promise((resolve) => {
-        const sub = this.pool.subscribeMany(
+        const sub = CEPS.subscribeMany(
           [relay],
           [
             {
@@ -224,7 +221,7 @@ export class CitadelRelay {
             },
           ],
           {
-            onevent(event) {
+            onevent(event: NostrEvent) {
               backups.push(event);
             },
             oneose() {
@@ -279,7 +276,7 @@ export class CitadelRelay {
       const familyEvent = await CEPS.signEventWithActiveSession(
         familyUnsigned
       ).catch(async () => {
-        const srv = await CEPS["serverKeys" as any]?.();
+        const srv = await (CEPS as any)?.serverKeys?.();
         if (!srv?.nsec) throw new Error("No signing context available");
         return CEPS.signEvent(familyUnsigned, srv.nsec);
       });
@@ -313,16 +310,10 @@ export class CitadelRelay {
     relayUrl: string,
     eventId: string
   ): Promise<boolean> {
-    return new Promise((resolve) => {
-      // CEPS publish returns immediately; if we need strong confirmation, extend CEPS to read relays.
-      resolve(true);
-
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        sub.close();
-        resolve(false);
-      }, 5000);
-    });
+    // Mark parameters as used to satisfy noUnusedParameters
+    void relayUrl;
+    void eventId;
+    return Promise.resolve(true);
   }
 
   /**
@@ -339,7 +330,6 @@ export class CitadelRelay {
   }> {
     try {
       const relay = relayUrl || (await this.getRelayUrl(familyId));
-      const startTime = Date.now();
 
       return new Promise((resolve) => {
         // Legacy pool-based latency measurement removed in favor of CEPS relay pooling
@@ -365,7 +355,7 @@ export class CitadelRelay {
     try {
       const relay = relayUrl || (await this.getRelayUrl(familyId));
 
-      const publishResults = await this.pool.publish([relay], event);
+      await CEPS.publishEvent(event as any, [relay]);
       const confirmed = await this.waitForConfirmation(relay, event.id);
 
       if (confirmed) {
@@ -391,20 +381,33 @@ export class CitadelRelay {
    * Cleanup pool connections
    */
   static cleanup() {
-    this.pool.close();
+    try {
+      const relays = CEPS.getRelays();
+      (CEPS as any)?.pool?.close?.(relays);
+    } catch {}
   }
 
   /**
    * Smoke test to verify cryptographic correctness of event signing
    * Returns true if all checks pass
    */
+  // Provide a local serverKey source for smoke testing (non-production)
+  private static get serverKey(): Promise<Uint8Array> {
+    const bytes = new Uint8Array(32);
+    if (typeof crypto !== "undefined" && (crypto as any)?.getRandomValues) {
+      (crypto as any).getRandomValues(bytes);
+    } else {
+      for (let i = 0; i < 32; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    return Promise.resolve(bytes);
+  }
+
   static async smokeTest(): Promise<boolean> {
     try {
       console.log("🔎 Starting CitadelRelay cryptographic smoke test...");
 
       // 1) Generate server private key bytes (32 bytes)
       const serverKeyBytes = await this.serverKey;
-      const privHex = bytesToHex(serverKeyBytes);
 
       // Validate private key length
       const isPrivLen32 =
@@ -428,13 +431,13 @@ export class CitadelRelay {
       const signed = await CEPS.signEventWithActiveSession(
         unsignedEvent as any
       ).catch(async () => {
-        const srv = await CEPS["serverKeys" as any]?.();
+        const srv = await (CEPS as any)?.serverKeys?.();
         if (!srv?.nsec) throw new Error("No signing context available");
         return CEPS.signEvent(unsignedEvent as any, srv.nsec);
       });
 
       // 4) Verify signature using CEPS verify
-      const verified = await CEPS.verifyEvent(signed as any);
+      const verified = CEPS.verifyEvent(signed as any);
       console.log(
         `• Signature verification: ${verified ? "valid" : "invalid"}`
       );
