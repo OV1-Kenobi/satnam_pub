@@ -823,11 +823,11 @@ export default async function handler(event, context) {
 
     // Persist delivery status to DB so UI doesn't stay at "pending"
     try {
-      const newStatus = deliveryResult.success ? 'delivered' : 'failed';
+      const newStatus = deliveryResult.success ? 'published' : 'failed';
       const updatePayload = { status: newStatus };
-      // Optional delivered_at if column exists; safe update even if ignored by schema
+      // Optional published_at if column exists; safe update even if ignored by schema
       if (deliveryResult.success) {
-        updatePayload.delivered_at = new Date().toISOString();
+        updatePayload.published_at = new Date().toISOString();
       }
       const { error: updateError } = await client
         .from('gift_wrapped_messages')
@@ -852,7 +852,7 @@ export default async function handler(event, context) {
       messageId,
       timestamp: new Date().toISOString(),
       encryptionLevel: validatedData.encryptionLevel,
-      status: deliveryResult.success ? "delivered" : "failed",
+      status: deliveryResult.success ? "published" : "failed",
       deliveryMethod: deliveryResult.deliveryMethod || deliveryResult.signingMethod,
       signingMethod: deliveryResult.signingMethod,
       securityLevel: deliveryResult.securityLevel,

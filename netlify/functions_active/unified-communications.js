@@ -102,7 +102,20 @@ export const handler = async (event) => {
     return { statusCode: 200, headers, body: "" };
   }
 
+  // Debug logging for routing
+  try {
+
+    console.info("[unified-communications] incoming:", {
+      method,
+      path: event?.path,
+      endpoint: event?.queryStringParameters?.endpoint,
+      origin,
+    });
+  } catch {}
+
   const target = detectTarget(event);
+  try { console.info("[unified-communications] resolved target:", target); } catch {}
+
 
   // Route: messages (GET)
   if (target === "messages") {

@@ -1486,14 +1486,64 @@ export class CentralEventPublishingService {
    */
   getActiveSigningSessionId(): string | null {
     try {
+      // 1) Entry point logging with minimal caller info
+      try {
+        const stack = new Error().stack || "";
+        const caller = stack.split("\n")[2]?.trim() || "unknown";
+        console.log("🔐 CEPS.getActiveSigningSessionId: called", { caller });
+      } catch {}
+
+      // 2) Recovery session check
       const recovery = (
         recoverySessionBridge as any
       )?.getRecoverySessionStatus?.();
-      if (recovery?.hasSession && recovery?.sessionId)
-        return recovery.sessionId;
+      try {
+        const recId: string | null = recovery?.sessionId || null;
+        console.log("🔐 CEPS.getActiveSigningSessionId: recovery status", {
+          hasSession: !!recovery?.hasSession,
+          sessionId: recId ? recId.slice(0, 8) + "..." : null,
+        });
+      } catch {}
+
+      // 3) Direct SecureNsecManager check
       const direct = secureNsecManager.getActiveSessionId();
-      return direct || null;
-    } catch {
+      try {
+        console.log("🔐 CEPS.getActiveSigningSessionId: direct status", {
+          active: !!direct,
+          sessionId: direct ? direct.slice(0, 8) + "..." : null,
+        });
+      } catch {}
+
+      // 4) Final decision + return
+      if (recovery?.hasSession && recovery?.sessionId) {
+        try {
+          console.log(
+            "🔐 CEPS.getActiveSigningSessionId: returning recovery session (preferred when present)"
+          );
+        } catch {}
+        return recovery.sessionId;
+      }
+      if (direct) {
+        try {
+          console.log(
+            "🔐 CEPS.getActiveSigningSessionId: returning direct session (no recovery session present)"
+          );
+        } catch {}
+        return direct;
+      }
+      try {
+        console.log(
+          "🔐 CEPS.getActiveSigningSessionId: no active session found"
+        );
+      } catch {}
+      return null;
+    } catch (e) {
+      try {
+        console.warn(
+          "🔐 CEPS.getActiveSigningSessionId: error while checking sessions",
+          e instanceof Error ? e.message : String(e)
+        );
+      } catch {}
       return null;
     }
   }

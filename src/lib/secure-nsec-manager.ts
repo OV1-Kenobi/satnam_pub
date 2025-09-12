@@ -38,9 +38,29 @@ class SecureNsecManager {
   }
 
   static getInstance(): SecureNsecManager {
+    // Ensure a true singleton even if this module is bundled/loaded multiple times
+    try {
+      if (typeof window !== "undefined") {
+        const w = window as any;
+        if (w.__SecureNsecManagerSingleton) {
+          SecureNsecManager.instance =
+            w.__SecureNsecManagerSingleton as SecureNsecManager;
+          return SecureNsecManager.instance;
+        }
+      }
+    } catch {}
+
     if (!SecureNsecManager.instance) {
       SecureNsecManager.instance = new SecureNsecManager();
     }
+
+    try {
+      if (typeof window !== "undefined") {
+        (window as any).__SecureNsecManagerSingleton =
+          SecureNsecManager.instance;
+      }
+    } catch {}
+
     return SecureNsecManager.instance;
   }
 
