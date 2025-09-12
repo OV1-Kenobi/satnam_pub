@@ -9,7 +9,7 @@
  * - Uses existing supabase client for database operations
  */
 
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useDecryptedCurrentUser } from '../hooks/useClientDecryption';
 import type { DecryptedUserProfile } from '../lib/client-decryption';
 
@@ -29,7 +29,7 @@ interface DecryptedUserContextType {
   isAuthenticated: boolean;
 }
 
-const DecryptedUserContext = React.createContext<DecryptedUserContextType | undefined>(undefined);
+const DecryptedUserContext = createContext<DecryptedUserContextType | undefined>(undefined);
 
 /**
  * PRIVACY-FIRST: Decrypted User Provider
