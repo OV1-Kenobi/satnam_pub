@@ -1,3 +1,4 @@
+import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import { defineConfig } from "vite";
 
@@ -20,13 +21,12 @@ const isDevelopment = getEnvVar('NODE_ENV') === 'development';
 const isProduction = getEnvVar('NODE_ENV') === 'production';
 
 export default defineConfig({
-  plugins: [],
+  plugins: [react()],
 
   esbuild: {
     jsx: 'automatic',
     jsxImportSource: 'react',
-    // Temporarily disable TypeScript checking to fix critical frontend failure
-    target: 'es2020'
+    target: 'esnext'
   },
 
   resolve: {
@@ -78,7 +78,7 @@ export default defineConfig({
     // Enable source maps in production to debug white-screen errors
     sourcemap: true,
     minify: isProduction ? "terser" : false,
-    target: "esnext",
+    target: "es2020", // Use more conservative target for better compatibility
     chunkSizeWarningLimit: 600, // Slightly increase from 500kb to 600kb
 
     // CRITICAL FIX: Ensure proper ES module output for dynamic imports

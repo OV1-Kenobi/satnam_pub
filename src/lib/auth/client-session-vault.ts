@@ -281,12 +281,11 @@ async function decryptStringAESGCM(
   return td.decode(new Uint8Array(dec));
 }
 
-// Passphrase provider (UI-owned). App can install a provider that returns a passphrase.
-export type PassphraseProvider = () => Promise<string | null>;
-let passphraseProvider: PassphraseProvider | null = null;
-export function setPassphraseProvider(provider: PassphraseProvider) {
-  passphraseProvider = provider;
-}
+// Import passphrase provider from standalone module to break circular dependency
+import {
+  getPassphraseProvider,
+  requestPassphrase,
+} from "./passphrase-provider";
 
 // NFC policy state for vault gating (client-only)
 let nfcPolicy: NFCSecondFactorPolicy = "none";

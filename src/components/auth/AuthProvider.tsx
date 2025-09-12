@@ -7,7 +7,7 @@
  */
 
 import React, { createContext, useContext, useEffect } from 'react';
-import { setPassphraseProvider } from '../../lib/auth/client-session-vault';
+import { setPassphraseProvider } from '../../lib/auth/passphrase-provider';
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
 
 import PassphraseVaultModal from './PassphraseVaultModal';
@@ -42,13 +42,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const vaultResolverRef = React.useRef<((value: string | null) => void) | null>(null);
 
   useEffect(() => {
-    // Install passphrase provider once at mount
-    setPassphraseProvider(() => {
-      return new Promise<string | null>((resolve) => {
-        vaultResolverRef.current = resolve;
-        setVaultOpen(true);
+    // Defer passphrase provider setup to avoid blocking initial app render
+    const timeoutId = setTimeout(() => {
+      setPassphraseProvider(() => {
+        return new Promise<string | null>((resolve) => {
+          vaultResolverRef.current = resolve;
+          setVaultOpen(true);
+        });
       });
-    });
+    }, 100); // Small delay to let app render first
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   // Monitor authentication state changes
