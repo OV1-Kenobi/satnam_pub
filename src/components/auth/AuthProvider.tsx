@@ -6,10 +6,12 @@
  * while maintaining privacy-first architecture with comprehensive protection.
  */
 
-import React, { createContext, useContext, useEffect } from 'react';
-import { setPassphraseProvider } from '../../lib/auth/passphrase-provider';
+import * as React from 'react';
+// Removed direct import to break circular dependency - will be loaded dynamically
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
 
+import { getVaultFeatureFlags } from '../../lib/auth/client-session-vault';
+import { setPassphraseProvider } from '../../lib/auth/passphrase-provider';
 import PassphraseVaultModal from './PassphraseVaultModal';
 
 // Authentication context type
@@ -22,7 +24,7 @@ type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
 };
 
 // Create authentication context
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = React.createContext<AuthContextType | null>(null);
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -41,22 +43,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [vaultOpen, setVaultOpen] = React.useState(false);
   const vaultResolverRef = React.useRef<((value: string | null) => void) | null>(null);
 
-  useEffect(() => {
-    // Defer passphrase provider setup to avoid blocking initial app render
-    const timeoutId = setTimeout(() => {
-      setPassphraseProvider(() => {
-        return new Promise<string | null>((resolve) => {
-          vaultResolverRef.current = resolve;
-          setVaultOpen(true);
-        });
+  // Install real passphrase provider only for users who opted-in via vault feature flags
+  const installVaultPassphraseProvider = React.useCallback(() => {
+    setPassphraseProvider(() => {
+      return new Promise<string | null>((resolve) => {
+        vaultResolverRef.current = resolve;
+        setVaultOpen(true);
       });
-    }, 100); // Small delay to let app render first
-
-    return () => clearTimeout(timeoutId);
+    });
   }, []);
 
+  React.useEffect(() => {
+    try {
+      const flags = getVaultFeatureFlags();
+      if (flags?.passphraseEnabled) {
+        installVaultPassphraseProvider();
+      }
+    } catch {
+      // Ignore errors when reading flags; provider remains uninstalled by default
+    }
+    // We intentionally install once on mount when enabled; toggling can be handled elsewhere.
+  }, [installVaultPassphraseProvider]);
+  // Removed passphrase provider setup from app startup - only needed when vault is actually used
+
   // Monitor authentication state changes
-  useEffect(() => {
+  React.useEffect(() => {
     if (auth.authenticated) {
       // Clear flow states when authenticated
       setIsRegistrationFlow(false);
@@ -65,7 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [auth.authenticated]);
 
   // Monitor account status
-  useEffect(() => {
+  React.useEffect(() => {
     if (auth.authenticated && !auth.accountActive) {
       console.warn('User account is inactive - logging out');
       auth.logout();
@@ -73,7 +84,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [auth.authenticated, auth.accountActive, auth.logout]);
 
   // Monitor session validity
-  useEffect(() => {
+  React.useEffect(() => {
     if (auth.authenticated && !auth.sessionValid) {
       console.warn('Session is invalid - attempting refresh');
       auth.refreshSession().then(success => {
@@ -117,7 +128,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
  * Hook to use authentication context
  */
 export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
+  const context = React.useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }

@@ -9,7 +9,7 @@
  * - Uses existing supabase client for database operations
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import * as React from 'react';
 import { useDecryptedCurrentUser } from '../hooks/useClientDecryption';
 import type { DecryptedUserProfile } from '../lib/client-decryption';
 
@@ -29,7 +29,7 @@ interface DecryptedUserContextType {
   isAuthenticated: boolean;
 }
 
-const DecryptedUserContext = createContext<DecryptedUserContextType | undefined>(undefined);
+const DecryptedUserContext = React.createContext<DecryptedUserContextType | undefined>(undefined);
 
 /**
  * PRIVACY-FIRST: Decrypted User Provider
@@ -46,17 +46,17 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
     logout: performLogout
   } = useDecryptedCurrentUser();
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
 
   // Update authentication state based on decrypted profile
-  useEffect(() => {
+  React.useEffect(() => {
     setIsAuthenticated(!!decryptedProfile);
   }, [decryptedProfile]);
 
   /**
    * Refresh current user data
    */
-  const refreshUser = useCallback(async () => {
+  const refreshUser = React.useCallback(async () => {
     console.log('🔄 Refreshing decrypted user data...');
     await refetch();
   }, [refetch]);
@@ -64,7 +64,7 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
   /**
    * Logout and clear all decrypted data
    */
-  const logout = useCallback(async () => {
+  const logout = React.useCallback(async () => {
     console.log('🚪 Logging out and clearing decrypted data...');
     await performLogout();
     setIsAuthenticated(false);
@@ -119,7 +119,7 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
  * Hook to use decrypted user context
  */
 export function useDecryptedUser(): DecryptedUserContextType {
-  const context = useContext(DecryptedUserContext);
+  const context = React.useContext(DecryptedUserContext);
 
   if (context === undefined) {
     throw new Error('useDecryptedUser must be used within a DecryptedUserProvider');
@@ -187,27 +187,27 @@ export function useDecryptedUserField<K extends keyof DecryptedUserProfile>(
 export function useUserPermissions() {
   const { user } = useDecryptedUser();
 
-  const hasRole = useCallback((role: string): boolean => {
+  const hasRole = React.useCallback((role: string): boolean => {
     return user?.role === role;
   }, [user?.role]);
 
-  const isPrivateUser = useCallback((): boolean => {
+  const isPrivateUser = React.useCallback((): boolean => {
     return user?.role === 'private';
   }, [user?.role]);
 
-  const isOffspring = useCallback((): boolean => {
+  const isOffspring = React.useCallback((): boolean => {
     return user?.role === 'offspring';
   }, [user?.role]);
 
-  const isAdult = useCallback((): boolean => {
+  const isAdult = React.useCallback((): boolean => {
     return user?.role === 'adult';
   }, [user?.role]);
 
-  const isSteward = useCallback((): boolean => {
+  const isSteward = React.useCallback((): boolean => {
     return user?.role === 'steward';
   }, [user?.role]);
 
-  const isGuardian = useCallback((): boolean => {
+  const isGuardian = React.useCallback((): boolean => {
     return user?.role === 'guardian';
   }, [user?.role]);
 

@@ -5,7 +5,7 @@
  * Wraps the useSecureMessageSigning hook with UI components for user consent.
  */
 
-import React, { createContext, ReactNode, useContext } from 'react';
+import * as React from 'react';
 import { MessageType, SigningMethod, SigningResult, UnsignedEvent, useSecureMessageSigning } from '../../lib/messaging/secure-message-signing';
 import { MethodSelectionData, MethodSelectionModal } from './MethodSelectionModal';
 import { NsecConsentData, NsecConsentModal } from './NsecConsentModal';
@@ -23,10 +23,10 @@ interface SecureMessageSigningContextType {
   clearError: () => void;
 }
 
-const SecureMessageSigningContext = createContext<SecureMessageSigningContextType | null>(null);
+const SecureMessageSigningContext = React.createContext<SecureMessageSigningContextType | null>(null);
 
 interface SecureMessageSigningProviderProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProviderProps> = ({ children }) => {
@@ -202,7 +202,7 @@ export const SecureMessageSigningProvider: React.FC<SecureMessageSigningProvider
 
 // Hook to use the secure message signing context
 export const useSecureMessageSigningContext = (): SecureMessageSigningContextType => {
-  const context = useContext(SecureMessageSigningContext);
+  const context = React.useContext(SecureMessageSigningContext);
   if (!context) {
     throw new Error('useSecureMessageSigningContext must be used within a SecureMessageSigningProvider');
   }

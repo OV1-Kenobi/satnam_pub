@@ -4,7 +4,7 @@
  * XSS protection, and automatic cleanup
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import * as React from "react";
 
 export interface TokenData {
   accessToken: string;
@@ -49,16 +49,16 @@ export function useSecureTokenStorage(
   config: SecureTokenConfig,
 ): UseSecureTokenStorageReturn {
   // Use refs to store sensitive data in memory only
-  const tokenDataRef = useRef<TokenData | null>(null);
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isRefreshingRef = useRef(false);
-  const refreshingPromiseRef = useRef<Promise<boolean> | null>(null);
-  const refreshResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const tokenDataRef = React.useRef<TokenData | null>(null);
+  const refreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRefreshingRef = React.useRef(false);
+  const refreshingPromiseRef = React.useRef<Promise<boolean> | null>(null);
+  const refreshResolveRef = React.useRef<((value: boolean) => void) | null>(null);
 
   // State for UI updates
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const {
     refreshThresholdMinutes = 5,
@@ -69,7 +69,7 @@ export function useSecureTokenStorage(
   /**
    * Securely store token data in memory and set up auto-refresh
    */
-  const setTokens = useCallback(async (tokenData: TokenData): Promise<void> => {
+  const setTokens = React.useCallback(async (tokenData: TokenData): Promise<void> => {
     try {
       setError(null);
 
@@ -118,7 +118,7 @@ export function useSecureTokenStorage(
   /**
    * Get current access token, refreshing if necessary
    */
-  const getToken = useCallback(async (): Promise<string | null> => {
+  const getToken = React.useCallback(async (): Promise<string | null> => {
     try {
       setError(null);
 
@@ -158,7 +158,7 @@ export function useSecureTokenStorage(
   /**
    * Refresh the access token using the refresh token
    */
-  const refreshToken = useCallback(async (): Promise<boolean> => {
+  const refreshToken = React.useCallback(async (): Promise<boolean> => {
     if (isRefreshingRef.current) {
       return refreshingPromiseRef.current!;
     }
@@ -234,14 +234,14 @@ export function useSecureTokenStorage(
   /**
    * Force token refresh regardless of expiration time
    */
-  const forceTokenRefresh = useCallback(async (): Promise<boolean> => {
+  const forceTokenRefresh = React.useCallback(async (): Promise<boolean> => {
     return await refreshToken();
   }, [refreshToken]);
 
   /**
    * Clear all stored tokens
    */
-  const clearTokens = useCallback(async (): Promise<void> => {
+  const clearTokens = React.useCallback(async (): Promise<void> => {
     try {
       // Revoke tokens on server if possible
       if (tokenDataRef.current?.refreshToken) {
@@ -291,7 +291,7 @@ export function useSecureTokenStorage(
   /**
    * Check if current token is expired
    */
-  const isTokenExpired = useCallback((): boolean => {
+  const isTokenExpired = React.useCallback((): boolean => {
     const tokenData = tokenDataRef.current;
     if (!tokenData) return true;
 
@@ -301,14 +301,14 @@ export function useSecureTokenStorage(
   /**
    * Get token expiration time
    */
-  const getTokenExpirationTime = useCallback((): number | null => {
+  const getTokenExpirationTime = React.useCallback((): number | null => {
     return tokenDataRef.current?.expiresAt || null;
   }, []);
 
   /**
    * Schedule automatic token refresh
    */
-  const scheduleTokenRefresh = useCallback(() => {
+  const scheduleTokenRefresh = React.useCallback(() => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
@@ -329,7 +329,7 @@ export function useSecureTokenStorage(
   /**
    * Attempt to restore tokens from httpOnly cookie
    */
-  const restoreFromHttpOnlyCookie = useCallback(async (): Promise<boolean> => {
+  const restoreFromHttpOnlyCookie = React.useCallback(async (): Promise<boolean> => {
     try {
       const response = await fetch("/api/auth/restore-from-cookie", {
         method: "POST",
@@ -350,12 +350,12 @@ export function useSecureTokenStorage(
   }, [setTokens]);
 
   // Initialize token restoration on mount
-  useEffect(() => {
+  React.useEffect(() => {
     restoreFromHttpOnlyCookie();
   }, [restoreFromHttpOnlyCookie]);
 
   // Cleanup on unmount
-  useEffect(() => {
+  React.useEffect(() => {
     return () => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
@@ -369,7 +369,7 @@ export function useSecureTokenStorage(
   }, [autoCleanup]);
 
   // Page visibility change handler - refresh when page becomes visible
-  useEffect(() => {
+  React.useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && tokenDataRef.current) {
         // Check if token needs refresh when page becomes visible
@@ -415,7 +415,7 @@ export interface SecureTokenProviderProps {
   config: SecureTokenConfig;
 }
 
-export const SecureTokenContext = createContext<UseSecureTokenStorageReturn | null>(null);
+export const SecureTokenContext = React.createContext<UseSecureTokenStorageReturn | null>(null);
 
 export function SecureTokenProvider({
   children,
@@ -431,7 +431,7 @@ export function SecureTokenProvider({
 }
 
 export function useSecureToken(): UseSecureTokenStorageReturn {
-  const context = useContext(SecureTokenContext);
+  const context = React.useContext(SecureTokenContext);
   if (!context) {
     throw new Error("useSecureToken must be used within a SecureTokenProvider");
   }

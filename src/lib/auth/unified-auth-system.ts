@@ -14,11 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ClientSessionVault,
-  hasVaultRecord,
-  setNFCPolicy,
-} from "./client-session-vault";
+import { ClientSessionVault, hasVaultRecord } from "./client-session-vault";
 import { fetchWithAuth } from "./fetch-with-auth";
 import { awaitNFC } from "./nfc-auth-bridge";
 import { nsecSessionBridge } from "./nsec-session-bridge";
@@ -149,72 +145,7 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     sessionValid: false,
     lastValidated: null,
   });
-  // Vault rehydrate on app load (no server calls)
-  useEffect(() => {
-    if (USE_VAULT) {
-      try {
-        // Configure NFC policy for vault gating
-        try {
-          const NFC_ENABLED =
-            (import.meta.env.VITE_ENABLE_NFC_MFA ?? "false") === "true";
-          const NFC_SUPPORTED =
-            typeof window !== "undefined" && "NDEFReader" in window;
-          if (NFC_ENABLED && NFC_SUPPORTED) {
-            setNFCPolicy({
-              policy: "nfc",
-              awaitNfcAuth: awaitNFC,
-              config: {
-                pinTimeoutMs: parseInt(
-                  import.meta.env.VITE_NFC_PIN_TIMEOUT ?? "120000"
-                ),
-                confirmationMode: (import.meta.env.VITE_NFC_CONFIRMATION_MODE ??
-                  "per_unlock") as "per_unlock" | "per_operation",
-              },
-            });
-          } else {
-            setNFCPolicy({ policy: "none" });
-          }
-        } catch (e) {
-          // If config or env missing, disable NFC gating
-          setNFCPolicy({ policy: "none" });
-        }
-
-        const status = (nsecSessionBridge as any)?.getSessionStatus?.();
-        const hasSession = !!status?.hasSession;
-        if (!hasSession) {
-          (async () => {
-            const allowPrompt = shouldAutoPromptVault();
-            let unlocked = await ClientSessionVault.unlock({
-              interactive: allowPrompt,
-            }).catch(() => false);
-            if (!unlocked && (await hasVaultRecord())) {
-              // Respect opt-in; only prompt if enabled
-              unlocked = await ClientSessionVault.unlock({
-                interactive: allowPrompt,
-              }).catch(() => false);
-            }
-            if (unlocked) {
-              const nsecHex = await ClientSessionVault.getNsecHex();
-              if (nsecHex) {
-                await nsecSessionBridge.initializeAfterAuth(nsecHex, {
-                  browserLifetime: true,
-                  maxOperations: 50,
-                });
-                console.log(
-                  "🔐 Rehydrated signing session from ClientSessionVault"
-                );
-              }
-            }
-          })();
-        }
-      } catch (e) {
-        console.debug(
-          "Vault rehydrate attempt skipped:",
-          e instanceof Error ? e.message : String(e)
-        );
-      }
-    }
-  }, []);
+  // Removed vault initialization from app startup - vault should only be called on user action
 
   /**
    * Clear stored session data
@@ -560,6 +491,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
             // ClientSessionVault (feature-flagged): prefer local vault session
             if (USE_VAULT) {
               try {
+                // AuthProvider installs passphrase provider when user has enabled it.
+                // No action here to avoid overriding the UI-backed provider.
+
                 await ClientSessionVault.bootstrapFromSignin(
                   u.encrypted_nsec,
                   u.user_salt,
@@ -691,6 +625,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
                     let created = false;
                     if (USE_VAULT) {
                       try {
+                        // AuthProvider installs passphrase provider when user has enabled it.
+                        // No action here to avoid overriding the UI-backed provider.
+
                         await ClientSessionVault.bootstrapFromSignin(
                           su.encrypted_nsec,
                           su.user_salt,
@@ -999,6 +936,9 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         setState((prev) => ({ ...prev, loading: false }));
         return false;
       }
+
+      // AuthProvider will install the passphrase provider for PBKDF2 when enabled by the user.
+      // Do not install any stub provider here.
 
       let unlocked = await ClientSessionVault.unlock().catch(() => false);
       if (!unlocked && (await hasVaultRecord())) {
