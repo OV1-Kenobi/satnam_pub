@@ -1,7 +1,7 @@
 // React provider for crypto utilities with lazy loading
 // File: src/components/CryptoProvider.tsx
 
-import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import React, { ReactNode, useContext, useEffect, useState } from 'react';
 
 // Dynamic import types - define locally to avoid static import
 interface CryptoLoadingState {
@@ -23,7 +23,7 @@ interface CryptoContextValue extends CryptoLoadingState {
   configure: (strategy: Partial<CryptoLoadingStrategy>) => void;
 }
 
-const CryptoContext = createContext<CryptoContextValue | null>(null);
+const CryptoContext = React.createContext<CryptoContextValue | null>(null);
 
 interface CryptoProviderProps {
   children: ReactNode;

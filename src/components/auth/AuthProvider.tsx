@@ -6,7 +6,7 @@
  * while maintaining privacy-first architecture with comprehensive protection.
  */
 
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { setPassphraseProvider } from '../../lib/auth/client-session-vault';
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
 
@@ -22,7 +22,7 @@ type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
 };
 
 // Create authentication context
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = React.createContext<AuthContextType | null>(null);
 
 interface AuthProviderProps {
   children: React.ReactNode;

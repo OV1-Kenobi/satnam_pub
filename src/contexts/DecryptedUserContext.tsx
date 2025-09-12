@@ -9,27 +9,27 @@
  * - Uses existing supabase client for database operations
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import { useDecryptedCurrentUser } from '../hooks/useClientDecryption';
 import type { DecryptedUserProfile } from '../lib/client-decryption';
 
 interface DecryptedUserContextType {
   // Current user data (decrypted)
   user: DecryptedUserProfile | null;
-  
+
   // Loading and error states
   isLoading: boolean;
   error: string | null;
-  
+
   // Actions
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
-  
+
   // Session management
   isAuthenticated: boolean;
 }
 
-const DecryptedUserContext = createContext<DecryptedUserContextType | undefined>(undefined);
+const DecryptedUserContext = React.createContext<DecryptedUserContextType | undefined>(undefined);
 
 /**
  * PRIVACY-FIRST: Decrypted User Provider
@@ -75,12 +75,12 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
     const setupAuthListener = async () => {
       // Import supabase client dynamically
       const { supabase } = await import('../lib/supabase');
-      
+
       // Listen for auth state changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
           console.log('🔐 Auth state changed:', event);
-          
+
           if (event === 'SIGNED_OUT' || !session) {
             // Clear decrypted data on sign out
             setIsAuthenticated(false);
@@ -120,11 +120,11 @@ export function DecryptedUserProvider({ children }: { children: React.ReactNode 
  */
 export function useDecryptedUser(): DecryptedUserContextType {
   const context = useContext(DecryptedUserContext);
-  
+
   if (context === undefined) {
     throw new Error('useDecryptedUser must be used within a DecryptedUserProvider');
   }
-  
+
   return context;
 }
 
@@ -134,10 +134,10 @@ export function useDecryptedUser(): DecryptedUserContextType {
  * This component ensures that children only render when user is authenticated
  * and decrypted user data is available.
  */
-export function RequireDecryptedAuth({ 
-  children, 
-  fallback 
-}: { 
+export function RequireDecryptedAuth({
+  children,
+  fallback
+}: {
   children: React.ReactNode;
   fallback?: React.ReactNode;
 }) {
