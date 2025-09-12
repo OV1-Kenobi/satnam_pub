@@ -12,19 +12,39 @@ import { createClient } from "@supabase/supabase-js";
  * @returns {string} Environment variable value
  */
 function getEnvVar(key: string, defaultValue: string = ""): string {
-  // Prefer process.env for maximum compatibility with Netlify build/runtime
-  if (
-    typeof process !== "undefined" &&
-    process.env &&
-    typeof (process.env as any)[key] !== "undefined"
-  ) {
-    return ((process.env as any)[key] as string) || defaultValue;
+  // PRIMARY: process.env (works for both Netlify Functions and Vite-defined injections)
+  try {
+    if (
+      typeof process !== "undefined" &&
+      (process as any).env &&
+      typeof ((process as any).env as any)[key] !== "undefined"
+    ) {
+      return (((process as any).env as any)[key] as string) || defaultValue;
+    }
+  } catch {
+    /* noop */
   }
 
-  // Fallback to a compile-time injected object to support dynamic key reads in the browser
-  if (typeof globalThis !== "undefined" && (globalThis as any).__APP_ENV__) {
-    const v = (globalThis as any).__APP_ENV__[key];
-    if (typeof v !== "undefined") return v as string;
+  // SECONDARY: Vite's import.meta.env (browser/build context only)
+  try {
+    if (typeof import.meta !== "undefined") {
+      const metaAny: any = import.meta as any;
+      if (metaAny && metaAny.env && typeof metaAny.env[key] !== "undefined") {
+        return (metaAny.env[key] as string) || defaultValue;
+      }
+    }
+  } catch {
+    /* noop */
+  }
+
+  // TERTIARY: global shim if provided at runtime
+  try {
+    if (typeof globalThis !== "undefined" && (globalThis as any).__APP_ENV__) {
+      const v = (globalThis as any).__APP_ENV__[key];
+      if (typeof v !== "undefined") return v as string;
+    }
+  } catch {
+    /* noop */
   }
 
   return defaultValue;

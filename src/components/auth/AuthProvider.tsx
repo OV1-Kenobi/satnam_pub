@@ -23,6 +23,15 @@ type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
   setIsLoginFlow: (isLogin: boolean) => void;
 };
 
+// Diagnostics: verify React createContext availability in production
+if (import.meta.env && import.meta.env.PROD) {
+  try {
+    console.warn('[Diag] AuthProvider typeof createContext:', typeof createContext);
+  } catch (e) {
+    console.error('[Diag] AuthProvider createContext check failed:', e);
+  }
+}
+
 // Create authentication context
 const AuthContext = createContext<AuthContextType | null>(null);
 

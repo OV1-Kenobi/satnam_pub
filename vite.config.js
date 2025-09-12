@@ -209,11 +209,11 @@ export default defineConfig({
       },
     },
 
+    // Diagnostics: keep console logs in production temporarily to trace white-screen root cause
     terserOptions: isProduction ? {
       compress: {
-        drop_console: true,
-        drop_debugger: true,
-        pure_funcs: ["console.log", "console.info", "console.debug"],
+        drop_console: false,
+        drop_debugger: false,
       },
     } : undefined,
   },

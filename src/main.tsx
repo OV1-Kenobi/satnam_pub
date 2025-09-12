@@ -5,6 +5,21 @@ import { AuthProvider } from "./components/auth/AuthProvider";
 import { CryptoPreloader } from "./components/CryptoPreloader";
 import "./index.css";
 
+// Early diagnostics: inspect React module shape in production builds
+if (import.meta.env && import.meta.env.PROD) {
+  import('react')
+    .then((mod) => {
+      const anyMod: any = mod as any;
+      console.warn('[Diag] React module keys:', Object.keys(mod));
+      console.warn('[Diag] React.version:', anyMod?.version ?? 'unknown');
+      console.warn('[Diag] typeof createContext:', typeof anyMod?.createContext);
+      console.warn('[Diag] typeof StrictMode:', typeof anyMod?.StrictMode);
+    })
+    .catch((e) => {
+      console.error('[Diag] Failed dynamic import("react"):', e);
+    });
+}
+
 // Global NIP-07 guard: wrap extension methods before any React render
 (function initNip07GlobalGuard() {
   try {
