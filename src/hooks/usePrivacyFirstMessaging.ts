@@ -190,16 +190,10 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     }
   }, []);
 
-  // Resolve current user's public key (hex) or npub for subscription filters
+  // Resolve current user's public key (hex) for subscription filters
+  // IMPORTANT: Do NOT auto-trigger NIP-07. Default flows must use Client Vault/session only.
   const resolveRecipient = useCallback(async (): Promise<string | null> => {
-    try {
-      const w = globalThis as any;
-      if (w?.nostr?.getPublicKey) {
-        const hex: string = await w.nostr.getPublicKey();
-        return hex;
-      }
-    } catch {}
-    // Fallback: derive pubkey from active secure session without exposing nsec
+    // Prefer session-derived pubkey; avoid calling window.nostr automatically
     if (state.sessionId) {
       try {
         const hex = await secureNsecManager.useTemporaryNsec(
@@ -212,6 +206,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
       }
     }
 
+    // No session or failed derivation — do not fall back to NIP-07 implicitly
     return null;
   }, [state.sessionId]);
 
