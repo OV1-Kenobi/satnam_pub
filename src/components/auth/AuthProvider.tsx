@@ -6,7 +6,7 @@
  * while maintaining privacy-first architecture with comprehensive protection.
  */
 
-import * as React from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ComponentType, type FC, type ReactNode } from 'react';
 // Removed direct import to break circular dependency - will be loaded dynamically
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
 
@@ -26,34 +26,34 @@ type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
 // Diagnostics: verify React createContext availability in production
 if (import.meta.env && import.meta.env.PROD) {
   try {
-    console.warn('[Diag] AuthProvider typeof createContext:', typeof React.createContext);
+    console.warn('[Diag] AuthProvider typeof createContext:', typeof createContext);
   } catch (e) {
     console.error('[Diag] AuthProvider createContext check failed:', e);
   }
 }
 
 // Create authentication context
-const AuthContext = React.createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | null>(null);
 
 interface AuthProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 /**
  * Authentication Provider Component
  * Wraps the entire application to provide authentication state
  */
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   const auth = useUnifiedAuth();
-  const [isRegistrationFlow, setIsRegistrationFlow] = React.useState(false);
-  const [isLoginFlow, setIsLoginFlow] = React.useState(false);
+  const [isRegistrationFlow, setIsRegistrationFlow] = useState(false);
+  const [isLoginFlow, setIsLoginFlow] = useState(false);
 
   // ClientSessionVault PBKDF2 passphrase modal wiring
-  const [vaultOpen, setVaultOpen] = React.useState(false);
-  const vaultResolverRef = React.useRef<((value: string | null) => void) | null>(null);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const vaultResolverRef = useRef<((value: string | null) => void) | null>(null);
 
   // Install real passphrase provider only for users who opted-in via vault feature flags
-  const installVaultPassphraseProvider = React.useCallback(() => {
+  const installVaultPassphraseProvider = useCallback(() => {
     setPassphraseProvider(() => {
       return new Promise<string | null>((resolve) => {
         vaultResolverRef.current = resolve;
@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     });
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     try {
       const flags = getVaultFeatureFlags();
       if (flags?.passphraseEnabled) {
@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Removed passphrase provider setup from app startup - only needed when vault is actually used
 
   // Monitor authentication state changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (auth.authenticated) {
       // Clear flow states when authenticated
       setIsRegistrationFlow(false);
@@ -85,7 +85,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [auth.authenticated]);
 
   // Monitor account status
-  React.useEffect(() => {
+  useEffect(() => {
     if (auth.authenticated && !auth.accountActive) {
       console.warn('User account is inactive - logging out');
       auth.logout();
@@ -93,7 +93,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [auth.authenticated, auth.accountActive, auth.logout]);
 
   // Monitor session validity
-  React.useEffect(() => {
+  useEffect(() => {
     if (auth.authenticated && !auth.sessionValid) {
       console.warn('Session is invalid - attempting refresh');
       auth.refreshSession().then(success => {
@@ -137,7 +137,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
  * Hook to use authentication context
  */
 export const useAuth = (): AuthContextType => {
-  const context = React.useContext(AuthContext);
+  const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
@@ -214,8 +214,8 @@ export const useNostrichSignin = () => {
  * Higher-order component for protected components
  */
 export const withAuth = <P extends object>(
-  Component: React.ComponentType<P>
-): React.FC<P> => {
+  Component: ComponentType<P>
+): FC<P> => {
   return (props: P) => {
     const auth = useAuth();
 
@@ -241,7 +241,7 @@ export const withAuth = <P extends object>(
 /**
  * Authentication status component for debugging
  */
-export const AuthStatus: React.FC = () => {
+export const AuthStatus: FC = () => {
   const auth = useAuth();
 
   if (process.env.NODE_ENV !== 'development') {
