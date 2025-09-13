@@ -107,7 +107,7 @@ export function PeerInvitationModal({
         onClose();
 
         // Show success message with details
-        const privacyMethod = result.method === 'giftwrapped' ? 'Gift Wrapped (Maximum Privacy)' :
+        const privacyMethod = result.method === 'giftwrapped' ? 'Sealed (Maximum Privacy)' :
           result.method === 'encrypted' ? 'Encrypted DM (Selective Privacy)' :
             'Public Note (Minimal Privacy)';
 
@@ -207,7 +207,7 @@ export function PeerInvitationModal({
                 {
                   level: 'giftwrapped' as PrivacyLevel,
                   label: 'Maximum Privacy',
-                  description: 'Gift Wrapped - Complete metadata protection',
+                  description: 'Sealed - Complete metadata protection',
                   icon: '🔒',
                   features: ['Hidden identity', 'Timing obfuscation', 'Zero PII exposure']
                 },
@@ -260,7 +260,7 @@ export function PeerInvitationModal({
             <div className="text-xs text-purple-200 space-y-1">
               <div>Username: {senderProfile?.username || 'Unknown User'}</div>
               <div>Lightning Address: {senderProfile?.username || 'user'}@satnam.pub</div>
-              <div>Secure Communications: {privacyLevel === PrivacyLevel.GIFTWRAPPED ? 'Giftwrapped' : privacyLevel === PrivacyLevel.ENCRYPTED ? 'Encrypted' : 'Standard'} Nostr DMs</div>
+              <div>Secure Communications: {privacyLevel === PrivacyLevel.GIFTWRAPPED ? 'Sealed' : privacyLevel === PrivacyLevel.ENCRYPTED ? 'Encrypted' : 'Standard'} Nostr DMs</div>
             </div>
           </div>
         </div>

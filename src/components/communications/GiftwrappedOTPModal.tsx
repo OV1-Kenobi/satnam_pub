@@ -226,7 +226,7 @@ export function GiftwrappedOTPModal({
 
       if (response.ok && result.success) {
         setCurrentStep('verification')
-        setSuccess('OTP verified successfully! Giftwrapped communications are now enabled.')
+        setSuccess('OTP verified successfully! Sealed communications are now enabled.')
 
         const verificationResult: OTPVerificationResult = {
           success: true,
@@ -292,7 +292,7 @@ export function GiftwrappedOTPModal({
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-white">
-                  Giftwrapped OTP Authentication
+                  Sealed Messaging OTP Authentication
                 </h2>
                 <p className="text-indigo-200 text-sm">
                   Secure verification for maximum privacy communications
@@ -314,13 +314,13 @@ export function GiftwrappedOTPModal({
           <div className="flex items-center justify-center mb-8">
             <div className="flex items-center space-x-4">
               <div className={`flex items-center justify-center w-8 h-8 rounded-full ${currentStep === 'privacy' ? 'bg-indigo-500 text-white' :
-                  currentStep === 'otp' || currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
+                currentStep === 'otp' || currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
                 }`}>
                 <Shield className="h-4 w-4" />
               </div>
               <div className={`w-12 h-0.5 ${currentStep === 'otp' || currentStep === 'verification' ? 'bg-green-500' : 'bg-white/20'}`} />
               <div className={`flex items-center justify-center w-8 h-8 rounded-full ${currentStep === 'otp' ? 'bg-indigo-500 text-white' :
-                  currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
+                currentStep === 'verification' ? 'bg-green-500 text-white' : 'bg-white/20 text-white/60'
                 }`}>
                 <Key className="h-4 w-4" />
               </div>
@@ -362,7 +362,7 @@ export function GiftwrappedOTPModal({
                   Select Your Privacy Level
                 </h3>
                 <p className="text-indigo-200 text-sm">
-                  Choose the appropriate privacy level for your giftwrapped communications
+                  Choose the appropriate privacy level for your sealed communications
                 </p>
               </div>
 
@@ -413,8 +413,8 @@ export function GiftwrappedOTPModal({
                       key={method.value}
                       onClick={() => setOtpMethod(method.value as any)}
                       className={`p-3 rounded-lg border transition-all duration-300 ${otpMethod === method.value
-                          ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
-                          : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                        : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
                         }`}
                     >
                       <div className="flex items-center space-x-2">
@@ -492,7 +492,7 @@ export function GiftwrappedOTPModal({
                   Authentication Successful!
                 </h3>
                 <p className="text-indigo-200 text-sm">
-                  Your giftwrapped communications are now secured with {privacyLevel} privacy level
+                  Your sealed communications are now secured with {privacyLevel} privacy level
                 </p>
               </div>
 

@@ -256,7 +256,7 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
                 {
                   level: 'giftwrapped' as PrivacyLevel,
                   label: 'Maximum Privacy',
-                  description: 'Gift Wrapped - Complete metadata protection',
+                  description: 'Sealed - Complete metadata protection',
                   icon: '🔒',
                   features: ['Hidden identity', 'Timing obfuscation', 'Zero PII exposure']
                 },

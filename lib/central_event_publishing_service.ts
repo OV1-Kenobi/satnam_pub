@@ -22,6 +22,16 @@ const bytesToHex = (bytes: Uint8Array): string =>
   Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff === 0;
+}
+
 const utf8 = (s: string) => te.encode(s);
 
 // Import bridges and session manager at top-level (TS/ESM)
@@ -300,10 +310,29 @@ export const DEFAULT_UNIFIED_CONFIG: UnifiedMessagingConfig = {
 function isValidRelayUrl(url: string): boolean {
   if (!url || typeof url !== "string") return false;
   const s = url.trim();
-  if (!s.startsWith("wss://")) return false;
+  // Allow ws:// and wss:// but prefer wss://; block others
+  if (!s.startsWith("wss://") && !s.startsWith("ws://")) return false;
   try {
-    // eslint-disable-next-line no-new
-    new URL(s);
+    const u = new URL(s);
+    const hostname = u.hostname.toLowerCase();
+    const port = u.port ? parseInt(u.port, 10) : undefined;
+    // Block localhost and local domains
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".local") ||
+      hostname === "::1" ||
+      hostname === "[::1]"
+    )
+      return false;
+    // Block common private IPv4 ranges
+    const isPrivateIPv4 =
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+    if (isPrivateIPv4) return false;
+    // Block non-standard ports (only allow default 80 and 443)
+    if (port && port !== 80 && port !== 443) return false;
     return true;
   } catch {
     return false;
@@ -372,6 +401,9 @@ export class CentralEventPublishingService {
   private groupSessions: Map<string, PrivacyGroup> = new Map();
   private pendingApprovals: Map<string, GuardianApprovalRequest> = new Map();
   private rateLimits: Map<string, { count: number; resetTime: number }> =
+    new Map();
+  // Relay discovery cache (kind:10050 inbox relays), TTL 10 minutes
+  private relayCache: Map<string, { relays: string[]; expiresAt: number }> =
     new Map();
 
   constructor() {
@@ -776,7 +808,7 @@ export class CentralEventPublishingService {
   async createGroup(a: any, b?: any, c?: any, d?: any): Promise<string> {
     if (typeof a === "string") {
       // original signature
-      const creatorNsec = a as string;
+
       const groupName = b as string;
       const groupType = c as string;
       const memberPubkeys = d as string[];
@@ -1698,6 +1730,249 @@ export class CentralEventPublishingService {
     return dec.data as Uint8Array;
   }
 
+  // ---- NIP-17 builders and wrappers ----
+  buildUnsignedKind14DirectMessage(
+    content: string,
+    recipientPubkeyHex: string
+  ): { kind: number; created_at: number; tags: string[][]; content: string } {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      kind: 14,
+      created_at: now,
+      tags: [["p", recipientPubkeyHex]],
+      content,
+    };
+  }
+
+  buildUnsignedKind15GroupMessage(
+    content: string,
+    groupId: string
+  ): { kind: number; created_at: number; tags: string[][]; content: string } {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      kind: 15,
+      created_at: now,
+      tags: [["e", groupId]],
+      content,
+    };
+  }
+
+  async sealKind13(unsignedEvent: any, senderNsec: string): Promise<Event> {
+    try {
+      // Normalize nsec to hex private key
+      let privHex: string;
+      try {
+        const bytes = this.decodeNsec(senderNsec);
+        privHex = Array.from(bytes)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      } catch {
+        // Assume already-hex
+        privHex = senderNsec;
+      }
+      const pubHex = getPublicKey(privHex);
+      const now = Math.floor(Date.now() / 1000);
+      const unsignedSeal: any = {
+        kind: 13,
+        created_at: now,
+        tags: [],
+        content: JSON.stringify(unsignedEvent),
+        pubkey: pubHex,
+      };
+      return finalizeEvent(unsignedSeal as any, privHex) as Event;
+    } catch (e) {
+      throw new Error(
+        `Failed to seal kind:13: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+  }
+
+  async sealKind13WithActiveSession(unsignedEvent: any): Promise<Event> {
+    const sessionId = this.getActiveSigningSessionId();
+    if (!sessionId) throw new Error("No active signing session");
+    return await secureNsecManager.useTemporaryNsec(
+      sessionId,
+      async (nsecHex) => {
+        const privHex = nsecHex;
+        const pubHex = getPublicKey(privHex);
+        const now = Math.floor(Date.now() / 1000);
+        const unsignedSeal: any = {
+          kind: 13,
+          created_at: now,
+          tags: [],
+          content: JSON.stringify(unsignedEvent),
+          pubkey: pubHex,
+        };
+        return finalizeEvent(unsignedSeal as any, privHex) as Event;
+      }
+    );
+  }
+
+  async giftWrap1059(
+    sealedEvent: Event,
+    recipientPubkeyHex: string
+  ): Promise<Event> {
+    const senderPubHex = (sealedEvent as any).pubkey as string;
+    const wrapped = await (nip59 as any).wrapEvent?.(
+      sealedEvent as any,
+      senderPubHex,
+      recipientPubkeyHex
+    );
+    if (!wrapped) throw new Error("NIP-59 gift wrap failed");
+    return wrapped as Event;
+  }
+
+  // Backward-compatibility: wrap signed DM/inner event directly (NIP-59)
+  async wrapGift59(
+    innerSignedEvent: Event,
+    recipientPubkeyHex: string
+  ): Promise<Event> {
+    const senderPubHex = (innerSignedEvent as any).pubkey as string;
+    const wrapped = await (nip59 as any).wrapEvent?.(
+      innerSignedEvent as any,
+      senderPubHex,
+      recipientPubkeyHex
+    );
+    if (!wrapped) throw new Error("NIP-59 wrap failed");
+    return wrapped as Event;
+  }
+
+  // Unwrap gift-wrapped event using active secure session
+  async unwrapGift59WithActiveSession(
+    outerEvent: Event
+  ): Promise<Event | null> {
+    const sessionId = this.getActiveSigningSessionId();
+    if (!sessionId) return null;
+    try {
+      return await secureNsecManager.useTemporaryNsec(
+        sessionId,
+        async (nsecHex) => {
+          try {
+            const fn =
+              (nip59 as any).unwrapEvent || (nip59 as any).openGiftWrap;
+            if (!fn) throw new Error("NIP-59 unwrap not available");
+            return (await fn(outerEvent, nsecHex)) as Event;
+          } catch (innerErr) {
+            // Swallow unwrap errors and return null for robustness
+            return null as any;
+          }
+        }
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Optional NIP-44 helpers (available for future NIP-17 flows)
+  async encryptNip44WithActiveSession(
+    recipientPubkeyHex: string,
+    plaintext: string
+  ): Promise<string> {
+    const sessionId = this.getActiveSigningSessionId();
+    if (!sessionId) throw new Error("No active signing session");
+    return await secureNsecManager.useTemporaryNsec(
+      sessionId,
+      async (nsecHex) => {
+        const mod = await import("nostr-tools/nip44");
+        return (await (mod as any).encrypt(
+          nsecHex,
+          recipientPubkeyHex,
+          plaintext
+        )) as string;
+      }
+    );
+  }
+
+  // ---- Relay discovery (kind:10050) and optimized publishing ----
+  private parseRelaysFrom10050Event(ev: Event): string[] {
+    const urls = new Set<string>();
+    try {
+      const tags = (ev as any).tags as any[];
+      if (Array.isArray(tags)) {
+        for (const t of tags) {
+          if (Array.isArray(t) && t[0] === "r" && typeof t[1] === "string") {
+            const u = t[1].trim();
+            if (isValidRelayUrl(u)) urls.add(u);
+          }
+        }
+      }
+      const content = (ev as any).content;
+      if (typeof content === "string" && content.trim()) {
+        try {
+          const parsed = JSON.parse(content);
+          const inbox = Array.isArray(parsed?.inbox) ? parsed.inbox : [];
+          for (const u of inbox) if (isValidRelayUrl(u)) urls.add(u);
+        } catch {
+          // Not JSON - attempt CSV-style parse
+          const parts = content.split(/[\s,]+/g).map((s) => s.trim());
+          for (const p of parts) if (isValidRelayUrl(p)) urls.add(p);
+        }
+      }
+    } catch {}
+    // Enforce a practical upper bound to prevent DoS via huge relay lists
+    return Array.from(urls).slice(0, 20);
+  }
+
+  private mergeUniqueRelays(...lists: (string[] | undefined)[]): string[] {
+    const set = new Set<string>();
+    for (const list of lists)
+      if (Array.isArray(list)) for (const r of list) set.add(r);
+    return Array.from(set);
+  }
+
+  async resolveInboxRelaysFromKind10050(pubkeyHex: string): Promise<string[]> {
+    const now = Date.now();
+    const cached = this.relayCache.get(pubkeyHex);
+    if (cached && cached.expiresAt > now) return cached.relays.slice();
+
+    try {
+      const filters = [{ kinds: [10050], authors: [pubkeyHex], limit: 1 }];
+      const listPromise = (this.pool as any).list(this.relays, filters);
+      // Add timeout to avoid hanging on slow relays
+      const timeoutMs = 2500;
+      const events = (await Promise.race([
+        listPromise,
+        new Promise<Event[]>((resolve) =>
+          setTimeout(() => resolve([]), timeoutMs)
+        ),
+      ])) as Event[];
+      const ev = Array.isArray(events) && events.length ? events[0] : null;
+      const relays = ev ? this.parseRelaysFrom10050Event(ev) : [];
+      const ttl = 10 * 60 * 1000;
+      this.relayCache.set(pubkeyHex, { relays, expiresAt: now + ttl });
+      return relays.slice();
+    } catch {
+      return [];
+    }
+  }
+
+  async publishOptimized(
+    ev: Event,
+    opts?: {
+      recipientPubHex?: string;
+      senderPubHex?: string;
+      includeFallback?: boolean;
+    }
+  ): Promise<string> {
+    try {
+      const recipientRelays = opts?.recipientPubHex
+        ? await this.resolveInboxRelaysFromKind10050(opts.recipientPubHex)
+        : [];
+      const senderRelays = opts?.senderPubHex
+        ? await this.resolveInboxRelaysFromKind10050(opts.senderPubHex)
+        : [];
+      const target = this.mergeUniqueRelays(
+        recipientRelays,
+        senderRelays,
+        opts?.includeFallback !== false ? this.relays : []
+      );
+      if (!target.length) return await this.publishEvent(ev);
+      return await this.publishEvent(ev, target);
+    } catch {
+      return await this.publishEvent(ev);
+    }
+  }
+
   private async serverKeys(): Promise<{ nsec: string; nip05?: string }> {
     // Get server keys directly from Supabase (vault deprecated)
     const supabase = await getSupabase();
@@ -1815,7 +2090,10 @@ export class CentralEventPublishingService {
         );
         if (wrapped) {
           await this.sleep(delayMs);
-          return await this.publishEvent(wrapped as Event);
+          return await this.publishOptimized(wrapped as Event, {
+            recipientPubHex: recipientHex,
+            senderPubHex: senderPubHex,
+          });
         }
       } catch {}
     }
@@ -1838,7 +2116,10 @@ export class CentralEventPublishingService {
         );
         if (wrapped) {
           await this.sleep(delayMs);
-          return await this.publishEvent(wrapped as Event);
+          return await this.publishOptimized(wrapped as Event, {
+            recipientPubHex: recipientHex,
+            senderPubHex: senderHex,
+          });
         }
       } catch {}
     }
@@ -1850,7 +2131,10 @@ export class CentralEventPublishingService {
       enc
     );
     await this.sleep(delayMs);
-    return await this.publishEvent(ev);
+    return await this.publishOptimized(ev, {
+      recipientPubHex: recipientHex,
+      senderPubHex: (ev as any).pubkey as string,
+    });
   }
   private async hashOTP(otp: string): Promise<{ hash: string; salt: string }> {
     const saltBytes = new Uint8Array(16);
@@ -1874,11 +2158,10 @@ export class CentralEventPublishingService {
     prefs?: GiftWrapPreference
   ): Promise<OTPDeliveryResult> {
     try {
-      const { nsec } = await this.serverKeys();
+      await this.serverKeys();
       const otp = this.genOTP(6);
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       const recipientPubHex = this.npubToHex(recipientNpub);
-      const senderPrivBytes = this.nsecToBytes(nsec);
 
       let ev: Event | null = null;
       let messageType: "gift-wrap" | "nip04" = "nip04";
@@ -1915,7 +2198,10 @@ export class CentralEventPublishingService {
       if (!ev) {
         throw new Error("Failed to create OTP event");
       }
-      const id = await this.publishEvent(ev);
+      const id = await this.publishOptimized(ev, {
+        recipientPubHex: recipientPubHex,
+        senderPubHex: (ev as any).pubkey as string,
+      });
       await this.storeOTP(recipientNpub, otp, expiresAt);
       return { success: true, otp, messageId: id, expiresAt, messageType };
     } catch (e) {
@@ -1927,8 +2213,33 @@ export class CentralEventPublishingService {
   }
 
   // ---- Group operations with rate limiting ----
+
+  private async getGroupMemberPubkeys(groupId: string): Promise<string[]> {
+    try {
+      const supabase = await getSupabase();
+      const { data: members } = await supabase
+        .from("group_memberships")
+        .select("member_hash")
+        .eq("group_session_id", groupId);
+      const hashes = (members || [])
+        .map((m: any) => m?.member_hash)
+        .filter((x: any) => typeof x === "string")
+        .slice(0, 200);
+      if (!hashes.length) return [];
+      const { data: ids } = await supabase
+        .from("user_identities")
+        .select("user_hash, pubkey")
+        .in("user_hash", hashes);
+      return (ids || [])
+        .map((r: any) => String(r?.pubkey || ""))
+        .filter((p: string) => !!p);
+    } catch {
+      return [];
+    }
+  }
+
   async inviteToGroup(
-    adminNsec: string,
+    _adminNsec: string,
     groupId: string,
     inviteePubkey: string
   ): Promise<string> {
@@ -1961,11 +2272,33 @@ export class CentralEventPublishingService {
       content: "group-invite",
       pubkey: adminPubHex,
     } as any);
-    return await this.publishEvent(ev);
+
+    // Primary publish to invitee
+    const primaryId = await this.publishOptimized(ev, {
+      recipientPubHex: inviteePubkey,
+      senderPubHex: adminPubHex,
+    });
+
+    // Fanout to existing group members (best-effort)
+    try {
+      const members = (await this.getGroupMemberPubkeys(groupId)).filter(
+        (p) => p && p !== inviteePubkey
+      );
+      await Promise.allSettled(
+        members.map((p) =>
+          this.publishOptimized(ev, {
+            recipientPubHex: p,
+            senderPubHex: adminPubHex,
+          })
+        )
+      );
+    } catch {}
+
+    return primaryId;
   }
 
   async publishGroupAnnouncement(
-    adminNsec: string,
+    _adminNsec: string,
     groupId: string,
     announcement: string
   ): Promise<string> {
@@ -1989,7 +2322,27 @@ export class CentralEventPublishingService {
       content: announcement,
       pubkey: adminPubHex2,
     } as any);
-    return await this.publishEvent(ev);
+
+    // Fanout announcement to all members via their inbox relays; fallback to sender relays
+    try {
+      const members = await this.getGroupMemberPubkeys(groupId);
+      if (members.length) {
+        const results = await Promise.allSettled(
+          members.map((p) =>
+            this.publishOptimized(ev, {
+              recipientPubHex: p,
+              senderPubHex: adminPubHex2,
+            })
+          )
+        );
+        const ok = results.find((r) => r.status === "fulfilled") as
+          | PromiseFulfilledResult<string>
+          | undefined;
+        if (ok) return ok.value;
+      }
+    } catch {}
+
+    return await this.publishOptimized(ev, { senderPubHex: adminPubHex2 });
   }
   async verifyOTP(
     recipientNpub: string,
@@ -2007,12 +2360,16 @@ export class CentralEventPublishingService {
       if (error || !records || !records.length)
         return { valid: false, expired: false, error: "No OTP found" };
       for (const rec of records) {
-        const buf = await crypto.subtle.digest(
+        const providedHashBuf = await crypto.subtle.digest(
           "SHA-256",
           utf8(`${providedOTP}:${rec.otp_salt}`)
         );
-        const hash = bytesToHex(new Uint8Array(buf));
-        if (hash === rec.otp_hash) {
+        const providedHash = new Uint8Array(providedHashBuf);
+        const storedHash = hexToBytes(String(rec.otp_hash || ""));
+        if (
+          storedHash.length === providedHash.length &&
+          timingSafeEqual(providedHash, storedHash)
+        ) {
           const now = new Date();
           const exp = new Date(rec.expires_at);
           if (now > exp)
@@ -2087,7 +2444,10 @@ export class CentralEventPublishingService {
       const enc = await nip04.encrypt(privHex, recipientHex, plaintext);
       ev = await this.createSignedDMEventWithActiveSession(recipientHex, enc);
     }
-    return await this.publishEvent(ev as Event);
+    return await this.publishOptimized(ev as Event, {
+      recipientPubHex: recipientHex,
+      senderPubHex: (ev as any).pubkey as string,
+    });
   }
 
   // Server-managed DM using RebuildingCamelot keys

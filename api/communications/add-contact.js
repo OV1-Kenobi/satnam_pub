@@ -20,9 +20,19 @@ async function getClientFromReq(req) {
   const client = getRequestClient(accessToken);
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError || !userData?.user) { throw { statusCode: 401, message: 'Invalid token' }; }
-  const { data: puRows, error: puErr } = await client.from('privacy_users').select('hashed_uuid').limit(1000);
-  if (puErr) { throw { statusCode: 500, message: 'Failed to validate user scope' }; }
-  const allowed = new Set((puRows || []).map(r => r.hashed_uuid));
+  // Targeted lookup of caller's hash (avoid unbounded scans)
+  const userId = userData.user.id;
+  let userHashes = null; let hashErr = null;
+  try {
+    const resp = await client.from('privacy_users').select('hashed_uuid').eq('user_id', userId).limit(10);
+    if (resp.error) { hashErr = resp.error; } else { userHashes = resp.data; }
+    if (!userHashes || userHashes.length === 0) {
+      const resp2 = await client.from('privacy_users').select('hashed_uuid').eq('auth_user_id', userId).limit(10);
+      if (resp2.error) { hashErr = resp2.error; } else { userHashes = resp2.data; }
+    }
+  } catch (e) { hashErr = e; }
+  if (hashErr || !userHashes?.length) { throw { statusCode: 403, message: 'User not authorized' }; }
+  const allowed = new Set((userHashes || []).map(r => r.hashed_uuid).filter(Boolean));
   return { client, allowedHashes: allowed };
 }
 

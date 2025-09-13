@@ -24,10 +24,40 @@ async function getClientFromReq(req) {
   if (userError || !userData?.user) {
     throw { status: 401, message: 'Invalid token' };
   }
-  // Fetch caller's allowed hashes via RLS
-  const { data: puRows, error: puErr } = await client.from('privacy_users').select('hashed_uuid').limit(1000);
-  if (puErr) { throw { status: 500, message: 'Failed to validate user scope' }; }
-  const allowed = new Set((puRows || []).map((r) => r.hashed_uuid));
+  // Fetch caller's allowed hashes via targeted lookup (no unbounded scans)
+  const userId = userData.user.id;
+  let userHashes = null;
+  let hashErr = null;
+  try {
+    const resp = await client
+      .from('privacy_users')
+      .select('hashed_uuid')
+      .eq('user_id', userId)
+      .limit(10);
+    if (resp.error) {
+      hashErr = resp.error;
+    } else {
+      userHashes = resp.data;
+    }
+    if (!userHashes || userHashes.length === 0) {
+      const resp2 = await client
+        .from('privacy_users')
+        .select('hashed_uuid')
+        .eq('auth_user_id', userId)
+        .limit(10);
+      if (resp2.error) {
+        hashErr = resp2.error;
+      } else {
+        userHashes = resp2.data;
+      }
+    }
+  } catch (e) {
+    hashErr = e;
+  }
+  if (hashErr || !userHashes?.length) {
+    throw { status: 403, message: 'User not authorized' };
+  }
+  const allowed = new Set((userHashes || []).map((r) => r.hashed_uuid).filter(Boolean));
   return { client, allowedHashes: allowed };
 }
 

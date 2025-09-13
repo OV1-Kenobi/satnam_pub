@@ -4,6 +4,7 @@ import {
   Network,
   X
 } from "lucide-react";
+import { usePrivacyFirstMessaging } from "../../hooks/usePrivacyFirstMessaging";
 
 interface NavigationProps {
   currentView: string;
@@ -26,6 +27,9 @@ const Navigation: React.FC<NavigationProps> = ({
   showCommunications,
   setShowCommunications,
 }) => {
+  const messaging = usePrivacyFirstMessaging();
+  const incomingCount = (messaging?.incomingMessages || []).length;
+
   const navigationItems = [
     { label: "Family Financials", action: () => setCurrentView("dashboard") },
     { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
@@ -97,7 +101,14 @@ const Navigation: React.FC<NavigationProps> = ({
               onClick={() => handleProtectedRoute("communications")}
               className="text-white hover:text-yellow-400 transition-colors duration-200 font-medium text-xs py-3"
             >
-              Communications
+              <span className="relative inline-flex items-center">
+                <span>Communications</span>
+                {incomingCount > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">
+                    {incomingCount}
+                  </span>
+                )}
+              </span>
             </button>
 
             <button
@@ -199,7 +210,14 @@ const Navigation: React.FC<NavigationProps> = ({
                   }}
                   className="w-full text-left text-white hover:text-yellow-400 py-2 px-4 rounded-lg hover:bg-white/10 transition-all duration-300 flex items-center justify-between"
                 >
-                  <span>{item.label}</span>
+                  <span className="inline-flex items-center">
+                    <span>{item.label}</span>
+                    {item.label === "Communications" && incomingCount > 0 && (
+                      <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">
+                        {incomingCount}
+                      </span>
+                    )}
+                  </span>
                   {item.external && <ExternalLink className="h-4 w-4" />}
                 </button>
               ))}

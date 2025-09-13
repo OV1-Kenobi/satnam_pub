@@ -568,7 +568,7 @@ export function UnifiedMessagingInterface({
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">🏛️ Group Messaging</h2>
-            <p className="text-gray-600">Secure family and peer group communications with NIP-28/29/59</p>
+            <p className="text-gray-600">Secure family and peer group communications with sealed private messaging</p>
           </div>
           <div className="flex space-x-2">
             <button
@@ -722,7 +722,7 @@ export function UnifiedMessagingInterface({
                     <p className="text-sm text-gray-700">{(message as any).content || 'No content'}</p>
                     <div className="flex items-center space-x-2 mt-1">
                       <span className="text-xs text-purple-600">
-                        {(message as any).giftWrapped ? '🔒 Gift Wrapped' : '📝 Regular'}
+                        {(message as any).giftWrapped ? '🔒 Sealed' : '📝 Regular'}
                       </span>
                       {(message as any).guardianApproved && (
                         <span className="text-xs text-green-600">✅ Guardian Approved</span>
@@ -817,7 +817,7 @@ export function UnifiedMessagingInterface({
                 onChange={(e) => setNewGroupData(prev => ({ ...prev, encryptionType: e.target.value as 'gift-wrap' | 'nip04' }))}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="gift-wrap">Gift Wrap (Recommended)</option>
+                <option value="gift-wrap">Sealed (Recommended)</option>
                 <option value="nip04">NIP-04</option>
               </select>
             </div>

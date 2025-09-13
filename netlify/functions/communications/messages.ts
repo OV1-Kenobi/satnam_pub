@@ -106,24 +106,45 @@ export const handler = async (event: any) => {
       };
     }
 
-    // Pull caller's allowed hashes via RLS on privacy_users
-    const { data: puRows, error: puErr } = await client
-      .from("privacy_users")
-      .select("hashed_uuid")
-      .limit(1000);
-    if (puErr) {
-      console.error("privacy_users fetch error:", puErr);
+    // Targeted lookup of caller's allowed hash (avoid unbounded scans)
+    const userId = userData.user.id;
+    let userHashes: Array<{ hashed_uuid: string }> | null = null;
+    let hashErr: any = null;
+    try {
+      const resp = await client
+        .from("privacy_users")
+        .select("hashed_uuid")
+        .eq("user_id", userId)
+        .limit(10);
+      if (resp.error) {
+        hashErr = resp.error;
+      } else {
+        userHashes = resp.data as any;
+      }
+      if (!userHashes || userHashes.length === 0) {
+        const resp2 = await client
+          .from("privacy_users")
+          .select("hashed_uuid")
+          .eq("auth_user_id", userId)
+          .limit(10);
+        if (resp2.error) {
+          hashErr = resp2.error;
+        } else {
+          userHashes = resp2.data as any;
+        }
+      }
+    } catch (e) {
+      hashErr = e;
+    }
+    if (hashErr || !userHashes?.length) {
       return {
-        statusCode: 500,
+        statusCode: 403,
         headers,
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to validate user scope",
-        }),
+        body: JSON.stringify({ success: false, error: "User not authorized" }),
       };
     }
     const allowedHashes = new Set(
-      (puRows || []).map((r: any) => r.hashed_uuid)
+      (userHashes || []).map((r) => r.hashed_uuid).filter(Boolean)
     );
 
     let left: string | null = null;

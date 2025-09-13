@@ -3,12 +3,24 @@
  * Updated to use UnifiedMessagingService instead of deprecated SatnamPrivacyFirstCommunications
  */
 
-import { useCallback, useRef, useState } from "react";
+type NostrEvent = {
+  id: string;
+  pubkey: string;
+  created_at: number;
+  kind: number;
+  tags?: string[][];
+  content: string;
+  sig: string;
+};
+import { useCallback, useEffect, useRef, useState } from "react";
+import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 import {
   DEFAULT_UNIFIED_CONFIG,
   UnifiedMessagingConfig,
   UnifiedMessagingService,
-} from "../../lib/unified-messaging-service.js";
+} from "../../lib/unified-messaging-service";
+import { clientMessageService } from "../lib/messaging/client-message-service";
+import { secureNsecManager } from "../lib/secure-nsec-manager";
 
 export interface PrivacyWarningContent {
   title: string;
@@ -28,6 +40,10 @@ export interface PrivacyMessagingState {
   loading: boolean;
   error: string | null;
 
+  // Incoming NIP-59 messaging state
+  incomingMessages: NostrEvent[];
+  messageSubscription: unknown | null;
+  lastMessageReceived: Date | null;
   // Identity disclosure status
   identityStatus: {
     hasNip05: boolean;
@@ -58,6 +74,11 @@ export interface PrivacyMessagingActions {
     }
   ) => Promise<string | null>;
   destroySession: () => Promise<void>;
+
+  // Incoming message subscription (NIP-59)
+  startMessageSubscription: () => Promise<boolean>;
+  stopMessageSubscription: () => void;
+  subscribeToIncomingMessages: () => Promise<boolean>; // alias to start
 
   // NIP-05 Identity Disclosure (Legacy compatibility)
   enableNip05Disclosure: (
@@ -129,6 +150,9 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     connected: false,
     loading: false,
     error: null,
+    incomingMessages: [],
+    messageSubscription: null,
+    lastMessageReceived: null,
     identityStatus: {
       hasNip05: false,
       isDisclosureEnabled: false,
@@ -142,6 +166,134 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
   });
 
   const communicationsRef = useRef<UnifiedMessagingService | null>(null);
+
+  type SubscriptionLike =
+    | { close?: () => void }
+    | (() => void)
+    | null
+    | undefined;
+  const subscriptionRef = useRef<SubscriptionLike>(null);
+
+  const cleanupSubscription = useCallback((sub: SubscriptionLike): void => {
+    if (!sub) return;
+    try {
+      if (typeof sub === "function") {
+        sub();
+      } else if (typeof sub.close === "function") {
+        sub.close();
+      }
+    } catch (error) {
+      console.warn(
+        "Subscription cleanup error:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+  }, []);
+
+  // Resolve current user's public key (hex) or npub for subscription filters
+  const resolveRecipient = useCallback(async (): Promise<string | null> => {
+    try {
+      const w = globalThis as any;
+      if (w?.nostr?.getPublicKey) {
+        const hex: string = await w.nostr.getPublicKey();
+        return hex;
+      }
+    } catch {}
+    // Fallback: derive pubkey from active secure session without exposing nsec
+    if (state.sessionId) {
+      try {
+        const hex = await secureNsecManager.useTemporaryNsec(
+          state.sessionId,
+          async (nsecHex: string) => CEPS.getPublicKeyHex(nsecHex)
+        );
+        if (hex && typeof hex === "string") return hex;
+      } catch (error) {
+        console.warn("NIP59-RX: failed to derive pubkey from session", error);
+      }
+    }
+
+    return null;
+  }, [state.sessionId]);
+
+  const startMessageSubscription = useCallback(async (): Promise<boolean> => {
+    try {
+      const recipient = await resolveRecipient();
+      if (!recipient) {
+        setState((prev) => ({
+          ...prev,
+          error: "No recipient public key available",
+        }));
+        return false;
+      }
+
+      // Cleanup any existing subscription first
+      if (subscriptionRef.current) {
+        cleanupSubscription(subscriptionRef.current);
+        subscriptionRef.current = null;
+      }
+
+      const sub = clientMessageService.subscribeToGiftWrappedForRecipient(
+        recipient,
+        {
+          onInner: (inner: NostrEvent) => {
+            setState((prev) => ({
+              ...prev,
+              // Keep only last 1000 messages to prevent memory issues
+              incomingMessages: [...prev.incomingMessages.slice(-999), inner],
+              lastMessageReceived: new Date(),
+            }));
+          },
+          onRaw: (outer: NostrEvent) => {
+            console.debug("NIP59-RX: raw outer event", {
+              id: (outer as any)?.id,
+              kind: (outer as any)?.kind,
+            });
+          },
+          onError: (reason: string) => {
+            setState((prev) => ({
+              ...prev,
+              error: reason || "subscription_error",
+            }));
+          },
+          onEose: () => {
+            console.info("NIP59-RX: subscription established");
+          },
+        }
+      );
+
+      subscriptionRef.current = sub as SubscriptionLike;
+      setState((prev) => ({ ...prev, messageSubscription: sub as unknown }));
+      return true;
+    } catch (error) {
+      console.error("Failed to start message subscription", error);
+      setState((prev) => ({ ...prev, error: "subscription_start_failed" }));
+      return false;
+    }
+  }, [resolveRecipient, cleanupSubscription]);
+
+  const stopMessageSubscription = useCallback((): void => {
+    try {
+      cleanupSubscription(subscriptionRef.current);
+    } catch (error) {
+      console.warn("Failed to stop message subscription", error);
+    } finally {
+      subscriptionRef.current = null;
+      setState((prev) => ({ ...prev, messageSubscription: null }));
+    }
+  }, [cleanupSubscription]);
+
+  const subscribeToIncomingMessages =
+    useCallback(async (): Promise<boolean> => {
+      return await startMessageSubscription();
+    }, [startMessageSubscription]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupSubscription(subscriptionRef.current);
+      subscriptionRef.current = null;
+    };
+  }, [cleanupSubscription]);
 
   const initializeSession = useCallback(
     async (
@@ -185,6 +337,9 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
           },
         }));
 
+        // Auto-start NIP-59 incoming message subscription (non-blocking)
+        void startMessageSubscription();
+
         return sessionId;
       } catch (error) {
         console.error("Failed to initialize session:", error);
@@ -204,6 +359,8 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
 
   const destroySession = useCallback(async (): Promise<void> => {
     try {
+      // Stop incoming subscription first
+      stopMessageSubscription();
       if (communicationsRef.current) {
         await communicationsRef.current.destroySession();
       }
@@ -216,6 +373,9 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         connected: false,
         loading: false,
         error: null,
+        incomingMessages: [],
+        messageSubscription: null,
+        lastMessageReceived: null,
         identityStatus: {
           hasNip05: false,
           isDisclosureEnabled: false,
@@ -229,7 +389,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
       });
       communicationsRef.current = null;
     }
-  }, []);
+  }, [stopMessageSubscription]);
 
   const addContact = useCallback(
     async (contactData: {
@@ -654,15 +814,23 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     ...state,
     initializeSession,
     destroySession,
+    // NIP-59 incoming subscription controls
+    startMessageSubscription,
+    stopMessageSubscription,
+    subscribeToIncomingMessages,
+    // Disclosure
     enableNip05Disclosure,
     confirmDisclosureConsent,
     cancelDisclosure,
     disableDisclosure,
     getNip05DisclosureStatus,
+    // Contacts & groups
     addContact,
     createGroup,
+    // Messaging
     sendDirectMessage,
     sendGroupMessage,
+    // Utility
     refreshIdentityStatus,
   };
 }

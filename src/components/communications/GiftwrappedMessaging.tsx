@@ -1,16 +1,30 @@
 // src/components/communications/GiftwrappedMessaging.tsx - KEEP EXISTING NAME
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { GroupData } from '../../../api/endpoints/communications';
+import { addGroupMember, blockSender as blockSenderAPI, createGroup, createGroupTopic, deleteMessage as deleteMessageAPI, getGroupDetails, leaveGroup, listUserGroups, removeGroupMember, updateGroupPreferences } from '../../../api/endpoints/communications';
+import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
+import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
+import { nostrProfileService } from '../../lib/nostr-profile-service';
+
+import type { NostrProfile } from '../../lib/nostr-profile-service';
+
+
 import { DashboardNotification, NotificationService } from '../../services/notificationService';
 import { showToast } from '../../services/toastService';
 import { useAuth } from '../auth/AuthProvider';
 import { SecurePeerInvitationModal } from '../SecurePeerInvitationModal';
 
 
+
+
+
+
+
 interface FamilyMember {
   id: string;
   npub: string;
   username: string;
-  role: 'adult' | 'child' | 'guardian';
+  role: 'adult' | 'offspring' | 'guardian' | 'steward';
   spendingLimits?: {
     daily: number;
     weekly: number;
@@ -25,7 +39,25 @@ interface Contact {
   supportsGiftWrap: boolean;
   trustLevel: string;
   relationshipType: string;
+  nip05?: string;
+  avatarUrl?: string;
+  displayName?: string;
 }
+interface Conversation {
+  id: string;
+  count: number;
+  lastCreatedAt: string | null;
+  // Optional metadata if backend provides it
+  name?: string;
+  title?: string;
+  avatar_url?: string;
+  participants?: number;
+  participant_count?: number;
+  encryption_level?: 'maximum' | 'enhanced' | 'standard' | string;
+  status?: string;
+  role?: 'owner' | 'admin' | 'member' | string;
+}
+
 interface MessageHistoryItem {
   id: string;
   sender_hash: string;
@@ -49,6 +81,115 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const [newMessage, setNewMessage] = useState('');
   const [recipient, setRecipient] = useState('');
   const [isGroupMessage, setIsGroupMessage] = useState(false);
+  // Groups data (real group listing)
+  const [groups, setGroups] = useState<GroupData[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+
+  const loadGroups = async () => {
+    try {
+      setGroupsLoading(true);
+      setGroupsError(null);
+      const res = await listUserGroups();
+      if (res.success) {
+        setGroups(Array.isArray(res.data) ? res.data : []);
+      } else {
+        setGroupsError(res.error || 'Failed to load groups');
+      }
+    } catch (e) {
+      setGroupsError(e instanceof Error ? e.message : 'Failed to load groups');
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Load groups on mount
+    loadGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Create Group modal state
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [cgName, setCgName] = useState('');
+  const [cgType, setCgType] = useState<'family' | 'business' | 'friends' | 'advisors'>('friends');
+  const [cgEnc, setCgEnc] = useState<'gift-wrap' | 'nip04'>('gift-wrap');
+  const [cgLoading, setCgLoading] = useState(false);
+  const [cgError, setCgError] = useState<string | null>(null);
+
+  const onSubmitCreateGroup = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmedName = cgName.trim();
+    if (!trimmedName) {
+      setCgError('Name is required');
+      return;
+    }
+    if (trimmedName.length > 100) {
+      setCgError('Name must be less than 100 characters');
+      return;
+    }
+    if (!/^[\w\s-]+$/.test(trimmedName)) {
+      setCgError('Name can only contain letters, numbers, spaces, and hyphens');
+      return;
+    }
+    try {
+      setCgLoading(true);
+      setCgError(null);
+      const res = await createGroup(trimmedName, cgType, cgEnc);
+      if (res.success) {
+        setShowCreateGroupModal(false);
+        setCgName('');
+        showToast.success('Group created');
+        loadGroups();
+      } else {
+        setCgError(res.error || 'Failed to create group');
+      }
+    } catch (err) {
+      setCgError(err instanceof Error ? err.message : 'Failed to create group');
+    } finally {
+      setCgLoading(false);
+    }
+  };  // Member management modals state
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [addMemberGroupId, setAddMemberGroupId] = useState<string | null>(null);
+  const [addMemberHash, setAddMemberHash] = useState('');
+  const [addMemberLoading, setAddMemberLoading] = useState(false);
+  const [addMemberError, setAddMemberError] = useState<string | null>(null);
+
+  const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
+  const [removeMemberGroupId, setRemoveMemberGroupId] = useState<string | null>(null);
+  const [removeMemberHash, setRemoveMemberHash] = useState<string | null>(null);
+  const [removeMemberLoading, setRemoveMemberLoading] = useState(false);
+
+  // Topic creation modal state
+  const [showCreateTopicModal, setShowCreateTopicModal] = useState(false);
+  const [createTopicGroupId, setCreateTopicGroupId] = useState<string | null>(null);
+  const [topicName, setTopicName] = useState('');
+  const [topicDesc, setTopicDesc] = useState('');
+  const [topicLoading, setTopicLoading] = useState(false);
+  const [topicError, setTopicError] = useState<string | null>(null);
+
+  // Confirmation modals: block sender, delete message, leave group
+  const [showBlockSenderModal, setShowBlockSenderModal] = useState(false);
+  const [blockSenderId, setBlockSenderId] = useState<string | null>(null);
+  const [blockSenderLoading, setBlockSenderLoading] = useState(false);
+  const [blockSenderError, setBlockSenderError] = useState<string | null>(null);
+
+  const [showDeleteMessageModal, setShowDeleteMessageModal] = useState(false);
+  const [deleteTargetMsg, setDeleteTargetMsg] = useState<UnifiedMsg | null>(null);
+  const [deleteMessageLoading, setDeleteMessageLoading] = useState(false);
+  const [deleteMessageError, setDeleteMessageError] = useState<string | null>(null);
+
+  const [showLeaveGroupModal, setShowLeaveGroupModal] = useState(false);
+  const [leaveGroupId, setLeaveGroupId] = useState<string | null>(null);
+  const [leaveGroupName, setLeaveGroupName] = useState<string | null>(null);
+  const [leaveGroupLoading, setLeaveGroupLoading] = useState(false);
+  const [leaveGroupError, setLeaveGroupError] = useState<string | null>(null);
+
+  // Add Member modal contact selection
+  const [addMemberSelectedNpub, setAddMemberSelectedNpub] = useState<string>('');
+
+
+
   const [selectedPrivacyLevel] = useState<'standard' | 'enhanced' | 'maximum'>('maximum');
   const auth = useAuth();
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -59,15 +200,242 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const notificationService = NotificationService.getInstance();
   // Persistent message history state
   const [history, setHistory] = useState<MessageHistoryItem[]>([]);
-  const [conversations, setConversations] = useState<{ id: string; count: number; lastCreatedAt: string | null }[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  // NIP-59 incoming subscription via messaging hook
+  const messaging = usePrivacyFirstMessaging();
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const incomingSorted = useMemo(() => {
+    return [...(messaging.incomingMessages || [])].sort(
+      (a: any, b: any) => (b?.created_at || 0) - (a?.created_at || 0)
+    );
+  }, [messaging.incomingMessages]);
+
+  useEffect(() => {
+    // Best-effort: start subscription if not active; hook itself handles lifecycle on session changes
+    if (!messaging.messageSubscription) {
+      void messaging.startMessageSubscription();
+    }
+    return () => {
+      try {
+        messaging.stopMessageSubscription();
+      } catch (error) {
+        console.error('Failed to stop message subscription:', error);
+      }
+    };
+  }, [messaging]);
+  // Thread and filtering state
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [blockedSenders, setBlockedSenders] = useState<Set<string>>(new Set());
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+
+  type UnifiedMsg = {
+    id: string;
+    source: 'server' | 'nip59';
+    created_at: number; // seconds epoch for nip59, ISO->ms normalized for server
+    senderId?: string; // hex pubkey for nip59
+    content?: string;
+    protocol?: string; // 'nip59' | 'nip04' | ... from server
+    server: MessageHistoryItem | null;
+    nip59?: any; // inner Nostr event
+    serverConversationId?: string;
+  };
+  // Helper: build server-backed threads map by conversation id
+  const buildServerThreads = (
+    historyList: MessageHistoryItem[],
+    hidden: Set<string>
+  ): Map<string, UnifiedMsg[]> => {
+    const map = new Map<string, UnifiedMsg[]>();
+    for (const m of historyList) {
+      const convId = `${m.sender_hash}:${m.recipient_hash}`;
+      const t: UnifiedMsg = {
+        id: m.id,
+        source: "server",
+        created_at: Date.parse(m.created_at) / 1000,
+        protocol: (m as any).protocol,
+        server: m,
+        serverConversationId: convId,
+      };
+      if (!hidden.has(m.id)) {
+        if (!map.has(convId)) map.set(convId, []);
+        map.get(convId)!.push(t);
+      }
+    }
+    return map;
+  };
+
+  // Helper: build NIP-59 threads map keyed by synthetic sender conversation id
+  const buildNip59Threads = (
+    events: any[],
+    hidden: Set<string>,
+    blocked: Set<string>
+  ): Map<string, UnifiedMsg[]> => {
+    const map = new Map<string, UnifiedMsg[]>();
+    for (const ev of events) {
+      const senderHex = typeof (ev as any)?.pubkey === "string" ? (ev as any).pubkey : "unknown";
+      if (blocked.has(senderHex)) continue;
+      const convId = `nip59:${senderHex}`;
+      const t: UnifiedMsg = {
+        id: (ev as any).id,
+        source: "nip59",
+        created_at: (ev as any).created_at || Math.floor(Date.now() / 1000),
+        senderId: senderHex,
+        content: (ev as any).content,
+        protocol: "nip59",
+        server: null,
+        nip59: ev,
+      };
+      if (!hidden.has(t.id)) {
+        if (!map.has(convId)) map.set(convId, []);
+        map.get(convId)!.push(t);
+      }
+    }
+    return map;
+  };
+
+  // Helper: merge two maps and produce sorted thread list
+  const mergeAndSortThreads = (
+    serverMap: Map<string, UnifiedMsg[]>,
+    nip59Map: Map<string, UnifiedMsg[]>,
+    read: Set<string>
+  ) => {
+    const byConv = new Map<string, UnifiedMsg[]>();
+    for (const [k, v] of serverMap.entries()) byConv.set(k, v.slice());
+    for (const [k, v] of nip59Map.entries()) {
+      const arr = byConv.get(k) || [];
+      arr.push(...v);
+      byConv.set(k, arr);
+    }
+    const threads = Array.from(byConv.entries()).map(([id, items]) => {
+      const sorted = items.sort((a, b) => b.created_at - a.created_at);
+      const unreadCount = sorted.filter((m) => !read.has(m.id)).length;
+      const isServerThread = !id.startsWith("nip59:");
+      const title = isServerThread ? id.slice(0, 20) + "…" : `${id.slice(6, 14)}…`;
+      return {
+        id,
+        items: sorted,
+        unreadCount,
+        isServerThread,
+        title,
+        lastCreatedAt: sorted[0]?.created_at || 0,
+      };
+    });
+    threads.sort((a, b) => b.lastCreatedAt - a.lastCreatedAt);
+    return threads;
+  };
+
+
+  const unifiedThreads = useMemo(() => {
+    const serverMap = buildServerThreads(history, hiddenIds);
+    const nip59Map = buildNip59Threads(incomingSorted as any[], hiddenIds, blockedSenders);
+    return mergeAndSortThreads(serverMap, nip59Map, readIds);
+  }, [history, incomingSorted, hiddenIds, readIds, blockedSenders]);
+
+
+
+  const markThreadAsRead = async (threadId: string) => {
+    try {
+      const thread = unifiedThreads.find(t => t.id === threadId);
+      if (!thread) return;
+      // Update local first
+      const ids = thread.items.map(m => m.id);
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach(id => next.add(id));
+        return next;
+      });
+      // Server update only for server threads
+      if (thread.isServerThread && thread.items.some(i => i.server)) {
+        const upTo = new Date((thread.items[0].created_at || 0) * 1000).toISOString();
+        const res = await fetch(`/api/communications/unread`, {
+          method: 'POST',
+          headers: auth.sessionToken ? { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.sessionToken}` } : { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: thread.items[0].serverConversationId, upToCreatedAt: upTo }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+      }
+      showToast.success('Thread marked as read');
+    } catch (e) {
+      showToast.error(e instanceof Error ? e.message : 'Failed to mark thread as read', { title: 'Unread update' });
+    }
+  };
+
+  const deleteMessage = async (m: UnifiedMsg) => {
+    try {
+      // Optimistic local hide
+      setHiddenIds(prev => new Set(prev).add(m.id));
+      if (m.source === 'server' && m.server?.id) {
+        const resp = await deleteMessageAPI(m.server.id);
+        if (!resp.success) {
+          throw new Error(resp.error || 'Delete not supported');
+        }
+      } else {
+        // nip59 inner: not persisted, local only
+      }
+      showToast.success('Message deleted');
+    } catch (e) {
+      showToast.warning(e instanceof Error ? e.message : 'Delete failed', { title: 'Delete message' });
+    }
+  };
+
+  const blockSender = (m: UnifiedMsg) => {
+    const sender = m.senderId;
+    if (!sender) { showToast.info('Sender unknown for this message'); return; }
+    setBlockSenderId(sender);
+    setBlockSenderError(null);
+    setShowBlockSenderModal(true);
+  };
+
+  const confirmBlockSender = async () => {
+    if (!blockSenderId) return;
+    try {
+      setBlockSenderLoading(true);
+      setBlockedSenders(prev => new Set(prev).add(blockSenderId));
+      const resp = await blockSenderAPI(blockSenderId);
+      if (!resp.success) throw new Error(resp.error || 'Block not supported');
+      showToast.success('Sender blocked');
+      setShowBlockSenderModal(false);
+      setBlockSenderId(null);
+    } catch (e) {
+      setBlockSenderError(e instanceof Error ? e.message : 'Block failed');
+      showToast.warning(e instanceof Error ? e.message : 'Block failed', { title: 'Block sender' });
+    } finally {
+      setBlockSenderLoading(false);
+    }
+  };
+
+
+
+  const onRequestDeleteMessage = (m: UnifiedMsg) => {
+    setDeleteTargetMsg(m);
+    setDeleteMessageError(null);
+    setShowDeleteMessageModal(true);
+  };
+
+  const confirmDeleteMessage = async () => {
+    if (!deleteTargetMsg) return;
+    try {
+      setDeleteMessageLoading(true);
+      await deleteMessage(deleteTargetMsg);
+      setShowDeleteMessageModal(false);
+      setDeleteTargetMsg(null);
+    } catch (e) {
+      setDeleteMessageError(e instanceof Error ? e.message : 'Delete failed');
+    } finally {
+      setDeleteMessageLoading(false);
+    }
+  };
 
 
   const loadHistory = async (cursor?: string) => {
     try {
-      setLoadingHistory(true);
       const params = new URLSearchParams();
+
       if (cursor) params.set('cursor', cursor);
       params.set('limit', '30');
       const res = await fetch(`/api/communications/messages?${params.toString()}`, {
@@ -146,11 +514,414 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
     }
   };
 
+  // Contacts map for quick lookup
+  const contactsByNpub = useMemo(() => {
+    const m = new Map<string, Contact>();
+    for (const c of contacts) m.set(c.npub, c);
+    return m;
+  }, [contacts]);
+
+  // Nostr profile cache (fetched from relays via nostrProfileService)
+  const [profiles, setProfiles] = useState<Record<string, NostrProfile>>({});
+
+  // Prefetch Nostr profiles for NIP-59 threads when no contact match exists
+  useEffect(() => {
+    const seen = new Set<string>();
+    for (const thread of unifiedThreads) {
+      if (thread.isServerThread) continue;
+      const first = thread.items.find((i) => i.senderId);
+      let pubHex: string | null = null;
+      try {
+        pubHex = first && first.senderId ? String(first.senderId) : null;
+      } catch {
+        pubHex = null;
+      }
+      if (!pubHex) continue;
+      let npub: string;
+      try {
+        npub = pubHex.startsWith("npub1") ? pubHex : CEPS.encodeNpub(pubHex);
+      } catch {
+        continue;
+      }
+      if (seen.has(npub) || profiles[npub]) continue;
+      seen.add(npub);
+      void nostrProfileService.fetchProfileWithDebounce(npub).then((p) => {
+        if (p) {
+          setProfiles((prev: Record<string, NostrProfile>) => (prev[npub] ? prev : { ...prev, [npub]: p }));
+        }
+      });
+    }
+  }, [unifiedThreads, profiles]);
+
+  // Render thread header with contact/profile info
+  const getThreadHeaderContent = (thread: { id: string; isServerThread: boolean; title: string; items: UnifiedMsg[]; }) => {
+    if (thread.isServerThread) {
+      return (
+        <span className="text-sm font-medium text-purple-900 truncate max-w-[200px]">{thread.title}</span>
+      );
+    }
+    let npub: string | null = null;
+    try {
+      const first = thread.items.find(i => i.senderId);
+      npub = first && first.senderId ? CEPS.encodeNpub(first.senderId) : null;
+    } catch {
+      npub = null;
+    }
+    const contact = npub ? contactsByNpub.get(npub) : undefined;
+    const prof = npub ? profiles[npub] : undefined;
+    const display = (contact && (contact.nip05 || contact.username))
+      || (prof && (prof.nip05 || prof.displayName || prof.name))
+      || (npub ? `${npub.slice(0, 12)}…` : thread.title);
+    const avatar = (contact && contact.avatarUrl) || (prof && prof.picture) || null;
+
+    return (
+      <div className="flex items-center gap-2">
+        {avatar ? <img src={String(avatar)} alt="avatar" className="w-5 h-5 rounded-full object-cover" /> : null}
+        <span className="text-sm font-medium text-purple-900 truncate max-w-[200px]">{display}</span>
+        {!contact && npub ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); setRecipient(npub!); showToast.info('Recipient set. Use Contacts to add them.'); }}
+            className="text-[11px] text-purple-700 hover:text-purple-900"
+            aria-label="Add to contacts"
+            title="Add to contacts"
+          >
+            Add
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+  // Compact timestamp formatter: today -> 12:34p, this year -> Aug 27, older -> 2023
+  const formatCompactTimestamp = (input: string | number | Date): string => {
+    const d = new Date(input);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    if (sameDay) {
+      let h = d.getHours();
+      const m = d.getMinutes();
+      const ap = h >= 12 ? 'p' : 'a';
+      h = h % 12; if (h === 0) h = 12;
+      const mm = m < 10 ? `0${m}` : String(m);
+      return `${h}:${mm}${ap}`;
+    }
+    if (d.getFullYear() === now.getFullYear()) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[d.getMonth()]} ${d.getDate()}`;
+    }
+    return String(d.getFullYear());
+  };
+
+  // Group helpers (real group data)
+  const getGroupHeaderContent = (g: GroupData) => {
+    const name = g.name || (g.id ? `Group ${g.id.slice(0, 8)}…` : 'Group');
+    const avatar = g.avatar_url || null;
+    const members = g.member_count;
+    const last = g.lastActivity ? formatCompactTimestamp(g.lastActivity) : null;
+    const enc = g.encryption_type;
+    const encTag = enc === 'gift-wrap' ? '🔒 Sealed' : enc === 'nip04' ? '🛡️ NIP-04' : null;
+    const role = g.role;
+
+    return (
+      <div className="flex items-center gap-2">
+        {avatar ? (
+          <img src={String(avatar)} alt="group avatar" className="w-5 h-5 rounded-full object-cover" />
+        ) : (
+          <div className="w-5 h-5 rounded-full bg-purple-200 text-[11px] flex items-center justify-center" aria-hidden>
+            👥
+          </div>
+        )}
+        <span className="text-sm font-medium text-purple-900 truncate max-w-[200px]">{name}</span>
+        {typeof members === 'number' ? (
+          <span className="text-[11px] text-purple-700">{members} members</span>
+        ) : null}
+        {encTag ? <span className="text-[11px] text-purple-700">{encTag}</span> : null}
+        {role ? <span className="text-[10px] px-1 py-[1px] rounded bg-purple-200 text-purple-800">{role}</span> : null}
+        {last ? <span className="text-[10px] text-purple-600 ml-1">{last}</span> : null}
+      </div>
+    );
+  };
+
+  // Admin group details state
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
+  const [groupMembers, setGroupMembers] = useState<Record<string, any[]>>({});
+  const [groupTopics, setGroupTopics] = useState<Record<string, any[]>>({});
+  const [groupDetailsLoading, setGroupDetailsLoading] = useState<Record<string, boolean>>({});
+  const [groupDetailsError, setGroupDetailsError] = useState<Record<string, string | null>>({});
+  const [groupMembersMeta, setGroupMembersMeta] = useState<Record<string, { page: number; pageSize: number; total: number; hasMore: boolean }>>({});
+  const [groupTopicsMeta, setGroupTopicsMeta] = useState<Record<string, { page: number; pageSize: number; total: number; hasMore: boolean }>>({});
+  const [groupMembersLoadingMore, setGroupMembersLoadingMore] = useState<Record<string, boolean>>({});
+  const [groupTopicsLoadingMore, setGroupTopicsLoadingMore] = useState<Record<string, boolean>>({});
+
+  const toggleGroupDetails = async (g: GroupData) => {
+    const role = (g.role || '').toLowerCase();
+    const isAdmin = role === 'owner' || role === 'admin';
+    if (!isAdmin) return;
+    setExpandedGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(g.id)) next.delete(g.id); else next.add(g.id);
+      return next;
+    });
+    if (!groupMembers[g.id] && !groupDetailsLoading[g.id]) {
+      setGroupDetailsLoading(s => ({ ...s, [g.id]: true }));
+      const res = await getGroupDetails(g.id, 1, 100);
+      if (res.success) {
+        setGroupMembers(s => ({ ...s, [g.id]: res.data?.members || [] }));
+        setGroupTopics(s => ({ ...s, [g.id]: res.data?.topics || [] }));
+        if (res.data?.membersMeta) setGroupMembersMeta(s => ({ ...s, [g.id]: res.data!.membersMeta }));
+        if (res.data?.topicsMeta) setGroupTopicsMeta(s => ({ ...s, [g.id]: res.data!.topicsMeta }));
+        setGroupDetailsError(s => ({ ...s, [g.id]: null }));
+      } else {
+        setGroupDetailsError(s => ({ ...s, [g.id]: res.error || 'Failed to load details' }));
+      }
+      setGroupDetailsLoading(s => ({ ...s, [g.id]: false }));
+    }
+  };
+  const loadMoreMembers = async (g: GroupData) => {
+    const meta = groupMembersMeta[g.id] || { page: 1, pageSize: 100, total: 0, hasMore: false };
+    if (!meta.hasMore || groupMembersLoadingMore[g.id]) return;
+    try {
+      setGroupMembersLoadingMore(s => ({ ...s, [g.id]: true }));
+      const nextPage = (meta.page || 1) + 1;
+      const res = await getGroupDetails(g.id, nextPage, meta.pageSize || 100);
+      if (res.success) {
+        const newMembers = res.data?.members || [];
+        setGroupMembers(s => ({ ...s, [g.id]: [...(s[g.id] || []), ...newMembers] }));
+        if (res.data?.membersMeta) setGroupMembersMeta(s => ({ ...s, [g.id]: res.data!.membersMeta }));
+        if (res.data?.topics && res.data?.topicsMeta) {
+          // keep topics in sync if server returns them
+          setGroupTopics(s => ({ ...s, [g.id]: res.data!.topics }));
+          setGroupTopicsMeta(s => ({ ...s, [g.id]: res.data!.topicsMeta }));
+        }
+      } else {
+        showToast.error(res.error || 'Failed to load more members');
+      }
+    } finally {
+      setGroupMembersLoadingMore(s => ({ ...s, [g.id]: false }));
+    }
+  };
+
+  const loadMoreTopics = async (g: GroupData) => {
+    const meta = groupTopicsMeta[g.id] || { page: 1, pageSize: 100, total: 0, hasMore: false };
+    if (!meta.hasMore || groupTopicsLoadingMore[g.id]) return;
+    try {
+      setGroupTopicsLoadingMore(s => ({ ...s, [g.id]: true }));
+      const nextPage = (meta.page || 1) + 1;
+      const res = await getGroupDetails(g.id, nextPage, meta.pageSize || 100);
+      if (res.success) {
+        const newTopics = res.data?.topics || [];
+        setGroupTopics(s => ({ ...s, [g.id]: [...(s[g.id] || []), ...newTopics] }));
+        if (res.data?.topicsMeta) setGroupTopicsMeta(s => ({ ...s, [g.id]: res.data!.topicsMeta }));
+        if (res.data?.members && res.data?.membersMeta) {
+          // keep members in sync if server returns them
+          setGroupMembers(s => ({ ...s, [g.id]: res.data!.members }));
+          setGroupMembersMeta(s => ({ ...s, [g.id]: res.data!.membersMeta }));
+        }
+      } else {
+        showToast.error(res.error || 'Failed to load more topics');
+      }
+    } finally {
+      setGroupTopicsLoadingMore(s => ({ ...s, [g.id]: false }));
+    }
+  };
+
+
+  const onAddMember = (g: GroupData) => {
+    const role = (g.role || '').toLowerCase();
+    if (!(role === 'owner' || role === 'admin')) return;
+    setAddMemberGroupId(g.id);
+    setAddMemberHash('');
+    setAddMemberError(null);
+    setShowAddMemberModal(true);
+  };
+
+  const submitAddMember = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!addMemberGroupId) return;
+    const hash = addMemberHash.trim();
+    if (!hash) { setAddMemberError('Member hash is required'); return; }
+    // Prevent duplicates
+    const existing = (groupMembers[addMemberGroupId] || []).some((m: any) => String(m.member_hash) === hash);
+    if (existing) { setAddMemberError('This member is already in the group'); return; }
+    try {
+      setAddMemberLoading(true);
+      setAddMemberError(null);
+      const res = await addGroupMember(addMemberGroupId, hash);
+      if (res.success) {
+        showToast.success('Member added');
+        const ps = groupMembersMeta[addMemberGroupId]?.pageSize || 100;
+        const det = await getGroupDetails(addMemberGroupId, 1, ps);
+        if (det.success) {
+          setGroupMembers(s => ({ ...s, [addMemberGroupId]: det.data?.members || [] }));
+          setGroupTopics(s => ({ ...s, [addMemberGroupId]: det.data?.topics || [] }));
+          if (det.data?.membersMeta) setGroupMembersMeta(s => ({ ...s, [addMemberGroupId]: det.data!.membersMeta }));
+          if (det.data?.topicsMeta) setGroupTopicsMeta(s => ({ ...s, [addMemberGroupId]: det.data!.topicsMeta }));
+        }
+        setShowAddMemberModal(false);
+        setAddMemberHash('');
+      } else {
+        setAddMemberError(res.error || 'Failed to add member');
+      }
+    } catch (err) {
+      setAddMemberError(err instanceof Error ? err.message : 'Failed to add member');
+    } finally {
+      setAddMemberLoading(false);
+    }
+  };
+
+  const onRemoveMember = (g: GroupData, memberHash: string) => {
+    const role = (g.role || '').toLowerCase();
+    if (!(role === 'owner' || role === 'admin')) return;
+    setRemoveMemberGroupId(g.id);
+    setRemoveMemberHash(memberHash);
+    setShowRemoveMemberModal(true);
+  };
+
+  const confirmRemoveMember = async () => {
+    if (!removeMemberGroupId || !removeMemberHash) return;
+    try {
+      setRemoveMemberLoading(true);
+      const res = await removeGroupMember(removeMemberGroupId, removeMemberHash);
+      if (res.success) {
+        showToast.success('Member removed');
+        setGroupMembers(s => ({ ...s, [removeMemberGroupId]: (s[removeMemberGroupId] || []).filter((m: any) => m.member_hash !== removeMemberHash) }));
+        setGroupMembersMeta(s => {
+          const prev = s[removeMemberGroupId] || { page: 1, pageSize: 100, total: 0, hasMore: false };
+          const total = Math.max(0, (prev.total || 0) - 1);
+          const hasMore = total > (prev.page * prev.pageSize);
+          return { ...s, [removeMemberGroupId]: { ...prev, total, hasMore } };
+        });
+        setShowRemoveMemberModal(false);
+      } else {
+        showToast.error(res.error || 'Failed to remove member');
+      }
+    } finally {
+      setRemoveMemberLoading(false);
+    }
+  };
+
+  const onOpenCreateTopic = (g: GroupData) => {
+    const role = (g.role || '').toLowerCase();
+    if (!(role === 'owner' || role === 'admin')) return;
+    setCreateTopicGroupId(g.id);
+    setTopicName('');
+    setTopicDesc('');
+    setTopicError(null);
+    setShowCreateTopicModal(true);
+  };
+
+  const submitCreateTopic = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!createTopicGroupId) return;
+    if (!topicName.trim()) { setTopicError('Topic name is required'); return; }
+    try {
+      setTopicLoading(true);
+      setTopicError(null);
+      const res = await createGroupTopic(createTopicGroupId, topicName.trim(), topicDesc.trim() || null);
+      if (res.success) {
+        showToast.success('Topic created');
+        const ps = groupTopicsMeta[createTopicGroupId]?.pageSize || 100;
+        const det = await getGroupDetails(createTopicGroupId, 1, ps);
+        if (det.success) {
+          setGroupTopics(s => ({ ...s, [createTopicGroupId]: det.data?.topics || [] }));
+          setGroupMembers(s => ({ ...s, [createTopicGroupId]: det.data?.members || [] }));
+          if (det.data?.topicsMeta) setGroupTopicsMeta(s => ({ ...s, [createTopicGroupId]: det.data!.topicsMeta }));
+          if (det.data?.membersMeta) setGroupMembersMeta(s => ({ ...s, [createTopicGroupId]: det.data!.membersMeta }));
+        }
+        setShowCreateTopicModal(false);
+        setTopicName('');
+        setTopicDesc('');
+      } else {
+        setTopicError(res.error || 'Failed to create topic');
+      }
+    } catch (err) {
+      setTopicError(err instanceof Error ? err.message : 'Failed to create topic');
+    } finally {
+      setTopicLoading(false);
+    }
+  };
+
+
+
+
+  const onGroupViewMembers = (g: GroupData) => {
+    showToast.info('Members list coming soon', { title: 'Groups' });
+  };
+  const onGroupMute = async (g: GroupData) => {
+    const nextMuted = !g.muted;
+    const res = await updateGroupPreferences(g.id, nextMuted);
+    if (res.success) {
+      showToast.success(nextMuted ? 'Group muted' : 'Group unmuted');
+      loadGroups();
+    } else {
+      showToast.error(res.error || 'Failed to update preferences');
+    }
+  };
+  const onGroupLeave = (g: GroupData) => {
+    setLeaveGroupId(g.id);
+    setLeaveGroupName(g.name);
+    setLeaveGroupError(null);
+    setShowLeaveGroupModal(true);
+  };
+
+  const confirmLeaveGroup = async () => {
+    if (!leaveGroupId) return;
+    try {
+      setLeaveGroupLoading(true);
+      const res = await leaveGroup(leaveGroupId);
+      if (res.success) {
+        showToast.success('Left group');
+        setShowLeaveGroupModal(false);
+        setLeaveGroupId(null);
+        setLeaveGroupName(null);
+        loadGroups();
+      } else {
+        setLeaveGroupError(res.error || 'Failed to leave group');
+        showToast.error(res.error || 'Failed to leave group');
+      }
+    } finally {
+      setLeaveGroupLoading(false);
+    }
+  };
+
+
+
+  // Thread categorization for Contacts/Strangers/Groups tabs
+  const [currentTab, setCurrentTab] = useState<'contacts' | 'strangers' | 'groups'>('contacts');
+
+  const getThreadNpub = (thread: { isServerThread: boolean; items: UnifiedMsg[]; }): string | null => {
+    if (thread.isServerThread) return null;
+    const first = thread.items.find(i => i.senderId);
+    if (first && first.senderId) {
+      try { return CEPS.encodeNpub(first.senderId); } catch { return null; }
+    }
+    return null;
+  };
+
+  const isStrangerThread = (thread: { isServerThread: boolean; items: UnifiedMsg[]; }): boolean => {
+    if (thread.isServerThread) return false; // treat server-backed threads as known
+    const npub = getThreadNpub(thread);
+    return !npub || !contactsByNpub.has(npub);
+  };
+
+  const contactThreads = useMemo(() => unifiedThreads.filter(t => !isStrangerThread(t)), [unifiedThreads, contactsByNpub]);
+  const strangerThreads = useMemo(() => unifiedThreads.filter(t => isStrangerThread(t)), [unifiedThreads, contactsByNpub]);
+
+  const contactsUnread = useMemo(() => contactThreads.reduce((a, t) => a + (t.unreadCount || 0), 0), [contactThreads]);
+  const strangersUnread = useMemo(() => strangerThreads.reduce((a, t) => a + (t.unreadCount || 0), 0), [strangerThreads]);
+  const groupsUnread = 0; // TODO: integrate server unread for groups when available
+
+  const filteredThreads = currentTab === 'contacts' ? contactThreads : currentTab === 'strangers' ? strangerThreads : [];
+
+
+
   const sendGiftwrappedMessage = async () => {
     if (!newMessage.trim() || !recipient) {
       setError('Please enter both a recipient and message');
       return;
     }
+
+
 
     setIsLoading(true);
     setError(null);
@@ -358,6 +1129,41 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             Private Family Communications
           </h3>
           <div className="flex items-center space-x-3">
+
+            {/* Tabs: Contacts | Strangers | Groups */}
+            <div className="flex items-center gap-2 mb-3" role="tablist" aria-label="Conversation categories">
+              <button
+                role="tab"
+                aria-selected={currentTab === 'contacts'}
+                onClick={() => setCurrentTab('contacts')}
+                className={`px-2 py-1 rounded border text-xs ${currentTab === 'contacts' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+              >
+                Contacts{contactsUnread > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{contactsUnread}</span>
+                )}
+              </button>
+              <button
+                role="tab"
+                aria-selected={currentTab === 'strangers'}
+                onClick={() => setCurrentTab('strangers')}
+                className={`px-2 py-1 rounded border text-xs ${currentTab === 'strangers' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+              >
+                Strangers{strangersUnread > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{strangersUnread}</span>
+                )}
+              </button>
+              <button
+                role="tab"
+                aria-selected={currentTab === 'groups'}
+                onClick={() => setCurrentTab('groups')}
+                className={`px-2 py-1 rounded border text-xs ${currentTab === 'groups' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+              >
+                Groups{groupsUnread > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{groupsUnread}</span>
+                )}
+              </button>
+            </div>
+
             <button
               onClick={() => setShowSigningSetup(true)}
               className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -365,6 +1171,244 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             >
               Settings
             </button>
+
+            {/* Conversations (Unified Threads) */}
+            <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-purple-900">Conversations</h4>
+                <div className="flex gap-2">
+                  {nextCursor && (
+                    <button
+                      disabled={loadingHistory}
+                      onClick={() => nextCursor && loadHistory(nextCursor)}
+                      className="text-xs text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                      aria-label="Load older"
+                    >
+                      {loadingHistory ? 'Loading…' : 'Load older'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void messaging.startMessageSubscription()}
+                    className="text-xs text-purple-700 hover:text-purple-900"
+                    aria-label="Refresh conversations"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {currentTab === 'groups' ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-medium text-purple-800">Your Groups</div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => loadGroups()} className="text-xs text-purple-700 hover:text-purple-900" aria-label="Refresh groups">Refresh</button>
+                        <button onClick={() => setShowCreateGroupModal(true)} className="text-xs text-white bg-purple-600 hover:bg-purple-700 rounded px-2 py-1" aria-label="Create group">Create Group</button>
+                      </div>
+                    </div>
+                    {groupsLoading ? (
+                      <div className="p-3 text-xs text-purple-700">Loading groups...</div>
+                    ) : groupsError ? (
+                      <div className="p-3 text-xs text-red-600">{groupsError}</div>
+                    ) : groups.length === 0 ? (
+                      <div className="p-3 text-xs text-purple-700">No groups yet</div>
+                    ) : (
+                      groups.map((g) => (
+                        <div key={g.id} className="group p-3 bg-white rounded-lg border border-purple-200">
+                          <div className="flex items-center justify-between">
+                            {getGroupHeaderContent(g)}
+                            <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2">
+                              <button onClick={() => onGroupViewMembers(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="View members">Members</button>
+                              <button onClick={() => onGroupMute(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Mute group">{g.muted ? 'Unmute' : 'Mute'}</button>
+                              {(['owner', 'admin'].includes(String(g.role || '').toLowerCase())) && (
+                                <button onClick={() => toggleGroupDetails(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Manage group">Details</button>
+                              )}
+                              <button onClick={() => onGroupLeave(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Leave group">Leave</button>
+                            </div>
+                          </div>
+                          {expandedGroupIds.has(g.id) && (
+                            <div className="mt-2 border-t border-purple-100 pt-2 text-[12px]">
+                              {groupDetailsLoading[g.id] ? (
+                                <div className="text-purple-700">Loading details…</div>
+                              ) : groupDetailsError[g.id] ? (
+                                <div className="text-red-600">{groupDetailsError[g.id]}</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    {(() => {
+                                      const shown = (groupTopics[g.id]?.length || 0);
+                                      const total = groupTopicsMeta[g.id]?.total ?? shown;
+                                      return (
+                                        <div className="text-purple-900">Topics: Showing {shown} of {total}</div>
+                                      );
+                                    })()}
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => onAddMember(g)} className="text-[11px] text-emerald-700 hover:text-emerald-900" aria-label="Add member">Add member</button>
+                                      <button onClick={() => onOpenCreateTopic(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Create topic">Create topic</button>
+                                    </div>
+                                  </div>
+                                  {groupTopicsMeta[g.id]?.hasMore && (
+                                    <div className="mt-1">
+                                      <button
+                                        onClick={() => loadMoreTopics(g)}
+                                        disabled={!!groupTopicsLoadingMore[g.id]}
+                                        className="text-[11px] text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                                      >
+                                        {groupTopicsLoadingMore[g.id] ? 'Loading…' : 'Load More Topics'}
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className="mt-2">
+                                    {(() => {
+                                      const shown = (groupMembers[g.id]?.length || 0);
+                                      const total = groupMembersMeta[g.id]?.total ?? shown;
+                                      return (
+                                        <div className="text-purple-900 mb-1">Members (Showing {shown} of {total})</div>
+                                      );
+                                    })()}
+                                    <ul className="space-y-1">
+                                      {(groupMembers[g.id] || []).map((m: any) => (
+                                        <li key={m.member_hash} className="flex items-center justify-between">
+                                          <span className="text-gray-700">{m.member_hash}</span>
+                                          {(['owner', 'admin'].includes(String(g.role || '').toLowerCase())) && (
+                                            <button onClick={() => onRemoveMember(g, m.member_hash)} className="text-[11px] text-red-700 hover:text-red-900" aria-label="Remove member">Remove</button>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {groupMembersMeta[g.id]?.hasMore && (
+                                      <div className="mt-1">
+                                        <button
+                                          onClick={() => loadMoreMembers(g)}
+                                          disabled={!!groupMembersLoadingMore[g.id]}
+                                          className="text-[11px] text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                                        >
+                                          {groupMembersLoadingMore[g.id] ? 'Loading…' : 'Load More Members'}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  filteredThreads.length === 0 ? (
+                    <div className="p-3 text-xs text-purple-700">No conversations yet</div>
+                  ) : (
+                    filteredThreads.map((thread) => {
+                      const isExpanded = expandedThreads.has(thread.id);
+                      const toggle = () => setExpandedThreads(prev => {
+                        const next = new Set(prev);
+                        if (next.has(thread.id)) next.delete(thread.id); else next.add(thread.id);
+                        return next;
+                      });
+                      return (
+                        <div key={thread.id} className="bg-white rounded-lg border border-purple-200">
+                          <button
+                            onClick={toggle}
+                            className="w-full px-3 py-2 flex items-center justify-between hover:bg-purple-50 focus:outline-none"
+                            aria-expanded={isExpanded}
+                            aria-controls={`thread-${thread.id}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {getThreadHeaderContent(thread)}
+                              {thread.unreadCount > 0 && (
+                                <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">
+                                  {thread.unreadCount}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void markThreadAsRead(thread.id); }}
+                                className="text-[11px] text-purple-700 hover:text-purple-900"
+                                aria-label="Mark thread as read"
+                              >
+                                Mark read
+                              </button>
+                              <svg className={`w-4 h-4 text-purple-700 ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.187l3.71-3.956a.75.75 0 111.08 1.04l-4.24 4.52a.75.75 0 01-1.08 0l-4.24-4.52a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          </button>
+
+                          {isExpanded && (
+                            <div id={`thread-${thread.id}`} className="border-t border-purple-100">
+                              {thread.items.map((m) => {
+                                const createdAt = formatCompactTimestamp(m.created_at * 1000);
+                                const sender = m.senderId ? `${m.senderId.slice(0, 8)}…` : (m.server ? m.server.sender_hash.slice(0, 8) + '…' : 'unknown');
+                                const isUnread = !readIds.has(m.id);
+                                return (
+                                  <div key={m.id} className={`group p-3 flex flex-col gap-1 ${isUnread ? 'bg-purple-50/50' : ''}`}>
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-purple-900">{sender}</span>
+                                        <span className="text-[11px] text-purple-700">{createdAt}</span>
+                                        {m.source === 'nip59' && (
+                                          <span className="text-green-600" title="Verified signature">✅</span>
+                                        )}
+                                        {m.protocol === 'nip59' && (
+                                          <span className="text-purple-700" title="NIP-59 encrypted">🔒</span>
+                                        )}
+                                        {m.source === 'server' && !m.protocol && (
+                                          <span className="text-gray-500" title="Standard message">📝</span>
+                                        )}
+                                      </div>
+                                      <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2">
+                                        <button
+                                          onClick={() => {
+                                            if (m.senderId) { setRecipient(m.senderId); }
+                                            else { showToast.info('Recipient not available from server history'); }
+                                            setNewMessage(prev => prev?.startsWith('Re: ') ? prev : `Re: ${prev || ''}`);
+                                          }}
+                                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                                          aria-label="Reply"
+                                        >Reply</button>
+                                        <button
+                                          onClick={() => {
+                                            const content = m.content || '';
+                                            setNewMessage(`Forwarded: ${content}`);
+                                            showToast.info('Select a recipient to forward');
+                                          }}
+                                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                                          aria-label="Forward"
+                                        >Forward</button>
+                                        <button
+                                          onClick={() => onRequestDeleteMessage(m)}
+                                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                                          aria-label="Delete"
+                                        >Delete</button>
+                                        {m.senderId && (
+                                          <button
+                                            onClick={() => void blockSender(m)}
+                                            className="text-[11px] text-purple-700 hover:text-purple-900"
+                                            aria-label="Block sender"
+                                          >Block</button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="text-[12px] text-gray-800 whitespace-pre-wrap break-words">
+                                      {m.content ? m.content : m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]'}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -530,20 +1574,19 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold text-purple-900">Group Conversations</h4>
             <button
-              onClick={() => loadHistory()}
+              onClick={() => loadGroups()}
               className="text-xs text-purple-700 hover:text-purple-900"
             >
               Refresh
             </button>
           </div>
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {conversations.slice(0, 5).map((c) => (
-              <div key={c.id} className="p-3 bg-white rounded-lg border border-purple-200">
+            {groups.slice(0, 5).map((g) => (
+              <div key={g.id} className="p-3 bg-white rounded-lg border border-purple-200">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium text-purple-900 truncate">{c.id.slice(0, 20)}…</div>
-                  <div className="text-[11px] text-purple-700">{c.count} msgs</div>
+                  {getGroupHeaderContent(g)}
+                  <div className="text-[11px] text-purple-700">{g.member_count} members</div>
                 </div>
-                <div className="text-[10px] text-purple-600">{c.lastCreatedAt ? new Date(c.lastCreatedAt).toLocaleString() : ''}</div>
               </div>
             ))}
           </div>
@@ -583,43 +1626,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           )}
         </div>
 
-        {/* Message Histories block */}
-        <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-purple-900">Message Histories</h4>
-            <button
-              disabled={!nextCursor || loadingHistory}
-              onClick={() => nextCursor && loadHistory(nextCursor)}
-              className="text-xs text-purple-700 hover:text-purple-900 disabled:opacity-50"
-            >
-              {loadingHistory ? 'Loading…' : (nextCursor ? 'Load older' : 'Up to date')}
-            </button>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {history.slice(0, 5).map((m) => (
-              <div key={m.id} className="p-3 bg-white rounded-lg border border-purple-200">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-medium text-sm text-purple-900">{m.sender_hash.slice(0, 8)}…</span>
-                  <span className="text-[11px] text-purple-700">{new Date(m.created_at).toLocaleString()}</span>
-                </div>
-                <div className="flex items-center space-x-3 text-[11px] text-purple-700">
-                  <span>
-                    {m.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'}
-                  </span>
-                  <span>{m.message_type === 'group' ? 'Group' : 'Direct'}</span>
-                  <span>{m.status || 'sent'}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          {history.length > 5 && (
-            <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Full History', { title: 'History' })}>
-              View full history
-            </button>
-          )}
-        </div>
-
-
 
         {showInviteModal && auth.sessionToken && auth.user && (
           <SecurePeerInvitationModal
@@ -639,6 +1645,72 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             }}
           />
         )}
+
+
+        {/* Add Member Modal */}
+        {showAddMemberModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAddMemberModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-member-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="add-member-title" className="text-lg font-semibold text-gray-900">Add Member</h3>
+                <button onClick={() => setShowAddMemberModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <form onSubmit={submitAddMember} className="space-y-4">
+                <div>
+                  <label htmlFor="add-member-contact" className="block text-xs text-gray-600 mb-1">Select contact (optional)</label>
+                  <select id="add-member-contact" value={addMemberSelectedNpub} onChange={(e) => setAddMemberSelectedNpub(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                    <option value="">Choose a contact…</option>
+                    {contacts.map((c) => (
+                      <option key={c.id} value={c.npub}>
+                        {(c.displayName || (c as any).username || c.nip05 || c.npub)}
+                      </option>
+                    ))}
+                  </select>
+                  {addMemberSelectedNpub && (
+                    <div className="mt-1 text-[11px] text-purple-600 truncate">npub: {addMemberSelectedNpub}</div>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="add-member-hash" className="block text-xs text-gray-600 mb-1">Member hash</label>
+                  <input id="add-member-hash" type="text" value={addMemberHash} onChange={(e) => setAddMemberHash(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="hash..." />
+                  <div className="mt-1 text-[11px] text-gray-500">Note: selecting a contact does not auto-fill the member hash. Ask the member for their group hash.</div>
+                </div>
+                {addMemberError && <div className="text-xs text-red-600">{addMemberError}</div>}
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowAddMemberModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                  <button type="submit" disabled={addMemberLoading} className="text-xs text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded px-3 py-1.5">
+                    {addMemberLoading ? 'Adding…' : 'Add'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Remove Member Modal */}
+        {showRemoveMemberModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowRemoveMemberModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="remove-member-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="remove-member-title" className="text-lg font-semibold text-gray-900">Remove Member</h3>
+                <button onClick={() => setShowRemoveMemberModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="text-sm text-gray-800 mb-4">Are you sure you want to remove <span className="font-mono text-purple-700">{removeMemberHash}</span>?</div>
+
+
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowRemoveMemberModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                <button type="button" onClick={() => void confirmRemoveMember()} disabled={removeMemberLoading} className="text-xs text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded px-3 py-1.5">{removeMemberLoading ? 'Removing…' : 'Remove'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {/* Signing Method Setup Wizard */}
         {showSigningSetup && (
@@ -678,7 +1750,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                     onClick={() => {
                       console.log('🔐 Selected NIP-07 signing');
                       setShowSigningSetup(false);
-                      showToast.success('NIP-07 signing configured', { title: 'Success', duration: 3000 });
+
+
                     }}
                     className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50"
                   >
@@ -691,6 +1764,146 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                   You can change this setting anytime by clicking the settings icon.
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+
+        {/* Create Group Modal */}
+        {showCreateGroupModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCreateGroupModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="create-group-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="create-group-title" className="text-lg font-semibold text-gray-900">Create Group</h3>
+                <button onClick={() => setShowCreateGroupModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <form onSubmit={onSubmitCreateGroup} className="space-y-4">
+                <div>
+                  <label htmlFor="cg-name" className="block text-xs text-gray-600 mb-1">Name</label>
+                  <input id="cg-name" type="text" value={cgName} onChange={(e) => setCgName(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="e.g. Weekend Friends" />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label htmlFor="cg-type" className="block text-xs text-gray-600 mb-1">Group type</label>
+                    <select id="cg-type" value={cgType} onChange={(e) => setCgType(e.target.value as any)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                      <option value="family">family</option>
+                      <option value="business">business</option>
+                      <option value="friends">friends</option>
+                      <option value="advisors">advisors</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label htmlFor="cg-enc" className="block text-xs text-gray-600 mb-1">Encryption</label>
+                    <select id="cg-enc" value={cgEnc} onChange={(e) => setCgEnc(e.target.value as any)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                      <option value="gift-wrap">gift-wrap</option>
+                      <option value="nip04">nip04</option>
+                    </select>
+                  </div>
+                </div>
+
+                {cgError && <div className="text-xs text-red-600">{cgError}</div>}
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowCreateGroupModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                  <button type="submit" disabled={cgLoading} className="text-xs text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded px-3 py-1.5">
+                    {cgLoading ? 'Creating…' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+
+        {/* Block Sender Modal */}
+        {showBlockSenderModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowBlockSenderModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="block-sender-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="block-sender-title" className="text-lg font-semibold text-gray-900">Block Sender</h3>
+                <button onClick={() => setShowBlockSenderModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="text-sm text-gray-800 mb-2">Are you sure you want to block this sender?</div>
+              {blockSenderId && <div className="text-xs font-mono text-purple-700 break-all">{blockSenderId}</div>}
+              {blockSenderError && <div className="text-xs text-red-600 mt-2">{blockSenderError}</div>}
+              <div className="flex items-center justify-end gap-2 pt-3">
+                <button type="button" onClick={() => setShowBlockSenderModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                <button type="button" onClick={() => void confirmBlockSender()} disabled={blockSenderLoading} className="text-xs text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded px-3 py-1.5">{blockSenderLoading ? 'Blocking…' : 'Block'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Message Modal */}
+        {showDeleteMessageModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowDeleteMessageModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-message-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="delete-message-title" className="text-lg font-semibold text-gray-900">Delete Message</h3>
+                <button onClick={() => setShowDeleteMessageModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="text-sm text-gray-800 mb-2">Are you sure you want to delete this message?</div>
+              {deleteMessageError && <div className="text-xs text-red-600">{deleteMessageError}</div>}
+              <div className="flex items-center justify-end gap-2 pt-3">
+                <button type="button" onClick={() => setShowDeleteMessageModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                <button type="button" onClick={() => void confirmDeleteMessage()} disabled={deleteMessageLoading} className="text-xs text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded px-3 py-1.5">{deleteMessageLoading ? 'Deleting…' : 'Delete'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Leave Group Modal */}
+        {showLeaveGroupModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowLeaveGroupModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="leave-group-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="leave-group-title" className="text-lg font-semibold text-gray-900">Leave Group</h3>
+                <button onClick={() => setShowLeaveGroupModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="text-sm text-gray-800 mb-2">Are you sure you want to leave{leaveGroupName ? ` “${leaveGroupName}”` : ''}?</div>
+              {leaveGroupError && <div className="text-xs text-red-600">{leaveGroupError}</div>}
+              <div className="flex items-center justify-end gap-2 pt-3">
+                <button type="button" onClick={() => setShowLeaveGroupModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                <button type="button" onClick={() => void confirmLeaveGroup()} disabled={leaveGroupLoading} className="text-xs text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded px-3 py-1.5">{leaveGroupLoading ? 'Leaving…' : 'Leave'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Topic Modal */}
+        {showCreateTopicModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCreateTopicModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="create-topic-title">
+              <div className="flex items-center justify-between mb-4">
+                <h3 id="create-topic-title" className="text-lg font-semibold text-gray-900">Create Topic</h3>
+                <button onClick={() => setShowCreateTopicModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <form onSubmit={submitCreateTopic} className="space-y-4">
+                <div>
+                  <label htmlFor="topic-name" className="block text-xs text-gray-600 mb-1">Topic name</label>
+                  <input id="topic-name" type="text" value={topicName} onChange={(e) => setTopicName(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="e.g. Planning" />
+                </div>
+                <div>
+                  <label htmlFor="topic-desc" className="block text-xs text-gray-600 mb-1">Description (optional)</label>
+                  <textarea id="topic-desc" value={topicDesc} onChange={(e) => setTopicDesc(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={3} />
+                </div>
+                {topicError && <div className="text-xs text-red-600">{topicError}</div>}
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowCreateTopicModal(false)} className="text-xs text-gray-700 hover:text-gray-900">Cancel</button>
+                  <button type="submit" disabled={topicLoading} className="text-xs text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded px-3 py-1.5">{topicLoading ? 'Creating…' : 'Create'}</button>
+                </div>
+              </form>
             </div>
           </div>
         )}

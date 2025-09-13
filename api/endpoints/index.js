@@ -39,24 +39,25 @@ function getEnvVar(key) {
  */
 
 // Export all client-side API endpoint modules with explicit disambiguation
+export * from "./communications.js";
 export * from "./family.js";
 
 // Explicit re-exports to resolve User typedef conflict
 export {
-  authenticateWithNostr, authenticateWithOTP, createIdentity,
-  generateOTP,
-  getSessionInfo,
-  logout,
-  refreshSession
+    authenticateWithNostr, authenticateWithOTP, createIdentity,
+    generateOTP,
+    getSessionInfo,
+    logout,
+    refreshSession
 } from "./auth.js";
 
 export {
-  deleteUserAccount,
-  fetchUserProfile,
-  getUserSettings,
-  updateUserProfile,
-  updateUserSettings,
-  userAPIConfig
+    deleteUserAccount,
+    fetchUserProfile,
+    getUserSettings,
+    updateUserProfile,
+    updateUserSettings,
+    userAPIConfig
 } from "./user.js";
 
 /**

@@ -605,7 +605,7 @@ export function PrivateCommunicationModal({
           });
 
           setMessage('');
-          const privacyMethod = result.method === 'giftwrapped' ? 'Gift Wrapped (Maximum Privacy)' :
+          const privacyMethod = result.method === 'giftwrapped' ? 'Sealed (Maximum Privacy)' :
             result.method === 'encrypted' ? 'Encrypted DM (Selective Privacy)' :
               'Public Note (Minimal Privacy)';
           setSuccess(`Individual message sent successfully!\nMethod: ${privacyMethod}`);
@@ -634,7 +634,7 @@ export function PrivateCommunicationModal({
           });
 
           setMessage('');
-          const privacyMethod = result.method === 'giftwrapped' ? 'Gift Wrapped (Maximum Privacy)' :
+          const privacyMethod = result.method === 'giftwrapped' ? 'Sealed (Maximum Privacy)' :
             result.method === 'encrypted' ? 'Encrypted (Selective Privacy)' :
               'Standard (Minimal Privacy)';
           setSuccess(`Group message sent successfully!\nMethod: ${privacyMethod}`);
@@ -712,7 +712,7 @@ export function PrivateCommunicationModal({
                     {communicationType === 'family' ? 'Family Federation Communication' : 'Private Communication'}
                   </h2>
                   <p className="text-purple-200 text-sm">
-                    Secure, encrypted messaging with gift-wrapped privacy protection
+                    Secure, encrypted messaging with sealed privacy protection
                   </p>
                 </div>
               </div>
@@ -744,7 +744,7 @@ export function PrivateCommunicationModal({
                   <div className="flex-1">
                     <h3 className="font-semibold text-blue-400 mb-2">Secure Authentication Required</h3>
                     <p className="text-blue-300 text-sm mb-3">
-                      Gift Wrapped communications require authenticated access to ensure message integrity and sender verification.
+                      Sealed communications require authenticated access to ensure message integrity and sender verification.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -831,7 +831,7 @@ export function PrivateCommunicationModal({
                             <p className="text-sm text-purple-200 mb-2">{msg.content}</p>
                             <div className="flex items-center space-x-2">
                               <span className="text-xs text-purple-400">
-                                {msg.privacyLevel === PrivacyLevel.GIFTWRAPPED ? '🔒 Gift Wrapped' :
+                                {msg.privacyLevel === PrivacyLevel.GIFTWRAPPED ? '🔒 Sealed' :
                                   msg.privacyLevel === PrivacyLevel.ENCRYPTED ? '🛡️ Encrypted' : '👁️ Standard'}
                               </span>
                             </div>
@@ -988,7 +988,7 @@ export function PrivateCommunicationModal({
                       </div>
                       <div className="flex items-center space-x-2">
                         <Gift className="h-4 w-4 text-blue-400" />
-                        <span className="text-blue-300">Gift wrapping enabled</span>
+                        <span className="text-blue-300">Sealed messaging enabled</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <Zap className="h-4 w-4 text-purple-400" />
@@ -1024,8 +1024,8 @@ export function PrivateCommunicationModal({
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder={messageType === 'group'
-                    ? "Your message will be sent to all group members with gift-wrapped privacy protection..."
-                    : "Your message will be encrypted and gift-wrapped for maximum privacy..."
+                    ? "Your message will be sent to all group members with sealed privacy protection..."
+                    : "Your message will be encrypted and sealed for maximum privacy..."
                   }
                   rows={6}
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
@@ -1116,7 +1116,7 @@ export function PrivateCommunicationModal({
                 onChange={(e) => setNewGroupData(prev => ({ ...prev, encryptionType: e.target.value as any }))}
                 className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
-                <option value="gift-wrap">Gift Wrap (Recommended)</option>
+                <option value="gift-wrap">Sealed (Recommended)</option>
                 <option value="nip04">NIP-04</option>
               </select>
             </div>
