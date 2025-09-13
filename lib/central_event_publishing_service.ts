@@ -34,8 +34,7 @@ function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 const utf8 = (s: string) => te.encode(s);
 
-// Import bridges and session manager at top-level (TS/ESM)
-import { recoverySessionBridge } from "../src/lib/auth/recovery-session-bridge";
+// Import session manager at top-level (TS/ESM) - recovery bridge imported lazily to avoid circular deps
 import { secureNsecManager } from "../src/lib/secure-nsec-manager";
 
 // Privacy utilities (Web Crypto)
@@ -1535,6 +1534,23 @@ export class CentralEventPublishingService {
   /**
    * Get active signing session id from either RecoverySessionBridge or SecureNsecManager
    */
+  private _recoverySessionBridge: any = null;
+  private _recoverySessionBridgeLoaded = false;
+
+  private getRecoverySessionBridge(): any {
+    if (!this._recoverySessionBridgeLoaded) {
+      try {
+        // Use require for synchronous loading to avoid circular deps
+        const module = require("../src/lib/auth/recovery-session-bridge");
+        this._recoverySessionBridge = module.recoverySessionBridge;
+      } catch {
+        // Recovery session bridge not available
+      }
+      this._recoverySessionBridgeLoaded = true;
+    }
+    return this._recoverySessionBridge;
+  }
+
   getActiveSigningSessionId(): string | null {
     try {
       // 1) Entry point logging with minimal caller info
@@ -1544,10 +1560,9 @@ export class CentralEventPublishingService {
         console.log("🔐 CEPS.getActiveSigningSessionId: called", { caller });
       } catch {}
 
-      // 2) Recovery session check
-      const recovery = (
-        recoverySessionBridge as any
-      )?.getRecoverySessionStatus?.();
+      // 2) Recovery session check (lazy import to avoid circular deps)
+      const recoveryBridge = this.getRecoverySessionBridge();
+      const recovery = recoveryBridge?.getRecoverySessionStatus?.();
       try {
         const recId: string | null = recovery?.sessionId || null;
         console.log("🔐 CEPS.getActiveSigningSessionId: recovery status", {
