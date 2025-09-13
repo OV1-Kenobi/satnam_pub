@@ -83,31 +83,40 @@ const getSupabaseConfig = () => {
 
     console.error("❌ Supabase credentials missing:", errorDetails);
 
-    throw new Error(
-      "CRITICAL: Bootstrap Supabase credentials missing. " +
-        "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables " +
-        "to access the Vault system. " +
-        `Environment: ${errorDetails.environment}, ` +
-        `Available VITE_ vars: ${errorDetails.availableEnvVars.length}`
-    );
+    // In production, fail fast. In development, allow app to boot with a stub client.
+    const isProd =
+      (typeof import.meta !== "undefined" && (import.meta as any)?.env?.PROD) ||
+      (typeof process !== "undefined" &&
+        process.env?.NODE_ENV === "production");
+    if (isProd) {
+      throw new Error(
+        "CRITICAL: Bootstrap Supabase credentials missing. " +
+          "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables " +
+          "to access the Vault system. " +
+          `Environment: ${errorDetails.environment}, ` +
+          `Available VITE_ vars: ${errorDetails.availableEnvVars.length}`
+      );
+    }
+    // Development: return empty to signal missing config to stub initializer
+    return { url: "", key: "" } as { url: string; key: string };
   }
 
   return { url, key };
 };
 
-const config = getSupabaseConfig();
-const supabaseUrl = config.url;
-const supabaseKey = config.key;
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Security validation - ensure bootstrap credentials are valid
-if (typeof window !== "undefined") {
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error(
-      "CRITICAL: Bootstrap Supabase credentials missing. " +
-        "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables."
-    );
-  }
+const cfg = getSupabaseConfig();
+const supabaseUrl = cfg.url;
+const supabaseKey = cfg.key;
 
+// Helper: determine environment
+const isProd =
+  (typeof import.meta !== "undefined" && (import.meta as any)?.env?.PROD) ||
+  (typeof process !== "undefined" && process.env?.NODE_ENV === "production");
+
+// Validate only when configured
+if (typeof window !== "undefined" && supabaseUrl && supabaseKey) {
   // Validate that we don't have placeholder values
   if (
     supabaseUrl.includes("your-project-ref") ||
@@ -118,16 +127,14 @@ if (typeof window !== "undefined") {
         "Configure real bootstrap credentials in environment variables."
     );
   }
-}
 
-// Validate URL format and security
-if (typeof window !== "undefined") {
+  // Validate URL format and security
   try {
     const url = new URL(supabaseUrl);
     if (url.protocol !== "https:") {
       throw new Error(`SECURITY: Supabase URL must use HTTPS: ${supabaseUrl}`);
     }
-  } catch (error) {
+  } catch {
     throw new Error(`CRITICAL: Invalid Supabase URL format: ${supabaseUrl}`);
   }
 
@@ -139,37 +146,53 @@ if (typeof window !== "undefined") {
   }
 }
 
-// Create Supabase client with enhanced security configuration
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    flowType: "pkce", // Enhanced security with PKCE
-    lock: async <R>(
-      _name: string,
-      _acquireTimeout: number,
-      fn: () => Promise<R>
-    ) => await fn(), // Prevent concurrent session operations
-    storageKey: "citadel-auth", // Custom storage key
-  },
-  global: {
-    headers: {
-      "x-client-info": "citadel-identity-forge@1.0.0",
-      "x-security-level": "enhanced",
+function createSupabaseStub(): SupabaseClient {
+  const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+      const message =
+        "Supabase not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.";
+      // Fail fast in production, but in dev only when actually used
+      if (isProd) throw new Error(message);
+      console.error(
+        "[SupabaseStub] Attempted access to property:",
+        String(prop)
+      );
+      throw new Error(message);
     },
-  },
-  db: {
-    schema: "public",
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10, // Rate limiting
-    },
-    heartbeatIntervalMs: 30000, // Connection health monitoring
-    reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000), // Exponential backoff
-  },
-});
+  };
+  return new Proxy({} as SupabaseClient, handler);
+}
+
+// Create real client only when credentials are present; otherwise a stub that throws on use
+export const supabase: SupabaseClient =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: "pkce",
+          lock: async <R>(
+            _name: string,
+            _acquireTimeout: number,
+            fn: () => Promise<R>
+          ) => await fn(),
+          storageKey: "citadel-auth",
+        },
+        global: {
+          headers: {
+            "x-client-info": "citadel-identity-forge@1.0.0",
+            "x-security-level": "enhanced",
+          },
+        },
+        db: { schema: "public" },
+        realtime: {
+          params: { eventsPerSecond: 10 },
+          heartbeatIntervalMs: 30000,
+          reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000),
+        },
+      })
+    : createSupabaseStub();
 
 // Development helper function to set Supabase config
 export function setSupabaseConfig(url: string, key: string) {
