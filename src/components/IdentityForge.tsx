@@ -29,10 +29,14 @@ import { recoverySessionBridge } from "../lib/auth/recovery-session-bridge";
 import SecureTokenManager from "../lib/auth/secure-token-manager";
 import type { UserIdentity } from "../lib/auth/user-identities-auth";
 
+import { central_event_publishing_service, central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
+
+
 import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 
 import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
+
 
 interface FormData {
   username: string;
@@ -447,7 +451,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         keyType = 'private';
 
         try {
-          const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
+
           // Validate and decode the nsec using central service helpers
           const privateKeyBytes = CEPS.decodeNsec(cleanedKey);
           const { secp256k1 } = await import('@noble/curves/secp256k1');
@@ -470,7 +474,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         try {
           // Validate and decode the npub via central service
-          const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
+
           const pubHex = CEPS.decodeNpub(cleanedKey);
           publicKey = pubHex;
           npub = cleanedKey;
@@ -523,7 +527,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const detectNostrProfile = async (publicKey: string) => {
     try {
       // Convert hex public key to npub format for profile service
-      const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+
       const npub = central_event_publishing_service.encodeNpub(publicKey);
 
       // Use existing NostrProfileService to fetch profile with timeout
@@ -648,7 +652,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       // Publish centrally using the active SecureSession
       try {
-        const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+
         await central_event_publishing_service.publishProfile(ephemeralNsec, profileMetadata);
       } catch (pubErr) {
         console.warn('Profile event signed but publish failed or skipped:', pubErr instanceof Error ? pubErr.message : pubErr);
@@ -888,7 +892,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
       try {
         // Decode npub to hex and ensure 64-hex length
-        const { central_event_publishing_service: CEPS } = await import('../../lib/central_event_publishing_service');
+
         const pubHexFromNpub = CEPS.decodeNpub(keyPair.npub);
         if (!pubHexFromNpub || pubHexFromNpub.length !== 64) {
           throw new Error(`Invalid underlying pubkey length from npub: ${pubHexFromNpub?.length}`);

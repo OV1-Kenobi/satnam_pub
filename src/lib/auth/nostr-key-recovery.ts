@@ -9,6 +9,8 @@ import { FederationRole } from "../../types/auth";
 import { SecureBuffer } from "../security/secure-buffer";
 import { UserIdentity } from "./user-identities-auth";
 
+import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+
 // NIP-41 Key Migration Types
 export interface NIP41WhitelistEvent {
   kind: 1776;
@@ -576,10 +578,6 @@ export class NostrKeyRecoveryService {
     relays: string[] = []
   ): Promise<NIP41EventPublishResult> {
     try {
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
-
       // Create whitelist event (unsigned)
       const whitelistEventUnsigned = {
         kind: 1776 as const,
@@ -638,9 +636,6 @@ export class NostrKeyRecoveryService {
   ): Promise<NIP41EventPublishResult> {
     try {
       // Create migration event (without id and sig initially)
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
 
       const migrationEventUnsigned = {
         kind: 1777 as const,
@@ -698,10 +693,6 @@ export class NostrKeyRecoveryService {
     error?: string;
   }> {
     try {
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
-
       // Use default relays if none provided
       const targetRelays =
         relays.length > 0
@@ -889,9 +880,7 @@ export class NostrKeyRecoveryService {
         ],
         created_at: now,
       };
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
+
       const event = await CEPS.signEventWithActiveSession(
         whitelistUnsigned as any
       ).catch(async () =>
@@ -957,9 +946,6 @@ export class NostrKeyRecoveryService {
         created_at: now,
       };
 
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
       const delegEvent = await CEPS.signEventWithActiveSession(
         delegNoteUnsigned as any
       ).catch(async () => CEPS.signEvent(delegNoteUnsigned as any, oldNsecHex));
@@ -1044,9 +1030,6 @@ export class NostrKeyRecoveryService {
         ],
       };
 
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
       const oldEvent = await CEPS.signEventWithActiveSession(
         oldUnsigned as any
       ).catch(async () => CEPS.signEvent(oldUnsigned as any, oldNsecHex));
@@ -1339,9 +1322,6 @@ export class NostrKeyRecoveryService {
 
       // Step 3: Create SecureNsecManager session with the new nsec (policy-driven)
       try {
-        const { central_event_publishing_service: CEPS } = await import(
-          "../../../lib/central_event_publishing_service"
-        );
         const policy = await CEPS.getSigningPolicy();
         await (
           await import("../secure-nsec-manager")

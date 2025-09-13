@@ -29,6 +29,8 @@ import ErrorBoundary from './ErrorBoundary';
 import { MaxPrivacyAuth } from './MaxPrivacyAuth';
 import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
+import { central_event_publishing_service } from "../../lib/central_event_publishing_service";
+
 // At the top of the file, outside the component
 let nip07SessionId: string | undefined;
 
@@ -285,7 +287,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
         throw new Error('Extension access denied or timed out. Please allow access and try again.');
       }
 
-      const { central_event_publishing_service } = await import('../../lib/central_event_publishing_service');
+
       const npub = central_event_publishing_service.encodeNpub(publicKey);
 
       setNip07State({

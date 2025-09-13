@@ -5,6 +5,8 @@
  * PRIVACY-FIRST: All profile data cached in user's localStorage, zero external logging
  */
 
+import { central_event_publishing_service } from "../../lib/central_event_publishing_service";
+
 export interface NostrProfile {
   name?: string;
   about?: string;
@@ -229,9 +231,6 @@ export class NostrProfileService {
    */
   private async fetchFromRelays(npub: string): Promise<NostrProfile | null> {
     try {
-      const { central_event_publishing_service } = await import(
-        "../../lib/central_event_publishing_service"
-      );
       // Ensure relays are initialized (service has defaults)
       const relays: string[] =
         (central_event_publishing_service as any).relays || [];
