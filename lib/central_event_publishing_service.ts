@@ -391,7 +391,7 @@ export type OTPDeliveryResult = {
 };
 
 export class CentralEventPublishingService {
-  private pool: SimplePool;
+  private pool: SimplePool | null = null;
   private relays: string[];
   private config: UnifiedMessagingConfig;
 
@@ -407,7 +407,6 @@ export class CentralEventPublishingService {
     new Map();
 
   constructor() {
-    this.pool = new SimplePool();
     this.relays = defaultRelays();
     this.config = DEFAULT_UNIFIED_CONFIG;
     // Keep config.relays in sync with resolved relays for consistency
@@ -415,6 +414,26 @@ export class CentralEventPublishingService {
 
     // Add global error handler for WebSocket failures
     this.setupGlobalErrorHandling();
+  }
+
+  private getPool(): SimplePool {
+    if (!this.pool) {
+      const candidate: unknown = SimplePool as unknown;
+      if (typeof candidate === "function") {
+        this.pool = new (candidate as new () => SimplePool)();
+      } else if (
+        candidate !== null &&
+        typeof candidate === "object" &&
+        typeof (candidate as { default?: unknown }).default === "function"
+      ) {
+        this.pool = new (
+          candidate as { default: new () => SimplePool }
+        ).default();
+      } else {
+        throw new Error("SimplePool is not constructible in this environment");
+      }
+    }
+    return this.pool;
   }
 
   private setupGlobalErrorHandling() {
@@ -598,7 +617,7 @@ export class CentralEventPublishingService {
       this.pendingApprovals.clear();
       this.rateLimits.clear();
       try {
-        this.pool.close(this.relays);
+        this.getPool().close(this.relays);
       } catch {}
     }
   }
@@ -1344,7 +1363,7 @@ export class CentralEventPublishingService {
 
     // Helper to publish with timeout
     const publishWithTimeout = async (relay: string, event: Event) => {
-      const publishPromise = (this.pool as any).publish([relay], event);
+      const publishPromise = this.getPool().publish([relay], event);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Connection timeout")), 10000)
       );
@@ -1506,7 +1525,7 @@ export class CentralEventPublishingService {
     handlers: { onevent?: (e: Event) => void; oneose?: () => void }
   ): any {
     const list = relays && relays.length ? relays : this.relays;
-    return (this.pool as any).subscribeMany(list, filters, {
+    return this.getPool().subscribeMany(list, filters, {
       onevent: handlers.onevent,
       oneose: handlers.oneose,
     });
@@ -1665,7 +1684,7 @@ export class CentralEventPublishingService {
     try {
       return await new Promise<Event[]>((resolve) => {
         let settled = false;
-        const sub = (this.pool as any).subscribeMany(list, filters, {
+        const sub = this.getPool().subscribeMany(list, filters, {
           onevent: (e: Event) => {
             try {
               events.push(e);
@@ -1678,7 +1697,7 @@ export class CentralEventPublishingService {
               sub.close();
             } catch {}
             try {
-              (this.pool as any).close(list);
+              this.getPool().close(list);
             } catch {}
             resolve(events);
           },
@@ -1691,7 +1710,7 @@ export class CentralEventPublishingService {
             sub.close();
           } catch {}
           try {
-            (this.pool as any).close(list);
+            this.getPool().close(list);
           } catch {}
           resolve(events);
         }, timeout);
@@ -1927,7 +1946,7 @@ export class CentralEventPublishingService {
 
     try {
       const filters = [{ kinds: [10050], authors: [pubkeyHex], limit: 1 }];
-      const listPromise = (this.pool as any).list(this.relays, filters);
+      const listPromise = (this.getPool() as any).list(this.relays, filters);
       // Add timeout to avoid hanging on slow relays
       const timeoutMs = 2500;
       const events = (await Promise.race([
