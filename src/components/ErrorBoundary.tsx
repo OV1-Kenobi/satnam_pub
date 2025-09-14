@@ -1,20 +1,5 @@
 
 /**
- * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
- * @param {string} key - Environment variable key
- * @returns {string|undefined} Environment variable value
- */
-function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
-  return process.env[key];
-}
-
-/**
  * ErrorBoundary Component
  * 
  * Comprehensive error boundary for the Privacy-First Contacts system.
@@ -92,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             </div>
 
-            {getEnvVar("NODE_ENV") === 'development' && this.state.error && (
+            {process.env.NODE_ENV === 'development' && this.state.error && (
               <div className="mb-4 p-3 bg-gray-700/50 rounded border border-gray-600">
                 <details className="text-sm">
                   <summary className="text-gray-300 cursor-pointer mb-2">
