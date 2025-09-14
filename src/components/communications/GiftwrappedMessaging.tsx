@@ -1006,7 +1006,12 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
       console.error('Failed to send message:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       setError(errorMessage);
-      showToast.error(errorMessage, { title: 'Message Sending Error', duration: 0 });
+      const isTimeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      if (isTimeout) {
+        showTimeoutError('messaging');
+      } else {
+        showTimeoutError('messaging', errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }

@@ -22,6 +22,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { showTimeoutError } from '../../lib/utils/error-messages';
 
 /**
  * MASTER CONTEXT COMPLIANCE: Unified messaging interface props
@@ -192,6 +193,11 @@ export function UnifiedMessagingInterface({
       }
     } catch (error) {
       setError('Failed to initialize messaging session');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to initialize messaging session');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -223,6 +229,11 @@ export function UnifiedMessagingInterface({
       }
     } catch (error) {
       setError('Failed to load session status');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to load session status');
+      }
     }
   };
 
@@ -257,9 +268,15 @@ export function UnifiedMessagingInterface({
         await loadSessionStatus(); // Refresh groups
       } else {
         setError('Failed to create group');
+        showTimeoutError('groups', 'Failed to create group');
       }
     } catch (error) {
       setError('Failed to create group');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to create group');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -335,9 +352,15 @@ export function UnifiedMessagingInterface({
         onGroupMessageSent?.(selectedGroup, data.messageId);
       } else {
         setError('Failed to send group message');
+        showTimeoutError('groups', 'Failed to send group message');
       }
     } catch (error) {
       setError('Failed to send group message');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to send group message');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -372,9 +395,15 @@ export function UnifiedMessagingInterface({
         onDirectMessageSent?.(selectedContact, data.messageId);
       } else {
         setError('Failed to send direct message');
+        showTimeoutError('messaging', 'Failed to send direct message');
       }
     } catch (error) {
       setError('Failed to send direct message');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('messaging');
+      } else {
+        showTimeoutError('messaging', 'Failed to send direct message');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -390,6 +419,11 @@ export function UnifiedMessagingInterface({
       setPendingApprovals([]);
     } catch (error) {
       setError('Failed to load pending approvals');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to load pending approvals');
+      }
     }
   };
 
@@ -422,10 +456,16 @@ export function UnifiedMessagingInterface({
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to invite member');
+        showTimeoutError('groups', errorData.error || 'Failed to invite member');
       }
     } catch (error) {
       console.error('Failed to invite member:', error);
       setError('Failed to invite member');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to invite member');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -466,10 +506,16 @@ export function UnifiedMessagingInterface({
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to join group');
+        showTimeoutError('groups', errorData.error || 'Failed to join group');
       }
     } catch (error) {
       console.error('Failed to join group:', error);
       setError('Failed to join group');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to join group');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -511,10 +557,16 @@ export function UnifiedMessagingInterface({
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to leave group');
+        showTimeoutError('groups', errorData.error || 'Failed to leave group');
       }
     } catch (error) {
       console.error('Failed to leave group:', error);
       setError('Failed to leave group');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to leave group');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -550,10 +602,16 @@ export function UnifiedMessagingInterface({
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to process approval');
+        showTimeoutError('groups', errorData.error || 'Failed to process approval');
       }
     } catch (error) {
       console.error('Failed to process approval:', error);
       setError('Failed to process approval');
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', 'Failed to process approval');
+      }
     } finally {
       setIsLoading(false);
     }
