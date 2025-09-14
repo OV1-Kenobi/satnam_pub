@@ -950,6 +950,111 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const filteredThreads = currentTab === 'contacts' ? contactThreads : currentTab === 'strangers' ? strangerThreads : [];
 
 
+  const threadItems = useMemo(() => {
+    return filteredThreads.map((thread) => {
+      const isExpanded = expandedThreads.has(thread.id);
+      const toggle = () => setExpandedThreads(prev => {
+        const next = new Set(prev);
+        if (next.has(thread.id)) next.delete(thread.id); else next.add(thread.id);
+        return next;
+      });
+      return (
+        <div key={thread.id} className="bg-white rounded-lg border border-purple-200">
+          <button
+            onClick={toggle}
+            className="w-full px-3 py-2 flex items-center justify-between hover:bg-purple-50 focus:outline-none"
+            aria-expanded={isExpanded}
+            aria-controls={`thread-${thread.id}`}
+          >
+            <div className="flex items-center gap-2">
+              {getThreadHeaderContent(thread)}
+              {thread.unreadCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">
+                  {thread.unreadCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); void markThreadAsRead(thread.id); }}
+                className="text-[11px] text-purple-700 hover:text-purple-900"
+                aria-label="Mark thread as read"
+              >
+                Mark read
+              </button>
+              <svg className={`w-4 h-4 text-purple-700 ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.187l3.71-3.956a.75.75 0 111.08 1.04l-4.24 4.52a.75.75 0 01-1.08 0l-4.24-4.52a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+              </svg>
+            </div>
+          </button>
+
+          {isExpanded && (
+            <div id={`thread-${thread.id}`} className="border-t border-purple-100">
+              {thread.items.map((m) => {
+                const createdAt = formatCompactTimestamp(m.created_at * 1000);
+                const sender = m.senderId ? `${m.senderId.slice(0, 8)}…` : (m.server ? m.server.sender_hash.slice(0, 8) + '…' : 'unknown');
+                const isUnread = !readIds.has(m.id);
+                return (
+                  <div key={m.id} className={`group p-3 flex flex-col gap-1 ${isUnread ? 'bg-purple-50/50' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-purple-900">{sender}</span>
+                        <span className="text-[11px] text-purple-700">{createdAt}</span>
+                        {m.source === 'nip59' && (
+                          <span className="text-green-600" title="Verified signature">✅</span>
+                        )}
+                        {m.protocol === 'nip59' && (
+                          <span className="text-purple-700" title="NIP-59 encrypted">🔒</span>
+                        )}
+                        {m.source === 'server' && !m.protocol && (
+                          <span className="text-gray-500" title="Standard message">📝</span>
+                        )}
+                      </div>
+                      <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (m.senderId) { setRecipient(m.senderId); }
+                            else { showToast.info('Recipient not available from server history'); }
+                            setNewMessage(prev => prev?.startsWith('Re: ') ? prev : `Re: ${prev || ''}`);
+                          }}
+                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                          aria-label="Reply"
+                        >Reply</button>
+                        <button
+                          onClick={() => {
+                            const content = m.content || '';
+                            setNewMessage(`Forwarded: ${content}`);
+                            showToast.info('Select a recipient to forward');
+                          }}
+                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                          aria-label="Forward"
+                        >Forward</button>
+                        <button
+                          onClick={() => onRequestDeleteMessage(m)}
+                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                          aria-label="Delete"
+                        >Delete</button>
+                        {m.senderId && (
+                          <button
+                            onClick={() => void blockSender(m)}
+                            className="text-[11px] text-purple-700 hover:text-purple-900"
+                            aria-label="Block sender"
+                          >Block</button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-[12px] text-gray-800 whitespace-pre-wrap break-words">
+                      {m.content ? m.content : m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    });
+  }, [filteredThreads, readIds, expandedThreads, markThreadAsRead, getThreadHeaderContent, onRequestDeleteMessage]);
 
   const sendGiftwrappedMessage = async () => {
     if (!newMessage.trim() || !recipient) {
@@ -1342,109 +1447,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                   filteredThreads.length === 0 ? (
                     <div className="p-3 text-xs text-purple-700">No conversations yet</div>
                   ) : (
-                    filteredThreads.map((thread) => {
-                      const isExpanded = expandedThreads.has(thread.id);
-                      const toggle = () => setExpandedThreads(prev => {
-                        const next = new Set(prev);
-                        if (next.has(thread.id)) next.delete(thread.id); else next.add(thread.id);
-                        return next;
-                      });
-                      return (
-                        <div key={thread.id} className="bg-white rounded-lg border border-purple-200">
-                          <button
-                            onClick={toggle}
-                            className="w-full px-3 py-2 flex items-center justify-between hover:bg-purple-50 focus:outline-none"
-                            aria-expanded={isExpanded}
-                            aria-controls={`thread-${thread.id}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              {getThreadHeaderContent(thread)}
-                              {thread.unreadCount > 0 && (
-                                <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">
-                                  {thread.unreadCount}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); void markThreadAsRead(thread.id); }}
-                                className="text-[11px] text-purple-700 hover:text-purple-900"
-                                aria-label="Mark thread as read"
-                              >
-                                Mark read
-                              </button>
-                              <svg className={`w-4 h-4 text-purple-700 ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.187l3.71-3.956a.75.75 0 111.08 1.04l-4.24 4.52a.75.75 0 01-1.08 0l-4.24-4.52a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                          </button>
-
-                          {isExpanded && (
-                            <div id={`thread-${thread.id}`} className="border-t border-purple-100">
-                              {thread.items.map((m) => {
-                                const createdAt = formatCompactTimestamp(m.created_at * 1000);
-                                const sender = m.senderId ? `${m.senderId.slice(0, 8)}…` : (m.server ? m.server.sender_hash.slice(0, 8) + '…' : 'unknown');
-                                const isUnread = !readIds.has(m.id);
-                                return (
-                                  <div key={m.id} className={`group p-3 flex flex-col gap-1 ${isUnread ? 'bg-purple-50/50' : ''}`}>
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-purple-900">{sender}</span>
-                                        <span className="text-[11px] text-purple-700">{createdAt}</span>
-                                        {m.source === 'nip59' && (
-                                          <span className="text-green-600" title="Verified signature">✅</span>
-                                        )}
-                                        {m.protocol === 'nip59' && (
-                                          <span className="text-purple-700" title="NIP-59 encrypted">🔒</span>
-                                        )}
-                                        {m.source === 'server' && !m.protocol && (
-                                          <span className="text-gray-500" title="Standard message">📝</span>
-                                        )}
-                                      </div>
-                                      <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2">
-                                        <button
-                                          onClick={() => {
-                                            if (m.senderId) { setRecipient(m.senderId); }
-                                            else { showToast.info('Recipient not available from server history'); }
-                                            setNewMessage(prev => prev?.startsWith('Re: ') ? prev : `Re: ${prev || ''}`);
-                                          }}
-                                          className="text-[11px] text-purple-700 hover:text-purple-900"
-                                          aria-label="Reply"
-                                        >Reply</button>
-                                        <button
-                                          onClick={() => {
-                                            const content = m.content || '';
-                                            setNewMessage(`Forwarded: ${content}`);
-                                            showToast.info('Select a recipient to forward');
-                                          }}
-                                          className="text-[11px] text-purple-700 hover:text-purple-900"
-                                          aria-label="Forward"
-                                        >Forward</button>
-                                        <button
-                                          onClick={() => onRequestDeleteMessage(m)}
-                                          className="text-[11px] text-purple-700 hover:text-purple-900"
-                                          aria-label="Delete"
-                                        >Delete</button>
-                                        {m.senderId && (
-                                          <button
-                                            onClick={() => void blockSender(m)}
-                                            className="text-[11px] text-purple-700 hover:text-purple-900"
-                                            aria-label="Block sender"
-                                          >Block</button>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="text-[12px] text-gray-800 whitespace-pre-wrap break-words">
-                                      {m.content ? m.content : m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]'}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
+                    { threadItems }
                   )
                 )}
               </div>
