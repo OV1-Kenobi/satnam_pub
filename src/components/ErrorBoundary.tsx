@@ -22,8 +22,9 @@ function getEnvVar(key: string): string | undefined {
  * Provides fallback UI and error reporting for production stability.
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Home, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Home, RefreshCw } from 'lucide-react';
+import type { ErrorInfo, ReactNode } from 'react';
+import * as React from 'react';
 
 interface Props {
   children: ReactNode;
@@ -37,7 +38,7 @@ interface State {
   errorInfo?: ErrorInfo;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false };
@@ -49,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-    
+
     // Call the onError callback if provided
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
@@ -159,14 +160,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
 // Higher-order component for wrapping components with error boundary
 export function withErrorBoundary<P extends object>(
-  Component: React.ComponentType<P>,
+  WrappedComponent: React.ComponentType<P>,
   fallback?: ReactNode,
   onError?: (error: Error, errorInfo: ErrorInfo) => void
 ) {
   return function WithErrorBoundary(props: P) {
     return (
       <ErrorBoundary fallback={fallback} onError={onError}>
-        <Component {...props} />
+        <WrappedComponent {...props} />
       </ErrorBoundary>
     );
   };
