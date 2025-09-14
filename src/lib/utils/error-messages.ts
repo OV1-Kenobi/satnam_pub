@@ -35,9 +35,7 @@ export function showTimeoutError(
     customMessage ||
     TIMEOUT_MESSAGES[endpoint] ||
     "Request timed out. Please try again.";
-  showToast({
-    type: "error",
+  showToast.error(formatErrorMessage(msg, endpoint), {
     title: "Communications Error",
-    message: formatErrorMessage(msg, endpoint),
   });
 }

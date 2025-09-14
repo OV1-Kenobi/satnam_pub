@@ -610,6 +610,7 @@ export default async function handler(event, context) {
 
     let originalEventId, wrappedEventId, giftWrappedEvent, innerEvent;
     let contentHash;
+    let protocol = 'nip59'; // default; will flip to 'nip17' when sealed content detected
 
     if (isPreSigned) {
       // Use the pre-signed event from client-side hybrid signing
@@ -635,38 +636,51 @@ export default async function handler(event, context) {
       }
       wrappedEventId = giftWrappedEvent.id || expectedWrappedId;
 
-      // 3) Extract inner event from content (string or object)
+      // 3) Determine protocol and extract inner event appropriately
       let innerContentRaw = giftWrappedEvent.content;
-      try {
-        if (typeof innerContentRaw === 'string') {
-          innerEvent = JSON.parse(innerContentRaw);
-        } else if (innerContentRaw && typeof innerContentRaw === 'object') {
-          innerEvent = innerContentRaw;
-          innerContentRaw = JSON.stringify(innerEvent);
-        } else {
+      const tags = Array.isArray(giftWrappedEvent?.tags) ? giftWrappedEvent.tags : [];
+      const wrappedKindTag = tags.find(t => Array.isArray(t) && t[0] === 'wrapped-event-kind');
+      const protocolTag = tags.find(t => Array.isArray(t) && t[0] === 'protocol');
+      const isNip17Sealed = (wrappedKindTag && wrappedKindTag[1] === '13') || (protocolTag && /nip17/i.test(protocolTag[1])) || messageData.protocol === 'nip17';
+      protocol = isNip17Sealed ? 'nip17' : 'nip59';
+
+      if (isNip17Sealed) {
+        // NIP-17: content is sealed (ciphertext). Do not attempt to parse as JSON.
+        innerEvent = null;
+        originalEventId = null; // cannot compute without decryption, which we avoid for privacy
+      } else {
+        // NIP-59 legacy/fallback: content contains a JSON inner event
+        try {
+          if (typeof innerContentRaw === 'string') {
+            innerEvent = JSON.parse(innerContentRaw);
+          } else if (innerContentRaw && typeof innerContentRaw === 'object') {
+            innerEvent = innerContentRaw;
+            innerContentRaw = JSON.stringify(innerEvent);
+          } else {
+            return {
+              statusCode: 400,
+              headers: corsHeaders,
+              body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: inner content missing or malformed' })
+            };
+          }
+        } catch (e) {
           return {
             statusCode: 400,
             headers: corsHeaders,
-            body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: inner content missing or malformed' })
+            body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: inner content must be valid JSON for NIP-59' })
           };
         }
-      } catch (e) {
-        return {
-          statusCode: 400,
-          headers: corsHeaders,
-          body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: inner content must be valid JSON' })
-        };
-      }
 
-      // 4) Generate original (inner) event ID
-      try {
-        originalEventId = await generateNostrEventId(innerEvent);
-      } catch (e) {
-        return {
-          statusCode: 400,
-          headers: corsHeaders,
-          body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: unable to compute inner event id' })
-        };
+        // 4) Generate original (inner) event ID
+        try {
+          originalEventId = await generateNostrEventId(innerEvent);
+        } catch (e) {
+          return {
+            statusCode: 400,
+            headers: corsHeaders,
+            body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: unable to compute inner event id' })
+          };
+        }
       }
 
       // 5) Optional: validate recipient consistency between request and inner event 'p' tag
@@ -768,20 +782,20 @@ export default async function handler(event, context) {
             // REQUIRED: Hex public keys for Nostr compatibility
             sender_pubkey: senderPubkey,
             recipient_pubkey: recipientPubkey,
-            // REQUIRED: Original Nostr event ID (inner event) for verifiability
-            original_event_id: originalEventId,
-            // REQUIRED: Wrapped event ID (outer gift-wrapped event) for NIP-59 compliance
+            // Original (inner) event ID: available for NIP-59; null for NIP-17 sealed content
+            original_event_id: originalEventId || null,
+            // Wrapped event ID (outer gift-wrapped event)
             wrapped_event_id: wrappedEventId,
-            // REQUIRED: Content hash for privacy-preserving verification
+            // Content hash for privacy-preserving verification (raw sealed string for NIP-17)
             content_hash: contentHash,
-            // REQUIRED: Encryption key hash for database constraint compliance
+            // Encryption key hash for database constraint compliance
             encryption_key_hash: encryptionKeyHash,
             encryption_level: validatedData.encryptionLevel,
             communication_type: validatedData.communicationType,
             message_type: validatedData.messageType,
             status: 'pending',
-            // REQUIRED: Protocol discriminator for future NIP-17/MLS upgrades
-            protocol: 'nip59',
+            // Protocol discriminator for NIP-17 vs NIP-59
+            protocol: protocol,
             // Additional fields for comprehensive database compatibility
             privacy_level: 'maximum',
             encryption_method: 'gift-wrap',

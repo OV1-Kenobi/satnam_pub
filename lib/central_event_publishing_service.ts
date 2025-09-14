@@ -1853,6 +1853,26 @@ export class CentralEventPublishingService {
       recipientPubkeyHex
     );
     if (!wrapped) throw new Error("NIP-59 gift wrap failed");
+
+    // Ensure protocol tag for server-side NIP-17 detection
+    try {
+      const w: any = wrapped as any;
+      if (!Array.isArray(w.tags)) w.tags = [];
+      const hasProtocol = w.tags.some(
+        (t: any) => Array.isArray(t) && t[0] === "protocol"
+      );
+      if (!hasProtocol) {
+        w.tags.push(["protocol", "nip17"]);
+      }
+      // Also make sure wrapped-event-kind indicates sealed kind:13 when available
+      const hasWrappedKind = w.tags.some(
+        (t: any) => Array.isArray(t) && t[0] === "wrapped-event-kind"
+      );
+      if (!hasWrappedKind) {
+        w.tags.push(["wrapped-event-kind", "13"]);
+      }
+    } catch {}
+
     return wrapped as Event;
   }
 
