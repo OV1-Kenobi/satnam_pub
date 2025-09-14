@@ -1122,11 +1122,33 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
     setState((prev) => ({ ...prev, error: null }));
   }, []);
 
-  // Initialize authentication state on mount - CRITICAL FIX: Only run once
+  // Initialize authentication state lazily: only when actually needed
   useEffect(() => {
-    console.log("🔄 Auth system mounting - initializing authentication state");
-    initializeAuth();
-  }, []); // Empty dependency array - only run once on mount
+    try {
+      const token = SecureTokenManager.getAccessToken();
+      const currentPath =
+        typeof window !== "undefined" ? window.location.pathname : "";
+      const protectedPaths = Object.values(PROTECTED_AREAS) as string[];
+      const isProtectedPath = protectedPaths.some(
+        (p) => currentPath === p || currentPath.startsWith(p + "/")
+      );
+      const hasStoredUser = !!sessionStorage.getItem(SESSION_STORAGE_KEYS.USER);
+
+      if (token || hasStoredUser || isProtectedPath) {
+        console.log(
+          "🔄 Auth system mounting - initializing authentication state"
+        );
+        void initializeAuth();
+      } else {
+        console.debug("⏸️ Auth init skipped on public route with no session");
+      }
+    } catch (e) {
+      console.warn(
+        "Auth init gating failed; proceeding without initialization",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+  }, []); // Empty dependency array - only run once on mount (gated)
 
   return {
     // State

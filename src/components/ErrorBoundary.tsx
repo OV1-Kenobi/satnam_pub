@@ -8,7 +8,20 @@
  */
 
 import { AlertTriangle, ArrowLeft, Home, RefreshCw } from 'lucide-react';
-import { Component, type ComponentType, type ErrorInfo, type ReactNode, useCallback, useState } from 'react';
+import React, { useCallback, useState, type ComponentType, type ErrorInfo, type ReactNode } from 'react';
+
+// Temporary production diagnostics for React import resolution
+if (process.env.NODE_ENV === 'production') {
+  try {
+    // Minimal diagnostics without secrets
+    // eslint-disable-next-line no-console
+    console.warn('[ErrorBoundary] React import diagnostics:', {
+      hasDefault: !!React,
+      hasComponent: !!(React as any)?.Component,
+      keys: Object.keys((React as any) || {}),
+    });
+  } catch { }
+}
 
 interface Props {
   children: ReactNode;
@@ -22,7 +35,7 @@ interface State {
   errorInfo?: ErrorInfo;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false };
