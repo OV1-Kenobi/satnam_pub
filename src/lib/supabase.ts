@@ -25,17 +25,10 @@ function getEnvVar(key: string, defaultValue: string = ""): string {
     /* noop */
   }
 
-  // SECONDARY: Vite's import.meta.env (browser/build context only)
-  try {
-    if (typeof import.meta !== "undefined") {
-      const metaAny: any = import.meta as any;
-      if (metaAny && metaAny.env && typeof metaAny.env[key] !== "undefined") {
-        return (metaAny.env[key] as string) || defaultValue;
-      }
-    }
-  } catch {
-    /* noop */
-  }
+  // SECONDARY: Removed import.meta usage per Netlify Functions CJS compatibility rule
+  // All environment values are injected into process.env via Vite define
+  // and must be read from process.env only for shared code.
+  // No-op fallback removed intentionally.
 
   // TERTIARY: global shim if provided at runtime
   try {
@@ -85,9 +78,7 @@ const getSupabaseConfig = () => {
 
     // In production, fail fast. In development, allow app to boot with a stub client.
     const isProd =
-      (typeof import.meta !== "undefined" && (import.meta as any)?.env?.PROD) ||
-      (typeof process !== "undefined" &&
-        process.env?.NODE_ENV === "production");
+      typeof process !== "undefined" && process.env?.NODE_ENV === "production";
     if (isProd) {
       throw new Error(
         "CRITICAL: Bootstrap Supabase credentials missing. " +
@@ -112,8 +103,7 @@ const supabaseKey = cfg.key;
 
 // Helper: determine environment
 const isProd =
-  (typeof import.meta !== "undefined" && (import.meta as any)?.env?.PROD) ||
-  (typeof process !== "undefined" && process.env?.NODE_ENV === "production");
+  typeof process !== "undefined" && process.env?.NODE_ENV === "production";
 
 // Validate only when configured
 if (typeof window !== "undefined" && supabaseUrl && supabaseKey) {
