@@ -5,10 +5,12 @@ import { addGroupMember, blockSender as blockSenderAPI, createGroup, createGroup
 import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
 import { nostrProfileService } from '../../lib/nostr-profile-service';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 import type { NostrProfile } from '../../lib/nostr-profile-service';
 
 
+import { showTimeoutError } from '../../lib/utils/error-messages';
 import { DashboardNotification, NotificationService } from '../../services/notificationService';
 import { showToast } from '../../services/toastService';
 import { useAuth } from '../auth/AuthProvider';
@@ -94,10 +96,14 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
       if (res.success) {
         setGroups(Array.isArray(res.data) ? res.data : []);
       } else {
-        setGroupsError(res.error || 'Failed to load groups');
+        const msg = res.error || 'Failed to load groups';
+        setGroupsError(msg);
+        showTimeoutError('groups', msg);
       }
     } catch (e) {
-      setGroupsError(e instanceof Error ? e.message : 'Failed to load groups');
+      const msg = e instanceof Error ? e.message : 'Failed to load groups';
+      setGroupsError(msg);
+      showTimeoutError('groups', e instanceof Error && e.name === 'TimeoutError' ? undefined : msg);
     } finally {
       setGroupsLoading(false);
     }
@@ -433,13 +439,16 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
 
   const loadHistory = async (cursor?: string) => {
+    setLoadingHistory(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
       const params = new URLSearchParams();
-
       if (cursor) params.set('cursor', cursor);
       params.set('limit', '30');
       const res = await fetch(`/api/communications/messages?${params.toString()}`, {
         headers: auth.sessionToken ? { Authorization: `Bearer ${auth.sessionToken}` } : undefined,
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -450,8 +459,15 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
       setNextCursor(data.nextCursor || null);
     } catch (err) {
       console.error('Failed to load message history:', err);
-      showToast.error('Failed to load message history', { title: 'Communications Error' });
+      const isAbort = err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+      if (isAbort) {
+        showTimeoutError('messaging');
+      } else {
+        const msg = err instanceof Error ? err.message : 'Failed to load message history';
+        showTimeoutError('messaging', msg);
+      }
     } finally {
+      window.clearTimeout(timeoutId);
       setLoadingHistory(false);
     }
   };
@@ -505,14 +521,28 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
     try {
       const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
       const giftWrapService = new GiftwrappedCommunicationService();
-      const loadedContacts = await giftWrapService.loadContacts(familyMember.id);
-      setContacts(loadedContacts);
+
+      const timeoutMs = 8000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const id = window.setTimeout(() => {
+          window.clearTimeout(id);
+          reject(new Error('Contacts request timed out'));
+        }, timeoutMs);
+      });
+
+      const loadedContacts = await Promise.race([
+        giftWrapService.loadContacts(familyMember.id),
+        timeoutPromise,
+      ]);
+      setContacts(loadedContacts as any);
     } catch (error) {
       console.error('Failed to load contacts:', error);
-      setError('Failed to load contacts');
-      showToast.error('Failed to load contacts', { title: 'Communications Error', duration: 0 });
+      const msg = error instanceof Error ? error.message : 'Failed to load contacts';
+      setError(msg);
+      showTimeoutError('contacts', error instanceof Error && error.name === 'TimeoutError' ? undefined : msg);
     }
   };
+
 
   // Contacts map for quick lookup
   const contactsByNpub = useMemo(() => {
@@ -694,7 +724,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           setGroupTopicsMeta(s => ({ ...s, [g.id]: res.data!.topicsMeta }));
         }
       } else {
-        showToast.error(res.error || 'Failed to load more members');
+        showTimeoutError('groups', res.error || 'Failed to load more members');
       }
     } finally {
       setGroupMembersLoadingMore(s => ({ ...s, [g.id]: false }));
@@ -718,7 +748,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           setGroupMembersMeta(s => ({ ...s, [g.id]: res.data!.membersMeta }));
         }
       } else {
-        showToast.error(res.error || 'Failed to load more topics');
+        showTimeoutError('groups', res.error || 'Failed to load more topics');
       }
     } finally {
       setGroupTopicsLoadingMore(s => ({ ...s, [g.id]: false }));
@@ -793,7 +823,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         });
         setShowRemoveMemberModal(false);
       } else {
-        showToast.error(res.error || 'Failed to remove member');
+        showTimeoutError('groups', res.error || 'Failed to remove member');
       }
     } finally {
       setRemoveMemberLoading(false);
@@ -835,7 +865,13 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         setTopicError(res.error || 'Failed to create topic');
       }
     } catch (err) {
-      setTopicError(err instanceof Error ? err.message : 'Failed to create topic');
+      const msg = err instanceof Error ? err.message : 'Failed to create topic';
+      setTopicError(msg);
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        showTimeoutError('groups');
+      } else {
+        showTimeoutError('groups', msg);
+      }
     } finally {
       setTopicLoading(false);
     }
@@ -1570,61 +1606,70 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         </div>
 
         {/* Group Conversations block */}
-        <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-purple-900">Group Conversations</h4>
-            <button
-              onClick={() => loadGroups()}
-              className="text-xs text-purple-700 hover:text-purple-900"
-            >
-              Refresh
-            </button>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {groups.slice(0, 5).map((g) => (
-              <div key={g.id} className="p-3 bg-white rounded-lg border border-purple-200">
-                <div className="flex items-center justify-between">
-                  {getGroupHeaderContent(g)}
-                  <div className="text-[11px] text-purple-700">{g.member_count} members</div>
-                </div>
+        <ErrorBoundary>
+          <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-purple-900">Group Conversations</h4>
+                {groupsError && (
+                  <span className="text-[11px] text-red-700 bg-red-100 px-2 py-0.5 rounded">Failed to load</span>
+                )}
               </div>
-            ))}
+              <button
+                onClick={() => loadGroups()}
+                className="text-xs text-purple-700 hover:text-purple-900"
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {groups.slice(0, 5).map((g) => (
+                <div key={g.id} className="p-3 bg-white rounded-lg border border-purple-200">
+                  <div className="flex items-center justify-between">
+                    {getGroupHeaderContent(g)}
+                    <div className="text-[11px] text-purple-700">{g.member_count} members</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {conversations.length > 5 && (
+              <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Group Conversations', { title: 'Groups' })}>
+                View all conversations
+              </button>
+            )}
           </div>
-          {conversations.length > 5 && (
-            <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Group Conversations', { title: 'Groups' })}>
-              View all conversations
-            </button>
-          )}
-        </div>
+        </ErrorBoundary>
 
         {/* Contacts block */}
-        <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-purple-900">Contacts</h4>
-            <button
-              onClick={loadContacts}
-              className="text-xs text-purple-700 hover:text-purple-900"
-            >
-              Refresh
-            </button>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {contacts.slice(0, 5).map((contact) => (
-              <div key={contact.id} className="p-3 bg-white rounded-lg border border-purple-200 flex items-center justify-between">
-                <div className="truncate">
-                  <div className="text-sm font-medium text-purple-900 truncate">{contact.username}</div>
-                  <div className="text-[11px] text-purple-600 truncate">{contact.npub}</div>
+        <ErrorBoundary>
+          <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-purple-900">Contacts</h4>
+              <button
+                onClick={loadContacts}
+                className="text-xs text-purple-700 hover:text-purple-900"
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {contacts.slice(0, 5).map((contact) => (
+                <div key={contact.id} className="p-3 bg-white rounded-lg border border-purple-200 flex items-center justify-between">
+                  <div className="truncate">
+                    <div className="text-sm font-medium text-purple-900 truncate">{contact.username}</div>
+                    <div className="text-[11px] text-purple-600 truncate">{contact.npub}</div>
+                  </div>
+                  <div className="text-xs text-purple-700">{contact.trustLevel}</div>
                 </div>
-                <div className="text-xs text-purple-700">{contact.trustLevel}</div>
-              </div>
-            ))}
+              ))}
+            </div>
+            {contacts.length > 5 && (
+              <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Contacts Manager', { title: 'Contacts' })}>
+                View all contacts
+              </button>
+            )}
           </div>
-          {contacts.length > 5 && (
-            <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Contacts Manager', { title: 'Contacts' })}>
-              View all contacts
-            </button>
-          )}
-        </div>
+        </ErrorBoundary>
 
 
         {showInviteModal && auth.sessionToken && auth.user && (

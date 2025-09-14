@@ -5,11 +5,13 @@
  * header when an access token is available from SecureTokenManager.
  */
 
-import SecureTokenManager from './secure-token-manager';
+import SecureTokenManager from "./secure-token-manager";
+
+type AuthRequestInit = RequestInit & { timeoutMs?: number };
 
 export type FetchWithAuth = (
   input: RequestInfo | URL,
-  init?: RequestInit
+  init?: AuthRequestInit
 ) => Promise<Response>;
 
 /**
@@ -28,33 +30,47 @@ export function getAuthHeaders(): Record<string, string> {
  * fetchWithAuth: wraps window.fetch and adds Authorization header if present.
  */
 export const fetchWithAuth: FetchWithAuth = async (input, init = {}) => {
+  const { timeoutMs, ...rest } = init as AuthRequestInit;
   const baseHeaders: Record<string, string> = {
-    Accept: 'application/json',
+    Accept: "application/json",
   };
 
   // Normalize provided headers into a plain object
   const provided: Record<string, string> = (() => {
-    if (!init.headers) return {};
-    if (init.headers instanceof Headers) {
+    if (!rest.headers) return {};
+    if (rest.headers instanceof Headers) {
       const obj: Record<string, string> = {};
-      init.headers.forEach((v, k) => {
+      rest.headers.forEach((v, k) => {
         obj[k] = v;
       });
       return obj;
     }
-    if (Array.isArray(init.headers)) {
+    if (Array.isArray(rest.headers)) {
       const obj: Record<string, string> = {};
-      init.headers.forEach(([k, v]) => (obj[k] = v));
+      rest.headers.forEach(([k, v]) => (obj[k] = v));
       return obj;
     }
-    return init.headers as Record<string, string>;
+    return rest.headers as Record<string, string>;
   })();
 
   const auth = getAuthHeaders();
   const headers = { ...baseHeaders, ...provided, ...auth };
 
-  return fetch(input, { ...init, headers });
+  if (typeof timeoutMs === "number" && timeoutMs > 0) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, {
+        ...rest,
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
+  return fetch(input, { ...rest, headers });
 };
 
 export default fetchWithAuth;
-

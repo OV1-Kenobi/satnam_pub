@@ -214,10 +214,15 @@ export const handler = async (event) => {
         if (error) {
           const msg = String(error?.message || "").toLowerCase();
           const code = String(error?.code || "");
-          // RLS/permission-denied: return empty list gracefully to avoid UI-blocking 500s
-          if (msg.includes("permission") || msg.includes("rls") || code === "42501") {
+          // RLS/permission-denied OR table/column missing: return empty list gracefully to avoid UI-blocking 500s
+          if (
+            msg.includes("permission") || msg.includes("rls") || code === "42501" ||
+            msg.includes("does not exist") || msg.includes("relation") || msg.includes("no such table")
+          ) {
+            console.error("[unified-communications] groups membership query fallback error:", error);
             return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: [] }) };
           }
+          console.error("[unified-communications] groups membership query error:", error);
           return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load groups" }) };
         }
         memberRows = data || [];
