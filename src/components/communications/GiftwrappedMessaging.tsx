@@ -220,18 +220,31 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   }, [messaging.incomingMessages]);
 
   useEffect(() => {
-    // Best-effort: start subscription if not active; hook itself handles lifecycle on session changes
+    const isDebug = () => {
+      try {
+        // Enable via console: localStorage.setItem('SATNAM_DEBUG_COMM','1') or window.__SATNAM_DEBUG_COMM = true
+        return (
+          (typeof window !== 'undefined' && (window as any).__SATNAM_DEBUG_COMM === true) ||
+          (typeof window !== 'undefined' && window.localStorage?.getItem('SATNAM_DEBUG_COMM') === '1')
+        );
+      } catch { return false; }
+    };
+
     if (!messaging.messageSubscription) {
+      if (isDebug()) console.log('[Comm] startMessageSubscription() trigger (sessionId=%s)', messaging.sessionId);
       void messaging.startMessageSubscription();
     }
+
+    // Cleanup only on unmount or when sessionId changes, not on every re-render
     return () => {
+      if (isDebug()) console.log('[Comm] stopMessageSubscription() cleanup (sessionId=%s)', messaging.sessionId);
       try {
         messaging.stopMessageSubscription();
       } catch (error) {
         console.error('Failed to stop message subscription:', error);
       }
     };
-  }, [messaging]);
+  }, [messaging.sessionId]);
   // Thread and filtering state
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [blockedSenders, setBlockedSenders] = useState<Set<string>>(new Set());
@@ -1447,7 +1460,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                   filteredThreads.length === 0 ? (
                     <div className="p-3 text-xs text-purple-700">No conversations yet</div>
                   ) : (
-                    { threadItems }
+                    threadItems
                   )
                 )}
               </div>
