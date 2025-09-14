@@ -1,3 +1,5 @@
+console.log('[AuthProvider] Version: 2025-01-14-PROD-FIX');
+
 /**
  * Authentication Provider
  *
@@ -145,51 +147,43 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
  * Hook to use authentication context
  */
 export const useAuth = (): AuthContextType => {
+  // Complete stub that conforms to UnifiedAuthState & UnifiedAuthActions
+  const stub: AuthContextType = {
+    // UnifiedAuthState
+    user: null,
+    sessionToken: null,
+    authenticated: false,
+    loading: false,
+    error: null,
+    accountActive: false,
+    sessionValid: false,
+    lastValidated: null,
+    // UnifiedAuthActions
+    authenticateNIP05Password: async () => false,
+    authenticateNIP07: async () => false,
+    authenticateNFC: async () => false,
+    validateSession: async () => false,
+    refreshSession: async () => false,
+    logout: async () => { /* noop */ },
+    canAccessProtectedArea: () => false,
+    requireAuthentication: async () => false,
+    checkAccountStatus: async () => false,
+    clearError: () => { /* noop */ },
+    handleAuthSuccess: async () => false,
+    // Integration helpers
+    isRegistrationFlow: false,
+    isLoginFlow: false,
+    setIsRegistrationFlow: () => { /* noop */ },
+    setIsLoginFlow: () => { /* noop */ },
+  };
+
   if (!AuthContextRef) {
-    // Provide a minimal stub in routes that mount before the provider is available
-    return {
-      // UnifiedAuthState (safe defaults)
-      authenticated: false,
-      accountActive: false,
-      sessionValid: false,
-      loading: false,
-      user: null as any,
-      error: null,
-      lastValidated: null as any,
-      // UnifiedAuthActions (no-ops)
-      authenticateNIP05Password: async () => false,
-      authenticateNIP07: async () => false,
-      refreshSession: async () => false,
-      logout: () => { },
-      clearError: () => { },
-      // Integration helpers
-      isRegistrationFlow: false,
-      isLoginFlow: false,
-      setIsRegistrationFlow: () => { },
-      setIsLoginFlow: () => { },
-    } as AuthContextType;
+    // Provide stub before provider exists (allows landing page to render)
+    return stub;
   }
   const context = useContext(AuthContextRef);
   if (!context) {
-    // Should not happen when provider is set; return the same stub
-    return {
-      authenticated: false,
-      accountActive: false,
-      sessionValid: false,
-      loading: false,
-      user: null as any,
-      error: null,
-      lastValidated: null as any,
-      authenticateNIP05Password: async () => false,
-      authenticateNIP07: async () => false,
-      refreshSession: async () => false,
-      logout: () => { },
-      clearError: () => { },
-      isRegistrationFlow: false,
-      isLoginFlow: false,
-      setIsRegistrationFlow: () => { },
-      setIsLoginFlow: () => { },
-    } as AuthContextType;
+    return stub;
   }
   return context;
 };
