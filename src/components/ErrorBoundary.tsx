@@ -23,8 +23,7 @@ function getEnvVar(key: string): string | undefined {
  */
 
 import { AlertTriangle, ArrowLeft, Home, RefreshCw } from 'lucide-react';
-import type { ErrorInfo, ReactNode } from 'react';
-import * as React from 'react';
+import { Component, type ComponentType, type ErrorInfo, type ReactNode, useCallback, useState } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -38,7 +37,7 @@ interface State {
   errorInfo?: ErrorInfo;
 }
 
-export class ErrorBoundary extends React.Component<Props, State> {
+export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false };
@@ -160,7 +159,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
 // Higher-order component for wrapping components with error boundary
 export function withErrorBoundary<P extends object>(
-  WrappedComponent: React.ComponentType<P>,
+  WrappedComponent: ComponentType<P>,
   fallback?: ReactNode,
   onError?: (error: Error, errorInfo: ErrorInfo) => void
 ) {
@@ -175,14 +174,14 @@ export function withErrorBoundary<P extends object>(
 
 // Hook for error handling in functional components
 export function useErrorHandler() {
-  const [error, setError] = React.useState<Error | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
-  const handleError = React.useCallback((error: Error) => {
+  const handleError = useCallback((error: Error) => {
     console.error('Component error:', error);
     setError(error);
   }, []);
 
-  const clearError = React.useCallback(() => {
+  const clearError = useCallback(() => {
     setError(null);
   }, []);
 
