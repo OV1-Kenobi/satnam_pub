@@ -247,8 +247,11 @@ function App() {
       if (dest) {
         console.log('📍 Navigating to destination after signin:', dest);
 
-        if (dest === 'communications' || dest === 'giftwrapped-messaging') {
+        if (dest === 'giftwrapped-messaging') {
           setShowCommunications(true);
+          setCurrentView('communications');
+        } else if (dest === 'communications') {
+          setShowCommunications(false);
           setCurrentView('communications');
         } else if (dest === 'family-foundry') {
           setCurrentView("onboarding");

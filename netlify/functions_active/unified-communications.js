@@ -14,6 +14,10 @@ import getContactsHandler from "../../api/communications/get-contacts.js";
 import giftwrappedHandler from "../../api/communications/giftwrapped.js";
 import messagesHandler from "../../api/communications/messages.js";
 
+// Local utilities and services for consolidated groups handling
+import { SecureSessionManager } from "./security/session-manager.js";
+import { supabase } from "./supabase.js";
+
 
 // Simple CORS header builder
 function buildCorsHeaders(origin, methods) {
@@ -78,9 +82,12 @@ function detectTarget(event) {
   if (path.endsWith("/api/communications/messages") || path.includes("communications-messages")) return "messages";
   if (path.endsWith("/api/communications/get-contacts") || path.includes("communications-get-contacts")) return "get-contacts";
   if (path.endsWith("/api/communications/giftwrapped") || path.includes("communications-giftwrapped")) return "giftwrapped";
+  // New: groups endpoints consolidated here
+  if (path.endsWith("/api/groups") || path.includes("/groups")) return "groups";
+  if (path.endsWith("/api/group-management") || path.includes("group-management")) return "group-management";
 
   // 2) Explicit endpoint parameter
-  if (endpoint === "messages" || endpoint === "get-contacts" || endpoint === "giftwrapped") return endpoint;
+  if (["messages", "get-contacts", "giftwrapped", "groups", "group-management"].includes(endpoint)) return endpoint;
 
   // 3) Heuristics for direct function calls
   if (event.httpMethod === "POST") return "giftwrapped";
@@ -168,6 +175,303 @@ export const handler = async (event) => {
         body: JSON.stringify({ success: false, error: (e && e.message) || "Internal error" })
       };
     }
+  }
+
+  // Route: groups (GET/POST)
+  if (target === "groups") {
+    const headers = buildCorsHeaders(origin, "GET, POST, OPTIONS");
+    // Validate session via SecureSessionManager
+    const authHeader = event.headers?.authorization || event.headers?.Authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Authentication required" }) };
+    }
+    let session;
+    try { session = await SecureSessionManager.validateSessionFromHeader(authHeader); } catch (e) {
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Session validation failed" }) };
+    }
+    if (!session?.hashedId) {
+      return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Invalid token" }) };
+    }
+    const userHash = session.hashedId;
+
+    if (method === "GET") {
+      const { data: memberRows, error: memErr } = await supabase
+        .from("privacy_group_members")
+        .select("group_session_id, role, muted")
+        .eq("member_hash", userHash)
+        .limit(2000);
+      if (memErr) {
+        return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load groups" }) };
+      }
+      const byGroupId = new Map();
+      const rolePriority = { admin: 3, moderator: 2, member: 1 };
+      for (const row of memberRows || []) {
+        const existing = byGroupId.get(row.group_session_id);
+        const ep = existing?.role ? rolePriority[existing.role] || 0 : 0;
+        const np = row?.role ? rolePriority[row.role] || 1 : 1;
+        if (!existing || np > ep) byGroupId.set(row.group_session_id, { role: row.role, muted: !!row.muted });
+        else if (np === ep && !existing.muted && row.muted) existing.muted = true;
+      }
+      const groupIds = Array.from(byGroupId.keys());
+      if (groupIds.length === 0) return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: [] }) };
+      let groupsRows = null; let gErr = null;
+      {
+        const { data, error } = await supabase
+          .from("privacy_groups")
+          .select("session_id, name_hash, group_type, encryption_type, member_count, updated_at, avatar_url")
+          .in("session_id", groupIds)
+          .limit(2000);
+        groupsRows = data || null; gErr = error || null;
+      }
+      if (gErr) {
+        const { data, error } = await supabase
+          .from("privacy_groups")
+          .select("session_id, name_hash, group_type, encryption_type, member_count, updated_at")
+          .in("session_id", groupIds)
+          .limit(2000);
+        if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load groups" }) };
+        groupsRows = data || [];
+      }
+      const payload = (groupsRows || []).map((g) => {
+        const m = byGroupId.get(g.session_id) || {};
+        return {
+          id: g.session_id,
+          name: g.name_hash,
+          group_type: g.group_type,
+          encryption_type: g.encryption_type,
+          member_count: g.member_count,
+          lastActivity: g.updated_at,
+          role: m.role || "member",
+          avatar_url: ("avatar_url" in g ? g.avatar_url : null) || null,
+          muted: typeof m.muted === "boolean" ? m.muted : false,
+        };
+      });
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: payload }) };
+    }
+
+    if (method === "POST") {
+      let body = {}; try { body = event.body ? JSON.parse(event.body) : {}; } catch {}
+      const { action } = body || {};
+      if (action === "update_preferences") {
+        const { groupId, muted } = body || {};
+        if (!groupId || typeof muted !== "boolean") return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Invalid request" }) };
+        const { error: updErr } = await supabase
+          .from("privacy_group_members")
+          .update({ muted })
+          .eq("group_session_id", groupId)
+          .eq("member_hash", userHash);
+        if (updErr) {
+          const code = updErr?.code; const msg = String(updErr?.message || "").toLowerCase();
+          if (code === "42703" || (msg.includes("column") && msg.includes("muted")) || msg.includes("no such column")) {
+            return { statusCode: 200, headers, body: JSON.stringify({ success: false, error: "Group preferences not supported" }) };
+          }
+          return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to update preferences" }) };
+        }
+        return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
+      }
+      if (action === "leave_group") {
+        const { groupId } = body || {};
+        if (!groupId) return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Invalid request" }) };
+        const { error: delErr } = await supabase
+          .from("privacy_group_members")
+          .delete()
+          .eq("group_session_id", groupId)
+          .eq("member_hash", userHash);
+        if (delErr) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to leave group" }) };
+        try {
+          const { count, error: cntErr } = await supabase
+            .from("privacy_group_members")
+            .select("member_hash", { count: "exact", head: true })
+            .eq("group_session_id", groupId);
+          if (!cntErr && typeof count === "number") {
+            await supabase.from("privacy_groups").update({ member_count: count }).eq("session_id", groupId);
+          }
+        } catch {}
+        return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
+      }
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Unknown action" }) };
+    }
+
+    return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
+  }
+
+  // Route: group-management (admin ops)
+  if (target === "group-management") {
+    const headers = buildCorsHeaders(origin, "GET, POST, OPTIONS");
+    const authHeader = event.headers?.authorization || event.headers?.Authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Authentication required" }) };
+    }
+    let session; try { session = await SecureSessionManager.validateSessionFromHeader(authHeader); } catch { return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Session validation failed" }) }; }
+    if (!session?.hashedId) return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Invalid token" }) };
+    const userHash = session.hashedId;
+
+    // Helpers
+    const randomHex32 = () => {
+      const bytes = new Uint8Array(32); crypto.getRandomValues(bytes); return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    };
+    const sha256Hex = async (s) => {
+      const enc = new TextEncoder(); const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(s))); const arr = Array.from(new Uint8Array(buf)); return arr.map((b) => b.toString(16).padStart(2, "0")).join("");
+    };
+
+    if (method === "POST") {
+      let body = {}; try { body = event.body ? JSON.parse(event.body) : {}; } catch {}
+      const { action } = body || {};
+      if (action === "create_group") {
+        const { name, group_type = "family", encryption_type = "gift-wrap", avatar_url = null, group_description = null } = body || {};
+        if (!name || typeof name !== "string") return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Invalid name" }) };
+        const groupId = randomHex32();
+        const nameHash = await sha256Hex(name);
+        // Insert group (minimal columns to be schema-tolerant)
+        let inserted = false;
+        try {
+          const { error } = await supabase.from("privacy_groups").insert([{ session_id: groupId, name_hash: nameHash, group_type, encryption_type, member_count: 1, avatar_url, description: group_description }]);
+          if (!error) inserted = true;
+        } catch {}
+        if (!inserted) {
+          const { error } = await supabase.from("privacy_groups").insert([{ session_id: groupId, name_hash: nameHash, group_type, encryption_type, member_count: 1 }]);
+          if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to create group" }) };
+        }
+        // Add creator as admin
+        await supabase.from("privacy_group_members").insert([{ group_session_id: groupId, member_hash: userHash, role: "admin" }]);
+        return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { groupId } }) };
+      }
+      if (action === "add_member") {
+        const { groupId, memberHash } = body || {};
+        if (!groupId || !memberHash) return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Invalid request" }) };
+        const { error } = await supabase.from("privacy_group_members").insert([{ group_session_id: groupId, member_hash: memberHash, role: "member" }]);
+        if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to add member" }) };
+        return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
+      }
+      if (action === "remove_member") {
+        const { groupId, memberHash } = body || {};
+        if (!groupId || !memberHash) return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Invalid request" }) };
+        const { error } = await supabase.from("privacy_group_members").delete().eq("group_session_id", groupId).eq("member_hash", memberHash);
+        if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to remove member" }) };
+        return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
+      }
+      if (action === "create_topic") {
+        const { groupId, topicName, description = null } = body || {};
+        if (!groupId || !topicName || typeof topicName !== "string") {
+          return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Invalid request" }) };
+        }
+        try {
+          // Derive privacy-preserving hash of topic name
+          const nameHash = await (async (s) => {
+            const enc = new TextEncoder();
+            const buf = await crypto.subtle.digest("SHA-256", enc.encode(String(s)));
+            return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+          })(topicName);
+
+          // Try a rich insert; fallback to minimal if schema differs
+          let insertedRow = null;
+          try {
+            const { data } = await supabase
+              .from("privacy_groups_topics")
+              .insert([
+                {
+                  group_session_id: groupId,
+                  name_hash: nameHash,
+                  description,
+                  created_by_hash: userHash,
+                },
+              ])
+              .select("id, group_session_id, name_hash, description, created_at, updated_at, is_archived")
+              .limit(1);
+            insertedRow = (data && data[0]) || null;
+          } catch (e) {
+            // fall through to minimal insert below
+          }
+
+          if (!insertedRow) {
+            // Fallback to minimal set of columns
+            const { data, error } = await supabase
+              .from("privacy_groups_topics")
+              .insert([
+                {
+                  group_session_id: groupId,
+                  name_hash: nameHash,
+                },
+              ])
+              .select("id, group_session_id, name_hash")
+              .limit(1);
+            if (error) {
+              return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to create topic" }) };
+            }
+            insertedRow = (data && data[0]) || null;
+          }
+
+          return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { topic: insertedRow } }) };
+        } catch (e) {
+          return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to create topic" }) };
+        }
+      }
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Unknown action" }) };
+    }
+
+    // GET details
+    if (method === "GET") {
+      const groupId = event.queryStringParameters?.groupId;
+      if (!groupId) return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Missing groupId" }) };
+      // Fetch group with extended columns; fallback to minimal if needed
+      let group = null;
+      {
+        const { data, error } = await supabase
+          .from("privacy_groups")
+          .select("session_id, name_hash, group_type, encryption_type, member_count, updated_at, avatar_url, description, description_hash")
+          .eq("session_id", groupId)
+          .limit(1);
+        if (!error) group = (data && data[0]) || null;
+      }
+      if (!group) {
+        const { data, error } = await supabase
+          .from("privacy_groups")
+          .select("session_id, name_hash, group_type, encryption_type, member_count, updated_at")
+          .eq("session_id", groupId)
+          .limit(1);
+        if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load group" }) };
+        group = (data && data[0]) || null;
+      }
+      const { data: memRows, error: mErr } = await supabase
+        .from("privacy_group_members")
+        .select("member_hash, role, muted")
+        .eq("group_session_id", groupId)
+        .limit(2000);
+      if (mErr) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load members" }) };
+
+      // Fetch topics with extended columns; fallback to minimal if needed
+      let topics = [];
+      try {
+        const { data, error } = await supabase
+          .from("privacy_groups_topics")
+          .select("id, name_hash, description, created_at, is_archived, created_by_hash")
+          .eq("group_session_id", groupId)
+          .limit(2000);
+        if (!error) {
+          topics = data || [];
+        } else {
+          const { data: data2, error: err2 } = await supabase
+            .from("privacy_groups_topics")
+            .select("id, name_hash")
+            .eq("group_session_id", groupId)
+            .limit(2000);
+          if (!err2) topics = data2 || [];
+        }
+      } catch (_) {
+        // Table may not exist yet; ignore and return empty topics
+      }
+
+      const details = {
+        name: group?.name_hash || group?.description || null,
+        avatar_url: (group && ("avatar_url" in group)) ? group.avatar_url : null,
+        description: (group && ("description" in group) && group.description) ? group.description : ((group && ("description_hash" in group)) ? group.description_hash : null),
+        member_count: group?.member_count ?? null,
+        topics,
+      };
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { group, members: memRows || [], details } }) };
+    }
+
+    return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
   }
 
   // Fallback 404

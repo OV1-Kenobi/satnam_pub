@@ -172,6 +172,19 @@
   status = 200
   force = true
 
+# Groups endpoints consolidated under unified-communications
+[[redirects]]
+  from = "/api/groups"
+  to = "/.netlify/functions/unified-communications"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/group-management"
+  to = "/.netlify/functions/unified-communications"
+  status = 200
+  force = true
+
 # Ensure peer invitation processing endpoint is explicitly mapped
 [[redirects]]
   from = "/api/authenticated/process-invitation"
