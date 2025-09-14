@@ -195,13 +195,32 @@ export const handler = async (event) => {
     const userHash = session.hashedId;
 
     if (method === "GET") {
-      const { data: memberRows, error: memErr } = await supabase
-        .from("privacy_group_members")
-        .select("group_session_id, role, muted")
-        .eq("member_hash", userHash)
-        .limit(2000);
+      // Try selecting with muted column; if it fails (column missing), fallback without it
+      let memberRows = null; let memErr = null;
+      {
+        const { data, error } = await supabase
+          .from("privacy_group_members")
+          .select("group_session_id, role, muted")
+          .eq("member_hash", userHash)
+          .limit(2000);
+        memberRows = data || null; memErr = error || null;
+      }
       if (memErr) {
-        return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load groups" }) };
+        const { data, error } = await supabase
+          .from("privacy_group_members")
+          .select("group_session_id, role")
+          .eq("member_hash", userHash)
+          .limit(2000);
+        if (error) {
+          const msg = String(error?.message || "").toLowerCase();
+          const code = String(error?.code || "");
+          // RLS/permission-denied: return empty list gracefully to avoid UI-blocking 500s
+          if (msg.includes("permission") || msg.includes("rls") || code === "42501") {
+            return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: [] }) };
+          }
+          return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load groups" }) };
+        }
+        memberRows = data || [];
       }
       const byGroupId = new Map();
       const rolePriority = { admin: 3, moderator: 2, member: 1 };
@@ -432,12 +451,25 @@ export const handler = async (event) => {
         if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load group" }) };
         group = (data && data[0]) || null;
       }
-      const { data: memRows, error: mErr } = await supabase
-        .from("privacy_group_members")
-        .select("member_hash, role, muted")
-        .eq("group_session_id", groupId)
-        .limit(2000);
-      if (mErr) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load members" }) };
+      // Try selecting with muted column; if it fails (column missing), fallback without it
+      let memRows = null; let mErr = null;
+      {
+        const { data, error } = await supabase
+          .from("privacy_group_members")
+          .select("member_hash, role, muted")
+          .eq("group_session_id", groupId)
+          .limit(2000);
+        memRows = data || null; mErr = error || null;
+      }
+      if (mErr) {
+        const { data, error } = await supabase
+          .from("privacy_group_members")
+          .select("member_hash, role")
+          .eq("group_session_id", groupId)
+          .limit(2000);
+        if (error) return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Failed to load members" }) };
+        memRows = data || [];
+      }
 
       // Fetch topics with extended columns; fallback to minimal if needed
       let topics = [];
