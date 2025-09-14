@@ -589,11 +589,12 @@ export const ClientSessionVault = {
       return false;
     }
 
+    const passphraseProvider = getPassphraseProvider();
     if (!vaultConfig.passphraseEnabled || !passphraseProvider) {
       // Passphrase path disabled or unavailable → cannot unlock
       return false;
     }
-    const pass = await passphraseProvider();
+    const pass = await requestPassphrase();
     if (!pass) return false;
 
     if (record) {

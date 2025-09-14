@@ -6,7 +6,7 @@
  * while maintaining privacy-first architecture with comprehensive protection.
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ComponentType, type FC, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type FC, type ReactNode } from 'react';
 // Removed direct import to break circular dependency - will be loaded dynamically
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
 
@@ -23,17 +23,8 @@ type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
   setIsLoginFlow: (isLogin: boolean) => void;
 };
 
-// Diagnostics: verify React createContext availability in production
-if (import.meta.env && import.meta.env.PROD) {
-  try {
-    console.warn('[Diag] AuthProvider typeof createContext:', typeof createContext);
-  } catch (e) {
-    console.error('[Diag] AuthProvider createContext check failed:', e);
-  }
-}
-
-// Create authentication context
-const AuthContext = createContext<AuthContextType | null>(null);
+// Safe lazy context initialization to avoid production bundling/runtime edge cases
+let AuthContextRef: ReturnType<typeof createContext<AuthContextType | null>> | null = null;
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -47,6 +38,18 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   const auth = useUnifiedAuth();
   const [isRegistrationFlow, setIsRegistrationFlow] = useState(false);
   const [isLoginFlow, setIsLoginFlow] = useState(false);
+
+  // Lazily ensure context exists; if createContext fails, render children without provider to avoid white screen
+  const ContextOrNull = useMemo(() => {
+    if (AuthContextRef) return AuthContextRef;
+    try {
+      AuthContextRef = createContext<AuthContextType | null>(null);
+      return AuthContextRef;
+    } catch (e) {
+      console.error('[AuthProvider] createContext failed; running without provider for landing page:', e);
+      return null;
+    }
+  }, []);
 
   // ClientSessionVault PBKDF2 passphrase modal wiring
   const [vaultOpen, setVaultOpen] = useState(false);
@@ -113,8 +116,13 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
     setIsLoginFlow
   };
 
+  if (!ContextOrNull) {
+    // No provider available; render children directly for unauthenticated landing page
+    return <>{children}</>;
+  }
+
   return (
-    <AuthContext.Provider value={contextValue}>
+    <ContextOrNull.Provider value={contextValue}>
       {children}
       <PassphraseVaultModal
         open={vaultOpen}
@@ -129,7 +137,7 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
           setVaultOpen(false);
         }}
       />
-    </AuthContext.Provider>
+    </ContextOrNull.Provider>
   );
 };
 
@@ -137,9 +145,51 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
  * Hook to use authentication context
  */
 export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
+  if (!AuthContextRef) {
+    // Provide a minimal stub in routes that mount before the provider is available
+    return {
+      // UnifiedAuthState (safe defaults)
+      authenticated: false,
+      accountActive: false,
+      sessionValid: false,
+      loading: false,
+      user: null as any,
+      error: null,
+      lastValidated: null as any,
+      // UnifiedAuthActions (no-ops)
+      authenticateNIP05Password: async () => false,
+      authenticateNIP07: async () => false,
+      refreshSession: async () => false,
+      logout: () => { },
+      clearError: () => { },
+      // Integration helpers
+      isRegistrationFlow: false,
+      isLoginFlow: false,
+      setIsRegistrationFlow: () => { },
+      setIsLoginFlow: () => { },
+    } as AuthContextType;
+  }
+  const context = useContext(AuthContextRef);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // Should not happen when provider is set; return the same stub
+    return {
+      authenticated: false,
+      accountActive: false,
+      sessionValid: false,
+      loading: false,
+      user: null as any,
+      error: null,
+      lastValidated: null as any,
+      authenticateNIP05Password: async () => false,
+      authenticateNIP07: async () => false,
+      refreshSession: async () => false,
+      logout: () => { },
+      clearError: () => { },
+      isRegistrationFlow: false,
+      isLoginFlow: false,
+      setIsRegistrationFlow: () => { },
+      setIsLoginFlow: () => { },
+    } as AuthContextType;
   }
   return context;
 };

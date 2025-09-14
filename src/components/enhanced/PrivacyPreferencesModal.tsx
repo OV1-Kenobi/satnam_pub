@@ -5,12 +5,11 @@
 
 import { ChevronDown, ChevronUp, RefreshCw, Save, Shield, XCircle } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
-import { PrivacyLevel } from "../../types/privacy";
-
 import ClientSessionVault, { getVaultFeatureFlags, getVaultStatus, isWebAuthnAvailable, setVaultFeatureFlags } from "../../lib/auth/client-session-vault";
 import { userSigningPreferences } from "../../lib/user-signing-preferences";
+import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
 import { showToast } from "../../services/toastService";
+import { PrivacyLevel } from "../../types/privacy";
 
 
 
