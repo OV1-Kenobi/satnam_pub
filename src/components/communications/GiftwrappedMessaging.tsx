@@ -15,7 +15,7 @@ import { DashboardNotification, NotificationService } from '../../services/notif
 import { showToast } from '../../services/toastService';
 import { useAuth } from '../auth/AuthProvider';
 import { SecurePeerInvitationModal } from '../SecurePeerInvitationModal';
-
+import { PeerInvitationModal } from './PeerInvitationModal';
 
 
 
@@ -203,6 +203,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSigningSetup, setShowSigningSetup] = useState(false);
   const inviteBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  const [showPeerInvitationModal, setShowPeerInvitationModal] = useState(false);
 
   // Notifications
   const notificationService = NotificationService.getInstance();
@@ -1487,6 +1489,13 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
         {/* New Message block */}
         <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
+          <button
+            onClick={() => setShowPeerInvitationModal(true)}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium"
+          >
+            Invite Peers
+          </button>
+
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold text-purple-900">New Message</h4>
             {/* Notifications envelope with unread badge */}
@@ -1775,6 +1784,18 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             }}
           />
         )}
+
+        {showPeerInvitationModal && (
+          <PeerInvitationModal
+            isOpen={showPeerInvitationModal}
+            onClose={() => setShowPeerInvitationModal(false)}
+            onSendInvitation={() => { }}
+            senderProfile={{
+              npub: auth.user?.hashed_npub || familyMember.npub,
+            }}
+          />
+        )}
+
 
 
         {/* Add Member Modal */}

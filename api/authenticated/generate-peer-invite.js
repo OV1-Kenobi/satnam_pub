@@ -548,6 +548,112 @@ async function sendGiftWrappedDM(giftWrappedContent, recipientPubkey, inviterNip
 }
 
 /**
+ * Send standard NIP-04 encrypted DM via Nostr (no gift-wrap)
+ * @param {string} plaintextContent - Message content
+ * @param {string} recipientPubkey - Recipient's public key (hex)
+ * @param {string} inviterNip05 - Inviter's NIP-05 identifier
+ * @param {string} sessionToken - User's session token for identity retrieval
+ * @param {Object} signingOptions - Signing method options
+ * @returns {Promise<{success: boolean, method: string, error: string}>} Delivery result
+ */
+async function sendStandardDM(plaintextContent, recipientPubkey, inviterNip05, sessionToken, signingOptions = {}) {
+  try {
+    if (!sessionToken) {
+      throw new Error('Session token is required for signing invitations');
+    }
+    const { SimplePool, nip04, finalizeEvent, getPublicKey } = await import('nostr-tools');
+    const { hexToBytes } = await import('@noble/hashes/utils');
+
+    let userIdentity;
+    try {
+      userIdentity = await getUserIdentityForSigning(sessionToken, signingOptions);
+    } catch (identityError) {
+      throw new Error(`Authentication failed: ${identityError.message}`);
+    }
+
+    if (!userIdentity || userIdentity.signingMethod === 'nip07') {
+      throw new Error('Server-side signing not available for this user. Use client-side signing instead.');
+    }
+
+    let userPrivateKeyHex = userIdentity.privateKeyHex;
+    const userPublicKey = getPublicKey(hexToBytes(userPrivateKeyHex));
+
+    const envRelays = getEnvVar("NOSTR_RELAYS");
+    const relays = envRelays
+      ? envRelays.split(",").map(r => r.trim()).filter(r => r.startsWith('wss://'))
+      : [
+          'wss://relay.damus.io',
+          'wss://nos.lol',
+          'wss://relay.nostr.band'
+        ];
+    if (relays.length === 0) {
+      console.warn('No valid Nostr relays configured, using fallback relays');
+      relays.push('wss://relay.damus.io', 'wss://nos.lol');
+    }
+
+    const pool = new SimplePool();
+    let deliveryResult = { success: false, method: 'none', error: 'Unknown error' };
+
+    try {
+      const encryptedContent = nip04.encrypt(
+        userPrivateKeyHex,
+        recipientPubkey,
+        plaintextContent
+      );
+
+      const dmEvent = {
+        kind: 4,
+        pubkey: userPublicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['p', recipientPubkey],
+          ['message-type', 'invitation'],
+          ['encryption', 'nip04'],
+          ['sender-nip05', inviterNip05],
+          ['sender-npub', userIdentity.npub]
+        ],
+        content: encryptedContent,
+      };
+
+      const signedDMEvent = finalizeEvent(dmEvent, hexToBytes(userPrivateKeyHex));
+
+      const publishResults = await Promise.all(
+        relays.map(async (relay) => {
+          try {
+            pool.publish([relay], signedDMEvent);
+            return true;
+          } catch (error) {
+            console.warn(`Failed to publish NIP-04 message to ${relay}:`, error);
+            return false;
+          }
+        })
+      );
+
+      const successCount = publishResults.filter(Boolean).length;
+      if (successCount > 0) {
+        deliveryResult = { success: true, method: 'nip04', error: '' };
+        console.log(`NIP-04 invitation sent successfully to ${successCount}/${relays.length} relays`);
+      } else {
+        deliveryResult = { success: false, method: 'failed', error: 'All relay publishes failed' };
+      }
+    } catch (err) {
+      console.error('Standard NIP-04 messaging failed:', err);
+      deliveryResult = { success: false, method: 'failed', error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+
+    pool.close(relays);
+    if (userPrivateKeyHex) {
+      userPrivateKeyHex = '0'.repeat(userPrivateKeyHex.length);
+    }
+    return deliveryResult;
+  } catch (error) {
+    console.error('Critical error in sendStandardDM:', error);
+    return { success: false, method: 'error', error: error.message };
+  }
+}
+
+
+/**
  * Check rate limiting using database-backed storage
  * @param {string} userHash - Hashed user identifier
  * @returns {Promise<boolean>} Whether request is allowed
@@ -796,37 +902,45 @@ export default async function handler(req, res) {
     let qrCodeImage = null;
     let giftWrappedMessage = null;
 
-    if (!inviteRequest.sendAsGiftWrappedDM) {
-      qrCodeImage = await generateQRCode(inviteUrl);
-    } else {
-      if (inviteRequest.recipientNostrPubkey && inviteRequest.inviterNip05) {
-        giftWrappedMessage = await createGiftWrappedMessage(
-          inviteUrl,
-          inviteRequest.inviterNip05,
-          inviteRequest.personalMessage || "",
-          inviteRequest.courseCredits
-        );
+    if (inviteRequest.recipientNostrPubkey && inviteRequest.inviterNip05) {
+      const messageContent = await createGiftWrappedMessage(
+        inviteUrl,
+        inviteRequest.inviterNip05,
+        inviteRequest.personalMessage || "",
+        inviteRequest.courseCredits
+      );
 
-        const dmResult = await sendGiftWrappedDM(
+      let dmResult;
+      if (inviteRequest.sendAsGiftWrappedDM === true) {
+        giftWrappedMessage = messageContent;
+        dmResult = await sendGiftWrappedDM(
           giftWrappedMessage,
           inviteRequest.recipientNostrPubkey,
           inviteRequest.inviterNip05,
           token,
           inviteRequest.signingOptions || {}
         );
-
-        if (!dmResult.success) {
-          console.warn('Direct message sending failed:', dmResult.error);
-          qrCodeImage = await generateQRCode(inviteUrl);
-          giftWrappedMessage = null;
-        } else {
-          console.log(`Invitation sent successfully via ${dmResult.method}`);
-          // For successful DM sending, we still generate QR as backup
-          qrCodeImage = await generateQRCode(inviteUrl);
-        }
       } else {
+        dmResult = await sendStandardDM(
+          messageContent,
+          inviteRequest.recipientNostrPubkey,
+          inviteRequest.inviterNip05,
+          token,
+          inviteRequest.signingOptions || {}
+        );
+      }
+
+      if (!dmResult.success) {
+        console.warn('Direct message sending failed:', dmResult.error);
+        qrCodeImage = await generateQRCode(inviteUrl);
+        giftWrappedMessage = null;
+      } else {
+        console.log(`Invitation sent successfully via ${dmResult.method}`);
+        // For successful DM sending, we still generate QR as backup
         qrCodeImage = await generateQRCode(inviteUrl);
       }
+    } else {
+      qrCodeImage = await generateQRCode(inviteUrl);
     }
 
     return res.status(200).json({

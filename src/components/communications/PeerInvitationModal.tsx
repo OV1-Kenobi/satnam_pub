@@ -51,23 +51,11 @@ export function PeerInvitationModal({
     };
   }, []);
 
-  // Enhanced message sending function using authenticated user's keys
+  // Default to standard NIP-04/44 direct messaging for external compatibility
   const sendMessage = async (content: string, recipient: string, privacyLevel: PrivacyLevel): Promise<MessageSendResult> => {
     try {
-      const eventId = await CEPS.sendGiftWrappedDirectMessage(
-        {
-          sessionId: 'client-ui',
-          displayNameHash: 'peer',
-          encryptedNpub: recipient,
-          familyRole: 'private',
-          trustLevel: 'known',
-          supportsGiftWrap: true,
-          preferredEncryption: 'auto',
-          addedByHash: 'client-ui'
-        } as any,
-        { type: 'invitation', content, meta: { privacyLevel } }
-      );
-      const result: MessageSendResult = { success: true, messageId: eventId, method: 'giftwrapped' as any };
+      const eventId = await CEPS.sendStandardDirectMessage(recipient, content);
+      const result: MessageSendResult = { success: true, messageId: eventId, method: 'encrypted' as any };
       return result;
     } catch (error) {
       console.error('Message sending failed:', error);

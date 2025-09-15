@@ -115,6 +115,7 @@ export function PrivateCommunicationModal({
   const [success, setSuccess] = useState<string | null>(null)
   const [showContactsModal, setShowContactsModal] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [showPeerInvitationModal, setShowPeerInvitationModal] = useState(false)
 
   // Zap functionality state
   const [showZapModal, setShowZapModal] = useState(false)
@@ -913,6 +914,17 @@ export function PrivateCommunicationModal({
                       <Users className="h-4 w-4" />
                       <span>Contacts</span>
                     </button>
+                    <button
+                      onClick={() => setShowPeerInvitationModal(true)}
+                      className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center space-x-2"
+                      title="Invite new peers via standard Nostr messaging (NIP-04/44)"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Invite Peers</span>
+                    </button>
+                  </div>
+                  <div className="mt-2 text-xs text-blue-200 bg-blue-500/10 border border-blue-500/20 rounded-md p-2">
+                    Note: Messages to non-Satnam Nostr users may not be delivered unless their client and relays support advanced private messaging protocols (NIP-17/NIP-59).
                   </div>
                 </div>
               ) : (
@@ -1154,6 +1166,8 @@ export function PrivateCommunicationModal({
                 className="flex-1 px-4 py-2 bg-white/10 border border-white/20 text-white rounded-lg hover:bg-white/20 transition-colors"
               >
                 Cancel
+
+
               </button>
               <button
                 onClick={() => deleteMessage(selectedMessageForDeletion)}
@@ -1174,6 +1188,8 @@ export function PrivateCommunicationModal({
             <h3 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
               <Zap className="h-5 w-5 text-orange-400" />
               <span>⚡ Zap {zapRecipient.displayName}</span>
+
+
             </h3>
 
             <div className="space-y-4">
@@ -1263,6 +1279,17 @@ export function PrivateCommunicationModal({
         </div>
       )}
 
+      {/* Peer Invitation Modal */}
+      {showPeerInvitationModal && (
+        <PeerInvitationModal
+          isOpen={showPeerInvitationModal}
+          onClose={() => setShowPeerInvitationModal(false)}
+          onSendInvitation={() => { }}
+          senderProfile={{ npub: userProfile.npub, username: userProfile.username }}
+        />
+      )}
+
+
       {/* Authentication Modal */}
       {showAuthModal && (
         <SignInModal
@@ -1271,6 +1298,8 @@ export function PrivateCommunicationModal({
           onSignInSuccess={handleAuthSuccess}
           onCreateNew={() => {
             setShowAuthModal(false)
+
+
             // You could redirect to Identity Forge here if needed
           }}
           destination={authType}

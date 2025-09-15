@@ -1383,9 +1383,24 @@ export class CentralEventPublishingService {
 
     const results: Array<{ relay: string; ok: boolean; error?: string }> = [];
 
-    // Helper to publish with timeout
+    // Helper to sign NIP-42 AUTH events using active session
+    const onauth = async (unsignedAuth: any) => {
+      try {
+        // Use centralized session-based signer
+        return await this.signEventWithActiveSession(unsignedAuth);
+      } catch (e) {
+        // Surface clear error so pool can proceed to next relay
+        throw new Error(
+          e instanceof Error ? e.message : "auth signer unavailable"
+        );
+      }
+    };
+
+    // Helper to publish with timeout (with NIP-42 auth support)
     const publishWithTimeout = async (relay: string, event: Event) => {
-      const pubResult = this.getPool().publish([relay], event);
+      const pubResult = (this.getPool() as any).publish([relay], event, {
+        onauth,
+      });
       const publishPromise = Array.isArray(pubResult)
         ? pubResult[0]
         : (pubResult as any);
@@ -1550,9 +1565,19 @@ export class CentralEventPublishingService {
     handlers: { onevent?: (e: Event) => void; oneose?: () => void }
   ): any {
     const list = relays && relays.length ? relays : this.relays;
-    return this.getPool().subscribeMany(list, filters, {
+    const onauth = async (unsignedAuth: any) => {
+      try {
+        return await this.signEventWithActiveSession(unsignedAuth);
+      } catch (e) {
+        throw new Error(
+          e instanceof Error ? e.message : "auth signer unavailable"
+        );
+      }
+    };
+    return (this.getPool() as any).subscribeMany(list, filters, {
       onevent: handlers.onevent,
       oneose: handlers.oneose,
+      onauth,
     });
   }
 
@@ -1725,7 +1750,16 @@ export class CentralEventPublishingService {
     try {
       return await new Promise<Event[]>((resolve) => {
         let settled = false;
-        const sub = this.getPool().subscribeMany(list, filters, {
+        const onauth = async (unsignedAuth: any) => {
+          try {
+            return await this.signEventWithActiveSession(unsignedAuth);
+          } catch (e) {
+            throw new Error(
+              e instanceof Error ? e.message : "auth signer unavailable"
+            );
+          }
+        };
+        const sub = (this.getPool() as any).subscribeMany(list, filters, {
           onevent: (e: Event) => {
             try {
               events.push(e);
@@ -1742,6 +1776,7 @@ export class CentralEventPublishingService {
             } catch {}
             resolve(events);
           },
+          onauth,
         });
 
         setTimeout(() => {
@@ -2065,7 +2100,18 @@ export class CentralEventPublishingService {
 
     try {
       const filters = [{ kinds: [10050], authors: [pubkeyHex], limit: 1 }];
-      const listPromise = (this.getPool() as any).list(this.relays, filters);
+      const onauth = async (unsignedAuth: any) => {
+        try {
+          return await this.signEventWithActiveSession(unsignedAuth);
+        } catch (e) {
+          throw new Error(
+            e instanceof Error ? e.message : "auth signer unavailable"
+          );
+        }
+      };
+      const listPromise = (this.getPool() as any).list(this.relays, filters, {
+        onauth,
+      });
       // Add timeout to avoid hanging on slow relays
       const timeoutMs = 2500;
       const events = (await Promise.race([
@@ -2297,6 +2343,34 @@ export class CentralEventPublishingService {
       senderPubHex: (ev as any).pubkey as string,
     });
   }
+
+  // Send standard NIP-04/44 direct message using active session (no gift-wrap)
+  async sendStandardDirectMessage(
+    recipientNpub: string,
+    plaintext: string
+  ): Promise<string> {
+    if (!this.userSession) throw new Error("No active session");
+    // Rate limit per user
+    this.checkRateLimit(
+      `send_dm:${this.userSession.userHash}`,
+      MESSAGING_CONFIG.RATE_LIMITS.SEND_MESSAGE_PER_HOUR,
+      60 * 60 * 1000
+    );
+
+    const recipientHex = this.npubToHex(recipientNpub);
+    const enc = await this.encryptWithActiveSession(recipientHex, plaintext);
+    const ev = await this.createSignedDMEventWithActiveSession(
+      recipientHex,
+      enc
+    );
+    const delayMs = this.calcPrivacyDelayMs();
+    await this.sleep(delayMs);
+    return await this.publishOptimized(ev, {
+      recipientPubHex: recipientHex,
+      senderPubHex: (ev as any).pubkey as string,
+    });
+  }
+
   private async hashOTP(otp: string): Promise<{ hash: string; salt: string }> {
     const saltBytes = new Uint8Array(16);
     crypto.getRandomValues(saltBytes);
