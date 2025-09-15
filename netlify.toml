@@ -306,7 +306,7 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
     # Content Security Policy - MAXIMUM SECURITY with Web Worker support for PoW mining
-    Content-Security-Policy = "default-src 'self'; upgrade-insecure-requests; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nostr.wine wss://relay.satnam.pub wss://relay.0xchat.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:; manifest-src 'self';"
+    Content-Security-Policy = "default-src 'self'; upgrade-insecure-requests; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://*.netlify.app wss://*.supabase.co wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nostr.wine wss://relay.satnam.pub wss://relay.0xchat.com wss://auth.nostr1.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:; manifest-src 'self';"
     # Enforce HTTPS in browsers (HSTS)
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
 
