@@ -1939,6 +1939,25 @@ export class CentralEventPublishingService {
       }
     );
     if (!wrapped) throw new Error("NIP-59 wrap failed");
+
+    // Ensure protocol identification tags for server-side detection (NIP-59)
+    try {
+      const w: any = wrapped as any;
+      if (!Array.isArray(w.tags)) w.tags = [];
+      const hasProtocol = w.tags.some(
+        (t: any) => Array.isArray(t) && t[0] === "protocol"
+      );
+      if (!hasProtocol) {
+        w.tags.push(["protocol", "nip59"]);
+      }
+      const hasWrappedKind = w.tags.some(
+        (t: any) => Array.isArray(t) && t[0] === "wrapped-event-kind"
+      );
+      if (!hasWrappedKind) {
+        w.tags.push(["wrapped-event-kind", "14"]);
+      }
+    } catch {}
+
     return wrapped as Event;
   }
 

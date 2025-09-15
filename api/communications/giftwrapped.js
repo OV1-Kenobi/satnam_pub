@@ -650,37 +650,34 @@ export default async function handler(event, context) {
         innerEvent = null;
         originalEventId = null; // cannot compute without decryption, which we avoid for privacy
       } else {
-        // NIP-59 legacy/fallback: content contains a JSON inner event
+        // NIP-59 (per nostr-tools): outer content is ciphertext via nip44; JSON inner event is not required.
+        // For backward compatibility, accept legacy JSON inner content if present.
         try {
           if (typeof innerContentRaw === 'string') {
-            innerEvent = JSON.parse(innerContentRaw);
+            try {
+              innerEvent = JSON.parse(innerContentRaw);
+            } catch {
+              innerEvent = null; // Ciphertext or non-JSON content
+            }
           } else if (innerContentRaw && typeof innerContentRaw === 'object') {
             innerEvent = innerContentRaw;
             innerContentRaw = JSON.stringify(innerEvent);
           } else {
-            return {
-              statusCode: 400,
-              headers: corsHeaders,
-              body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: inner content missing or malformed' })
-            };
+            innerEvent = null;
           }
-        } catch (e) {
-          return {
-            statusCode: 400,
-            headers: corsHeaders,
-            body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: inner content must be valid JSON for NIP-59' })
-          };
+        } catch {
+          innerEvent = null;
         }
 
-        // 4) Generate original (inner) event ID
-        try {
-          originalEventId = await generateNostrEventId(innerEvent);
-        } catch (e) {
-          return {
-            statusCode: 400,
-            headers: corsHeaders,
-            body: JSON.stringify({ success: false, error: 'Invalid pre-signed event: unable to compute inner event id' })
-          };
+        // 4) Generate original (inner) event ID only if we have a parsed inner event
+        if (innerEvent) {
+          try {
+            originalEventId = await generateNostrEventId(innerEvent);
+          } catch (e) {
+            originalEventId = null;
+          }
+        } else {
+          originalEventId = null;
         }
       }
 
