@@ -63,6 +63,7 @@ function App() {
     | "ln-node-management"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [nfcModalOpen, setNfcModalOpen] = useState(false);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [showCommunications, setShowCommunications] = useState(false);
   const [showFamilyFoundryAuthModal, setShowFamilyFoundryAuthModal] = useState(false);
@@ -1205,10 +1206,11 @@ function App() {
                   Cognitive Capital
                 </button>
                 <button
-                  onClick={() => handleProtectedRoute("privacy-preferences")}
+                  onClick={() => setNfcModalOpen(true)}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                 >
-                  Privacy Controls
+                  <span className="block">Program Physical MFA tags</span>
+                  <span className="block text-xs text-purple-300">Program NTAG424 NFC tags for authentication</span>
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("contacts")}
@@ -1382,6 +1384,16 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* NTAG424 Physical MFA Modal */}
+        <NTAG424AuthModal
+          isOpen={nfcModalOpen}
+          onClose={() => setNfcModalOpen(false)}
+          mode="both"
+          title="Program Physical MFA tags"
+          purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
+        />
+
       </footer>
 
       {/* Sign In Modal */}
