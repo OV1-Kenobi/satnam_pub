@@ -16,7 +16,7 @@ export interface SessionInfo {
     npub: string;
     nip05?: string;
     federationRole: "adult" | "child" | "guardian";
-    authMethod: "otp" | "nwc";
+    authMethod: "otp" | "nwc" | "nip05-password";
     isWhitelisted: boolean;
     votingPower: number;
     guardianApproved: boolean;

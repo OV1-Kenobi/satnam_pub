@@ -839,9 +839,9 @@ export default async function handler(event, context) {
     try {
       const newStatus = deliveryResult.success ? 'published' : 'failed';
       const updatePayload = { status: newStatus };
-      // Optional published_at if column exists; safe update even if ignored by schema
+      // Store publish time in created_at per current schema
       if (deliveryResult.success) {
-        updatePayload.published_at = new Date().toISOString();
+        updatePayload.created_at = new Date().toISOString();
       }
       const { error: updateError } = await client
         .from('gift_wrapped_messages')

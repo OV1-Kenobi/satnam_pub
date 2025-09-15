@@ -1304,7 +1304,39 @@ export class CentralEventPublishingService {
   async publishEvent(ev: Event, relays?: string[]): Promise<string> {
     // Sanitize event tags to prevent nostr-tools fixed-size tag errors
     ev = this.sanitizeFixedTags(ev);
-    const list = relays && relays.length ? relays : this.relays;
+    let list = relays && relays.length ? relays : this.relays;
+
+    // Auto-select recipient inbox relays (NIP-17) when available and no explicit relays provided
+    try {
+      if (!relays || !relays.length) {
+        const tags = (ev as any)?.tags as any[] | undefined;
+        const isNip17 = Array.isArray(tags)
+          ? !!tags.find(
+              (t) => Array.isArray(t) && t[0] === "protocol" && t[1] === "nip17"
+            )
+          : false;
+        if (isNip17) {
+          const pTag = Array.isArray(tags)
+            ? (tags.find(
+                (t) =>
+                  Array.isArray(t) && t[0] === "p" && typeof t[1] === "string"
+              ) as string[] | undefined)
+            : undefined;
+          const recipientRaw = pTag?.[1];
+          const recipientHex = recipientRaw?.startsWith("npub1")
+            ? this.npubToHex(recipientRaw)
+            : recipientRaw;
+          if (recipientHex && /^[0-9a-fA-F]{64}$/.test(recipientHex)) {
+            const inbox = await this.resolveInboxRelaysFromKind10050(
+              recipientHex
+            );
+            if (Array.isArray(inbox) && inbox.length) {
+              list = this.mergeUniqueRelays(inbox, list);
+            }
+          }
+        }
+      }
+    } catch {}
 
     // Debug logging to identify where PoW relays are coming from
     console.log("🔨 CEPS.publishEvent: Relay list:", list);
@@ -1967,6 +1999,20 @@ export class CentralEventPublishingService {
     return Array.from(urls).slice(0, 20);
   }
 
+  // Debugging helper: return inbox relays for npub or hex
+  async getInboxRelays(npubOrHex: string): Promise<string[]> {
+    try {
+      if (!npubOrHex || typeof npubOrHex !== "string") return [];
+      const hex = npubOrHex.startsWith("npub1")
+        ? this.npubToHex(npubOrHex)
+        : npubOrHex;
+      if (!/^[0-9a-fA-F]{64}$/.test(hex)) return [];
+      return await this.resolveInboxRelaysFromKind10050(hex);
+    } catch {
+      return [];
+    }
+  }
+
   private mergeUniqueRelays(...lists: (string[] | undefined)[]): string[] {
     const set = new Set<string>();
     for (const list of lists)
@@ -2012,6 +2058,7 @@ export class CentralEventPublishingService {
       const recipientRelays = opts?.recipientPubHex
         ? await this.resolveInboxRelaysFromKind10050(opts.recipientPubHex)
         : [];
+
       const senderRelays = opts?.senderPubHex
         ? await this.resolveInboxRelaysFromKind10050(opts.senderPubHex)
         : [];
@@ -2050,6 +2097,46 @@ export class CentralEventPublishingService {
       content,
     });
     return ev;
+  }
+
+  // Publish kind:10050 inbox relays for the active user (used during onboarding)
+  async publishInboxRelaysKind10050(
+    relays: string[]
+  ): Promise<{ success: boolean; eventId?: string; error?: string }> {
+    try {
+      // Validate session exists
+      const sessionId = this.getActiveSigningSessionId();
+      if (!sessionId) {
+        return { success: false, error: "No active signing session" };
+      }
+
+      const list = Array.isArray(relays) ? relays.filter(isValidRelayUrl) : [];
+      if (!list.length)
+        return { success: false, error: "No valid relay URLs provided" };
+
+      // Deduplicate and limit relay count
+      const uniqueRelays = Array.from(new Set(list)).slice(0, 20);
+
+      const now = Math.floor(Date.now() / 1000);
+      const ev: Event = await this.signEventWithActiveSession({
+        kind: 10050,
+        created_at: now,
+        tags: [
+          ...uniqueRelays.map((r) => ["r", r.toLowerCase()]), // Normalize URLs
+          ["client", "identity-forge"],
+          ["protocol", "nip17"],
+        ],
+        content: JSON.stringify({ inbox: uniqueRelays }),
+      });
+      const id = await this.publishOptimized(ev, { includeFallback: true });
+      return { success: true, eventId: id };
+    } catch (e) {
+      console.error("[CEPS] Failed to publish inbox relays:", e);
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   }
 
   private async encryptWithActiveSession(

@@ -227,35 +227,42 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         subscriptionRef.current = null;
       }
 
-      const sub = clientMessageService.subscribeToGiftWrappedForRecipient(
-        recipient,
-        {
-          onInner: (inner: NostrEvent) => {
-            setState((prev) => ({
-              ...prev,
-              // Keep only last 1000 messages to prevent memory issues
-              incomingMessages: [...prev.incomingMessages.slice(-999), inner],
-              lastMessageReceived: new Date(),
-            }));
-          },
-          onRaw: (outer: NostrEvent) => {
-            console.debug("NIP59-RX: raw outer event", {
-              id: (outer as any)?.id,
-              kind: (outer as any)?.kind,
-            });
-          },
-          onError: (reason: string) => {
-            setState((prev) => ({
-              ...prev,
-              error: reason || "subscription_error",
-            }));
-          },
-          onEose: () => {
-            console.info("NIP59-RX: subscription established");
-          },
-        }
-      );
-
+      const USE_NIP17 = (import.meta as any).env?.VITE_USE_NIP17 === "true";
+      const sub = (
+        USE_NIP17
+          ? clientMessageService.subscribeToNip17ForRecipient
+          : clientMessageService.subscribeToGiftWrappedForRecipient
+      ).call(clientMessageService, recipient, {
+        onInner: (inner: NostrEvent) => {
+          setState((prev) => ({
+            ...prev,
+            // Keep only last 1000 messages to prevent memory issues
+            incomingMessages: [...prev.incomingMessages.slice(-999), inner],
+            lastMessageReceived: new Date(),
+          }));
+        },
+        onRaw: (outer: NostrEvent) => {
+          console.debug("NIP-RX: raw outer event", {
+            id: (outer as any)?.id,
+            kind: (outer as any)?.kind,
+          });
+        },
+        onError: (reason: string) => {
+          setState((prev) => ({
+            ...prev,
+            error: reason || "subscription_error",
+          }));
+          try {
+            cleanupSubscription(subscriptionRef.current);
+          } catch {
+            // no-op
+          }
+          subscriptionRef.current = null;
+        },
+        onEose: () => {
+          console.info("NIP-RX: subscription established");
+        },
+      });
       subscriptionRef.current = sub as SubscriptionLike;
       setState((prev) => ({ ...prev, messageSubscription: sub as unknown }));
       return true;

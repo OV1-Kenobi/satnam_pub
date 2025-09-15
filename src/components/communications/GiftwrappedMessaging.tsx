@@ -86,6 +86,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   // Groups data (real group listing)
   const [groups, setGroups] = useState<GroupData[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
+  const [showProtocolHelp, setShowProtocolHelp] = useState(false);
+
   const [groupsError, setGroupsError] = useState<string | null>(null);
 
   const loadGroups = async () => {
@@ -1013,11 +1015,19 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-purple-900">{sender}</span>
                         <span className="text-[11px] text-purple-700">{createdAt}</span>
-                        {m.source === 'nip59' && (
+                        {m.source === 'nip59' && (m as any)?.nip59?.sig && (
                           <span className="text-green-600" title="Verified signature">✅</span>
                         )}
                         {m.protocol === 'nip59' && (
                           <span className="text-purple-700" title="NIP-59 encrypted">🔒</span>
+                        )}
+                        {(((m as any)?.protocol === 'nip17') || (m.source === 'nip59' && !(m as any)?.nip59?.sig)) && (
+                          <span
+                            className="text-indigo-700 text-[11px] border border-indigo-300 rounded px-1 py-[1px]"
+                            title="Unsigned inner event, sealed per NIP-17"
+                          >
+                            Sealed (NIP-17)
+                          </span>
                         )}
                         {m.source === 'server' && !m.protocol && (
                           <span className="text-gray-500" title="Standard message">📝</span>
@@ -1614,6 +1624,17 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-3 2H6a2 2 0 01-2-2V8a2 2 0 012-2h6a2 2 0 012 2v6z" />
                   </svg>
                 </button>
+                <button
+                  onClick={() => setShowProtocolHelp((v) => !v)}
+                  className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                  title="Protocol order: NIP-17 → NIP-59 → NIP-44. Click for setup help."
+                  aria-label="Messaging protocol help"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+                  </svg>
+                </button>
+
               </div>
               <button
                 onClick={sendGiftwrappedMessage}
@@ -1623,6 +1644,49 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 {isLoading ? 'Sending...' : 'Send'}
               </button>
             </div>
+            {showProtocolHelp && (
+              <div className="mt-2 p-3 border border-purple-200 rounded-lg bg-purple-50/60 text-[12px] text-purple-900 space-y-2">
+                <div className="font-medium">Delivery protocols: NIP-17 → NIP-59 → NIP-44 (fallback)</div>
+                <div>
+                  <div className="font-semibold">iOS (Damus)</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Open Damus → Settings → Relays (if supported for DMs/inbox)</li>
+                    <li>Ensure inbox relays include: wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band, wss://auth.nostr1.com, wss://relay.0xchat.com</li>
+                    <li>Publish your inbox relays (Kind 10050) so others can discover where to send NIP-17 DMs</li>
+                    <li>If manual publish is needed: create Kind 10050 with r tags for each relay or content: {'{"inbox":["wss://relay.damus.io","wss://nos.lol","wss://relay.nostr.band","wss://auth.nostr1.com","wss://relay.0xchat.com"]}'}</li>
+                  </ul>
+                </div>
+                <div>
+                  <div className="font-semibold">Android (Amethyst)</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Open profile → ••• menu → "Edit Relays" or Settings → Relays</li>
+                    <li>Include inbox relays: wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band, wss://auth.nostr1.com, wss://relay.0xchat.com (optionally wss://nostr.wine)</li>
+                    <li>In Advanced/profile editing, enable "Publish Inbox Relays (Kind 10050)"</li>
+                    <li>If manual publish is needed: create Kind 10050 with r tags for each relay or content: {'{"inbox":["wss://relay.damus.io","wss://nos.lol", ...]}'}</li>
+                    <li>Save/sync and wait 10–30s for relay propagation</li>
+                  </ul>
+                </div>
+                <div className="text-[12px] text-purple-900">
+                  Alternative client: <span className="font-semibold">0xchat</span> supports private Nostr chat and PoW-enabled relays. Adding
+                  <span className="font-mono"> wss://relay.0xchat.com </span> to your Kind 10050 relays can improve delivery.
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      const template = `Hi! To receive sealed DMs from me, please publish your inbox relays (Kind 10050).\n\nFor iOS (Damus): Settings → Relays (if available). Add: wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band, wss://auth.nostr1.com, wss://relay.0xchat.com. Publish Kind 10050. If manual: Kind 10050 with r tags per relay or content: {"inbox":["wss://relay.damus.io","wss://nos.lol","wss://relay.nostr.band","wss://auth.nostr1.com","wss://relay.0xchat.com"]}.\n\nFor Android (Amethyst): Profile → ••• → Edit Relays or Settings → Relays. Add same relays (optionally wss://nostr.wine). Enable "Publish Inbox Relays (Kind 10050)". If manual: Kind 10050 with r tags or inbox JSON. Save and wait 10–30s.\n\nAlternative client: 0xchat supports private Nostr chat and PoW-enabled relays; adding wss://relay.0xchat.com to your Kind 10050 can improve delivery.`;
+                      setNewMessage(prev => prev ? `${prev}\n\n${template}` : template);
+                      try { await navigator.clipboard?.writeText(template); } catch { }
+                    }}
+                    className="px-2 py-1 bg-purple-200/80 hover:bg-purple-300/80 text-purple-900 rounded"
+                  >
+                    Copy Setup Message
+                  </button>
+                  <span className="text-[11px] text-purple-700">This will paste a help message into the input and copy it to your clipboard.</span>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 

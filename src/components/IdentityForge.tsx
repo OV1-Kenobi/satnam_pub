@@ -1209,15 +1209,17 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           const authResult = {
             success: true,
             sessionToken: accessToken || sessionToken,
-            user: {
-              id: result?.user?.id || 'unknown',
-              npub: formData.pubkey,
-              nip05: nip05Identifier,
-              role: result?.user?.role || 'private',
-              username: result?.user?.username || formData.username,
-              is_active: true, // CRITICAL FIX: Newly registered users are active by default
-              hashedId: payload?.hashedId || 'unknown' // Include hashedId for validation
-            }
+            user: ({
+              id: (payload?.hashedId || result?.user?.id || 'unknown') as string,
+              user_salt: (result?.user?.user_salt || '') as string,
+              password_hash: (result?.user?.password_hash || '') as string,
+              password_salt: (result?.user?.password_salt || '') as string,
+              failed_attempts: (result?.user?.failed_attempts ?? 0) as number,
+              role: (result?.user?.role || 'private') as "private" | "offspring" | "adult" | "steward" | "guardian",
+              is_active: true,
+              hashedId: (payload?.hashedId || 'unknown') as string,
+              authMethod: 'nip05-password',
+            } as UserIdentity)
           };
 
           // Update the global auth state using the unified auth system

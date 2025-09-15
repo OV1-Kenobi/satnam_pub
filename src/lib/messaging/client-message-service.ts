@@ -138,6 +138,66 @@ export class ClientMessageService {
       };
     } catch (error) {
       console.error("🔐 ClientMessageService: Error sending message:", error);
+
+      // Third-tier fallback: NIP-44 direct publish when NIP-17 discovery failed and NIP-59 fallback also failed
+      if (error instanceof Nip59FallbackError) {
+        try {
+          const recipientHex = messageData.recipient.startsWith("npub1")
+            ? CEPS.npubToHex(messageData.recipient)
+            : messageData.recipient;
+          const ciphertext = await (
+            CEPS as any
+          ).encryptNip44WithActiveSession?.(recipientHex, messageData.content);
+          if (
+            typeof ciphertext !== "string" ||
+            !ciphertext ||
+            ciphertext.length < 10
+          ) {
+            throw new Error("NIP-44 encryption failed");
+          }
+          if (typeof ciphertext !== "string" || !ciphertext) {
+            throw new Error("NIP-44 encryption failed");
+          }
+          const now = Math.floor(Date.now() / 1000);
+          const ev = await (CEPS as any).signEventWithActiveSession?.({
+            kind: 4,
+            created_at: now,
+            tags: [["p", recipientHex]],
+            content: ciphertext,
+          });
+          if (!ev || typeof ev !== "object") {
+            throw new Error("NIP-44 sign failed");
+          }
+          const id = await (CEPS as any).publishOptimized?.(ev, {
+            recipientPubHex: recipientHex,
+            includeFallback: true,
+          });
+          try {
+            showToast.warning(
+              "Sent via NIP-44 fallback (may not appear in server history)",
+              { title: "Fallback delivery", duration: 5000 }
+            );
+          } catch {}
+          return {
+            success: true,
+            messageId: typeof id === "string" ? id : undefined,
+            signingMethod: "nip44",
+            securityLevel: "standard",
+            userMessage:
+              "Delivered using NIP-44 fallback. This message might not appear in server threads.",
+          } as MessageSendResult;
+        } catch (err) {
+          console.error("NIP-44 fallback failed:", err);
+          return {
+            success: false,
+            error:
+              err instanceof Error ? err.message : "NIP-44 fallback failed",
+            userMessage:
+              "All delivery methods failed (NIP-17, NIP-59, NIP-44). Please try again later.",
+          } as MessageSendResult;
+        }
+      }
+
       return {
         success: false,
         error:
@@ -164,16 +224,105 @@ export class ClientMessageService {
 
     if (USE_NIP17) {
       console.log("🔐 ClientMessageService: Using NIP-17 flow");
-      // 1) unsigned kind:14
+      // NIP-17 relay discovery (kind:10050 inbox relays) with TTL cache handled in CEPS
+      try {
+        const inboxRelays = await (
+          CEPS as any
+        ).resolveInboxRelaysFromKind10050?.(recipientHex);
+        if (!Array.isArray(inboxRelays) || inboxRelays.length === 0) {
+          // Recipient not ready for NIP-17; fallback to NIP-59 per requirement
+          try {
+            showToast.warning(
+              "Recipient has no NIP-17 inbox relays (kind 10050). Falling back to NIP-59.",
+              { title: "NIP-17 not available", duration: 5000 }
+            );
+          } catch {}
+          // Fallback to NIP-59 construction path
+          console.log("🔐 ClientMessageService: Falling back to NIP-59 flow");
+          try {
+            const innerEvent: any = {
+              kind: 14,
+              content: messageData.content,
+              tags: [
+                ["p", recipientHex],
+                ["message-type", messageData.messageType],
+                ["encryption-level", messageData.encryptionLevel],
+                ["communication-type", messageData.communicationType],
+              ],
+              created_at: Math.floor(Date.now() / 1000),
+            };
+            const innerSign = await hybridMessageSigning.signMessage(
+              innerEvent
+            );
+            if (!innerSign.success || !innerSign.signedEvent) {
+              throw new Error(
+                innerSign.error || "Failed to sign inner DM event"
+              );
+            }
+            const signedInner = innerSign.signedEvent;
+            let senderHex: string | null = null;
+            if (typeof window !== "undefined" && "nostr" in window) {
+              try {
+                const nostrWindow = window as any;
+                if (typeof nostrWindow.nostr?.getPublicKey === "function") {
+                  senderHex = await nostrWindow.nostr.getPublicKey();
+                }
+              } catch (err) {
+                console.warn("Failed to get pubkey from NIP-07:", err);
+              }
+            }
+            if (
+              !senderHex &&
+              typeof (CEPS as any)?.getUserPubkeyHexForVerification ===
+                "function"
+            ) {
+              try {
+                senderHex = await (
+                  CEPS as any
+                ).getUserPubkeyHexForVerification();
+              } catch (err) {
+                console.warn("Failed to get pubkey from CEPS:", err);
+              }
+            }
+            if (!senderHex) {
+              throw new Error(
+                "No sender public key available for NIP-59 wrapping"
+              );
+            }
+            const wrappedFallback = await CEPS.wrapGift59(
+              signedInner as any,
+              recipientHex
+            );
+            if (!wrappedFallback || typeof wrappedFallback !== "object") {
+              throw new Error("NIP-59 wrapping failed: invalid wrapped event");
+            }
+            if ((wrappedFallback as any).kind !== 1059) {
+              throw new Error(
+                `NIP-59 wrapping failed: expected kind 1059, got ${
+                  (wrappedFallback as any).kind
+                }`
+              );
+            }
+            return wrappedFallback as Partial<NostrEvent>;
+          } catch (err) {
+            console.warn(
+              "NIP-59 fallback failed, will trigger NIP-44 third-tier fallback in sender:",
+              err
+            );
+            throw new Error("__NIP59_FALLBACK_FAILED__");
+          }
+        }
+      } catch (e) {
+        console.warn("NIP-17 inbox relay discovery error:", e);
+      }
+      // Proceed with NIP-17 construction (recipient has inbox relays)
       const unsigned14 = CEPS.buildUnsignedKind14DirectMessage(
         messageData.content,
         recipientHex
       );
-      // 2) seal as kind:13 using active secure session via CEPS
       const sealed13 = await CEPS.sealKind13WithActiveSession(
         unsigned14 as any
       );
-      // 3) gift wrap as kind:1059
       const wrapped = await CEPS.giftWrap1059(sealed13 as any, recipientHex);
       if (!wrapped || typeof wrapped !== "object") {
         throw new Error("NIP-17 wrapping failed: invalid wrapped event");
@@ -441,15 +590,11 @@ export class ClientMessageService {
               return;
             }
 
-            // Validate required fields
-            const hasRequired =
-              typeof (inner as any).id === "string" &&
-              typeof (inner as any).sig === "string" &&
-              typeof (inner as any).pubkey === "string" &&
-              typeof (inner as any).created_at === "number" &&
+            // Validate minimal required fields
+            const hasMinimal =
               typeof (inner as any).kind === "number" &&
               typeof (inner as any).content === "string";
-            if (!hasRequired) {
+            if (!hasMinimal) {
               console.warn("🔓 NIP59-RX: inner event missing required fields", {
                 innerPreview: {
                   id: (inner as any)?.id,
@@ -466,34 +611,96 @@ export class ClientMessageService {
               return;
             }
 
-            // Verify inner signature
-            const validSig = CEPS.verifyEvent(inner as NostrEvent);
-            if (!validSig) {
-              console.warn("🔓 NIP59-RX: inner signature invalid", {
+            // For NIP-59 path we still try to verify; for NIP-17 inner events may be unsigned
+            const isSigned = typeof (inner as any).sig === "string";
+            if (isSigned) {
+              const validSig = CEPS.verifyEvent(inner as NostrEvent);
+              if (!validSig) {
+                console.warn("🔓 NIP59-RX: inner signature invalid", {
+                  innerId: (inner as any).id,
+                });
+                showToast.warning(
+                  "Message signature invalid - possible tampering",
+                  { title: "Verification failed", duration: 0 }
+                );
+                handlers.onError?.("signature_invalid");
+                handlers.onRaw?.(e as NostrEvent);
+                return;
+              }
+              console.info("🔓 NIP59-RX: unwrap and verification successful", {
+                outerId: e?.id,
                 innerId: (inner as any).id,
               });
-              showToast.warning(
-                "Message signature invalid - possible tampering",
-                { title: "Verification failed", duration: 0 }
-              );
-              handlers.onError?.("signature_invalid");
-              handlers.onRaw?.(e as NostrEvent);
-              return;
+            } else {
+              // NIP-17: unsigned inner OK
+              console.info("🔓 NIP17-RX: unwrap successful (unsigned inner)", {
+                outerId: e?.id,
+                innerKind: (inner as any)?.kind,
+              });
             }
-
-            console.info("🔓 NIP59-RX: unwrap and verification successful", {
-              outerId: e?.id,
-              innerId: (inner as any).id,
-            });
-            showToast.success("Message received and verified");
             handlers.onInner?.(inner as NostrEvent);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.error("🔓 NIP59-RX: unwrap error", { error: msg });
+            console.error("🔓 NIP-RX: unwrap error", { error: msg });
             showToast.error(`Failed to decrypt message: ${msg}`, {
               title: "Decryption failed",
               duration: 0,
             });
+            handlers.onError?.(msg);
+            handlers.onRaw?.(e as NostrEvent);
+          }
+        },
+        oneose: handlers.onEose,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      handlers.onError?.(msg);
+      return null;
+    }
+  }
+
+  /**
+   * Subscribe to NIP-17 (sealed) messages: accept unsigned inner events (kinds 14, 15)
+   */
+  subscribeToNip17ForRecipient(
+    recipient: string,
+    handlers: {
+      onInner?: (inner: NostrEvent) => void;
+      onRaw?: (outer: NostrEvent) => void;
+      onError?: (error: string) => void;
+      onEose?: () => void;
+    }
+  ): any {
+    try {
+      const recipientHex = recipient.startsWith("npub1")
+        ? CEPS.npubToHex(recipient)
+        : recipient;
+      const filters = [{ kinds: [1059], "#p": [recipientHex] }];
+      return CEPS.subscribeMany([], filters, {
+        onevent: async (e: any) => {
+          try {
+            const sessionId = CEPS.getActiveSigningSessionId();
+            if (!sessionId) {
+              handlers.onError?.("session_unavailable");
+              handlers.onRaw?.(e as NostrEvent);
+              return;
+            }
+            const inner = await CEPS.unwrapGift59WithActiveSession(e as any);
+            if (!inner) {
+              handlers.onError?.("invalid_format");
+              handlers.onRaw?.(e as NostrEvent);
+              return;
+            }
+            const okKind =
+              (inner as any).kind === 14 || (inner as any).kind === 15;
+            if (!okKind || typeof (inner as any).content !== "string") {
+              handlers.onError?.("unsupported_inner");
+              handlers.onRaw?.(e as NostrEvent);
+              return;
+            }
+            handlers.onInner?.(inner as NostrEvent);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
             handlers.onError?.(msg);
             handlers.onRaw?.(e as NostrEvent);
           }
