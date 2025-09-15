@@ -108,9 +108,9 @@ export class HybridMessageSigning {
         }
       }
     } else {
-      // No preferences found — try session first, then NIP-07 if available
+      // No preferences found — default to session only; NIP‑07 is opt‑in
       console.log(
-        "🔐 HybridMessageSigning: No user preferences; trying session first, then NIP-07 if available"
+        "🔐 HybridMessageSigning: No user preferences; using session-only (NIP-07 opt-in)"
       );
 
       const sessionResult = await this.attemptSessionSigning(event);
@@ -118,22 +118,14 @@ export class HybridMessageSigning {
         return sessionResult;
       }
 
-      // If session failed and NIP-07 is available, try it as fallback
-      if (typeof window !== "undefined" && window.nostr) {
-        console.log(
-          "🔐 HybridMessageSigning: Session unavailable, trying NIP-07 fallback"
-        );
-        return await this.attemptNIP07Signing(event);
-      }
-
-      // Both methods unavailable
+      // Do NOT auto-fallback to NIP-07 here
       return {
         success: false,
         method: "session",
         securityLevel: "high",
-        error: "No signing methods available",
+        error: "No active secure session available",
         userMessage:
-          "Create a signing session (Recovery Session) or install a NIP-07 extension to enable message signing.",
+          "Create a signing session or set NIP-07 as your preferred method.",
         timestamp: Date.now(),
       };
     }

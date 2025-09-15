@@ -753,16 +753,7 @@ export class CentralEventPublishingService {
       }
     } catch {}
 
-    // 2) Try NIP-07 only if not in Identity Forge registration flow
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w: any = globalThis as any;
-      const regGuard = !!w?.window?.__identityForgeRegFlow;
-      if (!regGuard && w?.window?.nostr?.getPublicKey) {
-        const pubHex = await w.window.nostr.getPublicKey();
-        if (typeof pubHex === "string" && pubHex.length >= 64) return pubHex;
-      }
-    } catch {}
+    // 2) NIP-07 path intentionally disabled to honor opt-in only behavior
 
     // 3) Fallback: query user_identities using session userHash and read npub/pubkey
     if (!this.userSession) throw new Error("No active session");
@@ -2206,30 +2197,11 @@ export class CentralEventPublishingService {
     const content = JSON.stringify(messageContent);
     const delayMs = this.calcPrivacyDelayMs();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w: any = globalThis as any;
     const preferGift =
       contact.preferredEncryption === "gift-wrap" ||
       contact.preferredEncryption === "auto";
 
-    if (preferGift && w?.window?.nostr?.signEvent) {
-      try {
-        const senderPubHex = await this.getUserPubkeyHexForVerification();
-        const recipientHex = this.npubToHex(recipientNpub);
-        const dmEventUnsigned: any = {
-          kind: 4,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [["p", recipientHex]],
-          content,
-        };
-        const signedDm = await w.window.nostr.signEvent(dmEventUnsigned);
-        await this.sleep(delayMs);
-        return await this.publishOptimized(signedDm as Event, {
-          recipientPubHex: recipientHex,
-          senderPubHex: senderPubHex,
-        });
-      } catch {}
-    }
+    // NIP-07 signing path removed to prevent automatic prompts; use session/default flow below.
 
     // Fallbacks
     const recipientHex = this.npubToHex(recipientNpub);

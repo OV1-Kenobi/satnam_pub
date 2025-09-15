@@ -14,6 +14,14 @@ import { showToast } from "../../services/toastService";
 
 import { fetchWithAuth } from "../auth/fetch-with-auth";
 
+// Custom error to signal that NIP-59 construction failed and we should try NIP-44 fallback
+class Nip59FallbackError extends Error {
+  constructor(message = "NIP-59 fallback failed") {
+    super(message);
+    this.name = "Nip59FallbackError";
+  }
+}
+
 type NostrEvent = {
   id: string;
   pubkey: string;
@@ -261,16 +269,7 @@ export class ClientMessageService {
             }
             const signedInner = innerSign.signedEvent;
             let senderHex: string | null = null;
-            if (typeof window !== "undefined" && "nostr" in window) {
-              try {
-                const nostrWindow = window as any;
-                if (typeof nostrWindow.nostr?.getPublicKey === "function") {
-                  senderHex = await nostrWindow.nostr.getPublicKey();
-                }
-              } catch (err) {
-                console.warn("Failed to get pubkey from NIP-07:", err);
-              }
-            }
+
             if (
               !senderHex &&
               typeof (CEPS as any)?.getUserPubkeyHexForVerification ===
@@ -309,7 +308,9 @@ export class ClientMessageService {
               "NIP-59 fallback failed, will trigger NIP-44 third-tier fallback in sender:",
               err
             );
-            throw new Error("__NIP59_FALLBACK_FAILED__");
+            throw new Nip59FallbackError(
+              "NIP-59 wrapping failed; trigger NIP-44 fallback"
+            );
           }
         }
       } catch (e) {
@@ -360,16 +361,7 @@ export class ClientMessageService {
 
     // Determine sender pubkey hex for wrapping
     let senderHex: string | null = null;
-    if (typeof window !== "undefined" && "nostr" in window) {
-      try {
-        const nostrWindow = window as any;
-        if (typeof nostrWindow.nostr?.getPublicKey === "function") {
-          senderHex = await nostrWindow.nostr.getPublicKey();
-        }
-      } catch (err) {
-        console.warn("Failed to get pubkey from NIP-07:", err);
-      }
-    }
+
     if (
       !senderHex &&
       typeof (CEPS as any)?.getUserPubkeyHexForVerification === "function"
