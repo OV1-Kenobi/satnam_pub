@@ -1700,6 +1700,44 @@ export class CentralEventPublishingService {
     }
   }
 
+  // Lazily hydrate CEPS userSession from an existing SecureNsecManager session
+  private async ensureActiveUserSession(): Promise<void> {
+    try {
+      if (this.userSession) return;
+      const activeId = this.getActiveSigningSessionId();
+      if (!activeId) return;
+      // Derive pubkey from active secure session without exposing nsec
+      const pubHex = await secureNsecManager.useTemporaryNsec(
+        activeId,
+        async (privHex: string) => {
+          try {
+            return getPublicKey(privHex);
+          } catch {
+            return "" as any;
+          }
+        }
+      );
+      if (!pubHex || typeof pubHex !== "string") return;
+
+      const userHash = await PrivacyUtils.hashIdentifier(pubHex);
+      const sessionKey = await PrivacyUtils.generateSessionKey();
+      const ttlHours = this.config.session.ttlHours;
+      const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+      const sessionIdLocal = await PrivacyUtils.generateEncryptedUUID();
+
+      this.userSession = {
+        sessionId: sessionIdLocal,
+        userHash,
+        sessionKey,
+        expiresAt,
+        authMethod: "nsec",
+      } as MessagingSession;
+      // Intentionally skip DB persistence for this lazy hydration; used for rate limits only
+    } catch {
+      // Swallow; callers will still enforce explicit checks
+    }
+  }
+
   /**
    * Finalize an unsigned event using the active secure session without exposing nsec
    */
@@ -2349,7 +2387,10 @@ export class CentralEventPublishingService {
     recipientNpub: string,
     plaintext: string
   ): Promise<string> {
+    // Lazily hydrate CEPS userSession from an active SecureNsecManager session if available
+    await this.ensureActiveUserSession();
     if (!this.userSession) throw new Error("No active session");
+
     // Rate limit per user
     this.checkRateLimit(
       `send_dm:${this.userSession.userHash}`,

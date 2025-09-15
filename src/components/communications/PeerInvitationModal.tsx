@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
 import type { MessageSendResult } from '../../types/privacy';
-import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
+import { PrivacyLevel } from '../../types/privacy';
 
 interface SenderProfile {
   username?: string;
@@ -30,7 +30,7 @@ export function PeerInvitationModal({
   const [recipientNpub, setRecipientNpub] = useState('');
   const [invitationType, setInvitationType] = useState('friend');
   const [personalMessage, setPersonalMessage] = useState('');
-  const [privacyLevel, setPrivacyLevel] = useState<PrivacyLevel>(getDefaultPrivacyLevel());
+  const [privacyLevel] = useState<PrivacyLevel>(PrivacyLevel.ENCRYPTED);
   const [isSending, setIsSending] = useState(false);
   const mountedRef = useRef(true);
   const sendAbortRef = useRef<AbortController | null>(null);
@@ -187,57 +187,11 @@ export function PeerInvitationModal({
             />
           </div>
 
-          {/* Privacy Level Selector */}
+          {/* Messaging method (fixed for compatibility) */}
           <div className="bg-white/10 p-4 rounded-lg border border-white/20">
-            <h4 className="font-semibold text-white mb-3">Privacy Level</h4>
-            <div className="space-y-3">
-              {[
-                {
-                  level: 'giftwrapped' as PrivacyLevel,
-                  label: 'Maximum Privacy',
-                  description: 'Sealed - Complete metadata protection',
-                  icon: '🔒',
-                  features: ['Hidden identity', 'Timing obfuscation', 'Zero PII exposure']
-                },
-                {
-                  level: 'encrypted' as PrivacyLevel,
-                  label: 'Selective Privacy',
-                  description: 'Encrypted with controlled metadata',
-                  icon: '🛡️',
-                  features: ['Encrypted content', 'Some metadata visible', 'Family context preserved']
-                },
-                {
-                  level: 'minimal' as PrivacyLevel,
-                  label: 'Transparent',
-                  description: 'Standard encryption for public interactions',
-                  icon: '👁️',
-                  features: ['Public Lightning Address', 'Business communications', 'Social interactions']
-                }
-              ].map(option => (
-                <div key={option.level} className="flex items-start space-x-3">
-                  <input
-                    type="radio"
-                    name="privacyLevel"
-                    checked={privacyLevel === option.level}
-                    onChange={() => setPrivacyLevel(option.level)}
-                    className="mt-1 text-purple-500 focus:ring-purple-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-lg">{option.icon}</span>
-                      <div className="font-medium text-white">{option.label}</div>
-                    </div>
-                    <div className="text-sm text-purple-200 mb-2">{option.description}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {option.features.map(feature => (
-                        <span key={feature} className="text-xs bg-white/10 text-purple-200 px-2 py-1 rounded">
-                          {feature}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <h4 className="font-semibold text-white mb-2">Messaging Method</h4>
+            <div className="text-sm text-blue-200 bg-blue-500/10 border border-blue-500/20 rounded-md p-3">
+              This invitation will be sent via standard NIP-04/44 encrypted direct message for maximum compatibility with external Nostr clients and relays.
             </div>
           </div>
 
@@ -248,7 +202,7 @@ export function PeerInvitationModal({
             <div className="text-xs text-purple-200 space-y-1">
               <div>Username: {senderProfile?.username || 'Unknown User'}</div>
               <div>Lightning Address: {senderProfile?.username || 'user'}@satnam.pub</div>
-              <div>Secure Communications: {privacyLevel === PrivacyLevel.GIFTWRAPPED ? 'Sealed' : privacyLevel === PrivacyLevel.ENCRYPTED ? 'Encrypted' : 'Standard'} Nostr DMs</div>
+              <div>Secure Communications: Encrypted Nostr DMs</div>
             </div>
           </div>
         </div>
