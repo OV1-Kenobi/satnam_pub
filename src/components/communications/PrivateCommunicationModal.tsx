@@ -922,6 +922,7 @@ export function PrivateCommunicationModal({
                       <Plus className="h-4 w-4" />
                       <span>Invite Peers</span>
                     </button>
+                    <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-800">1 credit each</span>>
                   </div>
                   <div className="mt-2 text-xs text-blue-200 bg-blue-500/10 border border-blue-500/20 rounded-md p-2">
                     Note: Messages to non-Satnam Nostr users may not be delivered unless their client and relays support advanced private messaging protocols (NIP-17/NIP-59).

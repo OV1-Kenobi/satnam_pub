@@ -363,12 +363,13 @@ async function createGiftWrappedMessage(inviteUrl, inviterNip05, personalMessage
 
 ${personalMessage ? `Personal message: ${personalMessage}` : ""}
 
-🎁 Course Credits: ${courseCredits} (you'll receive these upon joining)
-🔗 Invitation Link: ${inviteUrl}
+🤝 Referral Rewards: When you join through this invite, we each receive ${courseCredits} course credit${courseCredits === 1 ? "" : "s"}.
+📚 Credits are valid for basic courses in the Satnam app and the upcoming Citadel Academy.
+🔗 Secure Invite Link: ${inviteUrl}
 
 From: ${inviterNip05}
 
-Join the sovereign Bitcoin education community at Satnam.pub - where privacy meets learning.
+Join the sovereign Bitcoin education community at Satnam.pub — where privacy meets learning.
 
 This invitation is privacy-first and secure. Click the link to get started!`;
 

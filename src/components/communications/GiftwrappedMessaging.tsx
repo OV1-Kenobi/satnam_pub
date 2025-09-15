@@ -81,6 +81,8 @@ interface GiftwrappedMessagingProps {
 export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }: GiftwrappedMessagingProps) {
   // const [messages, setMessages] = useState<GiftWrappedMessage[]>([]); // unused
   const [newMessage, setNewMessage] = useState('');
+  const [subject, setSubject] = useState('');
+
   const [recipient, setRecipient] = useState('');
   const [isGroupMessage, setIsGroupMessage] = useState(false);
   // Groups data (real group listing)
@@ -962,7 +964,22 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
   const contactsUnread = useMemo(() => contactThreads.reduce((a, t) => a + (t.unreadCount || 0), 0), [contactThreads]);
   const strangersUnread = useMemo(() => strangerThreads.reduce((a, t) => a + (t.unreadCount || 0), 0), [strangerThreads]);
-  const groupsUnread = 0; // TODO: integrate server unread for groups when available
+  const groupsUnread = useMemo(() => {
+    try {
+      return (groups || []).reduce((acc: number, g: any) => {
+        // Prefer numeric unread fields if present
+        const numericCandidates = [g?.unread_count, g?.unread, g?.unreadMessages, g?.unread_messages];
+        const numeric = numericCandidates.find((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0);
+        if (typeof numeric === 'number') return acc + numeric;
+        // Fallback to boolean flags (count 1 if any true)
+        const boolCandidates = [g?.has_unread, g?.hasUnread];
+        const has = boolCandidates.find((v: any) => typeof v === 'boolean');
+        return acc + (has ? (has ? 1 : 0) : 0);
+      }, 0);
+    } catch {
+      return 0;
+    }
+  }, [groups]);
 
   const filteredThreads = currentTab === 'contacts' ? contactThreads : currentTab === 'strangers' ? strangerThreads : [];
 
@@ -1068,6 +1085,17 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                         )}
                       </div>
                     </div>
+                    {/* Subject headline */}
+                    {((m as any)?.server && (m as any).server.subject) ? (
+                      <div className="text-[12px] font-semibold text-purple-900">
+                        {(m as any).server.subject}
+                      </div>
+                    ) : (m.content ? (
+                      <div className="text-[12px] font-semibold text-purple-900">
+                        {String(m.content).split('\n')[0].slice(0, 80)}
+                      </div>
+                    ) : null)}
+
                     <div className="text-[12px] text-gray-800 whitespace-pre-wrap break-words">
                       {m.content ? m.content : m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]'}
                     </div>
@@ -1098,9 +1126,12 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
       const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
       const giftWrapService = new GiftwrappedCommunicationService();
 
+      // Prefix subject when provided so all clients see it clearly
+      const contentToSend = subject.trim() ? `Subject: ${subject.trim()}\n\n${newMessage}` : newMessage;
+
       // Use sendGiftwrappedMessage which goes through hybrid signing
       const result = await giftWrapService.sendGiftwrappedMessage({
-        content: newMessage,
+        content: contentToSend,
         sender: familyMember.npub,
         recipient: recipient,
         encryptionLevel: selectedPrivacyLevel,
@@ -1121,6 +1152,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         }, ...prev]);
 
         setNewMessage('');
+        setSubject('');
         setRecipient('');
         showToast.success(`Message sent successfully using ${result.deliveryMethod || 'hybrid signing'}`, {
           title: '🔐 Secure Message Sent',
@@ -1201,6 +1233,9 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             >
               Invite Peers
             </button>
+            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-800">
+              1 credit each
+            </span>
 
             {/* Notifications */}
             <div className="relative" ref={notifDropdownRef}>
@@ -1301,40 +1336,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           </h3>
           <div className="flex items-center space-x-3">
 
-            {/* Tabs: Contacts | Strangers | Groups */}
-            <div className="flex items-center gap-2 mb-3" role="tablist" aria-label="Conversation categories">
-              <button
-                role="tab"
-                aria-selected={currentTab === 'contacts'}
-                onClick={() => setCurrentTab('contacts')}
-                className={`px-2 py-1 rounded border text-xs ${currentTab === 'contacts' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
-              >
-                Contacts{contactsUnread > 0 && (
-                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{contactsUnread}</span>
-                )}
-              </button>
-              <button
-                role="tab"
-                aria-selected={currentTab === 'strangers'}
-                onClick={() => setCurrentTab('strangers')}
-                className={`px-2 py-1 rounded border text-xs ${currentTab === 'strangers' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
-              >
-                Strangers{strangersUnread > 0 && (
-                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{strangersUnread}</span>
-                )}
-              </button>
-              <button
-                role="tab"
-                aria-selected={currentTab === 'groups'}
-                onClick={() => setCurrentTab('groups')}
-                className={`px-2 py-1 rounded border text-xs ${currentTab === 'groups' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
-              >
-                Groups{groupsUnread > 0 && (
-                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{groupsUnread}</span>
-                )}
-              </button>
-            </div>
-
             <button
               onClick={() => setShowSigningSetup(true)}
               className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -1367,6 +1368,40 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                   </button>
                 </div>
               </div>
+              {/* Conversations internal tabs (moved from top-right) */}
+              <div className="flex items-center gap-2 mb-2" role="tablist" aria-label="Conversation categories">
+                <button
+                  role="tab"
+                  aria-selected={currentTab === 'contacts'}
+                  onClick={() => setCurrentTab('contacts')}
+                  className={`px-2 py-1 rounded border text-xs ${currentTab === 'contacts' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+                >
+                  Contacts{contactsUnread > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{contactsUnread}</span>
+                  )}
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={currentTab === 'groups'}
+                  onClick={() => setCurrentTab('groups')}
+                  className={`px-2 py-1 rounded border text-xs ${currentTab === 'groups' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+                >
+                  Groups{groupsUnread > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{groupsUnread}</span>
+                  )}
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={currentTab === 'strangers'}
+                  onClick={() => setCurrentTab('strangers')}
+                  className={`px-2 py-1 rounded border text-xs ${currentTab === 'strangers' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+                >
+                  Strangers{strangersUnread > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{strangersUnread}</span>
+                  )}
+                </button>
+              </div>
+
 
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {currentTab === 'groups' ? (
@@ -1399,6 +1434,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                             </div>
                           </div>
                           {expandedGroupIds.has(g.id) && (
+
+
                             <div className="mt-2 border-t border-purple-100 pt-2 text-[12px]">
                               {groupDetailsLoading[g.id] ? (
                                 <div className="text-purple-700">Loading details…</div>
@@ -1495,6 +1532,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           >
             Invite Peers
           </button>
+          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-800">1 credit each</span>
 
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold text-purple-900">New Message</h4>
@@ -1559,6 +1597,15 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
           {/* Recipient and content inputs */}
           <div className="space-y-3">
+            {/* Subject line */}
+            <input
+              type="text"
+              placeholder="Subject (optional)"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="flex-1 p-2 border border-purple-300 rounded-lg text-sm bg-white mb-2"
+            />
+
             <div className="flex space-x-2">
               <input
                 type="text"
@@ -1699,46 +1746,12 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           </div>
         </div>
 
-        {/* Group Conversations block */}
-        <ErrorBoundary>
-          <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h4 className="font-semibold text-purple-900">Group Conversations</h4>
-                {groupsError && (
-                  <span className="text-[11px] text-red-700 bg-red-100 px-2 py-0.5 rounded">Failed to load</span>
-                )}
-              </div>
-              <button
-                onClick={() => loadGroups()}
-                className="text-xs text-purple-700 hover:text-purple-900"
-              >
-                Refresh
-              </button>
-            </div>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {groups.slice(0, 5).map((g) => (
-                <div key={g.id} className="p-3 bg-white rounded-lg border border-purple-200">
-                  <div className="flex items-center justify-between">
-                    {getGroupHeaderContent(g)}
-                    <div className="text-[11px] text-purple-700">{g.member_count} members</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {conversations.length > 5 && (
-              <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Group Conversations', { title: 'Groups' })}>
-                View all conversations
-              </button>
-            )}
-          </div>
-        </ErrorBoundary>
 
         {/* Contacts block */}
         <ErrorBoundary>
           <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-purple-900">Contacts</h4>
+              <h4 className="font-semibold text-purple-900">Contacts List</h4>
               <button
                 onClick={loadContacts}
                 className="text-xs text-purple-700 hover:text-purple-900"
@@ -1747,15 +1760,30 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               </button>
             </div>
             <div className="space-y-2 max-h-48 overflow-y-auto">
-              {contacts.slice(0, 5).map((contact) => (
-                <div key={contact.id} className="p-3 bg-white rounded-lg border border-purple-200 flex items-center justify-between">
-                  <div className="truncate">
-                    <div className="text-sm font-medium text-purple-900 truncate">{contact.username}</div>
-                    <div className="text-[11px] text-purple-600 truncate">{contact.npub}</div>
+              {contacts.slice(0, 5).map((c) => {
+                const avatar = (c as any).avatar || (c as any).picture || null;
+                const nip05 = (c as any).nip05 || null;
+                const display = (c as any).displayName || (c as any).username || nip05 || c.npub;
+                const npubShort = c.npub?.slice(0, 12) + '…';
+                return (
+                  <div key={c.id} className="p-3 bg-white rounded-lg border border-purple-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {avatar ? (
+                        <img src={String(avatar)} alt="avatar" className="w-6 h-6 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-purple-200/70 text-[10px] text-purple-800 flex items-center justify-center">
+                          {(String(display || '').charAt(0) || '?').toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-purple-900 truncate">{display}</div>
+                        <div className="text-[11px] text-purple-600 truncate">{nip05 || npubShort}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-purple-700">{(c as any).trustLevel || ''}</div>
                   </div>
-                  <div className="text-xs text-purple-700">{contact.trustLevel}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             {contacts.length > 5 && (
               <button className="mt-2 text-xs text-purple-700 hover:text-purple-900" onClick={() => showToast.info('Open Contacts Manager', { title: 'Contacts' })}>
@@ -2061,6 +2089,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
 
       </div>
-    </div>
+    </div >
   );
 }
