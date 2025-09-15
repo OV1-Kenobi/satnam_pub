@@ -395,10 +395,7 @@ export class SecureSessionManager {
     const jwtSecret = await this.getJWTSecret();
     const sessionId = this.generateRandomSessionIdHex();
     const pepper = await this.getIdentifierPepper();
-    const hashedId = await this.hmacSha256Hex(
-      pepper,
-      `${sessionData.userId}|${sessionId}`
-    );
+    const hashedId = await this.hmacSha256Hex(pepper, `${sessionData.userId}`);
 
     const payload = {
       // Required TokenPayload fields
@@ -472,10 +469,7 @@ export class SecureSessionManager {
       // Preserve same sessionId if present, otherwise generate a new one
       const sessionId = decoded.sessionId || this.generateRandomSessionIdHex();
       const pepper = await this.getIdentifierPepper();
-      const hashedId = await this.hmacSha256Hex(
-        pepper,
-        `${decoded.userId}|${sessionId}`
-      );
+      const hashedId = await this.hmacSha256Hex(pepper, `${decoded.userId}`);
 
       const payload = {
         userId: decoded.userId,
@@ -503,10 +497,7 @@ export class SecureSessionManager {
 
     const sessionId = this.generateRandomSessionIdHex();
     const pepper = await this.getIdentifierPepper();
-    const hashedId = await this.hmacSha256Hex(
-      pepper,
-      `${userData.userId}|${sessionId}`
-    );
+    const hashedId = await this.hmacSha256Hex(pepper, `${userData.userId}`);
 
     const payload = {
       userId: userData.userId,

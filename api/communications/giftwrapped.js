@@ -81,7 +81,7 @@ async function getClientFromEvent(event) {
 
     // Return session hashedId as the only allowed hash for this user
     const allowedHashes = new Set([session.hashedId]);
-    return { client, allowedHashes, sessionHashedId: session.hashedId };
+    return { client, allowedHashes, sessionHashedId: session.hashedId, sessionUserId: session.userId };
   } catch (e) {
     console.error("🔐 DEBUG: giftwrapped - authentication error:", e);
     return { error: { status: 500, message: 'Internal server error' } };
@@ -251,16 +251,17 @@ function extractPubkeyFromNpub(npubOrHash) {
 /**
  * Deterministic recipient hash using a static salt and the recipient identifier
  * Ensures stable hashes for querying while preserving privacy.
- * @param {string} recipient
- * @returns {Promise<string>} 32-char hex hash
+ * @param {string} recipientNpub
+ * @returns {Promise<string>} 64-char hex hash
  */
-async function generateDeterministicRecipientHash(recipient) {
-  const salt = getEnvVar('RECIPIENT_HASH_SALT') || 'static_recipient_hash_salt';
+async function generateDeterministicRecipientHash(recipientNpub) {
+  // Use same pepper as SecureSessionManager hashedId derivation for cross-session/user consistency
+  const pepper = getEnvVar('DUID_SERVER_SECRET') || getEnvVar('GLOBAL_SALT') || getEnvVar('JWT_SECRET') || 'dev-only-identifier-pepper-change-in-production';
   const encoder = new TextEncoder();
-  const data = encoder.encode(`recipient|${recipient}|${salt}`);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+  const key = await crypto.subtle.importKey('raw', encoder.encode(pepper), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(`uid|${recipientNpub}`));
+  const bytes = new Uint8Array(sig);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 
@@ -588,7 +589,7 @@ export default async function handler(event, context) {
     if (authCtx.error) {
       return { statusCode: authCtx.error.status, headers: corsHeaders, body: JSON.stringify({ success: false, error: authCtx.error.message }) };
     }
-    const { client, allowedHashes, sessionHashedId } = authCtx;
+    const { client, allowedHashes, sessionHashedId, sessionUserId } = authCtx;
 
     // App-layer sender authorization: use authenticated user's hashedId as sender
     // Ignore client-provided sender for security - always use JWT session hashedId
@@ -753,8 +754,23 @@ export default async function handler(event, context) {
     console.log("🔐 DEBUG: giftwrapped - generated encryption_key_hash:", encryptionKeyHash.substring(0, 16) + "...");
 
     // Generate all required Nostr-compatible fields
-    const senderNpub = convertHashedIdToNpub(authenticatedSender);
-    const recipientNpub = validatedData.recipient.startsWith('npub1') ? validatedData.recipient : convertHashedIdToNpub(validatedData.recipient);
+    const senderNpub = (typeof sessionUserId === 'string' && sessionUserId.startsWith('npub1'))
+      ? sessionUserId
+      : convertHashedIdToNpub(authenticatedSender);
+    let recipientNpub = validatedData.recipient;
+    try {
+      if (typeof recipientNpub === 'string' && !recipientNpub.startsWith('npub1')) {
+        if (/^[0-9a-fA-F]{64}$/.test(recipientNpub)) {
+          try {
+            const mod = await import('../../lib/central_event_publishing_service.js');
+            const svcLocal = mod.central_event_publishing_service || new mod.CentralEventPublishingService();
+            if (svcLocal && typeof svcLocal.encodeNpub === 'function') {
+              recipientNpub = svcLocal.encodeNpub(recipientNpub);
+            }
+          } catch {}
+        }
+      }
+    } catch {}
     const senderPubkey = extractPubkeyFromNpub(senderNpub);
     const recipientPubkey = extractPubkeyFromNpub(recipientNpub);
 
@@ -765,7 +781,7 @@ export default async function handler(event, context) {
     console.log("🔐 DEBUG: giftwrapped - storing message in database");
     const storageResult = await (async () => {
       try {
-        const recipientHash = await generateDeterministicRecipientHash(validatedData.recipient);
+        const recipientHash = await generateDeterministicRecipientHash(recipientNpub);
         console.log("🔐 DEBUG: giftwrapped - recipient hash generated:", recipientHash);
 
         const { data: messageRecord, error: messageError } = await client

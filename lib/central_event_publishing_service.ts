@@ -1394,7 +1394,10 @@ export class CentralEventPublishingService {
 
     // Helper to publish with timeout
     const publishWithTimeout = async (relay: string, event: Event) => {
-      const publishPromise = this.getPool().publish([relay], event);
+      const pubResult = this.getPool().publish([relay], event);
+      const publishPromise = Array.isArray(pubResult)
+        ? pubResult[0]
+        : (pubResult as any);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Connection timeout")), 10000)
       );
@@ -1878,10 +1881,8 @@ export class CentralEventPublishingService {
     sealedEvent: Event,
     recipientPubkeyHex: string
   ): Promise<Event> {
-    const senderPubHex = (sealedEvent as any).pubkey as string;
-    const wrapped = await (nip59 as any).wrapEvent?.(
+    const wrapped = await (nip59 as any).createWrap?.(
       sealedEvent as any,
-      senderPubHex,
       recipientPubkeyHex
     );
     if (!wrapped) throw new Error("NIP-59 gift wrap failed");
@@ -1896,7 +1897,6 @@ export class CentralEventPublishingService {
       if (!hasProtocol) {
         w.tags.push(["protocol", "nip17"]);
       }
-      // Also make sure wrapped-event-kind indicates sealed kind:13 when available
       const hasWrappedKind = w.tags.some(
         (t: any) => Array.isArray(t) && t[0] === "wrapped-event-kind"
       );
@@ -2221,21 +2221,13 @@ export class CentralEventPublishingService {
           created_at: Math.floor(Date.now() / 1000),
           tags: [["p", recipientHex]],
           content,
-          pubkey: senderPubHex,
         };
         const signedDm = await w.window.nostr.signEvent(dmEventUnsigned);
-        const wrapped = await (nip59 as any).wrapEvent?.(
-          signedDm,
-          senderPubHex,
-          recipientHex
-        );
-        if (wrapped) {
-          await this.sleep(delayMs);
-          return await this.publishOptimized(wrapped as Event, {
-            recipientPubHex: recipientHex,
-            senderPubHex: senderPubHex,
-          });
-        }
+        await this.sleep(delayMs);
+        return await this.publishOptimized(signedDm as Event, {
+          recipientPubHex: recipientHex,
+          senderPubHex: senderPubHex,
+        });
       } catch {}
     }
 
@@ -2245,22 +2237,31 @@ export class CentralEventPublishingService {
     // If NIP-07 unavailable but gift preferred, try wrapping a session-signed DM
     if (preferGift) {
       try {
-        const dmEvent = await this.createSignedDMEventWithActiveSession(
-          recipientHex,
-          content
-        );
-        const senderHex = await this.getUserPubkeyHexForVerification();
-        const wrapped = await (nip59 as any).wrapEvent?.(
-          dmEvent,
-          senderHex,
-          recipientHex
-        );
-        if (wrapped) {
-          await this.sleep(delayMs);
-          return await this.publishOptimized(wrapped as Event, {
-            recipientPubHex: recipientHex,
-            senderPubHex: senderHex,
-          });
+        const sessionId = this.getActiveSigningSessionId();
+        if (sessionId) {
+          const unsignedDm: any = {
+            kind: 4,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [["p", recipientHex]],
+            content,
+          };
+          const wrapped = await (secureNsecManager as any).useTemporaryNsec(
+            sessionId,
+            async (privHex: string) => {
+              return (nip59 as any).wrapEvent?.(
+                unsignedDm,
+                privHex,
+                recipientHex
+              );
+            }
+          );
+          if (wrapped) {
+            await this.sleep(delayMs);
+            return await this.publishOptimized(wrapped as Event, {
+              recipientPubHex: recipientHex,
+              senderPubHex: (wrapped as any).pubkey as string,
+            });
+          }
         }
       } catch {}
     }
