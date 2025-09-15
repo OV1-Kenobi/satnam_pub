@@ -1387,17 +1387,26 @@ function App() {
           </div>
         </div>
 
-        {/* NTAG424 Physical MFA Modal (lazy-loaded) */}
+        {/* NTAG424 Physical MFA Modal (lazy-loaded, isolated) */}
         {nfcModalOpen && (
-          <Suspense fallback={null}>
-            <NTAG424AuthModal
-              isOpen={true}
-              onClose={() => setNfcModalOpen(false)}
-              mode="both"
-              title="Program Physical MFA tags"
-              purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
-            />
-          </Suspense>
+          <ErrorBoundary
+            fallback={null}
+            onError={(e) => {
+              console.error('Failed to load NTAG424 modal:', e);
+              // Auto-close to recover UI if load/render fails
+              try { setNfcModalOpen(false); } catch { }
+            }}
+          >
+            <Suspense fallback={null}>
+              <NTAG424AuthModal
+                isOpen={true}
+                onClose={() => setNfcModalOpen(false)}
+                mode="both"
+                title="Program Physical MFA tags"
+                purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
+              />
+            </Suspense>
+          </ErrorBoundary>
         )}
 
       </footer>
