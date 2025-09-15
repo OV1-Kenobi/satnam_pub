@@ -784,19 +784,19 @@ export default async function handler(event, context) {
         const { data: messageRecord, error: messageError } = await client
           .from('gift_wrapped_messages')
           .insert({
-            id: messageId,
+            // Do not set id explicitly to avoid UUID vs TEXT mismatches; let DB default
             // Use authenticated sender (from JWT session)
             sender_hash: authenticatedSender,
             // Derive recipient hash deterministically to avoid non-deterministic queries
             recipient_hash: recipientHash,
-            // REQUIRED: Nostr public keys in npub format
+            // Nostr public keys in npub format (if columns exist)
             sender_npub: senderNpub,
             recipient_npub: recipientNpub,
-            // REQUIRED: Hex public keys for Nostr compatibility
+            // Hex public keys for Nostr compatibility
             sender_pubkey: senderPubkey,
             recipient_pubkey: recipientPubkey,
-            // Original (inner) event ID: available for NIP-59; null for NIP-17 sealed content
-            original_event_id: originalEventId || null,
+            // Original (inner) event ID: for NIP-17 sealed content some schemas require NOT NULL; fallback to wrapped_event_id
+            original_event_id: originalEventId ?? wrappedEventId,
             // Wrapped event ID (outer gift-wrapped event)
             wrapped_event_id: wrappedEventId,
             // Content hash for privacy-preserving verification (raw sealed string for NIP-17)
@@ -816,7 +816,7 @@ export default async function handler(event, context) {
             nip59_version: '1.0',
             retry_count: 0,
             relay_urls: ['wss://relay.satnam.pub', 'wss://relay.damus.io'],
-            created_at: new Date().toISOString(),
+            // Let DB fill created_at default; keep expires_at optional only
             expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
           })
           .select()
