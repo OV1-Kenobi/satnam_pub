@@ -6,7 +6,7 @@ import {
   Users,
   Zap
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, useEffect, useState } from "react";
 import { ContactsManagerModal } from './components/ContactsManagerModal';
 import DynasticSovereignty from "./components/DynasticSovereignty";
 import EducationPlatform from "./components/EducationPlatform";
@@ -31,6 +31,8 @@ import PageWrapper from "./components/shared/PageWrapper";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 import SecureTokenManager from "./lib/auth/secure-token-manager";
 import { validateInvitation } from "./lib/invitation-validator";
+
+const NTAG424AuthModal = lazy(() => import("./components/NTAG424AuthModal"));
 
 
 
@@ -1385,14 +1387,18 @@ function App() {
           </div>
         </div>
 
-        {/* NTAG424 Physical MFA Modal */}
-        <NTAG424AuthModal
-          isOpen={nfcModalOpen}
-          onClose={() => setNfcModalOpen(false)}
-          mode="both"
-          title="Program Physical MFA tags"
-          purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
-        />
+        {/* NTAG424 Physical MFA Modal (lazy-loaded) */}
+        {nfcModalOpen && (
+          <Suspense fallback={null}>
+            <NTAG424AuthModal
+              isOpen={true}
+              onClose={() => setNfcModalOpen(false)}
+              mode="both"
+              title="Program Physical MFA tags"
+              purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
+            />
+          </Suspense>
+        )}
 
       </footer>
 
