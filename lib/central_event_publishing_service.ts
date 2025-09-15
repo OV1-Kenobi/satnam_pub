@@ -1817,7 +1817,11 @@ export class CentralEventPublishingService {
     };
   }
 
-  async sealKind13(unsignedEvent: any, senderNsec: string): Promise<Event> {
+  async sealKind13(
+    unsignedEvent: any,
+    senderNsec: string,
+    recipientPubkeyHex: string
+  ): Promise<Event> {
     try {
       // Normalize nsec to hex private key
       let privHex: string;
@@ -1832,11 +1836,18 @@ export class CentralEventPublishingService {
       }
       const pubHex = getPublicKey(privHex);
       const now = Math.floor(Date.now() / 1000);
+      // NIP-17: seal content using nip44 (sender priv -> recipient pub)
+      const nip44Mod = await import("nostr-tools/nip44");
+      const ciphertext = await (nip44Mod as any).encrypt(
+        privHex,
+        recipientPubkeyHex,
+        JSON.stringify(unsignedEvent)
+      );
       const unsignedSeal: any = {
         kind: 13,
         created_at: now,
         tags: [],
-        content: JSON.stringify(unsignedEvent),
+        content: ciphertext,
         pubkey: pubHex,
       };
       return finalizeEvent(unsignedSeal as any, privHex) as Event;
@@ -1847,7 +1858,10 @@ export class CentralEventPublishingService {
     }
   }
 
-  async sealKind13WithActiveSession(unsignedEvent: any): Promise<Event> {
+  async sealKind13WithActiveSession(
+    unsignedEvent: any,
+    recipientPubkeyHex: string
+  ): Promise<Event> {
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) throw new Error("No active signing session");
     return await secureNsecManager.useTemporaryNsec(
@@ -1856,11 +1870,18 @@ export class CentralEventPublishingService {
         const privHex = nsecHex;
         const pubHex = getPublicKey(privHex);
         const now = Math.floor(Date.now() / 1000);
+        // NIP-17: seal content via nip44 (sender priv -> recipient pub)
+        const nip44Mod = await import("nostr-tools/nip44");
+        const ciphertext = await (nip44Mod as any).encrypt(
+          privHex,
+          recipientPubkeyHex,
+          JSON.stringify(unsignedEvent)
+        );
         const unsignedSeal: any = {
           kind: 13,
           created_at: now,
           tags: [],
-          content: JSON.stringify(unsignedEvent),
+          content: ciphertext,
           pubkey: pubHex,
         };
         return finalizeEvent(unsignedSeal as any, privHex) as Event;
@@ -1904,11 +1925,18 @@ export class CentralEventPublishingService {
     innerSignedEvent: Event,
     recipientPubkeyHex: string
   ): Promise<Event> {
-    const senderPubHex = (innerSignedEvent as any).pubkey as string;
-    const wrapped = await (nip59 as any).wrapEvent?.(
-      innerSignedEvent as any,
-      senderPubHex,
-      recipientPubkeyHex
+    const sessionId = this.getActiveSigningSessionId();
+    if (!sessionId)
+      throw new Error("No active signing session for NIP-59 wrap");
+    const wrapped = await secureNsecManager.useTemporaryNsec(
+      sessionId,
+      async (privHex: string) => {
+        return (await (nip59 as any).wrapEvent?.(
+          innerSignedEvent as any,
+          privHex,
+          recipientPubkeyHex
+        )) as Event;
+      }
     );
     if (!wrapped) throw new Error("NIP-59 wrap failed");
     return wrapped as Event;

@@ -321,21 +321,30 @@ export class ClientMessageService {
         messageData.content,
         recipientHex
       );
-      const sealed13 = await CEPS.sealKind13WithActiveSession(
-        unsigned14 as any
-      );
-      const wrapped = await CEPS.giftWrap1059(sealed13 as any, recipientHex);
-      if (!wrapped || typeof wrapped !== "object") {
-        throw new Error("NIP-17 wrapping failed: invalid wrapped event");
-      }
-      if ((wrapped as any).kind !== 1059) {
-        throw new Error(
-          `NIP-17 wrapping failed: expected kind 1059, got ${
-            (wrapped as any).kind
-          }`
+      try {
+        const sealed13 = await CEPS.sealKind13WithActiveSession(
+          unsigned14 as any,
+          recipientHex
         );
+        const wrapped = await CEPS.giftWrap1059(sealed13 as any, recipientHex);
+        if (!wrapped || typeof wrapped !== "object") {
+          throw new Error("NIP-17 wrapping failed: invalid wrapped event");
+        }
+        if ((wrapped as any).kind !== 1059) {
+          throw new Error(
+            `NIP-17 wrapping failed: expected kind 1059, got ${
+              (wrapped as any).kind
+            }`
+          );
+        }
+        return wrapped as Partial<NostrEvent>;
+      } catch (nip17Err) {
+        console.warn(
+          "NIP-17 sealing/wrapping error; will try NIP-59 fallback:",
+          nip17Err
+        );
+        // Fall through to NIP-59 flow below
       }
-      return wrapped as Partial<NostrEvent>;
     }
 
     console.log("🔐 ClientMessageService: Using NIP-59 flow");
@@ -377,21 +386,31 @@ export class ClientMessageService {
     }
 
     // Proper NIP-59: wrap the SIGNED inner event via CEPS (produces kind:1059)
-    const wrapped = await CEPS.wrapGift59(signedInner as any, recipientHex);
+    try {
+      const wrapped = await CEPS.wrapGift59(signedInner as any, recipientHex);
 
-    // Validate wrapped event structure
-    if (!wrapped || typeof wrapped !== "object") {
-      throw new Error("NIP-59 wrapping failed: invalid wrapped event");
-    }
-    if ((wrapped as any).kind !== 1059) {
-      throw new Error(
-        `NIP-59 wrapping failed: expected kind 1059, got ${
-          (wrapped as any).kind
-        }`
+      // Validate wrapped event structure
+      if (!wrapped || typeof wrapped !== "object") {
+        throw new Error("NIP-59 wrapping failed: invalid wrapped event");
+      }
+      if ((wrapped as any).kind !== 1059) {
+        throw new Error(
+          `NIP-59 wrapping failed: expected kind 1059, got ${
+            (wrapped as any).kind
+          }`
+        );
+      }
+
+      return wrapped as Partial<NostrEvent>;
+    } catch (err) {
+      console.warn(
+        "NIP-59 wrapping failed; will trigger NIP-44 tertiary fallback",
+        err
+      );
+      throw new Nip59FallbackError(
+        "NIP-59 wrapping failed; trigger NIP-44 fallback"
       );
     }
-
-    return wrapped as Partial<NostrEvent>;
   }
 
   /**
