@@ -10,12 +10,17 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import type { NostrProfile } from '../../lib/nostr-profile-service';
 
 
+import { sendMeetingInvite } from '../../lib/communications/meeting-invites';
 import { showTimeoutError } from '../../lib/utils/error-messages';
 import { DashboardNotification, NotificationService } from '../../services/notificationService';
 import { showToast } from '../../services/toastService';
 import { useAuth } from '../auth/AuthProvider';
 import { SecurePeerInvitationModal } from '../SecurePeerInvitationModal';
 import { PeerInvitationModal } from './PeerInvitationModal';
+import { VideoMeetingLauncher } from './VideoMeetingLauncher';
+
+
+
 
 
 
@@ -1072,6 +1077,39 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                           aria-label="Forward"
                         >Forward</button>
                         <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void (async () => {
+                              try {
+                                let npub: string | null = null;
+                                if (m.senderId) {
+                                  try { npub = CEPS.encodeNpub(m.senderId); } catch { }
+                                }
+                                if (!npub) {
+                                  showToast.info('Invite not available for this message');
+                                  return;
+                                }
+                                const encoder = new TextEncoder();
+                                const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`${familyMember.npub}-${Date.now()}`));
+                                const hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+                                const roomId = `satnam-${hash.slice(0, 16)}`;
+                                const res = await sendMeetingInvite({ hostNpub: familyMember.npub, inviteeNpub: npub, roomName: roomId, nip05: undefined });
+                                if (res?.success) {
+                                  showToast.success('Meeting invite sent', { title: 'Meeting' });
+                                } else {
+                                  throw new Error((res as any)?.error || 'Failed to send invite');
+                                }
+                              } catch (err) {
+                                const msg = err instanceof Error ? err.message : 'Failed to send meeting invite';
+                                showToast.error(msg, { title: 'Meeting' });
+                              }
+                            })();
+                          }}
+                          className="text-[11px] text-purple-700 hover:text-purple-900"
+                          aria-label="Invite to meeting"
+                        >Invite to meeting</button>
+
+                        <button
                           onClick={() => onRequestDeleteMessage(m)}
                           className="text-[11px] text-purple-700 hover:text-purple-900"
                           aria-label="Delete"
@@ -1680,6 +1718,13 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-3 2H6a2 2 0 01-2-2V8a2 2 0 012-2h6a2 2 0 012 2v6z" />
                   </svg>
                 </button>
+                {/* Live Meeting (Jitsi) */}
+                <VideoMeetingLauncher
+                  currentUser={{ npub: familyMember.npub, nip05: undefined }}
+                  selectedContact={recipient && recipient.startsWith('npub1') ? { npub: recipient, displayName: (contactsByNpub.get(recipient)?.username) || `${recipient.slice(0, 12)}…` } : undefined}
+                  buttonClassName="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                  iconClassName="w-4 h-4"
+                />
                 <button
                   onClick={() => setShowProtocolHelp((v) => !v)}
                   className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
