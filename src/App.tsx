@@ -32,6 +32,9 @@ import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 import SecureTokenManager from "./lib/auth/secure-token-manager";
 import { validateInvitation } from "./lib/invitation-validator";
 
+import { showToast } from "./services/toastService";
+
+
 const NTAG424AuthModal = lazy(() => import("./components/NTAG424AuthModal"));
 
 
@@ -66,6 +69,8 @@ function App() {
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
+  const [loadingNfcModal, setLoadingNfcModal] = useState(false);
+
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [showCommunications, setShowCommunications] = useState(false);
   const [showFamilyFoundryAuthModal, setShowFamilyFoundryAuthModal] = useState(false);
@@ -1208,8 +1213,20 @@ function App() {
                   Cognitive Capital
                 </button>
                 <button
-                  onClick={() => setNfcModalOpen(true)}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  onClick={async () => {
+                    try {
+                      setLoadingNfcModal(true);
+                      await import("./components/NTAG424AuthModal");
+                      setNfcModalOpen(true);
+                    } catch (e) {
+                      console.error("Failed to load NFC modal chunk:", e);
+                      showToast.error("Unable to load NFC programming. Please try again.", { title: "NFC Module Error" });
+                    } finally {
+                      setLoadingNfcModal(false);
+                    }
+                  }}
+                  aria-disabled={loadingNfcModal}
+                  className={"block text-purple-200 hover:text-yellow-400 transition-colors duration-200" + (loadingNfcModal ? " opacity-60 cursor-not-allowed" : "")}
                 >
                   <span className="block">Program Physical MFA tags</span>
                   <span className="block text-xs text-purple-300">Program NTAG424 NFC tags for authentication</span>
