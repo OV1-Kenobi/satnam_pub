@@ -330,8 +330,10 @@ function validateGiftwrappedMessage(messageData) {
     errors.push({ field: 'recipient', message: 'Recipient identifier is required' });
   }
 
-  if (!messageData.sender || typeof messageData.sender !== 'string') {
-    errors.push({ field: 'sender', message: 'Sender identifier is required' });
+  // For incoming logs we require explicit sender (remote party). For outgoing we override from auth.
+  const isIncoming = messageData && typeof messageData.direction === 'string' && messageData.direction === 'incoming';
+  if (isIncoming && (!messageData.sender || typeof messageData.sender !== 'string')) {
+    errors.push({ field: 'sender', message: 'Sender identifier is required for incoming messages' });
   }
 
   // Encryption level validation
@@ -556,7 +558,7 @@ export default async function handler(event, context) {
       console.log("🔐 DEBUG: giftwrapped - security level:", messageData.securityLevel);
     }
 
-    // Validate gift-wrapped message request
+    // Validate gift-wrapped/standard message request
     const validationResult = validateGiftwrappedMessage(messageData);
     if (!validationResult.success) {
       return {
@@ -726,6 +728,20 @@ export default async function handler(event, context) {
 
       console.log("🔐 DEBUG: giftwrapped - pre-signed wrapped_event_id:", wrappedEventId);
       console.log("🔐 DEBUG: giftwrapped - pre-signed original_event_id:", originalEventId);
+    } else if (
+      messageData?.standardDm === true ||
+      (typeof messageData?.protocol === 'string' && ['nip04','nip44'].includes(String(messageData.protocol).toLowerCase()))
+    ) {
+      // Standard DM logging path (NIP-04 / NIP-44) — no server-side signing, just persist metadata
+      protocol = (typeof messageData.protocol === 'string' && ['nip04','nip44'].includes(String(messageData.protocol).toLowerCase()))
+        ? String(messageData.protocol).toLowerCase()
+        : 'nip04';
+      giftWrappedEvent = null;
+      innerEvent = null;
+      originalEventId = null;
+      wrappedEventId = null;
+      console.log("\ud83d\udd10 DEBUG: giftwrapped - standard DM logging mode (protocol=", protocol, ")");
+      // Continue to hashing and DB insert below
     } else {
       // Legacy server-side signing (should not be used with hybrid signing)
       console.log("🔐 DEBUG: giftwrapped - ERROR: received unsigned message, but server-side signing is disabled");
@@ -781,24 +797,60 @@ export default async function handler(event, context) {
         const recipientHash = await generateDeterministicRecipientHash(recipientNpub);
         console.log("🔐 DEBUG: giftwrapped - recipient hash generated:", recipientHash);
 
+        // Determine direction (incoming vs outgoing) for standard DMs
+        const direction = (messageData && typeof messageData.direction === 'string') ? messageData.direction : 'outgoing';
+
+        // Default insert fields assume outgoing (current user is sender)
+        let insertSenderHash = authenticatedSender;
+        let insertRecipientHash = recipientHash;
+        let insertSenderNpub = senderNpub;
+        let insertRecipientNpub = recipientNpub;
+        let insertSenderPubkey = senderPubkey;
+        let insertRecipientPubkey = recipientPubkey;
+
+        if (direction === 'incoming') {
+          try {
+            // For incoming logs, 'sender' is the remote party
+            let remoteNpub = validatedData.sender;
+            if (typeof remoteNpub === 'string' && !remoteNpub.startsWith('npub1')) {
+              if (/^[0-9a-fA-F]{64}$/.test(remoteNpub)) {
+                try {
+                  const mod = await import('../../lib/central_event_publishing_service.js');
+                  const svcLocal = mod.central_event_publishing_service || new mod.CentralEventPublishingService();
+                  if (svcLocal && typeof svcLocal.encodeNpub === 'function') {
+                    remoteNpub = svcLocal.encodeNpub(remoteNpub);
+                  }
+                } catch {}
+              }
+            }
+            const remoteHash = await generateDeterministicRecipientHash(remoteNpub);
+            insertSenderHash = remoteHash;
+            insertRecipientHash = authenticatedSender;
+            insertSenderNpub = remoteNpub;
+            insertRecipientNpub = senderNpub; // current user npub
+            insertSenderPubkey = extractPubkeyFromNpub(remoteNpub);
+            insertRecipientPubkey = senderPubkey;
+          } catch {}
+        }
+
         const { data: messageRecord, error: messageError } = await client
           .from('gift_wrapped_messages')
           .insert({
             // Do not set id explicitly to avoid UUID vs TEXT mismatches; let DB default
-            // Use authenticated sender (from JWT session)
-            sender_hash: authenticatedSender,
-            // Derive recipient hash deterministically to avoid non-deterministic queries
-            recipient_hash: recipientHash,
+            sender_hash: insertSenderHash,
+            recipient_hash: insertRecipientHash,
             // Nostr public keys in npub format (if columns exist)
-            sender_npub: senderNpub,
-            recipient_npub: recipientNpub,
+            sender_npub: insertSenderNpub,
+            recipient_npub: insertRecipientNpub,
             // Hex public keys for Nostr compatibility
-            sender_pubkey: senderPubkey,
-            recipient_pubkey: recipientPubkey,
+            sender_pubkey: insertSenderPubkey,
+            recipient_pubkey: insertRecipientPubkey,
             // Original (inner) event ID: for NIP-17 sealed content some schemas require NOT NULL; fallback to wrapped_event_id
             original_event_id: originalEventId ?? wrappedEventId,
             // Wrapped event ID (outer gift-wrapped event)
             wrapped_event_id: wrappedEventId,
+            // Persist plaintext only for standard DMs to render in UI; keep null for gift-wrapped
+            content: (protocol === 'nip04' || protocol === 'nip44') ? validatedData.content : null,
             // Content hash for privacy-preserving verification (raw sealed string for NIP-17)
             content_hash: contentHash,
             // Encryption key hash for database constraint compliance
@@ -806,8 +858,8 @@ export default async function handler(event, context) {
             encryption_level: validatedData.encryptionLevel,
             communication_type: validatedData.communicationType,
             message_type: validatedData.messageType,
-            status: 'pending',
-            // Protocol discriminator for NIP-17 vs NIP-59
+            status: isPreSigned ? 'pending' : 'published',
+            // Protocol discriminator for NIP-17 vs NIP-59 (or nip04/nip44 logging)
             protocol: protocol,
             // Additional fields for comprehensive database compatibility
             privacy_level: 'maximum',
@@ -837,46 +889,59 @@ export default async function handler(event, context) {
       return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: storageResult.error }) };
     }
 
-    // Process message delivery for pre-signed messages
-    console.log("🔐 DEBUG: giftwrapped - processing pre-signed message delivery");
-    const deliveryResult = await processMessageDelivery(giftWrappedEvent, validatedData);
+    // Process message delivery only for pre-signed (gift-wrapped) messages
+    let deliveryResult;
+    if (isPreSigned) {
+      console.log("🔐 DEBUG: giftwrapped - processing pre-signed message delivery");
+      deliveryResult = await processMessageDelivery(giftWrappedEvent, validatedData);
 
-    // Add signing method information from client
-    deliveryResult.signingMethod = messageData.signingMethod || 'hybrid';
-    deliveryResult.securityLevel = messageData.securityLevel || 'high';
-    deliveryResult.userMessage = `Message signed with ${messageData.signingMethod} (${messageData.securityLevel} security)`;
+      // Add signing method information from client
+      deliveryResult.signingMethod = messageData.signingMethod || 'hybrid';
+      deliveryResult.securityLevel = messageData.securityLevel || 'high';
+      deliveryResult.userMessage = `Message signed with ${messageData.signingMethod} (${messageData.securityLevel} security)`;
 
-    console.log("🔐 DEBUG: giftwrapped - delivery result:", deliveryResult.success ? 'SUCCESS' : 'FAILED');
+      console.log("🔐 DEBUG: giftwrapped - delivery result:", deliveryResult.success ? 'SUCCESS' : 'FAILED');
 
-    // Persist delivery status to DB so UI doesn't stay at "pending"
-    try {
-      const newStatus = deliveryResult.success ? 'published' : 'failed';
-      const updatePayload = { status: newStatus };
-      // Store publish time in created_at per current schema
-      if (deliveryResult.success) {
-        updatePayload.created_at = new Date().toISOString();
+      // Persist delivery status to DB so UI doesn't stay at "pending"
+      try {
+        const newStatus = deliveryResult.success ? 'published' : 'failed';
+        const updatePayload = { status: newStatus };
+        // Store publish time in created_at per current schema
+        if (deliveryResult.success) {
+          updatePayload.created_at = new Date().toISOString();
+        }
+        const { error: updateError } = await client
+          .from('gift_wrapped_messages')
+          .update(updatePayload)
+          .eq('id', messageId);
+        if (updateError) {
+          console.warn('🔐 DEBUG: giftwrapped - failed to update delivery status:', updateError);
+        } else {
+          console.log('🔐 DEBUG: giftwrapped - delivery status updated to', newStatus);
+        }
+      } catch (e) {
+        console.warn('🔐 DEBUG: giftwrapped - unexpected error updating delivery status', e);
       }
-      const { error: updateError } = await client
-        .from('gift_wrapped_messages')
-        .update(updatePayload)
-        .eq('id', messageId);
-      if (updateError) {
-        console.warn('🔐 DEBUG: giftwrapped - failed to update delivery status:', updateError);
-      } else {
-        console.log('🔐 DEBUG: giftwrapped - delivery status updated to', newStatus);
-      }
-    } catch (e) {
-      console.warn('🔐 DEBUG: giftwrapped - unexpected error updating delivery status', e);
-    }
 
-    // Zero out ephemeral key for security (only if it exists)
-    if (ephemeralKey) {
-      ephemeralKey.split('').forEach((_, i, arr) => arr[i] = '0');
+      // Zero out ephemeral key for security (only if it exists)
+      if (ephemeralKey) {
+        ephemeralKey.split('').forEach((_, i, arr) => arr[i] = '0');
+      }
+    } else {
+      // Standard DM logging mode: no delivery processing, consider it published
+      deliveryResult = {
+        success: true,
+        deliveryMethod: protocol,
+        signingMethod: protocol,
+        securityLevel: 'standard',
+        userMessage: 'Standard DM logged',
+        encryptionUsed: validatedData.encryptionLevel,
+      };
     }
 
     const responseData = {
       success: true,
-      messageId,
+      messageId: (storageResult && storageResult.record && storageResult.record.id) || messageId,
       timestamp: new Date().toISOString(),
       encryptionLevel: validatedData.encryptionLevel,
       status: deliveryResult.success ? "published" : "failed",

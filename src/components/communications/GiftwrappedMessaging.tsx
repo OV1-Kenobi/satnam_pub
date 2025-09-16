@@ -19,6 +19,8 @@ import { SecurePeerInvitationModal } from '../SecurePeerInvitationModal';
 import { PeerInvitationModal } from './PeerInvitationModal';
 import { VideoMeetingLauncher } from './VideoMeetingLauncher';
 
+import fetchWithAuth from '../../lib/auth/fetch-with-auth';
+
 
 
 
@@ -90,10 +92,18 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
   const [recipient, setRecipient] = useState('');
   const [isGroupMessage, setIsGroupMessage] = useState(false);
+  const [useStandardDm, setUseStandardDm] = useState(false);
+
   // Groups data (real group listing)
   const [groups, setGroups] = useState<GroupData[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [showProtocolHelp, setShowProtocolHelp] = useState(false);
+  const [bitchatEnabled, setBitchatEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem('SATNAM_BITCHAT') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('SATNAM_BITCHAT', bitchatEnabled ? '1' : '0'); } catch { }
+  }, [bitchatEnabled]);
 
   const [groupsError, setGroupsError] = useState<string | null>(null);
 
@@ -947,7 +957,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
 
   // Thread categorization for Contacts/Strangers/Groups tabs
-  const [currentTab, setCurrentTab] = useState<'contacts' | 'strangers' | 'groups'>('contacts');
+  const [currentTab, setCurrentTab] = useState<'contacts' | 'strangers' | 'groups' | 'bitchat'>('contacts');
 
   const getThreadNpub = (thread: { isServerThread: boolean; items: UnifiedMsg[]; }): string | null => {
     if (thread.isServerThread) return null;
@@ -1136,6 +1146,11 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
                     <div className="text-[12px] text-gray-800 whitespace-pre-wrap break-words">
                       {m.content ? m.content : m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]'}
+                      {(m as any)?.server?.protocol && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-purple-200/70 text-purple-800 border border-purple-300">
+                          {(m as any).server.protocol}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -1161,20 +1176,46 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
     try {
       console.log('🔐 GiftwrappedMessaging: Using hybrid signing approach for message sending');
 
-      const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
-      const giftWrapService = new GiftwrappedCommunicationService();
-
       // Prefix subject when provided so all clients see it clearly
       const contentToSend = subject.trim() ? `Subject: ${subject.trim()}\n\n${newMessage}` : newMessage;
 
-      // Use sendGiftwrappedMessage which goes through hybrid signing
-      const result = await giftWrapService.sendGiftwrappedMessage({
-        content: contentToSend,
-        sender: familyMember.npub,
-        recipient: recipient,
-        encryptionLevel: selectedPrivacyLevel,
-        communicationType: isGroupMessage ? 'family' : 'individual'
-      });
+      let result: { success: boolean; messageId?: string; deliveryMethod?: string; error?: string };
+
+      if (useStandardDm && !isGroupMessage) {
+        // Standard NIP-04 send (better compatibility with external clients)
+        const deliveryId = await CEPS.sendStandardDirectMessage(recipient, contentToSend);
+        // Persist a normalized record (protocol='nip04')
+        try {
+          await fetchWithAuth('/api/communications/giftwrapped', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: contentToSend,
+              recipient,
+              communicationType: 'individual',
+              messageType: 'direct',
+              encryptionLevel: 'standard',
+              standardDm: true,
+              protocol: 'nip04'
+            }),
+            timeoutMs: 15000
+          });
+        } catch (e) {
+          console.warn('Standard DM persisted with warnings:', e);
+        }
+        result = { success: true, messageId: deliveryId, deliveryMethod: 'nip04' };
+      } else {
+        const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
+        const giftWrapService = new GiftwrappedCommunicationService();
+        // Use sendGiftwrappedMessage which goes through hybrid signing
+        result = await giftWrapService.sendGiftwrappedMessage({
+          content: contentToSend,
+          sender: familyMember.npub,
+          recipient: recipient,
+          encryptionLevel: selectedPrivacyLevel,
+          communicationType: isGroupMessage ? 'family' : 'individual'
+        });
+      }
 
       if (result.success) {
         // Optionally push to local history display if desired
@@ -1382,176 +1423,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               Settings
             </button>
 
-            {/* Conversations (Unified Threads) */}
-            <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-purple-900">Conversations</h4>
-                <div className="flex gap-2">
-                  {nextCursor && (
-                    <button
-                      disabled={loadingHistory}
-                      onClick={() => nextCursor && loadHistory(nextCursor)}
-                      className="text-xs text-purple-700 hover:text-purple-900 disabled:opacity-50"
-                      aria-label="Load older"
-                    >
-                      {loadingHistory ? 'Loading…' : 'Load older'}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => void messaging.startMessageSubscription()}
-                    className="text-xs text-purple-700 hover:text-purple-900"
-                    aria-label="Refresh conversations"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              </div>
-              {/* Conversations internal tabs (moved from top-right) */}
-              <div className="flex items-center gap-2 mb-2" role="tablist" aria-label="Conversation categories">
-                <button
-                  role="tab"
-                  aria-selected={currentTab === 'contacts'}
-                  onClick={() => setCurrentTab('contacts')}
-                  className={`px-2 py-1 rounded border text-xs ${currentTab === 'contacts' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
-                >
-                  Contacts{contactsUnread > 0 && (
-                    <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{contactsUnread}</span>
-                  )}
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={currentTab === 'groups'}
-                  onClick={() => setCurrentTab('groups')}
-                  className={`px-2 py-1 rounded border text-xs ${currentTab === 'groups' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
-                >
-                  Groups{groupsUnread > 0 && (
-                    <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{groupsUnread}</span>
-                  )}
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={currentTab === 'strangers'}
-                  onClick={() => setCurrentTab('strangers')}
-                  className={`px-2 py-1 rounded border text-xs ${currentTab === 'strangers' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
-                >
-                  Strangers{strangersUnread > 0 && (
-                    <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{strangersUnread}</span>
-                  )}
-                </button>
-              </div>
 
-
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {currentTab === 'groups' ? (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-xs font-medium text-purple-800">Your Groups</div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => loadGroups()} className="text-xs text-purple-700 hover:text-purple-900" aria-label="Refresh groups">Refresh</button>
-                        <button onClick={() => setShowCreateGroupModal(true)} className="text-xs text-white bg-purple-600 hover:bg-purple-700 rounded px-2 py-1" aria-label="Create group">Create Group</button>
-                      </div>
-                    </div>
-                    {groupsLoading ? (
-                      <div className="p-3 text-xs text-purple-700">Loading groups...</div>
-                    ) : groupsError ? (
-                      <div className="p-3 text-xs text-red-600">{groupsError}</div>
-                    ) : groups.length === 0 ? (
-                      <div className="p-3 text-xs text-purple-700">No groups yet</div>
-                    ) : (
-                      groups.map((g) => (
-                        <div key={g.id} className="group p-3 bg-white rounded-lg border border-purple-200">
-                          <div className="flex items-center justify-between">
-                            {getGroupHeaderContent(g)}
-                            <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2">
-                              <button onClick={() => onGroupViewMembers(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="View members">Members</button>
-                              <button onClick={() => onGroupMute(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Mute group">{g.muted ? 'Unmute' : 'Mute'}</button>
-                              {(['owner', 'admin'].includes(String(g.role || '').toLowerCase())) && (
-                                <button onClick={() => toggleGroupDetails(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Manage group">Details</button>
-                              )}
-                              <button onClick={() => onGroupLeave(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Leave group">Leave</button>
-                            </div>
-                          </div>
-                          {expandedGroupIds.has(g.id) && (
-
-
-                            <div className="mt-2 border-t border-purple-100 pt-2 text-[12px]">
-                              {groupDetailsLoading[g.id] ? (
-                                <div className="text-purple-700">Loading details…</div>
-                              ) : groupDetailsError[g.id] ? (
-                                <div className="text-red-600">{groupDetailsError[g.id]}</div>
-                              ) : (
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    {(() => {
-                                      const shown = (groupTopics[g.id]?.length || 0);
-                                      const total = groupTopicsMeta[g.id]?.total ?? shown;
-                                      return (
-                                        <div className="text-purple-900">Topics: Showing {shown} of {total}</div>
-                                      );
-                                    })()}
-                                    <div className="flex items-center gap-2">
-                                      <button onClick={() => onAddMember(g)} className="text-[11px] text-emerald-700 hover:text-emerald-900" aria-label="Add member">Add member</button>
-                                      <button onClick={() => onOpenCreateTopic(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Create topic">Create topic</button>
-                                    </div>
-                                  </div>
-                                  {groupTopicsMeta[g.id]?.hasMore && (
-                                    <div className="mt-1">
-                                      <button
-                                        onClick={() => loadMoreTopics(g)}
-                                        disabled={!!groupTopicsLoadingMore[g.id]}
-                                        className="text-[11px] text-purple-700 hover:text-purple-900 disabled:opacity-50"
-                                      >
-                                        {groupTopicsLoadingMore[g.id] ? 'Loading…' : 'Load More Topics'}
-                                      </button>
-                                    </div>
-                                  )}
-                                  <div className="mt-2">
-                                    {(() => {
-                                      const shown = (groupMembers[g.id]?.length || 0);
-                                      const total = groupMembersMeta[g.id]?.total ?? shown;
-                                      return (
-                                        <div className="text-purple-900 mb-1">Members (Showing {shown} of {total})</div>
-                                      );
-                                    })()}
-                                    <ul className="space-y-1">
-                                      {(groupMembers[g.id] || []).map((m: any) => (
-                                        <li key={m.member_hash} className="flex items-center justify-between">
-                                          <span className="text-gray-700">{m.member_hash}</span>
-                                          {(['owner', 'admin'].includes(String(g.role || '').toLowerCase())) && (
-                                            <button onClick={() => onRemoveMember(g, m.member_hash)} className="text-[11px] text-red-700 hover:text-red-900" aria-label="Remove member">Remove</button>
-                                          )}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                    {groupMembersMeta[g.id]?.hasMore && (
-                                      <div className="mt-1">
-                                        <button
-                                          onClick={() => loadMoreMembers(g)}
-                                          disabled={!!groupMembersLoadingMore[g.id]}
-                                          className="text-[11px] text-purple-700 hover:text-purple-900 disabled:opacity-50"
-                                        >
-                                          {groupMembersLoadingMore[g.id] ? 'Loading…' : 'Load More Members'}
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                ) : (
-                  filteredThreads.length === 0 ? (
-                    <div className="p-3 text-xs text-purple-700">No conversations yet</div>
-                  ) : (
-                    threadItems
-                  )
-                )}
-              </div>
-            </div>
 
           </div>
         </div>
@@ -1709,6 +1581,20 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                   </svg>
                 </button>
                 {/* Video */}
+
+                {/* Protocol selector */}
+                {!isGroupMessage && (
+                  <label className="flex items-center gap-2 text-xs text-purple-900 mr-3">
+                    <input
+                      type="checkbox"
+                      checked={useStandardDm}
+                      onChange={(e) => setUseStandardDm(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span>Use standard messaging for external Nostr clients (NIP-04)</span>
+                  </label>
+                )}
+
                 <button
                   onClick={() => showToast.info('Video recorder UI coming next', { title: 'Video Message' })}
                   className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
@@ -1788,6 +1674,203 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               </div>
             )}
 
+          </div>
+        </div>
+
+
+        {/* Conversations (Unified Threads) - moved below Send Message */}
+        <div className="mb-6 rounded-xl border border-purple-300 bg-purple-100/60 p-4 w-full md:w-8/12 mx-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold text-purple-900">Conversations</h4>
+            <div className="flex gap-2">
+              {nextCursor && (
+                <button
+                  disabled={loadingHistory}
+                  onClick={() => nextCursor && loadHistory(nextCursor)}
+                  className="text-xs text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                  aria-label="Load older"
+                >
+                  {loadingHistory ? 'Loading…' : 'Load older'}
+                </button>
+              )}
+              <button
+                onClick={() => void messaging.startMessageSubscription()}
+                className="text-xs text-purple-700 hover:text-purple-900"
+                aria-label="Refresh conversations"
+              >
+                Refresh
+              </button>
+
+              <label className="ml-3 flex items-center gap-1 text-[11px] text-purple-900">
+                <input type="checkbox" className="rounded" checked={bitchatEnabled} onChange={(e) => setBitchatEnabled(e.target.checked)} />
+                <span>Enable Bitchat</span>
+              </label>
+
+            </div>
+          </div>
+          {/* Conversations internal tabs (moved from top-right) */}
+          <div className="flex items-center gap-2 mb-2" role="tablist" aria-label="Conversation categories">
+            <button
+              role="tab"
+              aria-selected={currentTab === 'contacts'}
+              onClick={() => setCurrentTab('contacts')}
+              className={`px-2 py-1 rounded border text-xs ${currentTab === 'contacts' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+            >
+              Contacts{contactsUnread > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{contactsUnread}</span>
+              )}
+            </button>
+            <button
+              role="tab"
+              aria-selected={currentTab === 'groups'}
+              onClick={() => setCurrentTab('groups')}
+              className={`px-2 py-1 rounded border text-xs ${currentTab === 'groups' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+            >
+              Groups{groupsUnread > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{groupsUnread}</span>
+              )}
+            </button>
+            {bitchatEnabled && (
+              <button
+                role="tab"
+                aria-selected={currentTab === 'bitchat'}
+                onClick={() => setCurrentTab('bitchat')}
+                className={`px-2 py-1 rounded border text-xs ${currentTab === 'bitchat' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+              >
+                Bitchat
+              </button>
+            )}
+            <button
+              role="tab"
+              aria-selected={currentTab === 'strangers'}
+              onClick={() => setCurrentTab('strangers')}
+              className={`px-2 py-1 rounded border text-xs ${currentTab === 'strangers' ? 'bg-white border-purple-300 text-purple-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+            >
+              Strangers{strangersUnread > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{strangersUnread}</span>
+              )}
+            </button>
+          </div>
+
+
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {currentTab === 'bitchat' ? (
+              <div className="text-xs text-purple-900 space-y-2">
+                <div className="font-medium">Bitchat</div>
+                <div className="flex items-center gap-2">
+                  <input type="text" placeholder="Enter geohash (e.g. 9q8yy)" className="border border-purple-300 rounded px-2 py-1 text-xs" />
+                  <button className="text-xs bg-purple-600 text-white rounded px-2 py-1 hover:bg-purple-700">Connect</button>
+                </div>
+                <div className="text-[11px] text-purple-700">Public geo-rooms with minimal privacy. Use for discovery only.</div>
+              </div>
+            ) : currentTab === 'groups' ? (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-medium text-purple-800">Your Groups</div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => loadGroups()} className="text-xs text-purple-700 hover:text-purple-900" aria-label="Refresh groups">Refresh</button>
+                    <button onClick={() => setShowCreateGroupModal(true)} className="text-xs text-white bg-purple-600 hover:bg-purple-700 rounded px-2 py-1" aria-label="Create group">Create Group</button>
+                  </div>
+                </div>
+                {groupsLoading ? (
+                  <div className="p-3 text-xs text-purple-700">Loading groups...</div>
+                ) : groupsError ? (
+                  <div className="p-3 text-xs text-red-600">{groupsError}</div>
+                ) : groups.length === 0 ? (
+                  <div className="p-3 text-xs text-purple-700">No groups yet</div>
+                ) : (
+                  groups.map((g) => (
+                    <div key={g.id} className="group p-3 bg-white rounded-lg border border-purple-200">
+                      <div className="flex items-center justify-between">
+                        {getGroupHeaderContent(g)}
+                        <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2">
+                          <button onClick={() => onGroupViewMembers(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="View members">Members</button>
+                          <button onClick={() => onGroupMute(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Mute group">{g.muted ? 'Unmute' : 'Mute'}</button>
+                          {(['owner', 'admin'].includes(String(g.role || '').toLowerCase())) && (
+                            <button onClick={() => toggleGroupDetails(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Manage group">Details</button>
+                          )}
+                          <button onClick={() => onGroupLeave(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Leave group">Leave</button>
+                        </div>
+                      </div>
+                      {expandedGroupIds.has(g.id) && (
+
+
+                        <div className="mt-2 border-t border-purple-100 pt-2 text-[12px]">
+                          {groupDetailsLoading[g.id] ? (
+                            <div className="text-purple-700">Loading details…</div>
+                          ) : groupDetailsError[g.id] ? (
+                            <div className="text-red-600">{groupDetailsError[g.id]}</div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                {(() => {
+                                  const shown = (groupTopics[g.id]?.length || 0);
+                                  const total = groupTopicsMeta[g.id]?.total ?? shown;
+                                  return (
+                                    <div className="text-purple-900">Topics: Showing {shown} of {total}</div>
+                                  );
+                                })()}
+                                <div className="flex items-center gap-2">
+                                  <button onClick={() => onAddMember(g)} className="text-[11px] text-emerald-700 hover:text-emerald-900" aria-label="Add member">Add member</button>
+                                  <button onClick={() => onOpenCreateTopic(g)} className="text-[11px] text-purple-700 hover:text-purple-900" aria-label="Create topic">Create topic</button>
+                                </div>
+                              </div>
+                              {groupTopicsMeta[g.id]?.hasMore && (
+                                <div className="mt-1">
+                                  <button
+                                    onClick={() => loadMoreTopics(g)}
+                                    disabled={!!groupTopicsLoadingMore[g.id]}
+                                    className="text-[11px] text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                                  >
+                                    {groupTopicsLoadingMore[g.id] ? 'Loading…' : 'Load More Topics'}
+                                  </button>
+                                </div>
+                              )}
+                              <div className="mt-2">
+                                {(() => {
+                                  const shown = (groupMembers[g.id]?.length || 0);
+                                  const total = groupMembersMeta[g.id]?.total ?? shown;
+                                  return (
+                                    <div className="text-purple-900 mb-1">Members (Showing {shown} of {total})</div>
+                                  );
+                                })()}
+                                <ul className="space-y-1">
+                                  {(groupMembers[g.id] || []).map((m: any) => (
+                                    <li key={m.member_hash} className="flex items-center justify-between">
+                                      <span className="text-gray-700">{m.member_hash}</span>
+                                      {(['owner', 'admin'].includes(String(g.role || '').toLowerCase())) && (
+                                        <button onClick={() => onRemoveMember(g, m.member_hash)} className="text-[11px] text-red-700 hover:text-red-900" aria-label="Remove member">Remove</button>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                                {groupMembersMeta[g.id]?.hasMore && (
+                                  <div className="mt-1">
+                                    <button
+                                      onClick={() => loadMoreMembers(g)}
+                                      disabled={!!groupMembersLoadingMore[g.id]}
+                                      className="text-[11px] text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                                    >
+                                      {groupMembersLoadingMore[g.id] ? 'Loading…' : 'Load More Members'}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              filteredThreads.length === 0 ? (
+                <div className="p-3 text-xs text-purple-700">No conversations yet</div>
+              ) : (
+                threadItems
+              )
+            )}
           </div>
         </div>
 

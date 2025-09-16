@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
+import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
 import fetchWithAuth from '../../lib/auth/fetch-with-auth';
 import type { MessageSendResult } from '../../lib/messaging/client-message-service';
 import { nip05Utils } from '../../lib/nip05-verification';
@@ -31,6 +32,7 @@ export function PeerInvitationModal({
   onSendInvitation,
   senderProfile
 }: PeerInvitationModalProps) {
+  const messaging = usePrivacyFirstMessaging();
   const [recipientsInput, setRecipientsInput] = useState('');
   const [invitationType, setInvitationType] = useState('friend');
   const [personalMessage, setPersonalMessage] = useState('');
@@ -157,6 +159,37 @@ export function PeerInvitationModal({
           const result = await sendMessage(invitationMessage, recipientNpubResolved);
           if (result.success) {
             successCount++;
+            // 3b) Log the outgoing message into conversation history (protocol: nip04)
+            try {
+              await fetchWithAuth('/api/communications/giftwrapped', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  content: invitationMessage,
+                  recipient: recipientNpubResolved,
+                  communicationType: 'individual',
+                  messageType: 'direct',
+                  encryptionLevel: 'enhanced',
+                  standardDm: true,
+                  protocol: 'nip04'
+                }),
+                timeoutMs: 15000
+              });
+            } catch (logErr) {
+              console.warn('PeerInvite: failed to log outgoing message', logErr);
+            }
+            // 3c) Auto-add contact for successful peer invite exchange
+            try {
+              await messaging.addContact({
+                npub: recipientNpubResolved,
+                displayName: recipientRaw,
+                trustLevel: 'known',
+                preferredEncryption: 'auto',
+                tags: []
+              });
+            } catch (addErr) {
+              console.warn('PeerInvite: auto-add contact failed', addErr);
+            }
           } else {
             failureCount++;
             showToast.error(`Delivery failed to ${recipientRaw}`, { title: 'Message error' });

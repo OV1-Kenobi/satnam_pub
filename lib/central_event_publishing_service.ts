@@ -8,6 +8,7 @@ import {
   getPublicKey,
   nip04,
   nip19,
+  nip44,
   nip59,
   SimplePool,
   verifyEvent,
@@ -2274,6 +2275,55 @@ export class CentralEventPublishingService {
       }
     );
     return enc;
+  }
+
+  // Decrypt standard NIP-04 direct message using active session (no gift-wrap)
+  async decryptStandardDirectMessageWithActiveSession(
+    senderPubHex: string,
+    ciphertext: string
+  ): Promise<{ plaintext: string; protocol: "nip04" | "nip44" }> {
+    const sessionId = this.getActiveSigningSessionId();
+    if (!sessionId) throw new Error("No active signing session");
+    const result = await secureNsecManager.useTemporaryNsec(
+      sessionId,
+      async (nsecHex) => {
+        // Try NIP-04 first, then fall back to NIP-44 if available
+        try {
+          const dec04 = await nip04.decrypt(nsecHex, senderPubHex, ciphertext);
+          return { plaintext: dec04, protocol: "nip04" as const };
+        } catch (e1) {
+          try {
+            // Prefer nip44 v2 API if present
+            const anyNip44: any = nip44 as any;
+            if (anyNip44?.v2?.getConversationKey && anyNip44?.v2?.decrypt) {
+              const convKey = await anyNip44.v2.getConversationKey(
+                nsecHex,
+                senderPubHex
+              );
+              const dec44v2 = await anyNip44.v2.decrypt(convKey, ciphertext);
+              return { plaintext: dec44v2, protocol: "nip44" as const };
+            }
+            // Fallback to a direct decrypt signature if provided by the lib version
+            if (anyNip44?.decrypt) {
+              const dec44 = await anyNip44.decrypt(
+                nsecHex,
+                senderPubHex,
+                ciphertext
+              );
+              return { plaintext: dec44, protocol: "nip44" as const };
+            }
+            throw e1;
+          } catch (e2) {
+            throw new Error(
+              `standard_dm_decrypt_failed: ${
+                e2 instanceof Error ? e2.message : String(e2)
+              }`
+            );
+          }
+        }
+      }
+    );
+    return result;
   }
 
   // ---- OTP (merged) ----

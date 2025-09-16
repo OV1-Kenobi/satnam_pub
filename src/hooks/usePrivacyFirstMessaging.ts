@@ -19,6 +19,7 @@ import {
   UnifiedMessagingConfig,
   UnifiedMessagingService,
 } from "../../lib/unified-messaging-service";
+import fetchWithAuth from "../lib/auth/fetch-with-auth";
 import { clientMessageService } from "../lib/messaging/client-message-service";
 import { secureNsecManager } from "../lib/secure-nsec-manager";
 
@@ -263,8 +264,68 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
           console.info("NIP-RX: subscription established");
         },
       });
-      subscriptionRef.current = sub as SubscriptionLike;
-      setState((prev) => ({ ...prev, messageSubscription: sub as unknown }));
+
+      // Parallel subscription: standard NIP-04 DMs addressed to this recipient
+      const recipientHex = recipient.startsWith("npub1")
+        ? CEPS.npubToHex(recipient)
+        : recipient;
+      const stdSub = CEPS.subscribeMany(
+        [],
+        [{ kinds: [4], "#p": [recipientHex] }],
+        {
+          onevent: async (e: any) => {
+            try {
+              const { plaintext, protocol } =
+                await CEPS.decryptStandardDirectMessageWithActiveSession(
+                  e?.pubkey,
+                  e?.content
+                );
+              const myNpub = CEPS.encodeNpub(recipientHex);
+              const senderNpub = CEPS.encodeNpub(e?.pubkey);
+              await fetchWithAuth("/api/communications/giftwrapped", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  content: plaintext,
+                  recipient: myNpub,
+                  sender: senderNpub,
+                  communicationType: "individual",
+                  messageType: "direct",
+                  encryptionLevel: "standard",
+                  standardDm: true,
+                  protocol,
+                  direction: "incoming",
+                }),
+                timeoutMs: 15000,
+              });
+            } catch (err) {
+              console.warn("STD-DM RX: failed to decrypt/log", err);
+            }
+          },
+          oneose: () => {
+            console.info("STD-DM-RX: subscription established");
+          },
+        }
+      );
+
+      const composite: SubscriptionLike = {
+        close: () => {
+          try {
+            if (typeof sub === "function") (sub as any)();
+            else (sub as any)?.close?.();
+          } catch {}
+          try {
+            if (typeof stdSub === "function") (stdSub as any)();
+            else (stdSub as any)?.close?.();
+          } catch {}
+        },
+      } as any;
+
+      subscriptionRef.current = composite;
+      setState((prev) => ({
+        ...prev,
+        messageSubscription: composite as unknown,
+      }));
       return true;
     } catch (error) {
       console.error("Failed to start message subscription", error);
