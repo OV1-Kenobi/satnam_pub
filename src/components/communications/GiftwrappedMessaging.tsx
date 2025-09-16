@@ -20,6 +20,10 @@ import { PeerInvitationModal } from './PeerInvitationModal';
 import { VideoMeetingLauncher } from './VideoMeetingLauncher';
 
 import fetchWithAuth from '../../lib/auth/fetch-with-auth';
+import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service';
+
+
+
 
 
 
@@ -553,7 +557,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
   const loadContacts = async () => {
     try {
-      const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
       const giftWrapService = new GiftwrappedCommunicationService();
 
       const timeoutMs = 8000;
@@ -1205,7 +1208,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         }
         result = { success: true, messageId: deliveryId, deliveryMethod: 'nip04' };
       } else {
-        const { GiftwrappedCommunicationService } = await import('../../lib/giftwrapped-communication-service');
+
         const giftWrapService = new GiftwrappedCommunicationService();
         // Use sendGiftwrappedMessage which goes through hybrid signing
         result = await giftWrapService.sendGiftwrappedMessage({

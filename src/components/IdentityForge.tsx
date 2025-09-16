@@ -1147,7 +1147,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             role: (result?.user?.role || result?.data?.user?.role || 'private'),
             is_active: true,
             hashedId: payload.hashedId,
-            authMethod: 'otp',
+            authMethod: 'nip05-password',
           },
           sessionToken: sessionToken,
         } as any;

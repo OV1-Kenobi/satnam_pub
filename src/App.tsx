@@ -6,7 +6,7 @@ import {
   Users,
   Zap
 } from "lucide-react";
-import { lazy, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { ContactsManagerModal } from './components/ContactsManagerModal';
 import DynasticSovereignty from "./components/DynasticSovereignty";
 import EducationPlatform from "./components/EducationPlatform";

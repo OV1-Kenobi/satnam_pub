@@ -1,5 +1,3 @@
-import SecureTokenManager from "./auth/secure-token-manager";
-
 export interface GiftwrappedMessageConfig {
   content: string;
   recipient: string;
@@ -115,7 +113,19 @@ export class GiftwrappedCommunicationService {
 
   async loadContacts(memberId: string): Promise<any[]> {
     try {
-      const token = SecureTokenManager.getAccessToken();
+      let token: string | null = null;
+      try {
+        const mod = await import("./auth/secure-token-manager");
+        const SecureTokenManager =
+          (mod as any).default ?? (mod as any).SecureTokenManager;
+        token =
+          typeof SecureTokenManager?.getAccessToken === "function"
+            ? SecureTokenManager.getAccessToken()
+            : null;
+      } catch (e) {
+        console.warn("SecureTokenManager dynamic import failed", e);
+        token = null;
+      }
       const response = await fetch(
         `${this.apiBaseUrl}/communications/get-contacts?memberId=current-user`,
         {
