@@ -57,10 +57,10 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   const [familyRole, setFamilyRole] = useState<FederationRole>("offspring");
   const [showPin, setShowPin] = useState(false);
   const [currentStep, setCurrentStep] = useState<AuthStep>('input');
-  const [operationType, setOperationType] = useState<'auth' | 'register'>('auth');
+  const [operationType, setOperationType] = useState<'auth' | 'register' | 'init'>('auth');
 
   // NTAG424 hook
-  const { authState, isProcessing, authenticateWithNFC, registerNewTag, resetAuthState } = useProductionNTAG424();
+  const { authState, isProcessing, authenticateWithNFC, registerNewTag, initializeTag, resetAuthState } = useProductionNTAG424();
 
   const mountedRef = useRef(true);
   const successTimerRef = useRef<number | null>(null);
@@ -142,6 +142,22 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
       }
     } catch (error: any) {
       console.error('NTAG424 registration failed:', error);
+      setCurrentStep('error');
+    }
+  };
+
+
+  const handleInitialize = async () => {
+    setOperationType('init');
+    setCurrentStep('nfc-scan');
+    try {
+      const ok = await initializeTag();
+      if (ok) {
+        setCurrentStep('success');
+      } else {
+        setCurrentStep('error');
+      }
+    } catch (e) {
       setCurrentStep('error');
     }
   };
@@ -306,6 +322,28 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
               </>
             )}
 
+            {/* Initialization guidance */}
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+              <div className="flex items-start space-x-2 text-yellow-300 text-sm">
+                <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">Two-phase setup required</p>
+                  <p className="mt-1">
+                    Phase 1: Initialize your NTAG424 tag using the hardware bridge to set AES keys, SUN, and permissions. Phase 2: Return here and complete registration.
+                  </p>
+                  <a
+                    href="https://www.satnam.pub/docs/ntag424-initialization"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline text-yellow-300 hover:text-yellow-200 mt-1 inline-block"
+                  >
+                    Learn how to initialize your tag
+                  </a>
+                </div>
+              </div>
+            </div>
+
+
             {/* Action Buttons */}
             <div className="space-y-3">
               {(mode === 'authentication' || mode === 'both') && (
@@ -319,6 +357,18 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                   <ArrowRight className="h-4 w-4" />
                 </button>
               )}
+
+              {(mode === 'registration' || mode === 'both') && (
+                <button
+                  onClick={handleInitialize}
+                  disabled={isProcessing}
+                  className="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                >
+                  <Smartphone className="h-4 w-4" />
+                  <span>Initialize Tag (Mobile PWA)</span>
+                </button>
+              )}
+
 
               {(mode === 'registration' || mode === 'both') && (
                 <button
@@ -365,12 +415,18 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
             </div>
             <div>
               <h3 className="text-xl font-bold text-white mb-2">
-                {operationType === 'auth' ? 'Tap Your NFC Tag' : 'Register Your NFC Tag'}
+                {operationType === 'auth'
+                  ? 'Tap Your NFC Tag'
+                  : operationType === 'init'
+                    ? 'Initialize Your NFC Tag'
+                    : 'Register Your NFC Tag'}
               </h3>
               <p className="text-purple-200">
                 {operationType === 'auth'
                   ? 'Hold your registered NFC tag near your device to authenticate'
-                  : 'Hold your new NFC tag near your device to register it'
+                  : operationType === 'init'
+                    ? 'Hold your factory-fresh NFC tag near your device to initialize it for secure use'
+                    : 'Hold your new NFC tag near your device to register it'
                 }
               </p>
             </div>
@@ -404,13 +460,18 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
             </div>
             <div>
               <h3 className="text-xl font-bold text-white mb-2">
-                {operationType === 'auth' ? 'Authentication Successful!' : 'Registration Successful!'}
+                {operationType === 'auth'
+                  ? 'Authentication Successful!'
+                  : operationType === 'init'
+                    ? 'Initialization Complete!'
+                    : 'Registration Successful!'}
               </h3>
               <p className="text-purple-200">
                 {operationType === 'auth'
                   ? 'Welcome back! Redirecting to your dashboard...'
-                  : 'Your NFC tag has been registered successfully!'
-                }
+                  : operationType === 'init'
+                    ? 'Your NFC tag is initialized and ready. You can now complete registration.'
+                    : 'Your NFC tag has been registered successfully!'}
               </p>
               {authState.userNpub && (
                 <div className="mt-4 bg-green-900/20 border border-green-500/30 rounded-lg p-3">
@@ -448,6 +509,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                     <p className="font-medium">Common issues:</p>
                     <ul className="mt-1 space-y-1">
                       <li>• Check if your PIN is correct</li>
+                      <li>• If registering a new tag, ensure it has been initialized (Phase 1) before registration</li>
                       <li>• Ensure NFC is enabled on your device</li>
                       <li>• Hold the tag closer to your device</li>
                       <li>• Try a different browser if using desktop</li>
@@ -470,4 +532,4 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
 };
 
 // Export for use in other components
-export default NTAG424AuthModal; 
+export default NTAG424AuthModal;

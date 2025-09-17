@@ -125,6 +125,33 @@ export const useProductionNTAG424 = () => {
           ndef.addEventListener("reading", async (event: any) => {
             try {
               const uid = event.serialNumber;
+              // Check initialization status via server (hardware bridge or heuristic)
+              const headers = await getAuthHeaders();
+              try {
+                const statusRes = await fetch(
+                  `${API_BASE}/nfc-unified/status`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", ...headers },
+                    body: JSON.stringify({ tagUID: uid }),
+                  }
+                );
+                const statusJson = await statusRes.json().catch(() => ({}));
+                if (statusRes.ok && statusJson?.success) {
+                  const initialized = !!statusJson.data?.initialized;
+                  if (!initialized) {
+                    const hint = statusJson.data?.hint;
+                    throw new Error(
+                      hint === "bridge_unconfigured"
+                        ? "This NTAG424 tag is not initialized. Please run the Tag Initialization tool (desktop/mobile companion) before registering."
+                        : "This NTAG424 tag appears uninitialized. Initialize it first, then try registration again."
+                    );
+                  }
+                }
+              } catch (e) {
+                // Non-fatal: continue to attempt registration; underlying NDEF read may still fail if protected
+              }
+
               // Minimal client-side encrypted metadata (zero-knowledge; server stores as opaque)
               const payload = {
                 uid,
@@ -135,7 +162,6 @@ export const useProductionNTAG424 = () => {
               const encryptedMetadata = btoa(
                 unescape(encodeURIComponent(JSON.stringify(payload)))
               );
-              const headers = await getAuthHeaders();
               const res = await fetch(`${API_BASE}/nfc-unified/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...headers },
@@ -178,6 +204,68 @@ export const useProductionNTAG424 = () => {
     []
   );
 
+  /**
+   * Initialize NTAG424 tag (mobile PWA acknowledgment).
+   * Note: Web NFC does not expose APDU; this flow acknowledges mobile-side init and records an ops log.
+   */
+  const initializeTag = useCallback(async (): Promise<boolean> => {
+    setIsProcessing(true);
+    setAuthState((prev) => ({ ...prev, error: null }));
+    try {
+      if (typeof window === "undefined" || !("NDEFReader" in window)) {
+        throw new Error("NFC not supported on this device/browser");
+      }
+      const ndef = new (window as any).NDEFReader();
+      await ndef.scan();
+      return await new Promise<boolean>((resolve, reject) => {
+        ndef.addEventListener("reading", async (event: any) => {
+          try {
+            const uid = event.serialNumber;
+            const headers = await getAuthHeaders();
+            const clientInfo = {
+              ua: navigator.userAgent,
+              platform: (navigator as any).platform || undefined,
+            };
+            const res = await fetch(`${API_BASE}/nfc-unified/initialize`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...headers },
+              body: JSON.stringify({
+                tagUID: uid,
+                method: "mobile_pwa",
+                clientInfo,
+              }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || !json?.success) {
+              throw new Error(json?.error || `HTTP ${res.status}`);
+            }
+            resolve(true);
+          } catch (err: any) {
+            setAuthState((prev) => ({
+              ...prev,
+              error: err?.message || "NFC initialization error",
+            }));
+            reject(err);
+          } finally {
+            setIsProcessing(false);
+          }
+        });
+        setTimeout(() => {
+          setIsProcessing(false);
+          setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
+          reject(new Error("NFC read timeout"));
+        }, 30000);
+      });
+    } catch (error: any) {
+      setIsProcessing(false);
+      setAuthState((prev) => ({
+        ...prev,
+        error: error?.message || "NFC initialization error",
+      }));
+      throw error;
+    }
+  }, []);
+
   const resetAuthState = useCallback(() => {
     setAuthState({
       isAuthenticated: false,
@@ -194,6 +282,7 @@ export const useProductionNTAG424 = () => {
     isProcessing,
     authenticateWithNFC,
     registerNewTag,
+    initializeTag,
     resetAuthState,
   };
 };
