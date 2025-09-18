@@ -7,6 +7,46 @@ import { nip05Utils } from '../../lib/nip05-verification';
 import { showToast } from '../../services/toastService';
 import { PrivacyLevel } from '../../types/privacy';
 
+import ContactsSelector from '../shared/ContactsSelector';
+
+
+function buildAboutTemplate(inviteUrl: string, hostedQrUrl?: string): string {
+  const parts = [
+    "Join me on Satnam — privacy-first family coordination:",
+    inviteUrl,
+    hostedQrUrl ? `QR: ${hostedQrUrl}` : undefined,
+  ].filter(Boolean) as string[];
+  return parts.join("\n");
+}
+
+async function downloadQrImage(src: string, width: number, height: number, filename: string) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  const loaded = new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Failed to load QR image'));
+  });
+  img.src = src;
+  await loaded;
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  const pad = Math.floor(Math.min(width, height) * 0.1);
+  const size = Math.min(width, height) - pad * 2;
+  const x = Math.floor((width - size) / 2);
+  const y = Math.floor((height - size) / 2);
+  ctx.drawImage(img, x, y, size, size);
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Failed to encode image');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 interface SenderProfile {
   username?: string;
@@ -42,6 +82,48 @@ export function PeerInvitationModal({
   const mountedRef = useRef(true);
   const sendAbortRef = useRef<AbortController | null>(null);
   const successAlertTimerRef = useRef<number | null>(null);
+
+  const [showContacts, setShowContacts] = useState(false);
+  const [lastInvite, setLastInvite] = useState<{ inviteUrl?: string; qrCodeImage?: string; hostedQrUrl?: string } | null>(null);
+
+  const handleShare = async () => {
+    try {
+      const url = lastInvite?.inviteUrl || lastInvite?.hostedQrUrl;
+      if (!url) {
+        showToast.warning('No invitation link available to share yet.', { title: 'Nothing to share' });
+        return;
+      }
+      const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+      if (nav.share) {
+        await nav.share({
+          title: 'Satnam Invitation',
+          text: 'Join me on Satnam — privacy-first family coordination',
+          url
+        });
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+        showToast.success('Invite link copied to clipboard', { title: 'Copied' });
+        return;
+      }
+      // Last-resort fallback
+      showToast.warning('Sharing not supported on this device.', { title: 'Share unavailable' });
+    } catch (error) {
+      try {
+        const url = lastInvite?.inviteUrl || lastInvite?.hostedQrUrl || '';
+        if (url && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url);
+          showToast.success('Invite link copied to clipboard', { title: 'Copied' });
+          return;
+        }
+      } catch (err) {
+        // ignore secondary failure
+      }
+      showToast.error(error instanceof Error ? error.message : 'Unknown error', { title: 'Share failed' });
+    }
+  };
+
 
   useEffect(() => {
     mountedRef.current = true;
@@ -95,6 +177,7 @@ export function PeerInvitationModal({
         setProgress({ total: tokens.length, current: i + 1 });
 
         // Resolve recipient to npub (supports npub and NIP-05)
+
         let recipientNpubResolved: string | null = null;
         try {
           if (recipientRaw.startsWith('npub1')) {
@@ -136,6 +219,8 @@ export function PeerInvitationModal({
           }
           const data = await generateResp.json();
           inviteUrl = data?.inviteUrl || '';
+          setLastInvite({ inviteUrl: data?.inviteUrl, qrCodeImage: data?.qrCodeImage, hostedQrUrl: data?.hostedQrUrl });
+
           if (!inviteUrl) {
             failureCount++;
             showToast.error(`Invite link missing for ${recipientRaw}`, { title: 'Generation error' });
@@ -281,6 +366,16 @@ export function PeerInvitationModal({
               className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:bg-white/20 focus:border-purple-400 transition-all duration-300 resize-y"
               rows={3}
             />
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setShowContacts(true)}
+                className="px-3 py-2 text-sm bg-purple-700 hover:bg-purple-800 text-white rounded"
+              >
+                Select Contacts
+              </button>
+            </div>
+
           </div>
 
           <div>
@@ -315,9 +410,7 @@ export function PeerInvitationModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Personal Message (Optional)
-            </label>
+            <label className="block text-sm font-medium text-white mb-2">Personal Message (Optional)</label>
             <textarea
               value={personalMessage}
               onChange={(e) => setPersonalMessage(e.target.value)}
@@ -326,6 +419,74 @@ export function PeerInvitationModal({
               rows={3}
             />
           </div>
+
+          {lastInvite && (
+            <div className="mt-4 space-y-2">
+              {lastInvite.qrCodeImage && (
+                <div className="flex justify-center">
+                  <img src={lastInvite.qrCodeImage} alt="Invitation QR Code" className="w-28 h-28" />
+                </div>
+              )}
+              {lastInvite.hostedQrUrl && (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={lastInvite.hostedQrUrl}
+                    readOnly
+                    className="flex-1 bg-white/10 border border-white/20 rounded px-3 py-2 text-white text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => navigator.clipboard.writeText(lastInvite.hostedQrUrl!)}
+                    className="px-3 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded"
+                  >
+                    Copy QR Link
+                  </button>
+                </div>
+              )}
+              {(lastInvite.qrCodeImage || lastInvite.hostedQrUrl) && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => downloadQrImage(lastInvite.hostedQrUrl || lastInvite.qrCodeImage!, 512, 512, 'satnam-invite-qr-512.png')}
+                    className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                  >
+                    Square 512
+                  </button>
+                  <button
+                    onClick={() => downloadQrImage(lastInvite.hostedQrUrl || lastInvite.qrCodeImage!, 1080, 1080, 'satnam-invite-qr-1080.png')}
+                    className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                  >
+                    Square 1080
+                  </button>
+                  <button
+                    onClick={() => downloadQrImage(lastInvite.hostedQrUrl || lastInvite.qrCodeImage!, 1080, 1920, 'satnam-invite-qr-story.png')}
+                    className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                  >
+                    Story 9:16
+                  </button>
+                  <button
+                    onClick={() => downloadQrImage(lastInvite.hostedQrUrl || lastInvite.qrCodeImage!, 1920, 1080, 'satnam-invite-qr-banner.png')}
+                    className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                  >
+                    Banner 16:9
+                  </button>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(buildAboutTemplate(lastInvite.inviteUrl || '', lastInvite.hostedQrUrl))}
+                    className="px-3 py-2 text-xs bg-slate-700 hover:bg-slate-800 text-white rounded"
+                  >
+                    Copy Profile About Template
+                  </button>
+                  <button
+                    onClick={handleShare}
+                    className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded"
+                  >
+                    Share
+                  </button>
+
+                </div>
+              )}
+            </div>
+          )}
+
 
           {/* Messaging method (fixed for compatibility) */}
           <div className="bg-white/10 p-4 rounded-lg border border-white/20">
@@ -371,6 +532,17 @@ export function PeerInvitationModal({
             )}
           </button>
         </div>
+        <ContactsSelector
+          isOpen={showContacts}
+          onClose={() => setShowContacts(false)}
+          onSelectContact={(contact) => {
+            if (contact?.npub) {
+              setRecipientsInput((prev) => (prev ? prev + '\n' : '') + contact.npub);
+            }
+          }}
+          title="Select Contacts to Invite"
+        />
+
       </div>
     </div >
   );

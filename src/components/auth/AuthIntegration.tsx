@@ -15,7 +15,7 @@
 
 import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { cloneElement, useEffect, useState, type FC, type ReactElement, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, useIdentityForge, useNostrichSignin } from './AuthProvider';
 
 import { createRecoverySession } from '../../lib/auth/recovery-session-bridge';
@@ -39,6 +39,10 @@ export const IdentityForgeIntegration: FC<AuthIntegrationProps> = ({
   const identityForge = useIdentityForge();
   const navigate = useNavigate();
   // Set registration flow when component mounts
+  const [searchParams] = useSearchParams();
+  const modeParam = searchParams.get('mode');
+  const deepLinkedMigrationMode = modeParam === 'migration' ? 'import' : undefined;
+
   useEffect(() => {
     identityForge.setRegistrationFlow(true);
 
@@ -133,7 +137,8 @@ export const IdentityForgeIntegration: FC<AuthIntegrationProps> = ({
         onRegistrationSuccess: handleRegistrationSuccess,
         onRegistrationFailure: handleRegistrationFailure,
         isAuthenticating: auth.loading,
-        authError: auth.error
+        authError: auth.error,
+        initialMigrationMode: deepLinkedMigrationMode
       })}
     </div>
   );

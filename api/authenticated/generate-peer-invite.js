@@ -32,6 +32,54 @@
 import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
 
+
+// Optional: Upload QR image to Nostr.build (configurable)
+async function uploadQrToNostrBuild(imageDataUrl) {
+  try {
+    const enabled = (getEnvVar("NOSTR_BUILD_UPLOAD_ENABLED") || "").toLowerCase() === "true";
+    const apiUrl = getEnvVar("NOSTR_BUILD_API_URL");
+    if (!enabled || !apiUrl || !imageDataUrl || typeof imageDataUrl !== "string") return null;
+
+    // Privacy-safe: avoid sending any user-identifying data; only the QR image
+    // JSON upload (preferred; backend should accept this and return { url })
+    const resp = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageDataUrl }),
+    });
+    if (resp.ok) {
+      const json = await resp.json().catch(() => ({}));
+      const url = (json && (json.url || json.imageUrl || (json.data && json.data.url))) || null;
+      if (url && typeof url === "string" && url.startsWith("http")) return url;
+    }
+  } catch (e) {
+    console.warn("Nostr.build QR upload failed (non-fatal)");
+  }
+  return null;
+}
+
+// Best-effort storage of hosted QR URL in user_identities.metadata (if present)
+async function tryStoreHostedQrUrl(userId, hostedUrl) {
+  try {
+    if (!userId || !hostedUrl) return;
+    const { data: row, error: selErr } = await supabase
+      .from("user_identities")
+      .select("metadata")
+      .eq("id", userId)
+      .single();
+    if (selErr) return; // Likely no metadata column; skip silently
+
+    const current = row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const list = Array.isArray(current.invite_qr_urls) ? current.invite_qr_urls : [];
+    if (!list.includes(hostedUrl)) list.push(hostedUrl);
+    const newMetadata = { ...current, invite_qr_urls: list };
+
+    await supabase.from("user_identities").update({ metadata: newMetadata }).eq("id", userId);
+  } catch (_) {
+    // Ignore storage errors to preserve main flow
+  }
+}
+
 /**
  * @typedef {Object} InvitationData
  * @property {string} [personalMessage]
@@ -944,10 +992,18 @@ export default async function handler(req, res) {
       qrCodeImage = await generateQRCode(inviteUrl);
     }
 
+
+    // Attempt to host QR image for sharing (feature-flagged) and store URL
+    let hostedQrUrl = await uploadQrToNostrBuild(qrCodeImage);
+    if (hostedQrUrl && sessionPayload && sessionPayload.userId) {
+      await tryStoreHostedQrUrl(sessionPayload.userId, hostedQrUrl);
+    }
+
     return res.status(200).json({
       success: true,
       inviteToken,
       inviteUrl,
+      hostedQrUrl,
       qrCodeImage,
       giftWrappedMessage,
       expiryDate: expiresAt.toISOString(),

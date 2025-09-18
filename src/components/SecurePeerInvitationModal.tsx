@@ -1,6 +1,6 @@
 /**
  * Secure Peer Invitation Modal with Multiple Authentication Methods
- * 
+ *
  * Supports:
  * 1. NIP-07 browser extension signing (preferred)
  * 2. Password-based nsec decryption (fallback)
@@ -11,6 +11,7 @@
 import { CheckCircle, Copy, Key, Mail, Shield, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { secureNsecManager } from '../lib/secure-nsec-manager';
+import { showToast } from '../services/toastService';
 
 interface SecurePeerInvitationModalProps {
   isOpen: boolean;
@@ -51,12 +52,67 @@ interface InvitationResult {
   success: boolean;
   recipientId?: string;
   inviteUrl?: string;
+  hostedQrUrl?: string;
   qrCodeImage?: string;
   error?: string;
   signingMethod: 'nip07' | 'NIP05/password' | 'temporary_nsec';
   relayPublished?: boolean;
   publishMethod?: string;
 }
+
+// Build a Nostr profile "About" template with hosted QR and invite URL
+function buildAboutTemplate(inviteUrl: string, hostedQrUrl?: string): string {
+  const lines = [
+    "Join me on Satnam — privacy-first family coordination:",
+    inviteUrl,
+    hostedQrUrl ? `QR: ${hostedQrUrl}` : undefined,
+    "",
+    "How it works:",
+    "• Scan or open the link to accept my peer invitation",
+    "• Create your NIP-05 identity with zero-knowledge security",
+    "• We can message via Nostr (gift-wrapped) and coordinate privately",
+    "",
+    "Learn more: https://www.satnam.pub/learn/privacy-first"
+  ].filter(Boolean) as string[];
+  return lines.join("\n");
+}
+
+// Simple canvas-based downloader for QR images at target sizes/formats
+async function downloadQrImage(src: string, width: number, height: number, filename: string) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  const loaded = new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("Failed to load QR image"));
+  });
+  img.src = src;
+  await loaded;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not supported");
+  // Fill white background for better compatibility on socials
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  // Center fit the QR within the canvas with 10% padding
+  const pad = Math.floor(Math.min(width, height) * 0.1);
+  const qrSize = Math.min(width, height) - pad * 2;
+  const x = Math.floor((width - qrSize) / 2);
+  const y = Math.floor((height - qrSize) / 2);
+  ctx.drawImage(img, x, y, qrSize, qrSize);
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("Failed to encode image");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 export function SecurePeerInvitationModal({
   isOpen,
@@ -317,6 +373,7 @@ export function SecurePeerInvitationModal({
         return {
           success: result.success,
           inviteUrl: result.inviteUrl,
+          hostedQrUrl: result.hostedQrUrl,
           qrCodeImage: result.qrCodeImage,
           signingMethod: 'nip07',
           relayPublished: result.relayPublished,
@@ -341,6 +398,7 @@ export function SecurePeerInvitationModal({
         return {
           success: result.success,
           inviteUrl: result.inviteUrl,
+          hostedQrUrl: result.hostedQrUrl,
           qrCodeImage: result.qrCodeImage,
           signingMethod: bestMethod,
           error: result.error
@@ -417,6 +475,44 @@ export function SecurePeerInvitationModal({
     setSigningMethod(method);
     setShowPasswordInput(method === 'NIP05/password');
     setError(null);
+  };
+
+
+  const handleShare = async (urlInput?: string) => {
+    try {
+      const url = urlInput || '';
+      if (!url) {
+        showToast.warning('No invitation link available to share yet.', { title: 'Nothing to share' });
+        return;
+      }
+      const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+      if (nav.share) {
+        await nav.share({
+          title: 'Satnam Invitation',
+          text: 'Join me on Satnam — privacy-first family coordination',
+          url
+        });
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+        showToast.success('Invite link copied to clipboard', { title: 'Copied' });
+        return;
+      }
+      showToast.warning('Sharing not supported on this device.', { title: 'Share unavailable' });
+    } catch (error) {
+      try {
+        const url = urlInput || '';
+        if (url && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url);
+          showToast.success('Invite link copied to clipboard', { title: 'Copied' });
+          return;
+        }
+      } catch {
+        // ignore secondary failure
+      }
+      showToast.error(error instanceof Error ? error.message : 'Unknown error', { title: 'Share failed' });
+    }
   };
 
   if (!isOpen) return null;
@@ -656,6 +752,68 @@ export function SecurePeerInvitationModal({
               </div>
             </div>
           )}
+
+
+          {result.hostedQrUrl && (
+            <div className="flex items-center space-x-2 mt-2">
+              <input
+                type="text"
+                value={result.hostedQrUrl}
+                readOnly
+                className="flex-1 bg-white/10 border border-white/20 rounded px-3 py-2 text-white text-sm font-mono"
+              />
+              <button
+                onClick={() => navigator.clipboard.writeText(result.hostedQrUrl!)}
+                className="p-2 bg-emerald-500 hover:bg-emerald-600 rounded text-white transition-colors"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            {/* Share (hosted preferred) */}
+            <button
+              onClick={() => handleShare(result.inviteUrl || result.hostedQrUrl)}
+              className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded"
+            >
+              Share
+            </button>
+
+            {/* Copy About Template */}
+            <button
+              onClick={() => navigator.clipboard.writeText(buildAboutTemplate(result.inviteUrl || '', result.hostedQrUrl))}
+              className="px-3 py-2 text-xs bg-slate-700 hover:bg-slate-800 text-white rounded"
+            >
+              Copy Profile About Template
+            </button>
+
+            {/* Downloads */}
+            <button
+              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 512, 512, 'satnam-invite-qr-512.png')}
+              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+            >
+              Square 512
+            </button>
+            <button
+              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1080, 'satnam-invite-qr-1080.png')}
+              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+            >
+              Square 1080
+            </button>
+            <button
+              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1920, 'satnam-invite-qr-story.png')}
+              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+            >
+              Story 9:16
+            </button>
+            <button
+              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1920, 1080, 'satnam-invite-qr-banner.png')}
+              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+            >
+              Banner 16:9
+            </button>
+          </div>
 
           {/* Loading State */}
           {currentStep === 'signing' && (

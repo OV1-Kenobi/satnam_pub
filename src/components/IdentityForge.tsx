@@ -38,6 +38,7 @@ import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 
 
+
 interface FormData {
   username: string;
   password: string;
@@ -59,6 +60,8 @@ interface IdentityForgeProps {
     skipStep1?: boolean;
     onKeysReady?: (npub: string, nsecBech32: string) => Promise<void> | void;
   };
+  // Optional: preselect migration mode (e.g., via deep link)
+  initialMigrationMode?: 'generate' | 'import';
 }
 
 const IdentityForge: React.FC<IdentityForgeProps> = ({
@@ -68,6 +71,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   invitationDetails = null,
   isInvitedUser = false,
   rotationMode,
+  initialMigrationMode,
 }) => {
   // Early guard: mark registration flow as active before any effects run
   if (typeof window !== 'undefined') {
@@ -82,9 +86,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     if (rotationMode?.enabled) {
       setMigrationMode('generate');
       // Skip username/password step; user keeps existing NIP-05/Lightning
-      if (rotationMode.skipStep1) {
-        setCurrentStep(2);
-      }
+
     }
   }, [rotationMode?.enabled, rotationMode?.skipStep1]);
 
@@ -97,6 +99,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       try {
         if (typeof window !== 'undefined' && (window as any).__identityForgeRegFlow) {
           delete (window as any).__identityForgeRegFlow;
+
         }
       } catch { /* no-op */ }
     };
@@ -164,13 +167,19 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   };
 
   // Nostr Account Migration State (Zero-Knowledge Compliance)
-  const [migrationMode, setMigrationMode] = useState<'generate' | 'import'>('generate');
+  const [migrationMode, setMigrationMode] = useState<'generate' | 'import'>(initialMigrationMode === 'import' ? 'import' : 'generate');
   const [importedNsec, setImportedNsec] = useState('');
   const [detectedProfile, setDetectedProfile] = useState<any>(null);
   const [showMigrationConsent, setShowMigrationConsent] = useState(false);
   const [profileUpdateConsent, setProfileUpdateConsent] = useState(true);
   const [lightningAddressConsent, setLightningAddressConsent] = useState(true);
   const [isDetectingProfile, setIsDetectingProfile] = useState(false);
+
+
+  // OTP verification state for migration flow
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpSessionId, setOtpSessionId] = useState<string | null>(null);
+  const [otpExpiresAt, setOtpExpiresAt] = useState<string | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -1297,6 +1306,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     } else if (currentStep === 2) {
       // Moving from step 2 to step 3
       if (migrationMode === 'import') {
+        // Require OTP verification before proceeding with migration
+        if (!otpVerified) {
+          setErrorMessage('Please verify the TOTP sent to your existing Nostr account before continuing.');
+          return;
+        }
         // For import users, register identity and go directly to completion
         try {
           await registerIdentity();
@@ -2080,6 +2094,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       </ul>
                     </div>
                   </div>
+
+
                 </div>
               ) : formData.pubkey ? (
                 <div className="space-y-6">
@@ -2379,6 +2395,29 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
                 </div>
               ) : null}
+
+              {/* Migration OTP Verification Panel (after import when pubkey is set) */}
+              {currentStep === 2 && migrationMode === 'import' && formData.username && formData.pubkey && (
+                <div className="mt-6 space-y-4">
+                  <SovereigntyEducation />
+                  <div className="bg-white/10 border border-white/20 rounded-lg p-4">
+                    <OTPVerificationPanel
+                      npub={formData.pubkey}
+                      nip05={`${formData.username}@satnam.pub`}
+                      lightningAddress={formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined}
+                      onVerified={({ sessionId, expiresAt }) => {
+                        setOtpVerified(true);
+                        setOtpSessionId(sessionId);
+                        setOtpExpiresAt(expiresAt);
+                      }}
+                    />
+                    {otpVerified && (
+                      <div className="mt-3 text-green-300 text-sm">Ownership verified. You may continue.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
           )
           }
@@ -2406,6 +2445,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
                     <label className="block text-white font-bold mb-2">
                       Display Name *
+
                     </label>
                     <input
                       type="text"
