@@ -1544,9 +1544,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               loading="lazy"
             />
           </div>
-          <h2 className="text-3xl font-bold text-white mb-2">Identity Forge</h2>
+          <h2 className="text-3xl font-bold text-white mb-2">Claim Your Name</h2>
           <p className="text-purple-200">
-            Forge your sovereign digital identity
+            Claim your sovereign digital identity
           </p>
         </div>
 
@@ -1858,7 +1858,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               <div className="text-center">
                 <Key className="h-16 w-16 text-orange-500 mx-auto mb-4" />
                 <h3 className="text-2xl font-bold text-white mb-4">
-                  Forge Your Satnam Identity
+                  Claim Your Name, stamp your passport to the Nostr realm
                 </h3>
                 <p className="text-purple-200">
                   Choose how you want to set up your sovereign identity
@@ -1895,7 +1895,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     >
                       <div className="flex items-center space-x-3 mb-2">
                         <ArrowRight className="h-6 w-6 text-blue-400" />
-                        <h5 className="text-white font-semibold">Import Existing Nostr Credentials</h5>
+                        <h5 className="text-white font-semibold">Import My Existing Identity</h5>
                       </div>
                       <p className="text-purple-200 text-sm">
                         Use your existing Nostr credentials (npub or nsec)
@@ -2165,7 +2165,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       <div>
                         <h4 className="text-orange-200 font-bold mb-2">Your Private Key (nsec)</h4>
                         <p className="text-orange-200/80 text-sm mb-3">
-                          This is your private key for signing in. Store it securely and never share it.
+                          This is your private key for proving your identity. Store it securely and never share it.
                         </p>
                       </div>
                     </div>
@@ -2806,7 +2806,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     <User className="h-8 w-8 text-blue-400" />
                   </div>
                   <h3 className="text-2xl font-bold text-white mb-2">
-                    Profile Migration Consent
+                    Identity Claim Consent
                   </h3>
                   <p className="text-purple-200">
                     Configure how your existing Nostr identity integrates with Satnam

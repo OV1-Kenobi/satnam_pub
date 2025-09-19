@@ -51,6 +51,6 @@ end;
 $$;
 
 -- 6) Comments for auditors
-comment on table public.migration_otp_sessions is 'Temporary TOTP sessions for secure Nostr account migration (10-minute TTL). Stores Base32 TOTP secrets; no OTP codes at rest.';
+comment on table public.migration_otp_sessions is 'Temporary TOTP sessions for secure Nostr account migration (up to 1-hour max TTL per constraint). Stores Base32 TOTP secrets; no codes at rest.';
 comment on column public.migration_otp_sessions.used_codes is 'Replay protection: 5-minute blacklist of previously used codes with timestamps.';
 

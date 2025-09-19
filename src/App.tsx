@@ -993,7 +993,7 @@ function App() {
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
               <img src="/ID-forge-icon.png" alt="Forge" className="h-5 w-5" />
-              <span>Forge Identity</span>
+              <span>Claim Your Name</span>
             </button>
             <button
               onClick={() => setCurrentView("dynastic-sovereignty")}

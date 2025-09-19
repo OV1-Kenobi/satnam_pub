@@ -10,7 +10,6 @@ import {
   Key,
   RefreshCw,
   Shield,
-  Smartphone,
   User,
   X
 } from 'lucide-react';
@@ -26,7 +25,7 @@ const getSessionInfo = async () => {
 
 import NIP05PasswordAuth from './auth/NIP05PasswordAuth';
 import ErrorBoundary from './ErrorBoundary';
-import { MaxPrivacyAuth } from './MaxPrivacyAuth';
+
 import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
 import { central_event_publishing_service } from "../../lib/central_event_publishing_service";
@@ -68,7 +67,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
   destination,
 }) => {
   const [authStep, setAuthStep] = useState<AuthStep>('method-selection');
-  const [showMaxPrivacyAuth, setShowMaxPrivacyAuth] = useState(false);
+  const [showNFCAuthModal, setShowNFCAuthModal] = useState(false);
   const [showNIP05PasswordAuth, setShowNIP05PasswordAuth] = useState(false);
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus>({
     available: false
@@ -525,7 +524,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
 
 
-  console.log('🎯 SignInModal render:', { isOpen, authStep, showMaxPrivacyAuth, showNIP05PasswordAuth, showPostAuthInvitation });
+  console.log('🎯 SignInModal render:', { isOpen, authStep, showNIP05PasswordAuth, showPostAuthInvitation });
 
   if (!isOpen) {
     console.log('🎯 SignInModal not rendering - isOpen is false');
@@ -673,42 +672,30 @@ const SignInModal: React.FC<SignInModalProps> = ({
                     <ArrowRight className="h-5 w-5 text-purple-400" />
                   </div>
                 </button>
+
+                {/* Primary Method: NFC Physical MFA */}
+                <div className="relative p-4 bg-gradient-to-r from-blue-600/20 to-blue-500/20 border border-blue-500/30 rounded-xl hover:from-blue-600/30 hover:to-blue-500/30 transition-all duration-300">
+                  <button
+                    onClick={() => setShowNFCAuthModal(true)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Smartphone className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-white font-bold text-lg mb-2">NFC Physical MFA</h4>
+                        <p className="text-blue-200 text-sm">
+                          Secure hardware authentication with NTAG424
+                        </p>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-blue-400" />
+                    </div>
+                  </button>
+                </div>
+
               </div>
 
-              {/* Secondary Methods */}
-              <div className="space-y-3">
-                <p className="text-purple-300 text-sm text-center">Alternative Methods</p>
-
-                {/* Account Migration Method */}
-                <button
-                  onClick={() => setShowMaxPrivacyAuth(true)}
-                  className="w-full p-4 bg-gradient-to-r from-orange-600/20 to-orange-500/20 border border-orange-500/30 rounded-xl hover:from-orange-600/30 hover:to-orange-500/30 transition-all duration-300 text-left"
-                >
-                  <div className="flex items-center space-x-4">
-                    <Key className="h-6 w-6 text-orange-400" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-white">Account Migration</h4>
-                      <p className="text-orange-200 text-sm">Import existing Nostr identity with nsec</p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-orange-400" />
-                  </div>
-                </button>
-
-                {/* OTP Fallback Method */}
-                <button
-                  onClick={() => setShowMaxPrivacyAuth(true)}
-                  className="w-full p-4 bg-gradient-to-r from-blue-600/20 to-blue-500/20 border border-blue-500/30 rounded-xl hover:from-blue-600/30 hover:to-blue-500/30 transition-all duration-300 text-left"
-                >
-                  <div className="flex items-center space-x-4">
-                    <Smartphone className="h-6 w-6 text-blue-400" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-white">One-Time Password</h4>
-                      <p className="text-blue-200 text-sm">Secure OTP fallback authentication</p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-blue-400" />
-                  </div>
-                </button>
-              </div>
 
 
 
@@ -800,6 +787,9 @@ const SignInModal: React.FC<SignInModalProps> = ({
                     )}
                     <button
                       onClick={handleBackToMethods}
+
+
+
                       className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
                     >
                       Back to Methods
@@ -811,15 +801,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
           )}
         </div>
 
-        {/* Maximum Privacy Authentication Modal */}
-        <MaxPrivacyAuth
-          isOpen={showMaxPrivacyAuth}
-          onClose={() => setShowMaxPrivacyAuth(false)}
-          onAuthSuccess={onSignInSuccess}
-          destination={destination}
-          title="Sign In to Satnam.pub"
-          purpose="Maximum privacy protection with hashed UUIDs and Perfect Forward Secrecy"
-        />
+
 
         {/* NIP-05/Password Authentication Modal */}
         <NIP05PasswordAuth
@@ -839,12 +821,31 @@ const SignInModal: React.FC<SignInModalProps> = ({
               onClose={() => setShowPostAuthInvitation(false)}
               onSkip={() => setShowPostAuthInvitation(false)}
               sessionInfo={sessionInfo}
+
             />
+
+
+
+
           </ErrorBoundary>
         )}
+
+        {/* NFC Physical MFA Modal */}
+        <NTAG424AuthModal
+          isOpen={showNFCAuthModal}
+          onClose={() => setShowNFCAuthModal(false)}
+          onAuthSuccess={() => { setShowNFCAuthModal(false); onSignInSuccess(destination); }}
+          mode="authentication"
+          destination={destination}
+          title="NFC Physical MFA"
+          purpose="Secure hardware authentication with NTAG424"
+        />
+
+
       </div>
-    </ErrorBoundary>
+    </ErrorBoundary >
   );
 };
 
 export default SignInModal;
+

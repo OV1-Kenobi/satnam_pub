@@ -1,6 +1,6 @@
 /**
  * Maximum Privacy Authentication Component
- * 
+ *
  * For ALL authentication use cases except messaging
  * - ALWAYS uses maximum privacy (95% anonymity)
  * - NO privacy level choices (those are ONLY for messaging)
@@ -52,6 +52,10 @@ export function MaxPrivacyAuth({
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   // NIP-05/Password form states
+  // TOTP session state (migration flow)
+  const [otpSessionId, setOtpSessionId] = useState<string | null>(null);
+  const [otpDigits, setOtpDigits] = useState<number>(6);
+
   const [nip05Username, setNip05Username] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -93,7 +97,7 @@ export function MaxPrivacyAuth({
 
 
 
-  // Send OTP
+  // Send TOTP (migration flow)
   const handleSendOTP = async () => {
     if (!nipOrNpub.trim()) {
       setError('Please enter your npub or nip05 identifier');
@@ -104,27 +108,39 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      const result = await auth.initiateOTP(nipOrNpub);
+      const identifier = nipOrNpub.trim();
+      const isNpub = identifier.startsWith('npub1');
+      const payload: Record<string, string> = {};
+      if (isNpub) payload.npub = identifier; else payload.nip05 = identifier;
 
-      if (!mountedRef.current) return;
-      if (result.success) {
-        setOtpSent(true);
-        setSuccess('OTP sent via encrypted Nostr DM! Check your Nostr client.');
-      } else {
-        throw new Error(result.error || 'Failed to send OTP');
-      }
+      const res = await fetch('/.netlify/functions/auth-migration-otp-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.error || `HTTP ${res.status}`);
+
+      setOtpSent(true);
+      setOtpSessionId(json.sessionId || null);
+      setOtpDigits(typeof json.digits === 'number' ? json.digits : 6);
+      setSuccess('TOTP sent via encrypted Nostr DM! Check your Nostr client.');
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to send OTP');
+      setError(error instanceof Error ? error.message : 'Failed to send TOTP');
     } finally {
       if (!mountedRef.current) return;
       setIsLoading(false);
     }
   };
 
-  // Verify OTP (Maximum Privacy)
+  // Verify TOTP (Maximum Privacy)
   const handleVerifyOTP = async () => {
-    if (!otpCode.trim() || !nipOrNpub.trim()) {
-      setError('Please enter both identifier and OTP code');
+    if (!otpCode.trim()) {
+      setError('Please enter your TOTP code');
+      return;
+    }
+    if (!otpSessionId) {
+      setError('No TOTP session found. Please send the code first.');
       return;
     }
 
@@ -132,16 +148,23 @@ export function MaxPrivacyAuth({
     setError(null);
 
     try {
-      const success = await auth.authenticateOTP(nipOrNpub, otpCode);
+      const identifier = nipOrNpub.trim();
+      const isNpub = identifier.startsWith('npub1');
+      const payload: Record<string, string> = { sessionId: otpSessionId, code: otpCode.trim() };
+      if (isNpub) payload.npub = identifier;
+
+      const res = await fetch('/.netlify/functions/auth-migration-otp-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.error || `HTTP ${res.status}`);
 
       if (!mountedRef.current) return;
-      if (success) {
-        handleAuthSuccess('OTP');
-      } else {
-        setError(auth.error || 'OTP verification failed. Please check your code and try again.');
-      }
+      handleAuthSuccess('TOTP');
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'OTP verification failed');
+      setError(error instanceof Error ? error.message : 'TOTP verification failed');
     } finally {
       if (!mountedRef.current) return;
       setIsLoading(false);
@@ -295,8 +318,8 @@ export function MaxPrivacyAuth({
                 <div className="flex items-center space-x-4">
                   <Smartphone className="h-6 w-6 text-blue-400" />
                   <div>
-                    <h4 className="font-semibold text-white">One-Time Password</h4>
-                    <p className="text-blue-200 text-sm">Secure OTP authentication</p>
+                    <h4 className="font-semibold text-white">Time-based One-Time Passcode (TOTP)</h4>
+                    <p className="text-blue-200 text-sm">Secure TOTP verification</p>
                   </div>
                 </div>
               </button>
@@ -337,7 +360,7 @@ export function MaxPrivacyAuth({
           {authMethod === 'otp' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">OTP Authentication</h3>
+                <h3 className="text-lg font-semibold text-white">TOTP Authentication</h3>
                 <button onClick={() => setAuthMethod(null)} className="text-purple-300 hover:text-white text-sm">← Back</button>
               </div>
 
@@ -363,7 +386,7 @@ export function MaxPrivacyAuth({
                   ) : (
                     <>
                       <Smartphone className="h-5 w-5" />
-                      <span>Send OTP</span>
+                      <span>Send TOTP</span>
                     </>
                   )}
                 </button>
