@@ -1,6 +1,7 @@
 import {
   Bitcoin,
   BookOpen,
+  Copy,
   ExternalLink,
   Network,
   Users,
@@ -1273,12 +1274,29 @@ function App() {
                 >
                   Sovereignty Controls
                 </button>
-                <button
-                  onClick={() => handleProtectedRoute("giftwrapped-messaging")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Giftwrapped Messaging
-                </button>
+                {auth.authenticated ? (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const npub = (auth.user as any)?.npub as string | undefined;
+                        if (!npub) {
+                          showToast.error("Your npub is not available", { duration: 2500 });
+                          return;
+                        }
+                        await navigator.clipboard.writeText(npub);
+                        showToast.success("Copied your npub", { duration: 2500 });
+                      } catch (e) {
+                        showToast.error("Failed to copy npub", { duration: 3000 });
+                      }
+                    }}
+                    className="flex items-center space-x-1 text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                    aria-label="Copy your npub to clipboard"
+                    title="Copy your npub"
+                  >
+                    <Copy className="h-3 w-3" />
+                    <span>Copy Npub</span>
+                  </button>
+                ) : null}
               </div>
             </div>
 

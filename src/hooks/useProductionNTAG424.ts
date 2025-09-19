@@ -55,29 +55,78 @@ export const useProductionNTAG424 = () => {
       if (typeof window === "undefined" || !("NDEFReader" in window)) {
         throw new Error("NFC not supported on this device/browser");
       }
+      // Basic PIN validation (6 digits)
+      const pinOk = typeof pin === "string" && /^[0-9]{6}$/.test(pin.trim());
+      if (!pinOk) {
+        throw new Error("Invalid PIN format. Use 6 digits.");
+      }
       const ndef = new (window as any).NDEFReader();
       await ndef.scan();
       return await new Promise<any>((resolve, reject) => {
         ndef.addEventListener("reading", async (event: any) => {
           try {
             const uid = event.serialNumber;
-            // Optional: extract SUN message from event.message.records if available
+            // Optional: extract SUN message from event.message.records if available (not exposed by Web NFC)
             const headers = await getAuthHeaders();
-            const res = await fetch(`${API_BASE}/nfc-unified/verify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...headers },
-              body: JSON.stringify({ tagUID: uid }),
-            });
-            const json = await res.json();
-            if (!res.ok || !json?.success) {
-              throw new Error(json?.error || `HTTP ${res.status}`);
+            const hasAuth = !!headers.Authorization;
+            if (hasAuth) {
+              const res = await fetch(`${API_BASE}/nfc-unified/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...headers },
+                body: JSON.stringify({ tagUID: uid, pin }),
+              });
+              const json = await res.json();
+              if (!res.ok || !json?.success) {
+                throw new Error(json?.error || `HTTP ${res.status}`);
+              }
+              setAuthState((prev) => ({
+                ...prev,
+                isAuthenticated: true,
+                error: null,
+              }));
+              resolve({ success: true, data: json?.data });
+            } else {
+              // Logged-out NFC login: require tagId mapping from local storage (set on registration)
+              const mapRaw = localStorage.getItem("nfc_tag_map");
+              const map = mapRaw
+                ? (JSON.parse(mapRaw) as Record<string, string>)
+                : {};
+              const tagId = map[uid];
+              if (!tagId) {
+                throw new Error(
+                  "Tag not recognized on this device. Complete registration or sign in normally once to link."
+                );
+              }
+              const res = await fetch(`${API_BASE}/nfc-unified/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tagId, tagUID: uid, pin }),
+              });
+              const json = await res.json();
+              if (!res.ok || !json?.success) {
+                throw new Error(json?.error || `HTTP ${res.status}`);
+              }
+              try {
+                const { default: SecureTokenManager } = await import(
+                  "../lib/auth/secure-token-manager"
+                );
+                const token: string = json?.data?.sessionToken;
+                const payload = SecureTokenManager.parseTokenPayload(token);
+                const expMs = payload?.exp
+                  ? payload.exp * 1000
+                  : Date.now() + 15 * 60 * 1000;
+                SecureTokenManager.setAccessToken(token, expMs);
+              } catch {
+                // Non-fatal: session may still be established via other flows
+              }
+              setAuthState((prev) => ({
+                ...prev,
+                isAuthenticated: true,
+                sessionToken: json?.data?.sessionToken || null,
+                error: null,
+              }));
+              resolve({ success: true, data: json?.data });
             }
-            setAuthState((prev) => ({
-              ...prev,
-              isAuthenticated: true,
-              error: null,
-            }));
-            resolve({ success: true });
           } catch (err: any) {
             setAuthState((prev) => ({
               ...prev,
@@ -169,12 +218,24 @@ export const useProductionNTAG424 = () => {
                   tagUID: uid,
                   encryptedMetadata,
                   familyRole,
+                  pin,
                 }),
               });
               const json = await res.json();
               if (!res.ok || !json?.success) {
                 throw new Error(json?.error || `HTTP ${res.status}`);
               }
+              try {
+                const tagId: string | undefined = json?.data?.tagId;
+                if (tagId) {
+                  const mapRaw = localStorage.getItem("nfc_tag_map");
+                  const map = mapRaw
+                    ? (JSON.parse(mapRaw) as Record<string, string>)
+                    : {};
+                  map[uid] = tagId;
+                  localStorage.setItem("nfc_tag_map", JSON.stringify(map));
+                }
+              } catch {}
               resolve(true);
             } catch (err: any) {
               setAuthState((prev) => ({

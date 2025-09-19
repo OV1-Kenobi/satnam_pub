@@ -1,9 +1,8 @@
-import {
-  ExternalLink,
-  Menu,
-  Network,
-  X
-} from "lucide-react";
+import { ExternalLink, LogOut, Menu, Network, User, X } from "lucide-react";
+import { showToast } from "../../services/toastService";
+import { useAuth } from "../auth/AuthProvider";
+
+
 import { usePrivacyFirstMessaging } from "../../hooks/usePrivacyFirstMessaging";
 
 interface NavigationProps {
@@ -30,18 +29,34 @@ const Navigation: React.FC<NavigationProps> = ({
   const messaging = usePrivacyFirstMessaging();
   const incomingCount = (messaging?.incomingMessages || []).length;
 
+  const auth = useAuth();
+  const rawNpub = (auth.user as any)?.npub as string | undefined;
+  const rawUsername = (auth.user as any)?.username as string | undefined;
+  const rawNip05 = (auth.user as any)?.nip05 as string | undefined;
+  const displayId =
+    rawNip05 ||
+    (rawUsername
+      ? `${rawUsername}@satnam.pub`
+      : rawNpub
+        ? `${rawNpub.slice(0, 8)}...${rawNpub.slice(-4)}`
+        : "Signed in");
+
+  const handleLogout = async () => {
+    try {
+      await auth.logout();
+      showToast.success("Logged out successfully", { duration: 2500 });
+    } finally {
+      setMobileMenuOpen(false);
+      setCurrentView("landing");
+    }
+  };
+
   const navigationItems = [
     { label: "Family Financials", action: () => setCurrentView("dashboard") },
     { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
     { label: "Communications", action: () => handleProtectedRoute("communications") },
-    {
-      label: "Nostr Resources",
-      action: () => setCurrentView("nostr-ecosystem"),
-    },
-    {
-      label: "Advanced Coordination",
-      action: () => setCurrentView("coordination"),
-    },
+    { label: "Nostr Resources", action: () => setCurrentView("nostr-ecosystem") },
+    { label: "Advanced Coordination", action: () => setCurrentView("coordination") },
     { label: "Recovery Help", action: () => setCurrentView("recovery") },
     {
       label: "Citadel Academy",
@@ -150,6 +165,25 @@ const Navigation: React.FC<NavigationProps> = ({
             </button>
           </div>
 
+          {/* Session Status Indicator */}
+          {auth.authenticated && (
+            <div className="ml-auto hidden lg:flex items-center space-x-2">
+              <span className="text-purple-200 text-xs flex items-center space-x-1 px-2 py-1 bg-white/10 rounded">
+                <User className="h-3 w-3" />
+                <span>{displayId}</span>
+              </span>
+              <button
+                onClick={handleLogout}
+                className="text-purple-200 hover:text-yellow-400 text-xs flex items-center space-x-1"
+                aria-label="Logout"
+                title="Logout"
+              >
+                <LogOut className="h-3 w-3" />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
+
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -229,4 +263,4 @@ const Navigation: React.FC<NavigationProps> = ({
   );
 };
 
-export default Navigation; 
+export default Navigation;

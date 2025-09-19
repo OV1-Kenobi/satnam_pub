@@ -14,7 +14,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ClientSessionVault, hasVaultRecord } from "./client-session-vault";
+import {
+  ClientSessionVault,
+  hasVaultRecord,
+  setNFCPolicy,
+} from "./client-session-vault";
 import { fetchWithAuth } from "./fetch-with-auth";
 import { awaitNFC } from "./nfc-auth-bridge";
 import { nsecSessionBridge } from "./nsec-session-bridge";
@@ -931,6 +935,13 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         return false;
       }
 
+      // Ensure vault is gated by NFC per unlock with 120s freshness window
+      setNFCPolicy({
+        policy: "nfc",
+        awaitNfcAuth: awaitNFC,
+        config: { pinTimeoutMs: 120000, confirmationMode: "per_unlock" },
+      });
+
       const okNfc = await awaitNFC();
       if (!okNfc) {
         setState((prev) => ({ ...prev, loading: false }));
@@ -1148,7 +1159,43 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         e instanceof Error ? e.message : String(e)
       );
     }
-  }, []); // Empty dependency array - only run once on mount (gated)
+  }, []);
+  // Load NFC gating preference on mount and configure vault policy accordingly
+  useEffect(() => {
+    const NFC_ENABLED =
+      (import.meta.env.VITE_ENABLE_NFC_MFA ?? "false") === "true";
+    if (!NFC_ENABLED) return;
+    (async () => {
+      try {
+        const res = await fetchWithAuth("/api/nfc-unified/preferences", {
+          method: "GET",
+        });
+        if (!res?.ok) return;
+        const j = await res.json().catch(() => ({}));
+        const prefs = j?.data?.preferences || {};
+        const requireNfc = !!prefs.require_nfc_for_unlock;
+        if (requireNfc) {
+          const sec =
+            typeof prefs.nfc_pin_timeout_seconds === "number"
+              ? prefs.nfc_pin_timeout_seconds
+              : 120;
+          const confirm = !!prefs.nfc_require_confirmation;
+          setNFCPolicy({
+            policy: "nfc",
+            awaitNfcAuth: awaitNFC,
+            config: {
+              pinTimeoutMs: Math.max(30, sec) * 1000,
+              confirmationMode: confirm ? "per_operation" : "per_unlock",
+            },
+          });
+        } else {
+          setNFCPolicy({ policy: "none" });
+        }
+      } catch {
+        // Ignore; leave policy as-is
+      }
+    })();
+  }, []);
 
   return {
     // State

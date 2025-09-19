@@ -97,6 +97,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
   const [confirmationMode, setConfirmationMode] = useState<'per_unlock' | 'per_operation'>('per_unlock');
   const [preferredMethod, setPreferredMethod] = useState<'nfc' | 'webauthn' | 'pbkdf2'>('webauthn');
   const [fallbackMethod, setFallbackMethod] = useState<'nfc' | 'webauthn' | 'pbkdf2'>('pbkdf2');
+  const [requireNfcForUnlock, setRequireNfcForUnlock] = useState<boolean>(false);
 
   const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
   async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -116,13 +117,18 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       const res = await fetch(`${API_BASE}/nfc-unified/preferences`, { headers });
       if (!res.ok) return;
       const json = await res.json();
-      // Expect shape: { success, data: { preferences: {...}, tags: [...] } }
       const prefs = json?.data?.preferences || {};
-      const tags = json?.data?.tags || [];
-      if (typeof prefs.pinTimeoutMs === 'number') setNfcTimeoutMs(prefs.pinTimeoutMs);
-      if (prefs.confirmationMode === 'per_unlock' || prefs.confirmationMode === 'per_operation') setConfirmationMode(prefs.confirmationMode);
-      if (prefs.preferredMethod) setPreferredMethod(prefs.preferredMethod);
-      if (prefs.fallbackMethod) setFallbackMethod(prefs.fallbackMethod);
+      const tags = json?.data?.registeredTags || json?.data?.tags || [];
+      // Support both camelCase and snake_case coming from API
+      const sec = typeof prefs.nfc_pin_timeout_seconds === 'number' ? prefs.nfc_pin_timeout_seconds : (typeof prefs.pinTimeoutMs === 'number' ? Math.round(prefs.pinTimeoutMs / 1000) : 120);
+      setNfcTimeoutMs(sec * 1000);
+      const requireConfirm = typeof prefs.nfc_require_confirmation === 'boolean' ? prefs.nfc_require_confirmation : (prefs.confirmationMode === 'per_operation');
+      setConfirmationMode(requireConfirm ? 'per_operation' : 'per_unlock');
+      if (prefs.preferred_method) setPreferredMethod(prefs.preferred_method);
+      else if (prefs.preferredMethod) setPreferredMethod(prefs.preferredMethod);
+      if (prefs.fallback_method) setFallbackMethod(prefs.fallback_method);
+      else if (prefs.fallbackMethod) setFallbackMethod(prefs.fallbackMethod);
+      setRequireNfcForUnlock(!!(prefs.require_nfc_for_unlock));
       setRegisteredTags(tags as RegisteredTag[]);
     } catch (e) {
       console.warn('Failed to load NFC preferences:', e);
@@ -135,7 +141,15 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       const res = await fetch(`${API_BASE}/nfc-unified/preferences`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ pinTimeoutMs: nfcTimeoutMs, confirmationMode, preferredMethod, fallbackMethod })
+        body: JSON.stringify({
+          preferences: {
+            nfc_pin_timeout_seconds: Math.round(nfcTimeoutMs / 1000),
+            nfc_require_confirmation: confirmationMode === 'per_operation',
+            preferred_method: preferredMethod,
+            fallback_method: fallbackMethod,
+            require_nfc_for_unlock: requireNfcForUnlock,
+          }
+        })
       });
       if (!res.ok) throw new Error('Failed to save NFC preferences');
       showToast.success('Saved NFC preferences', { title: 'NFC' });
@@ -665,6 +679,11 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
                             <option value="pbkdf2">Passphrase (PBKDF2)</option>
                           </select>
                         </div>
+                        <div className="col-span-1 md:col-span-2 flex items-center gap-2">
+                          <input id="requireNfcForUnlock" type="checkbox" className="h-4 w-4" checked={requireNfcForUnlock} onChange={(e) => setRequireNfcForUnlock(e.target.checked)} />
+                          <label htmlFor="requireNfcForUnlock" className="text-purple-200 text-sm">Require NFC for all vault unlocks</label>
+                        </div>
+
                       </div>
                       <div>
                         <button

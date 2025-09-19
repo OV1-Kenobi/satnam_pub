@@ -463,11 +463,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
           // Validate and decode the nsec using central service helpers
           const privateKeyBytes = CEPS.decodeNsec(cleanedKey);
-          const { secp256k1 } = await import('@noble/curves/secp256k1');
+          const { schnorr } = await import('@noble/curves/secp256k1');
           const { bytesToHex } = await import('@noble/curves/utils');
-          const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes);
-          publicKey = bytesToHex(publicKeyBytes);
-          npub = CEPS.encodeNpub(publicKey);
+          const publicKeyBytes = schnorr.getPublicKey(privateKeyBytes);
+          const publicKeyHex = bytesToHex(publicKeyBytes);
+          publicKey = publicKeyHex;
+          npub = CEPS.encodeNpub(publicKeyHex);
 
           // Store ephemeral nsec for full access (zero-knowledge compliance)
           setEphemeralNsecProtected(cleanedKey);
@@ -960,7 +961,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       });
 
       setGenerationProgress(100);
-      setGenerationStep("Cryptographic identity forged successfully!");
+      setGenerationStep("Identity claimed successfully!");
 
 
 
@@ -1362,7 +1363,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         }
 
         // Go directly to completion screen (step 4)
-        setGenerationStep("Identity forged successfully!");
+        setGenerationStep("Identity claimed successfully!");
         setCurrentStep(4);
       } catch (error) {
         console.error("❌ Failed to complete identity creation:", error);
@@ -1419,7 +1420,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           formData.password.length >= 8;
       case 2:
         if (migrationMode === 'import') {
-          return formData.pubkey && nsecSecured && !isDetectingProfile;
+          // Require TOTP verification before continuing
+          return formData.pubkey && nsecSecured && otpVerified && !isDetectingProfile;
         }
         // CRITICAL SECURITY: Require nsecSecured to be true before proceeding
         // This prevents username storage without nsec confirmation
@@ -1460,7 +1462,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               <Sparkles className="h-12 w-12 text-white" />
             </div>
             <h2 className="text-4xl font-bold text-white mb-6">
-              Identity Forged Successfully!
+              Identity Claimed Successfully!
             </h2>
             <p className="text-xl text-purple-200 mb-8">
               Welcome to true digital sovereignty,{" "}
@@ -1539,7 +1541,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <img
               src="/ID-forge-icon.png"
-              alt="Identity Forge"
+              alt="Claim Your Name"
               className="h-10 w-10"
               loading="lazy"
             />
@@ -1917,14 +1919,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           setErrorMessage("Failed to generate keys. Please try again.");
                         });
                       } else {
-                        // For import users: proceed to Step 3 for import flow
-                        setCurrentStep(3);
+                        // For import users: enforce OTP verification via centralized handler
+                        nextStep();
                       }
                     }}
                     className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 mx-auto"
                   >
                     <Key className="h-5 w-5" />
-                    <span>Forge Your Satnam ID</span>
+                    <span>Claim Your Name</span>
                   </button>
                   <p className="text-orange-200/60 text-sm mt-2">
                     {migrationMode === 'generate'
@@ -2762,7 +2764,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     }`}
                 >
                   <span>
-                    {currentStep === 1 ? "Forge Your Satnam Identity" :
+                    {currentStep === 1 ? "Claim Your Name" :
                       currentStep === 3 && migrationMode === 'generate' ? "Forge ID" :
                         "Continue"}
                   </span>

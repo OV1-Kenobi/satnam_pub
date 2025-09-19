@@ -754,67 +754,6 @@ export function SecurePeerInvitationModal({
           )}
 
 
-          {result.hostedQrUrl && (
-            <div className="flex items-center space-x-2 mt-2">
-              <input
-                type="text"
-                value={result.hostedQrUrl}
-                readOnly
-                className="flex-1 bg-white/10 border border-white/20 rounded px-3 py-2 text-white text-sm font-mono"
-              />
-              <button
-                onClick={() => navigator.clipboard.writeText(result.hostedQrUrl!)}
-                className="p-2 bg-emerald-500 hover:bg-emerald-600 rounded text-white transition-colors"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2 mt-3">
-            {/* Share (hosted preferred) */}
-            <button
-              onClick={() => handleShare(result.inviteUrl || result.hostedQrUrl)}
-              className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded"
-            >
-              Share
-            </button>
-
-            {/* Copy About Template */}
-            <button
-              onClick={() => navigator.clipboard.writeText(buildAboutTemplate(result.inviteUrl || '', result.hostedQrUrl))}
-              className="px-3 py-2 text-xs bg-slate-700 hover:bg-slate-800 text-white rounded"
-            >
-              Copy Profile About Template
-            </button>
-
-            {/* Downloads */}
-            <button
-              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 512, 512, 'satnam-invite-qr-512.png')}
-              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-            >
-              Square 512
-            </button>
-            <button
-              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1080, 'satnam-invite-qr-1080.png')}
-              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-            >
-              Square 1080
-            </button>
-            <button
-              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1920, 'satnam-invite-qr-story.png')}
-              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-            >
-              Story 9:16
-            </button>
-            <button
-              onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1920, 1080, 'satnam-invite-qr-banner.png')}
-              className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-            >
-              Banner 16:9
-            </button>
-          </div>
-
           {/* Loading State */}
           {currentStep === 'signing' && (
             <div className="text-center py-12">
@@ -887,6 +826,68 @@ export function SecurePeerInvitationModal({
                           </p>
                         </div>
                       )}
+
+                      {result.hostedQrUrl && (
+                        <div className="flex items-center space-x-2 mt-2">
+                          <input
+                            type="text"
+                            value={result.hostedQrUrl}
+                            readOnly
+                            className="flex-1 bg-white/10 border border-white/20 rounded px-3 py-2 text-white text-sm font-mono"
+                          />
+                          <button
+                            onClick={() => navigator.clipboard.writeText(result.hostedQrUrl!)}
+                            className="p-2 bg-emerald-500 hover:bg-emerald-600 rounded text-white transition-colors"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {/* Share (hosted preferred) */}
+                        <button
+                          onClick={() => handleShare(result.inviteUrl || result.hostedQrUrl)}
+                          className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded"
+                        >
+                          Share
+                        </button>
+
+                        {/* Copy About Template */}
+                        <button
+                          onClick={() => navigator.clipboard.writeText(buildAboutTemplate(result.inviteUrl || '', result.hostedQrUrl))}
+                          className="px-3 py-2 text-xs bg-slate-700 hover:bg-slate-800 text-white rounded"
+                        >
+                          Copy Profile About Template
+                        </button>
+
+                        {/* Downloads */}
+                        <button
+                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 512, 512, 'satnam-invite-qr-512.png')}
+                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                        >
+                          Square 512
+                        </button>
+                        <button
+                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1080, 'satnam-invite-qr-1080.png')}
+                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                        >
+                          Square 1080
+                        </button>
+                        <button
+                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1920, 'satnam-invite-qr-story.png')}
+                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                        >
+                          Story 9:16
+                        </button>
+                        <button
+                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1920, 1080, 'satnam-invite-qr-banner.png')}
+                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                        >
+                          Banner 16:9
+                        </button>
+                      </div>
+
                     </div>
                   ) : (
                     <div>

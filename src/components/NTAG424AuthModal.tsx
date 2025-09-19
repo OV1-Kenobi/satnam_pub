@@ -163,7 +163,9 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   };
 
   const handleAuthenticate = async () => {
-    if (!pin.trim()) {
+    const trimmed = pin.trim();
+    const validPin = /^[0-9]{6}$/.test(trimmed);
+    if (!validPin) {
       setCurrentStep('error');
       return;
     }
@@ -172,7 +174,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
     setCurrentStep('nfc-scan');
 
     try {
-      const result = await authenticateWithNFC(pin);
+      const result = await authenticateWithNFC(trimmed);
       if (result.success) {
         if (!mountedRef.current) return;
         setCurrentStep('processing');
@@ -260,10 +262,12 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                 <input
                   type={showPin ? "text" : "password"}
                   value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="Enter your PIN"
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter your 6-digit PIN"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                  maxLength={8}
+                  maxLength={6}
                 />
                 <button
                   type="button"
@@ -274,7 +278,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                 </button>
               </div>
               <p className="text-xs text-purple-300 mt-1">
-                PIN is used to authenticate with your physical NFC tag
+                PIN authenticates your NFC tag locally. Your private keys are never stored on the tag.
               </p>
             </div>
 
@@ -349,7 +353,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
               {(mode === 'authentication' || mode === 'both') && (
                 <button
                   onClick={handleAuthenticate}
-                  disabled={!pin.trim() || isProcessing}
+                  disabled={!/^[0-9]{6}$/.test(pin.trim()) || isProcessing}
                   className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
                 >
                   <Smartphone className="h-4 w-4" />

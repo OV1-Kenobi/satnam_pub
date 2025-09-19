@@ -28,6 +28,8 @@ import ErrorBoundary from './ErrorBoundary';
 
 import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
+import NTAG424AuthModal from './NTAG424AuthModal';
+
 import { central_event_publishing_service } from "../../lib/central_event_publishing_service";
 
 // At the top of the file, outside the component
@@ -76,6 +78,9 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const [isCheckingExtension, setIsCheckingExtension] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   const [showPostAuthInvitation, setShowPostAuthInvitation] = useState(false);
+
+  const NFC_ENABLED = (import.meta.env.VITE_ENABLE_NFC_MFA as string) === 'true';
+
   const [sessionInfo, setSessionInfo] = useState<any | null>(null);
 
   // NIP-07 auth state
@@ -479,11 +484,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
         // Clean up on unmount
         return () => {
-          if (animationFrameId !== null) {
-            cancelAnimationFrame(animationFrameId);
-          }
         };
-        return;
       }
 
       if (!response.ok) {
@@ -673,26 +674,6 @@ const SignInModal: React.FC<SignInModalProps> = ({
                   </div>
                 </button>
 
-                {/* Primary Method: NFC Physical MFA */}
-                <div className="relative p-4 bg-gradient-to-r from-blue-600/20 to-blue-500/20 border border-blue-500/30 rounded-xl hover:from-blue-600/30 hover:to-blue-500/30 transition-all duration-300">
-                  <button
-                    onClick={() => setShowNFCAuthModal(true)}
-                    className="w-full text-left"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Smartphone className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-white font-bold text-lg mb-2">NFC Physical MFA</h4>
-                        <p className="text-blue-200 text-sm">
-                          Secure hardware authentication with NTAG424
-                        </p>
-                      </div>
-                      <ArrowRight className="h-5 w-5 text-blue-400" />
-                    </div>
-                  </button>
-                </div>
 
               </div>
 
@@ -715,6 +696,29 @@ const SignInModal: React.FC<SignInModalProps> = ({
                   <span>Create New Identity</span>
                   <ArrowRight className="h-5 w-5" />
                 </button>
+
+                {NFC_ENABLED && (
+                  <div className="relative p-4 bg-gradient-to-r from-blue-600/20 to-blue-500/20 border border-blue-500/30 rounded-xl hover:from-blue-600/30 hover:to-blue-500/30 transition-all duration-300">
+                    <button
+                      onClick={() => setShowNFCAuthModal(true)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Smartphone className="h-6 w-6 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-white font-bold text-lg mb-2">NFC Physical MFA</h4>
+                          <p className="text-blue-200 text-sm">
+                            Tap to sign in securely with your NTAG424 tag
+                          </p>
+                        </div>
+                        <ArrowRight className="h-5 w-5 text-blue-400" />
+                      </div>
+                    </button>
+                  </div>
+                )}
+
               </div>
             </div>
           )}

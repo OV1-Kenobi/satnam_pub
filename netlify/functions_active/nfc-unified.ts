@@ -109,6 +109,39 @@ function clientIpFromEvent(event: any): string {
   return ip || "unknown";
 }
 
+// --- PIN hashing helpers (PBKDF2-SHA512, 100k iterations) ---
+async function pbkdf2HashHex(pin: string, saltB64: string): Promise<string> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(pin),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+  const saltBytes = Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0));
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: saltBytes,
+      iterations: 100000,
+      hash: "SHA-512",
+    },
+    keyMaterial,
+    512
+  );
+  const out = new Uint8Array(derivedBits);
+  return Array.from(out)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function randomSaltBase64(len: number = 24): string {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes));
+}
+
 async function setRlsContext(supabase: any, ownerHash: string): Promise<void> {
   try {
     // Preferred helper (if present)
@@ -201,7 +234,7 @@ async function handleVerify(event: any) {
   const { data: reg, error } = await supabase
     .from("ntag424_registrations")
     .select(
-      "id, owner_hash, hashed_tag_uid, uid, family_role, encrypted_config"
+      "id, owner_hash, hashed_tag_uid, uid, family_role, encrypted_config, pin_salt_base64, pin_hash_hex, pin_algo"
     )
     .or(`hashed_tag_uid.eq.${hashedTag},uid.eq.${body.tagUID}`)
     .limit(1)
@@ -211,162 +244,237 @@ async function handleVerify(event: any) {
     return json(404, { success: false, error: "Tag not registered" });
   }
 
-  // TODO: Implement SUN/crypto verification using stored metadata (requires key management plan)
-  // For now: mark success if registration exists; log operation with anti-abuse rate limit above.
+  // 1) PIN verification (if PIN is configured for this tag)
+  if (reg.pin_hash_hex) {
+    const pin = (parseJSON<{ pin?: string }>(event.body)?.pin || "").trim();
+    if (!pin) {
+      await supabase.from("ntag424_operations_log").insert({
+        owner_hash: reg.owner_hash,
+        hashed_tag_uid: reg.hashed_tag_uid || hashedTag,
+        operation_type: "auth",
+        success: false,
+        timestamp: new Date().toISOString(),
+        metadata: { reason: "pin_required" },
+      });
+      return json(401, { success: false, error: "PIN required" });
+    }
+    try {
+      const computed = await pbkdf2HashHex(pin, reg.pin_salt_base64 as string);
+      if (computed !== reg.pin_hash_hex) {
+        await supabase.from("ntag424_operations_log").insert({
+          owner_hash: reg.owner_hash,
+          hashed_tag_uid: reg.hashed_tag_uid || hashedTag,
+          operation_type: "auth",
+          success: false,
+          timestamp: new Date().toISOString(),
+          metadata: { reason: "pin_invalid" },
+        });
+        return json(401, { success: false, error: "Invalid PIN" });
+      }
+    } catch {
+      return json(500, { success: false, error: "PIN verification error" });
+    }
+  }
+
+  // 2) SUN verification via hardware bridge if challenge provided and bridge configured
+  let sunVerified: boolean | null = null;
+  if (body.challengeData && body.encryptedResponse) {
+    try {
+      const res = await bridgeFetch("/ntag424/verify", {
+        tagUID: body.tagUID,
+        challengeData: body.challengeData,
+        encryptedResponse: body.encryptedResponse,
+        userHash: session.hashedId,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && (j?.success || j?.data?.valid === true)) {
+        sunVerified = true;
+      } else if (
+        res.status === 501 ||
+        j?.meta?.code === "bridge_unconfigured"
+      ) {
+        sunVerified = null; // not enforced when bridge unconfigured
+      } else {
+        sunVerified = false;
+      }
+    } catch {
+      sunVerified = false;
+    }
+
+    if (sunVerified === false) {
+      await supabase.from("ntag424_operations_log").insert({
+        owner_hash: reg.owner_hash,
+        hashed_tag_uid: reg.hashed_tag_uid || hashedTag,
+        operation_type: "auth",
+        success: false,
+        timestamp: new Date().toISOString(),
+        metadata: { reason: "sun_verification_failed" },
+      });
+      return json(401, { success: false, error: "SUN verification failed" });
+    }
+  }
+
   await supabase.from("ntag424_operations_log").insert({
-    owner_hash: session.hashedId,
+    owner_hash: reg.owner_hash,
     hashed_tag_uid: reg.hashed_tag_uid || hashedTag,
     operation_type: "auth",
     success: true,
     timestamp: new Date().toISOString(),
-    metadata: { challengeData: body.challengeData ? "present" : "none" },
+    metadata: {
+      sunVerified:
+        sunVerified === true
+          ? "true"
+          : sunVerified === false
+          ? "false"
+          : "not_enforced",
+    },
   });
 
   return json(200, {
     success: true,
     data: { sessionMetadata: { role: reg.family_role || "private" } },
   });
+}
 
-  async function handleStatus(event: any) {
-    if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
-      return json(405, { success: false, error: "Method not allowed" });
-    }
-
-    const ip = clientIpFromEvent(event);
-    if (!allowRequest(ip, 10, 60_000)) {
-      return json(429, { success: false, error: "Too many attempts" });
-    }
-
-    const session = await requireSession(event);
-    if (!session || !session.hashedId) {
-      return json(401, { success: false, error: "Unauthorized" });
-    }
-
-    const body = parseJSON<{ tagUID?: string }>(event.body);
-    if (!body || !body.tagUID) {
-      return json(400, { success: false, error: "Missing tagUID" });
-    }
-
-    // Try querying external hardware bridge for initialization status
-    try {
-      const res = await bridgeFetch("/ntag424/status", {
-        tagUID: body.tagUID,
-        userHash: session.hashedId,
-      });
-      const j = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // If bridge unconfigured, return a helpful hint rather than an error
-        const code = j?.meta?.code || j?.code;
-        if (res.status === 501 || code === "bridge_unconfigured") {
-          return json(200, {
-            success: true,
-            data: {
-              initialized: false,
-              source: "none",
-              hint: "bridge_unconfigured",
-            },
-          });
-        }
-        return json(200, {
-          success: true,
-          data: { initialized: false, source: "bridge", hint: "bridge_error" },
-        });
-      }
-
-      const initialized = Boolean(
-        (j && (j.initialized ?? j.data?.initialized)) ?? false
-      );
-      return json(200, {
-        success: true,
-        data: { initialized, source: "bridge" },
-      });
-    } catch (e) {
-      return json(200, {
-        success: true,
-        data: { initialized: false, source: "none", hint: "unknown_error" },
-        meta: { message: e instanceof Error ? e.message : "Unknown error" },
-      });
-    }
+async function handleStatus(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
   }
 
-  async function handleInitialize(event: any) {
-    if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
-      return json(405, { success: false, error: "Method not allowed" });
-    }
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 10, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
 
-    const ip = clientIpFromEvent(event);
-    if (!allowRequest(ip, 3, 60_000)) {
-      return json(429, { success: false, error: "Too many attempts" });
-    }
+  const session = await requireSession(event);
+  if (!session || !session.hashedId) {
+    return json(401, { success: false, error: "Unauthorized" });
+  }
 
-    const session = await requireSession(event);
-    if (!session || !session.hashedId) {
-      return json(401, { success: false, error: "Unauthorized" });
-    }
+  const body = parseJSON<{ tagUID?: string }>(event.body);
+  if (!body || !body.tagUID) {
+    return json(400, { success: false, error: "Missing tagUID" });
+  }
 
-    const body = parseJSON<Record<string, unknown>>(event.body) || {};
-
-    // If no external bridge configured, acknowledge client-side mobile/PWA initialization
-    if (!BRIDGE_URL) {
-      try {
-        const supabase = getRequestClient(
-          (
-            event.headers?.authorization ||
-            event.headers?.Authorization ||
-            ""
-          ).replace(/^Bearer\s+/i, "")
-        );
-        await setRlsContext(supabase, session.hashedId!);
-        // Store only minimal operational metadata (never keys/secrets)
-        const safeMeta: Record<string, unknown> = {
-          method: (body as any)?.method || "mobile_pwa",
-          tagUID_present: Boolean((body as any)?.tagUID),
-          clientInfo: (body as any)?.clientInfo ? "present" : "none",
-        };
-        await supabase.from("ntag424_operations_log").insert({
-          owner_hash: session.hashedId,
-          hashed_tag_uid: null,
-          operation_type: "initialize",
-          success: true,
-          timestamp: new Date().toISOString(),
-          metadata: safeMeta,
-        });
-      } catch (e) {
-        // Best-effort logging only; do not fail initialization ack
-      }
-      return json(200, {
-        success: true,
-        data: { initialized: true, source: "mobile_pwa_ack" },
-      });
-    }
-
-    // Else proxy to external bridge when configured
-    const res = await bridgeFetch("/ntag424/initialize", {
-      ...(body || {}),
+  // Try querying external hardware bridge for initialization status
+  try {
+    const res = await bridgeFetch("/ntag424/status", {
+      tagUID: body.tagUID,
       userHash: session.hashedId,
     });
     const j = await res.json().catch(() => ({}));
 
-    if (res.status === 501 || j?.meta?.code === "bridge_unconfigured") {
-      return json(501, {
-        success: false,
-        error: "Hardware bridge not configured",
-        meta: { code: "bridge_unconfigured" },
+    if (!res.ok) {
+      // If bridge unconfigured, return a helpful hint rather than an error
+      const code = j?.meta?.code || j?.code;
+      if (res.status === 501 || code === "bridge_unconfigured") {
+        return json(200, {
+          success: true,
+          data: {
+            initialized: false,
+            source: "none",
+            hint: "bridge_unconfigured",
+          },
+        });
+      }
+      return json(200, {
+        success: true,
+        data: { initialized: false, source: "bridge", hint: "bridge_error" },
       });
     }
-    if (!res.ok) {
-      return json(500, {
-        success: false,
-        error: j?.error || "Initialization failed",
-        meta: { status: res.status },
+
+    const initialized = Boolean(
+      (j && (j.initialized ?? j.data?.initialized)) ?? false
+    );
+    return json(200, {
+      success: true,
+      data: { initialized, source: "bridge" },
+    });
+  } catch (e) {
+    return json(200, {
+      success: true,
+      data: { initialized: false, source: "none", hint: "unknown_error" },
+      meta: { message: e instanceof Error ? e.message : "Unknown error" },
+    });
+  }
+}
+
+async function handleInitialize(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
+  }
+
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 3, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
+
+  const session = await requireSession(event);
+  if (!session || !session.hashedId) {
+    return json(401, { success: false, error: "Unauthorized" });
+  }
+
+  const body = parseJSON<Record<string, unknown>>(event.body) || {};
+
+  // If no external bridge configured, acknowledge client-side mobile/PWA initialization
+  if (!BRIDGE_URL) {
+    try {
+      const supabase = getRequestClient(
+        (
+          event.headers?.authorization ||
+          event.headers?.Authorization ||
+          ""
+        ).replace(/^Bearer\s+/i, "")
+      );
+      await setRlsContext(supabase, session.hashedId!);
+      // Store only minimal operational metadata (never keys/secrets)
+      const safeMeta: Record<string, unknown> = {
+        method: (body as any)?.method || "mobile_pwa",
+        tagUID_present: Boolean((body as any)?.tagUID),
+        clientInfo: (body as any)?.clientInfo ? "present" : "none",
+      };
+      await supabase.from("ntag424_operations_log").insert({
+        owner_hash: session.hashedId,
+        hashed_tag_uid: null,
+        operation_type: "initialize",
+        success: true,
+        timestamp: new Date().toISOString(),
+        metadata: safeMeta,
       });
+    } catch (e) {
+      // Best-effort logging only; do not fail initialization ack
     }
     return json(200, {
       success: true,
-      data: { initialized: true, bridge: j?.data || j || null },
+      data: { initialized: true, source: "mobile_pwa_ack" },
     });
   }
+
+  // Else proxy to external bridge when configured
+  const res = await bridgeFetch("/ntag424/initialize", {
+    ...(body || {}),
+    userHash: session.hashedId,
+  });
+  const j = await res.json().catch(() => ({}));
+
+  if (res.status === 501 || j?.meta?.code === "bridge_unconfigured") {
+    return json(501, {
+      success: false,
+      error: "Hardware bridge not configured",
+      meta: { code: "bridge_unconfigured" },
+    });
+  }
+  if (!res.ok) {
+    return json(500, {
+      success: false,
+      error: j?.error || "Initialization failed",
+      meta: { status: res.status },
+    });
+  }
+  return json(200, {
+    success: true,
+    data: { initialized: true, bridge: j?.data || j || null },
+  });
 }
 
 async function handleRegister(event: any) {
@@ -388,6 +496,7 @@ async function handleRegister(event: any) {
     tagUID?: string;
     encryptedMetadata?: string;
     familyRole?: string;
+    pin?: string; // optional during registration
   }>(event.body);
   if (!body || !body.tagUID || !body.encryptedMetadata) {
     return json(400, { success: false, error: "Missing required fields" });
@@ -429,6 +538,14 @@ async function handleRegister(event: any) {
     return json(409, { success: false, error: "Tag already registered" });
   }
 
+  // Optional PIN storage (PBKDF2-SHA512, 100k) - never store plaintext PIN
+  let pinSaltB64: string | null = null;
+  let pinHashHex: string | null = null;
+  if (typeof body.pin === "string" && body.pin.trim()) {
+    pinSaltB64 = randomSaltBase64(24);
+    pinHashHex = await pbkdf2HashHex(body.pin.trim(), pinSaltB64);
+  }
+
   const { data, error } = await supabase
     .from("ntag424_registrations")
     .insert({
@@ -437,6 +554,9 @@ async function handleRegister(event: any) {
       uid: null, // never store raw UID in privacy-first mode
       encrypted_config: body.encryptedMetadata,
       family_role: body.familyRole || "private",
+      pin_salt_base64: pinSaltB64,
+      pin_hash_hex: pinHashHex,
+      pin_algo: pinHashHex ? "pbkdf2-sha512-100k" : null,
       created_at: new Date().toISOString(),
       last_used: new Date().toISOString(),
     })
@@ -500,6 +620,171 @@ async function handlePreferences(event: any) {
         success: true,
         data: { preferences: null, registeredTags: tags || [] },
       });
+
+    async function handleLogin(event: any) {
+      if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+        return json(405, { success: false, error: "Method not allowed" });
+      }
+
+      const ip = clientIpFromEvent(event);
+      if (!allowRequest(ip, 6, 60_000)) {
+        return json(429, { success: false, error: "Too many attempts" });
+      }
+
+      const body = parseJSON<{
+        tagId?: string; // registration id returned at register time
+        tagUID?: string;
+        pin?: string;
+        challengeData?: string;
+        encryptedResponse?: string;
+      }>(event.body);
+
+      if (!body || !body.tagId) {
+        return json(400, { success: false, error: "Missing tagId" });
+      }
+
+      const supabase = getRequestClient(""); // no session token for login flow
+
+      // Load registration by ID
+      const { data: reg, error: regErr } = await supabase
+        .from("ntag424_registrations")
+        .select(
+          "id, owner_hash, hashed_tag_uid, family_role, pin_salt_base64, pin_hash_hex, pin_algo"
+        )
+        .eq("id", body.tagId)
+        .maybeSingle();
+
+      if (regErr || !reg) {
+        return json(404, { success: false, error: "Registration not found" });
+      }
+
+      // PIN verification if configured
+      if (reg.pin_hash_hex) {
+        const pin = (body.pin || "").trim();
+        if (!pin) {
+          await supabase.from("ntag424_operations_log").insert({
+            owner_hash: reg.owner_hash,
+            hashed_tag_uid: reg.hashed_tag_uid,
+            operation_type: "login",
+            success: false,
+            timestamp: new Date().toISOString(),
+            metadata: { reason: "pin_required" },
+          });
+          return json(401, { success: false, error: "PIN required" });
+        }
+        try {
+          const computed = await pbkdf2HashHex(
+            pin,
+            reg.pin_salt_base64 as string
+          );
+          if (computed !== reg.pin_hash_hex) {
+            await supabase.from("ntag424_operations_log").insert({
+              owner_hash: reg.owner_hash,
+              hashed_tag_uid: reg.hashed_tag_uid,
+              operation_type: "login",
+              success: false,
+              timestamp: new Date().toISOString(),
+              metadata: { reason: "pin_invalid" },
+            });
+            return json(401, { success: false, error: "Invalid PIN" });
+          }
+        } catch {
+          return json(500, { success: false, error: "PIN verification error" });
+        }
+      }
+
+      // Optional SUN verification via bridge (if provided)
+      let sunVerified: boolean | null = null;
+      if (body.tagUID && body.challengeData && body.encryptedResponse) {
+        try {
+          const res = await bridgeFetch("/ntag424/verify", {
+            tagUID: body.tagUID,
+            challengeData: body.challengeData,
+            encryptedResponse: body.encryptedResponse,
+            userHash: reg.owner_hash,
+          });
+          const j = await res.json().catch(() => ({}));
+          if (res.ok && (j?.success || j?.data?.valid === true)) {
+            sunVerified = true;
+          } else if (
+            res.status === 501 ||
+            j?.meta?.code === "bridge_unconfigured"
+          ) {
+            sunVerified = null;
+          } else {
+            sunVerified = false;
+          }
+        } catch {
+          sunVerified = false;
+        }
+        if (sunVerified === false) {
+          await supabase.from("ntag424_operations_log").insert({
+            owner_hash: reg.owner_hash,
+            hashed_tag_uid: reg.hashed_tag_uid,
+            operation_type: "login",
+            success: false,
+            timestamp: new Date().toISOString(),
+            metadata: { reason: "sun_verification_failed" },
+          });
+          return json(401, {
+            success: false,
+            error: "SUN verification failed",
+          });
+        }
+      }
+
+      // Load user identity for session creation
+      const { data: user } = await supabase
+        .from("user_identities")
+        .select("id, role, hashed_npub, hashed_nip05")
+        .eq("id", reg.owner_hash)
+        .maybeSingle();
+
+      if (!user) {
+        return json(404, { success: false, error: "User not found" });
+      }
+
+      // Create session token (map hashed_npub into npub field for consistency with existing server endpoints)
+      const sessionToken = await SecureSessionManager.createSession(
+        {} as any,
+        {
+          npub: user.hashed_npub || reg.owner_hash,
+          nip05: undefined,
+          federationRole: (user.role as any) || "private",
+          authMethod: "nip05-password",
+          isWhitelisted: false,
+          votingPower: 0,
+          stewardApproved: false,
+          guardianApproved: false,
+          sessionToken: "",
+        } as any
+      );
+
+      await supabase.from("ntag424_operations_log").insert({
+        owner_hash: reg.owner_hash,
+        hashed_tag_uid: reg.hashed_tag_uid,
+        operation_type: "login",
+        success: true,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          sunVerified:
+            sunVerified === true
+              ? "true"
+              : sunVerified === false
+              ? "false"
+              : "not_enforced",
+        },
+      });
+
+      return json(200, {
+        success: true,
+        data: {
+          sessionToken,
+          user: { role: user.role, npub: user.hashed_npub },
+        },
+      });
+    }
+
     return json(200, {
       success: true,
       data: { preferences: prefs || null, registeredTags: tags || [] },
@@ -513,6 +798,7 @@ async function handlePreferences(event: any) {
         nfc_require_confirmation?: boolean;
         preferred_method?: string;
         fallback_method?: string;
+        require_nfc_for_unlock?: boolean;
       };
     }>(event.body);
     if (!body || !body.preferences) {
@@ -533,6 +819,8 @@ async function handlePreferences(event: any) {
       updates.preferred_method = body.preferences.preferred_method;
     if (typeof body.preferences.fallback_method === "string")
       updates.fallback_method = body.preferences.fallback_method;
+    if (typeof body.preferences.require_nfc_for_unlock === "boolean")
+      updates.require_nfc_for_unlock = body.preferences.require_nfc_for_unlock;
 
     const { data, error } = await supabase
       .from("user_signing_preferences")
@@ -582,6 +870,8 @@ export const handler: Handler = async (event, _context) => {
         return await handleInitialize(event);
       case "preferences":
         return await handlePreferences(event);
+      case "login":
+        return await handleLogin(event);
       default:
         return json(404, { success: false, error: "Not found" });
     }
