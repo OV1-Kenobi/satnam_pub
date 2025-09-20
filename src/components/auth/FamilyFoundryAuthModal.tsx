@@ -156,7 +156,7 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
             {currentStep === 'identity-forge' && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-2xl font-bold text-white mb-2">Identity Forge</h2>
+                  <h2 className="text-2xl font-bold text-white mb-2">Claim Your Name</h2>
                   <p className="text-purple-200">Create your decentralized identity to proceed</p>
                 </div>
                 <IdentityForge

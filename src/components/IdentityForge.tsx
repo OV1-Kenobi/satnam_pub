@@ -1516,7 +1516,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 onClick={() => window.location.reload()}
                 className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300"
               >
-                Forge Another Identity
+                Claim Another Name
               </button>
             </div>
           </div>
@@ -2765,7 +2765,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 >
                   <span>
                     {currentStep === 1 ? "Claim Your Name" :
-                      currentStep === 3 && migrationMode === 'generate' ? "Forge ID" :
+                      currentStep === 3 && migrationMode === 'generate' ? "Claim Name" :
                         "Continue"}
                   </span>
                   {!isGenerating && <ArrowRight className="h-5 w-5" />}

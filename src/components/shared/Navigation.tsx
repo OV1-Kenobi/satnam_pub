@@ -223,7 +223,7 @@ const Navigation: React.FC<NavigationProps> = ({
                   alt="Forge"
                   className="h-4 w-4"
                 />
-                <span>Forge Identity</span>
+                <span>Name Yourself</span>
               </button>
 
               {navigationItems.map((item, index) => (
