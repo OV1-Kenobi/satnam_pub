@@ -5,6 +5,7 @@
  * Integrates with the PrivateCommunicationModal for seamless messaging experience.
  */
 
+import { nostrConfig } from "../../../config/index";
 export interface PrivacyConsentResponse {
   consentGiven: boolean;
   warningAcknowledged: boolean;
@@ -100,7 +101,14 @@ export interface ContactData {
 }
 
 export const MESSAGING_CONFIG: MessagingConfig = {
-  relays: ["wss://relay.satnam.pub", "wss://relay.damus.io", "wss://nos.lol"],
+  relays: (() => {
+    const list = (nostrConfig?.relays || []).filter(
+      (r) => typeof r === "string" && r.startsWith("wss://")
+    );
+    return list.length > 0
+      ? list
+      : ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"];
+  })(),
   defaultEncryptionLevel: "enhanced",
   privacyWarnings: {
     enabled: true,

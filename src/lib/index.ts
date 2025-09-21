@@ -40,3 +40,7 @@ export * from "./fedimint/family-nostr-federation";
 
 // Utilities
 export * from "./utils";
+
+// Verifiable Credentials (did:jwk + VC-JWT helpers)
+export * from "./vc/jose-es256k";
+export * from "./vc/jwk-did";

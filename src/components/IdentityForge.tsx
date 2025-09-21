@@ -1540,7 +1540,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <img
-              src="/ID-forge-icon.png"
+              src="/SatNam-logo.png"
               alt="Claim Your Name"
               className="h-10 w-10"
               loading="lazy"

@@ -1,3 +1,5 @@
+import { nostrConfig } from "../../config/index";
+
 export interface GiftwrappedMessageConfig {
   content: string;
   recipient: string;
@@ -34,11 +36,13 @@ export class GiftwrappedCommunicationService {
   private relays: string[];
 
   constructor() {
-    this.relays = [
-      "wss://relay.satnam.pub",
-      "wss://relay.damus.io",
-      "wss://nos.lol",
-    ];
+    const configured = (nostrConfig?.relays || []).filter(
+      (r) => typeof r === "string" && r.startsWith("wss://")
+    );
+    this.relays =
+      configured.length > 0
+        ? configured
+        : ["wss://nos.lol", "wss://relay.damus.io", "wss://relay.nostr.band"];
   }
 
   // Web Crypto API instead of Node.js crypto

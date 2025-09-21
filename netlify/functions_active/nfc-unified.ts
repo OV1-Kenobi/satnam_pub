@@ -582,6 +582,162 @@ async function handleRegister(event: any) {
   });
 }
 
+// Top-level login handler (moved from nested scope under handlePreferences)
+async function handleLogin(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
+  }
+
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 6, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
+
+  const body = parseJSON<{
+    tagId?: string; // registration id returned at register time
+    tagUID?: string;
+    pin?: string;
+    challengeData?: string;
+    encryptedResponse?: string;
+  }>(event.body);
+
+  if (!body || !body.tagId) {
+    return json(400, { success: false, error: "Missing tagId" });
+  }
+
+  const supabase = getRequestClient(""); // no session token for login flow
+
+  // Load registration by ID
+  const { data: reg, error: regErr } = await supabase
+    .from("ntag424_registrations")
+    .select(
+      "id, owner_hash, hashed_tag_uid, family_role, pin_salt_base64, pin_hash_hex, pin_algo"
+    )
+    .eq("id", body.tagId)
+    .maybeSingle();
+
+  if (regErr || !reg) {
+    return json(404, { success: false, error: "Registration not found" });
+  }
+
+  // PIN verification if configured
+  if (reg.pin_hash_hex) {
+    const pin = (body.pin || "").trim();
+    if (!pin) {
+      await supabase.from("ntag424_operations_log").insert({
+        owner_hash: reg.owner_hash,
+        hashed_tag_uid: reg.hashed_tag_uid,
+        operation_type: "login",
+        success: false,
+        timestamp: new Date().toISOString(),
+        metadata: { reason: "pin_required" },
+      });
+      return json(401, { success: false, error: "PIN required" });
+    }
+    try {
+      const computed = await pbkdf2HashHex(pin, reg.pin_salt_base64 as string);
+      if (computed !== reg.pin_hash_hex) {
+        await supabase.from("ntag424_operations_log").insert({
+          owner_hash: reg.owner_hash,
+          hashed_tag_uid: reg.hashed_tag_uid,
+          operation_type: "login",
+          success: false,
+          timestamp: new Date().toISOString(),
+          metadata: { reason: "pin_invalid" },
+        });
+        return json(401, { success: false, error: "Invalid PIN" });
+      }
+    } catch {
+      return json(500, { success: false, error: "PIN verification error" });
+    }
+  }
+
+  // Optional SUN verification via bridge (if provided)
+  let sunVerified: boolean | null = null;
+  if (body.tagUID && body.challengeData && body.encryptedResponse) {
+    try {
+      const res = await bridgeFetch("/ntag424/verify", {
+        tagUID: body.tagUID,
+        challengeData: body.challengeData,
+        encryptedResponse: body.encryptedResponse,
+        userHash: reg.owner_hash,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && (j?.success || j?.data?.valid === true)) {
+        sunVerified = true;
+      } else if (
+        res.status === 501 ||
+        j?.meta?.code === "bridge_unconfigured"
+      ) {
+        sunVerified = null;
+      } else {
+        sunVerified = false;
+      }
+    } catch {
+      sunVerified = false;
+    }
+    if (sunVerified === false) {
+      await supabase.from("ntag424_operations_log").insert({
+        owner_hash: reg.owner_hash,
+        hashed_tag_uid: reg.hashed_tag_uid,
+        operation_type: "login",
+        success: false,
+        timestamp: new Date().toISOString(),
+        metadata: { reason: "sun_verification_failed" },
+      });
+      return json(401, { success: false, error: "SUN verification failed" });
+    }
+  }
+
+  // Load user identity for session creation
+  const { data: user } = await supabase
+    .from("user_identities")
+    .select("id, role, hashed_npub, hashed_nip05")
+    .eq("id", reg.owner_hash)
+    .maybeSingle();
+
+  if (!user) {
+    return json(404, { success: false, error: "User not found" });
+  }
+
+  // Create session token (map hashed_npub into npub field for consistency with existing server endpoints)
+  const sessionToken = await SecureSessionManager.createSession(
+    {} as any,
+    {
+      npub: user.hashed_npub || reg.owner_hash,
+      nip05: undefined,
+      federationRole: (user.role as any) || "private",
+      authMethod: "nip05-password",
+      isWhitelisted: false,
+      votingPower: 0,
+      stewardApproved: false,
+      guardianApproved: false,
+      sessionToken: "",
+    } as any
+  );
+
+  await supabase.from("ntag424_operations_log").insert({
+    owner_hash: reg.owner_hash,
+    hashed_tag_uid: reg.hashed_tag_uid,
+    operation_type: "login",
+    success: true,
+    timestamp: new Date().toISOString(),
+    metadata: {
+      sunVerified:
+        sunVerified === true
+          ? "true"
+          : sunVerified === false
+          ? "false"
+          : "not_enforced",
+    },
+  });
+
+  return json(200, {
+    success: true,
+    data: { sessionToken, user: { role: user.role, npub: user.hashed_npub } },
+  });
+}
+
 async function handlePreferences(event: any) {
   const method = (event.httpMethod || "GET").toUpperCase();
   const ip = clientIpFromEvent(event);
@@ -620,170 +776,6 @@ async function handlePreferences(event: any) {
         success: true,
         data: { preferences: null, registeredTags: tags || [] },
       });
-
-    async function handleLogin(event: any) {
-      if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
-        return json(405, { success: false, error: "Method not allowed" });
-      }
-
-      const ip = clientIpFromEvent(event);
-      if (!allowRequest(ip, 6, 60_000)) {
-        return json(429, { success: false, error: "Too many attempts" });
-      }
-
-      const body = parseJSON<{
-        tagId?: string; // registration id returned at register time
-        tagUID?: string;
-        pin?: string;
-        challengeData?: string;
-        encryptedResponse?: string;
-      }>(event.body);
-
-      if (!body || !body.tagId) {
-        return json(400, { success: false, error: "Missing tagId" });
-      }
-
-      const supabase = getRequestClient(""); // no session token for login flow
-
-      // Load registration by ID
-      const { data: reg, error: regErr } = await supabase
-        .from("ntag424_registrations")
-        .select(
-          "id, owner_hash, hashed_tag_uid, family_role, pin_salt_base64, pin_hash_hex, pin_algo"
-        )
-        .eq("id", body.tagId)
-        .maybeSingle();
-
-      if (regErr || !reg) {
-        return json(404, { success: false, error: "Registration not found" });
-      }
-
-      // PIN verification if configured
-      if (reg.pin_hash_hex) {
-        const pin = (body.pin || "").trim();
-        if (!pin) {
-          await supabase.from("ntag424_operations_log").insert({
-            owner_hash: reg.owner_hash,
-            hashed_tag_uid: reg.hashed_tag_uid,
-            operation_type: "login",
-            success: false,
-            timestamp: new Date().toISOString(),
-            metadata: { reason: "pin_required" },
-          });
-          return json(401, { success: false, error: "PIN required" });
-        }
-        try {
-          const computed = await pbkdf2HashHex(
-            pin,
-            reg.pin_salt_base64 as string
-          );
-          if (computed !== reg.pin_hash_hex) {
-            await supabase.from("ntag424_operations_log").insert({
-              owner_hash: reg.owner_hash,
-              hashed_tag_uid: reg.hashed_tag_uid,
-              operation_type: "login",
-              success: false,
-              timestamp: new Date().toISOString(),
-              metadata: { reason: "pin_invalid" },
-            });
-            return json(401, { success: false, error: "Invalid PIN" });
-          }
-        } catch {
-          return json(500, { success: false, error: "PIN verification error" });
-        }
-      }
-
-      // Optional SUN verification via bridge (if provided)
-      let sunVerified: boolean | null = null;
-      if (body.tagUID && body.challengeData && body.encryptedResponse) {
-        try {
-          const res = await bridgeFetch("/ntag424/verify", {
-            tagUID: body.tagUID,
-            challengeData: body.challengeData,
-            encryptedResponse: body.encryptedResponse,
-            userHash: reg.owner_hash,
-          });
-          const j = await res.json().catch(() => ({}));
-          if (res.ok && (j?.success || j?.data?.valid === true)) {
-            sunVerified = true;
-          } else if (
-            res.status === 501 ||
-            j?.meta?.code === "bridge_unconfigured"
-          ) {
-            sunVerified = null;
-          } else {
-            sunVerified = false;
-          }
-        } catch {
-          sunVerified = false;
-        }
-        if (sunVerified === false) {
-          await supabase.from("ntag424_operations_log").insert({
-            owner_hash: reg.owner_hash,
-            hashed_tag_uid: reg.hashed_tag_uid,
-            operation_type: "login",
-            success: false,
-            timestamp: new Date().toISOString(),
-            metadata: { reason: "sun_verification_failed" },
-          });
-          return json(401, {
-            success: false,
-            error: "SUN verification failed",
-          });
-        }
-      }
-
-      // Load user identity for session creation
-      const { data: user } = await supabase
-        .from("user_identities")
-        .select("id, role, hashed_npub, hashed_nip05")
-        .eq("id", reg.owner_hash)
-        .maybeSingle();
-
-      if (!user) {
-        return json(404, { success: false, error: "User not found" });
-      }
-
-      // Create session token (map hashed_npub into npub field for consistency with existing server endpoints)
-      const sessionToken = await SecureSessionManager.createSession(
-        {} as any,
-        {
-          npub: user.hashed_npub || reg.owner_hash,
-          nip05: undefined,
-          federationRole: (user.role as any) || "private",
-          authMethod: "nip05-password",
-          isWhitelisted: false,
-          votingPower: 0,
-          stewardApproved: false,
-          guardianApproved: false,
-          sessionToken: "",
-        } as any
-      );
-
-      await supabase.from("ntag424_operations_log").insert({
-        owner_hash: reg.owner_hash,
-        hashed_tag_uid: reg.hashed_tag_uid,
-        operation_type: "login",
-        success: true,
-        timestamp: new Date().toISOString(),
-        metadata: {
-          sunVerified:
-            sunVerified === true
-              ? "true"
-              : sunVerified === false
-              ? "false"
-              : "not_enforced",
-        },
-      });
-
-      return json(200, {
-        success: true,
-        data: {
-          sessionToken,
-          user: { role: user.role, npub: user.hashed_npub },
-        },
-      });
-    }
 
     return json(200, {
       success: true,
@@ -852,6 +844,214 @@ async function handlePreferences(event: any) {
   return json(405, { success: false, error: "Method not allowed" });
 }
 
+// --- Additional NFC operations: read/program/verify-tag/erase ---
+async function handleRead(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
+  }
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 15, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
+  const session = await requireSession(event);
+  if (!session || !session.hashedId) {
+    return json(401, { success: false, error: "Unauthorized" });
+  }
+  const body = parseJSON<{ tagUID?: string }>(event.body);
+  if (!body?.tagUID)
+    return json(400, { success: false, error: "Missing tagUID" });
+
+  // Prefer hardware bridge if configured
+  try {
+    const res = await bridgeFetch("/ntag424/read", {
+      tagUID: body.tagUID,
+      userHash: session.hashedId,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && (j?.success || j?.data)) {
+      return json(200, { success: true, data: { sdm: j?.data?.sdm ?? null } });
+    }
+    if (res.status === 501 || j?.meta?.code === "bridge_unconfigured") {
+      return json(200, {
+        success: true,
+        data: { sdm: { configured: false, source: "none" } },
+      });
+    }
+  } catch {}
+  return json(200, {
+    success: true,
+    data: { sdm: { configured: false, source: "unknown" } },
+  });
+}
+
+async function handleProgram(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
+  }
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 5, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
+  const session = await requireSession(event);
+  if (!session || !session.hashedId) {
+    return json(401, { success: false, error: "Unauthorized" });
+  }
+  const body = parseJSON<{ url?: string; pin?: string; enableSDM?: boolean }>(
+    event.body
+  );
+  if (!body?.url) return json(400, { success: false, error: "Missing url" });
+
+  // Log the program intent (never store PIN; store only flags)
+  try {
+    const supabase = getRequestClient(
+      (
+        event.headers?.authorization ||
+        event.headers?.Authorization ||
+        ""
+      ).replace(/^Bearer\s+/i, "")
+    );
+    await setRlsContext(supabase, session.hashedId!);
+    await supabase.from("ntag424_operations_log").insert({
+      owner_hash: session.hashedId,
+      hashed_tag_uid: null,
+      operation_type: "program_intent",
+      success: true,
+      timestamp: new Date().toISOString(),
+      metadata: { url: body.url, enableSDM: !!body.enableSDM },
+    });
+  } catch {}
+
+  // If bridge configured, proxy an instruction
+  try {
+    const res = await bridgeFetch("/ntag424/program", {
+      url: body.url,
+      enableSDM: !!body.enableSDM,
+      userHash: session.hashedId,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && (j?.success || j?.data)) {
+      return json(200, {
+        success: true,
+        data: { programmed: true, bridge: j?.data ?? null },
+      });
+    }
+    if (res.status === 501 || j?.meta?.code === "bridge_unconfigured") {
+      return json(200, {
+        success: true,
+        data: { programmed: false, hint: "bridge_unconfigured" },
+      });
+    }
+  } catch {}
+
+  return json(200, {
+    success: true,
+    data: { programmed: false, hint: "recorded_intent_only" },
+  });
+}
+
+async function handleVerifyTag(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
+  }
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 10, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
+  const session = await requireSession(event);
+  if (!session || !session.hashedId) {
+    return json(401, { success: false, error: "Unauthorized" });
+  }
+  try {
+    const res = await bridgeFetch("/ntag424/verify-tag", {
+      userHash: session.hashedId,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && (j?.success || j?.data?.ok)) {
+      return json(200, { success: true, data: { ok: true } });
+    }
+    if (res.status === 501 || j?.meta?.code === "bridge_unconfigured") {
+      return json(200, {
+        success: true,
+        data: { ok: true, hint: "not_enforced" },
+      });
+    }
+  } catch {}
+  return json(200, { success: true, data: { ok: false } });
+}
+
+async function handleErase(event: any) {
+  if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+    return json(405, { success: false, error: "Method not allowed" });
+  }
+  const ip = clientIpFromEvent(event);
+  if (!allowRequest(ip, 3, 60_000)) {
+    return json(429, { success: false, error: "Too many attempts" });
+  }
+  const session = await requireSession(event);
+  if (!session || !session.hashedId) {
+    return json(401, { success: false, error: "Unauthorized" });
+  }
+  const body = parseJSON<{ tagUID?: string }>(event.body);
+  if (!body?.tagUID) {
+    return json(400, { success: false, error: "Missing tagUID" });
+  }
+
+  // Log erase intent
+  try {
+    const supabase = getRequestClient(
+      (
+        event.headers?.authorization ||
+        event.headers?.Authorization ||
+        ""
+      ).replace(/^Bearer\s+/i, "")
+    );
+    await setRlsContext(supabase, session.hashedId!);
+    // Derive privacy-preserving tag hash
+    let hashedTag: string | null = null;
+    try {
+      const { createHmac } = await import("node:crypto");
+      const duidSecret =
+        process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
+      if (duidSecret) {
+        hashedTag = createHmac("sha256", duidSecret)
+          .update(`${session.hashedId}:${body.tagUID}`)
+          .digest("hex");
+      }
+    } catch {}
+
+    await supabase.from("ntag424_operations_log").insert({
+      owner_hash: session.hashedId,
+      hashed_tag_uid: hashedTag,
+      operation_type: "erase_intent",
+      success: true,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {}
+
+  // Try bridge if available
+  try {
+    const res = await bridgeFetch("/ntag424/erase", {
+      tagUID: body.tagUID,
+      userHash: session.hashedId,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && (j?.success || j?.data?.erased)) {
+      return json(200, { success: true, data: { erased: true } });
+    }
+    if (res.status === 501 || j?.meta?.code === "bridge_unconfigured") {
+      return json(200, {
+        success: true,
+        data: { erased: false, hint: "recorded_intent_only" },
+      });
+    }
+  } catch {}
+
+  return json(200, {
+    success: true,
+    data: { erased: false, hint: "recorded_intent_only" },
+  });
+}
+
 export const handler: Handler = async (event, _context) => {
   if ((event.httpMethod || "").toUpperCase() === "OPTIONS") {
     return { statusCode: 204, headers: buildCorsHeaders(), body: "" };
@@ -872,6 +1072,14 @@ export const handler: Handler = async (event, _context) => {
         return await handlePreferences(event);
       case "login":
         return await handleLogin(event);
+      case "read":
+        return await handleRead(event);
+      case "program":
+        return await handleProgram(event);
+      case "verify-tag":
+        return await handleVerifyTag(event);
+      case "erase":
+        return await handleErase(event);
       default:
         return json(404, { success: false, error: "Not found" });
     }

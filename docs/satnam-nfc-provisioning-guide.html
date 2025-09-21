@@ -45,43 +45,24 @@
       <strong>Goal</strong>: Provision your NTAG424 tag securely for Satnam NFC Physical MFA without a separate hardware bridge. All verification is performed by Satnam’s Netlify Functions using local SUN/CMAC checks.
     </div>
 
-    <h2>1) Choose your provisioning method</h2>
-    <div class="grid three">
-      <div class="card">
-        <div class="badge">Recommended</div>
-        <h3>Android (Boltcard App)</h3>
-        <ul>
-          <li>Android phone with NFC</li>
-          <li>App: Boltcard NFC Programming App</li>
-          <li>Fastest for most users</li>
-        </ul>
-        <p><strong>Download</strong>: APK or Play Store</p>
-        <ul>
-          <li>Releases (APK): https://github.com/boltcard/bolt-nfc-android-app/releases</li>
-          <li>Play Store: https://play.google.com/store/apps/details?id=com.lightningnfcapp</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>Desktop (NXP TagXplorer)</h3>
-        <ul>
-          <li>Windows/macOS/Linux + compatible NFC reader (PN532 or NXP reader)</li>
-          <li>Java app by NXP for low‑level NTAG424 config</li>
-        </ul>
-        <p><strong>Docs</strong>: UM11133 Quick start</p>
-        <ul>
-          <li>PDF: https://www.nxp.com/docs/en/user-guide/UM11133.pdf</li>
-          <li>Download via NXP DocStore (free account; search “TagXplorer”)</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>Device (Bolty ESP32 + PN532)</h3>
-        <ul>
-          <li>ESP32 + PN532 module + web flasher</li>
-          <li>Dedicated provisioning device with browser UI</li>
-        </ul>
-        <p><strong>Resources</strong> (LNbits wiki): https://github.com/lnbits/lnbits/wiki/Tooling-&-Building-with-LNbits</p>
-        <p>Web flasher: https://espressif.github.io/esptool-js/</p>
-      </div>
+    <h2>1) Provision with Boltcard (Android only)</h2>
+    <div class="card">
+      <div class="badge">Single Path</div>
+      <h3>Android (Boltcard Programming App)</h3>
+      <ul>
+        <li>Android phone with NFC</li>
+        <li>App: Boltcard NFC Programming App</li>
+        <li>Fastest and officially supported path</li>
+      </ul>
+      <p><strong>Download</strong>:</p>
+      <ul>
+        <li>Releases (APK): https://github.com/boltcard/bolt-nfc-android-app/releases</li>
+        <li>Play Store: https://play.google.com/store/apps/details?id=com.lightningnfcapp</li>
+      </ul>
+    </div>
+
+    <div class="callout" style="margin-top:12px">
+      <strong>iOS users</strong>: Borrow an Android device or visit a community provisioning station to program your tag. After programming, your tag works with iOS for tapping/verification.
     </div>
 
     <div class="callout danger" style="margin-top:12px">
@@ -96,40 +77,16 @@
       <li><code>sdm</code> — SUN/SDM enable + offsets (PICC/CMAC insertion)</li>
     </ul>
 
-    <h2>3) Provisioning steps</h2>
-    <div class="grid two steps">
-      <div class="card">
-        <h3>Android (Boltcard App)</h3>
-        <ol>
-          <li>Install app (APK/Play) and enable NFC.</li>
-          <li>Open <em>Write</em> screen → set <code>url_base</code> from your blob.</li>
-          <li>Open <em>Key change</em> → apply <code>K0/K1/K2</code> exactly from blob.</li>
-          <li>Ensure SDM/SUN is enabled (dynamic <code>PICC/CMAC</code> appended to URL when read).</li>
-          <li>Optional: Enable UID randomization for privacy (irreversible).</li>
-          <li>Hold tag still on the phone until success.</li>
-        </ol>
-      </div>
-      <div class="card">
-        <h3>Desktop (TagXplorer)</h3>
-        <ol>
-          <li>Install Java + TagXplorer; connect a compatible reader (avoid legacy ACR122U).</li>
-          <li>Detect tag → Change keys: set <code>K0/K1/K2</code> (EV2/AES).</li>
-          <li>Enable SDM on the chosen file; configure <code>PICC/CMAC</code> offsets per blob.</li>
-          <li>Write NDEF URL record to <code>url_base</code>.</li>
-          <li>Optional: Enable UID randomization.</li>
-          <li>Verify (see below).</li>
-        </ol>
-      </div>
-      <div class="card">
-        <h3>Device (Bolty ESP32 + PN532)</h3>
-        <ol>
-          <li>Flash ESP32 with Bolty binaries via esptool-js (see LNbits wiki).</li>
-          <li>Reboot, join Wi‑Fi <code>Bolty</code> (pass <code>wango123</code>), open <code>http://192.168.4.1</code>.</li>
-          <li>Load provisioning values (<code>url_base</code>, <code>K0/K1/K2</code>, SDM enable + offsets).</li>
-          <li>Write/program; keep tag stationary during key changes.</li>
-          <li>Optional: UID randomization → verify.</li>
-        </ol>
-      </div>
+    <h2>2) Provisioning steps (Boltcard Android)</h2>
+    <div class="steps card">
+      <ol>
+        <li>Install the Boltcard app (APK/Play) and enable NFC.</li>
+        <li>Open <em>Key change</em> → apply <code>K0/K1/K2</code> exactly as provided by Satnam (from the provisioning blob).</li>
+        <li>Enable <strong>SDM/SUN</strong> and set offsets per the blob so that <code>PICC</code> (UID) and <code>CMAC</code> are appended to the URL.</li>
+        <li>Set the NDEF URL to your base: <code>https://www.satnam.pub/t/&lt;duid&gt;</code>. The SDM parameters will be appended on read as <code>?sdm=...&amp;u=...</code>.</li>
+        <li>Optional: Enable UID randomization for privacy (irreversible).</li>
+        <li>Hold the tag still on the phone until programming succeeds.</li>
+      </ol>
     </div>
 
     <h2>4) Verify your tag</h2>
@@ -143,7 +100,7 @@
     <div class="diagram">User Tap → Phone opens NDEF url_base
    → Frontend captures SDM params (PICC/CMAC)
    → Netlify Function /nfc-unified/verify
-   → Local SUN/CMAC verification (no third‑party bridge)
+   → SUN/CMAC verification via Netlify function (hardware bridge enforced when configured)
    → Session/auth success
    → (Optional) LNbits Boltcards used for wallet/registry metadata only
     </div>

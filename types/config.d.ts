@@ -59,6 +59,13 @@ declare module "../config" {
     allowedDomains: string[];
   }
 
+  export interface NFCConfig {
+    enabled?: boolean;
+    pinTimeoutMs?: number | string;
+    confirmationMode?: "per_unlock" | "per_operation" | string;
+    defaultProgramUrl: string;
+  }
+
   export interface AppConfig {
     supabase: SupabaseConfig;
     pubky: PubkyConfig;
@@ -70,8 +77,8 @@ declare module "../config" {
     development: DevelopmentConfig;
     api: ApiConfig;
     nip05: Nip05Config;
+    nfc: NFCConfig;
   }
 
   export const config: AppConfig;
 }
-

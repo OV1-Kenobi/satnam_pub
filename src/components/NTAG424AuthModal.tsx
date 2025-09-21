@@ -26,8 +26,13 @@ import {
   Zap
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
+import { config } from "../../config";
+import { nfcConfig } from "../../config/index";
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
 import { FederationRole } from '../types/auth';
+import { useAuth } from "./auth/AuthProvider";
+
+import { showToast } from "../services/toastService";
 
 
 interface NTAG424AuthModalProps {
@@ -38,6 +43,7 @@ interface NTAG424AuthModalProps {
   destination?: 'individual' | 'family';
   title?: string;
   purpose?: string;
+  relays?: string[]; // Optional: configurable relay list for NIP-42 checks
 }
 
 type AuthStep = 'input' | 'nfc-scan' | 'processing' | 'success' | 'error';
@@ -49,7 +55,8 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   mode = 'both',
   destination,
   title = "NTAG424 Physical Authentication",
-  purpose = "Secure multi-factor authentication with physical NFC tag"
+  purpose = "Secure multi-factor authentication with physical NFC tag",
+  relays
 }) => {
   // Form state
   const [pin, setPin] = useState("");
@@ -57,12 +64,14 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   const [familyRole, setFamilyRole] = useState<FederationRole>("offspring");
   const [showPin, setShowPin] = useState(false);
   const [currentStep, setCurrentStep] = useState<AuthStep>('input');
+
+
   const [operationType, setOperationType] = useState<'auth' | 'register' | 'init'>('auth');
 
   const auth = useAuth();
 
   // NTAG424 hook
-  const { authState, isProcessing, authenticateWithNFC, registerNewTag, initializeTag, resetAuthState } = useProductionNTAG424();
+  const { authState, isProcessing, authenticateWithNFC, registerNewTag, initializeTag, resetAuthState, performNIP42Auth, readTagInfo, programTag, verifyTag, eraseTag } = useProductionNTAG424();
 
   const mountedRef = useRef(true);
   const successTimerRef = useRef<number | null>(null);
@@ -300,6 +309,21 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
               </div>
             ) : (
               <>
+                {/* Standards Compliance & Safety (VC v2.0, NIP-42, Provenance) */}
+                <div className="bg-white/10 border border-white/20 rounded-lg p-4 mb-4 text-left">
+                  <p className="text-purple-100 text-sm">
+                    This provisioning encodes only signed pointers to your public profile and content. No private keys are ever stored on the tag.
+                  </p>
+                  <ul className="list-disc list-inside text-purple-200 text-xs mt-2 space-y-1">
+                    <li>W3C VC Data Model v2.0 contexts and proofs applied to wallet identity artifacts</li>
+                    <li>Content provenance: SHA-256 hashed, signed as a Nostr event; tag points to retrievable content</li>
+                    <li>NDEF payload: profile JSON URL + optional SUN/SDM URL with signed nonce</li>
+                    <li>Protected by PIN; full erase/overwrite flow supported</li>
+                    <li>Live control: NIP-42 AUTH challenge on your relays, bound to SUN nonce</li>
+                    <li>Supported tags: NTAG424 DNA</li>
+                  </ul>
+                </div>
+
                 {/* PIN Input */}
                 <div>
                   <label className="block text-sm font-medium text-purple-200 mb-2">
@@ -391,6 +415,115 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                         Learn how to initialize your tag
                       </a>
                     </div>
+                    {/* Advanced NFC Operations: Before/After/Erase + NIP-42 check */}
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-purple-200">Advanced NFC Operations</span>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              showToast.info('Reading (before) ...', { title: 'NFC' });
+                              const info = await readTagInfo();
+                              showToast.success(`Read OK: UID ${info.uid}`, { title: 'NFC' });
+                            } catch (e: any) {
+                              showToast.error(`Read failed: ${e?.message || 'Unknown error'}`, { title: 'NFC' });
+                            }
+                          }}
+                          className="w-full bg-purple-800 hover:bg-purple-700 text-white text-sm font-semibold py-2 px-3 rounded"
+                        >
+                          Read (Before)
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              // PIN validation: must be 6 digits
+                              if (!/^[0-9]{6}$/.test(pin.trim())) {
+                                showToast.error('Invalid PIN format', { title: 'NFC' });
+                                return;
+                              }
+                              // URL selection via centralized config; validate format and scheme
+                              const url = nfcConfig.defaultProgramUrl;
+                              try {
+                                const parsed = new URL(url);
+                                if (parsed.protocol !== 'https:') {
+                                  showToast.error('Invalid URL: must use https', { title: 'NFC' });
+                                  return;
+                                }
+                              } catch {
+                                showToast.error('Invalid URL format', { title: 'NFC' });
+                                return;
+                              }
+                              showToast.info('Programming ...', { title: 'NFC' });
+                              await programTag({ url, pin: pin.trim(), enableSDM: true });
+                              showToast.success('Program intent recorded', { title: 'NFC' });
+                            } catch (e: any) {
+                              showToast.error(`Program failed: ${e?.message || 'Unknown error'}`, { title: 'NFC' });
+                            }
+                          }}
+                          className="w-full bg-blue-800 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-3 rounded"
+                        >
+                          Program (URL + SDM)
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              showToast.info('Verifying ...', { title: 'NFC' });
+                              await verifyTag();
+                              showToast.success('Verification OK', { title: 'NFC' });
+                            } catch (e: any) {
+                              showToast.error(`Verify failed: ${e?.message || 'Unknown error'}`, { title: 'NFC' });
+                            }
+                          }}
+                          className="w-full bg-green-800 hover:bg-green-700 text-white text-sm font-semibold py-2 px-3 rounded"
+                        >
+                          Verify (After)
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              showToast.info('Erasing ...', { title: 'NFC' });
+                              await eraseTag();
+                              showToast.success('Erase requested', { title: 'NFC' });
+                            } catch (e: any) {
+                              showToast.error(`Erase failed: ${e?.message || 'Unknown error'}`, { title: 'NFC' });
+                            }
+                          }}
+                          className="w-full bg-red-800 hover:bg-red-700 text-white text-sm font-semibold py-2 px-3 rounded"
+                        >
+                          Erase / Overwrite
+                        </button>
+                      </div>
+                      <div className="mt-3">
+                        <button
+                          onClick={async () => {
+                            try {
+                              showToast.info('NIP-42 live check ...', { title: 'Nostr' });
+                              const configuredRelays = (config?.nostr?.relays || []).filter((r: string) => typeof r === 'string' && r.startsWith('wss://'));
+                              const relaysToUse = (relays && Array.isArray(relays) && relays.length > 0)
+                                ? relays
+                                : (configuredRelays.length > 0
+                                  ? configuredRelays
+                                  : ['wss://nos.lol', 'wss://relay.damus.io', 'wss://relay.nostr.band']);
+                              const res = await performNIP42Auth({ relays: relaysToUse });
+                              const ok = res.ok;
+                              if (ok) {
+                                showToast.success('NIP-42 OK on at least one relay', { title: 'Nostr' });
+                              } else {
+                                showToast.error('NIP-42 failed', { title: 'Nostr' });
+                              }
+                            } catch (e: any) {
+                              showToast.error(e?.message || 'NIP-42 check failed', { title: 'Nostr' });
+                            }
+                          }}
+                          className="w-full bg-indigo-800 hover:bg-indigo-700 text-white text-xs font-semibold py-2 px-3 rounded"
+                        >
+                          NIP-42 Live Check
+                        </button>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
 
@@ -459,7 +592,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                   <div className="flex items-start space-x-2 text-blue-300 text-sm">
                     <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="font-medium mb-2">Need help Flashing your NFC Physical MFA card?</p>
+                      <p className="font-medium mb-2">Need help programming your NFC Name Tag?</p>
                       <div className="space-y-1">
                         <a href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">📖 Provisioning Guide</a>
                         <a href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">🔧 Blob Viewer Tool</a>

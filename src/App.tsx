@@ -1006,7 +1006,7 @@ function App() {
               onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
-              <img src="/ID-forge-icon.png" alt="Claim" className="h-5 w-5" />
+              <img src="/SatNam-logo.png" alt="Claim" className="h-5 w-5" />
               <span>Claim Your Name</span>
             </button>
             <button
@@ -1068,26 +1068,14 @@ function App() {
             </a>
           </div>
 
-          {/* NFC Physical MFA Guidance */}
-          <div className="mt-6 text-purple-100/90 text-sm text-center max-w-3xl mx-auto">
-            <em>Flashing must be performed in the mobile apps first; after that, return here to complete identity claiming and payments setup.</em>
-          </div>
+          {/* NFC Name Tag provisioning */}
 
           <div className="mt-10 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center shadow-lg">
-            <h3 className="text-2xl font-bold text-white mb-3">Set up NFC Physical MFA</h3>
+            <h3 className="text-2xl font-bold text-white mb-3">Store Your ID Credentials On Your Name Tag</h3>
             <p className="text-purple-100 mb-6 max-w-3xl mx-auto">
-              Flash your NFC Physical MFA card using the GetFlash mobile app or a BoltCard-compatible app. Programming occurs in the mobile app (not in this browser). After flashing your NTAG424 DNA card, return here to Claim Your True Name and enable secure messaging and payments.
+              First, log in or claim your name on Satnam.pub. Then use the Boltcard Programming App (Android) to program your NTAG424 DNA name tag. Return here to complete setup for messaging and payments.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <a
-                href="https://getflash.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
-              >
-                <span>Flash with getflash.io</span>
-                <ExternalLink className="h-4 w-4" />
-              </a>
               <a
                 href="https://boltcard.com"
                 target="_blank"
@@ -1095,7 +1083,7 @@ function App() {
                 data-doc="boltcard-how-to"
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
               >
-                <span>BoltCard (site)</span>
+                <span>Boltcard Programming App</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
               <a
@@ -1116,36 +1104,18 @@ function App() {
               </a>
             </div>
 
-            {/* Placeholders for direct app store links & step-by-step guides */}
-            <div className="mt-3 flex flex-col sm:flex-row gap-3 justify-center items-center opacity-80">
-              <span aria-disabled className="bg-white/5 text-white/70 font-medium py-2 px-4 rounded-lg cursor-not-allowed select-none">
-                App Store (coming soon)
-              </span>
-              <span aria-disabled className="bg-white/5 text-white/70 font-medium py-2 px-4 rounded-lg cursor-not-allowed select-none">
-                Google Play (coming soon)
-              </span>
-            </div>
-
-
             {/* Requirements & expectations */}
             <div className="text-left max-w-3xl mx-auto mt-6 text-purple-200/90 text-sm">
               <ul className="list-disc list-inside space-y-1">
-                <li>NFC-capable phone required</li>
-                <li>Install the GetFlash app or a BoltCard-compatible app to perform flashing</li>
-                <li>If your phone has no NFC, ask a family member to flash your card for you</li>
-                <li>Mobile app step — not performed in the browser</li>
-                <li>Supported tags: NTAG424 DNA</li>
+                <li>NFC-capable Android phone with Boltcard app</li>
+                <li>iOS users: borrow an Android device or visit a community provisioning station</li>
+                <li>Supported tag: NTAG424 DNA (SUN/SDM). On-tag data must stay small (≈416–448 bytes practical)</li>
+                <li>URL format: https://www.satnam.pub/t/&lt;duid&gt;?sdm=&lt;sdm_payload&gt;&u=&lt;uid&gt; (keep overall length ≤ 200 bytes)</li>
               </ul>
             </div>
 
             <p className="text-purple-200 text-sm mt-4">
-              Sequence: Install mobile app → Flash NFC card (mobile) → Return to SatNam.pub → Claim identity → Set up payments and messaging.
-            </p>
-            <p className="text-purple-300/90 text-xs mt-2">
-              Looking for BoltCard how‑to documentation? We’ll add the direct guide link here when it’s publicly available.
-            </p>
-            <p className="text-purple-300/90 text-xs mt-1">
-              For business integration support, contact <a className="underline hover:text-white" href="mailto:support@getflash.io">support@getflash.io</a>.
+              Sequence: Log in or claim your name → Program your tag with Boltcard → Return to Satnam.pub to finish setup.
             </p>
           </div>
 
@@ -1180,7 +1150,7 @@ function App() {
               cryptographic verification that no one can take, fake, or censor.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
-              <img src="/ID-forge-icon.png" alt="Claim" className="h-4 w-4" />
+              <img src="/SatNam-logo.png" alt="Claim" className="h-4 w-4" />
               <span>Create Identity</span>
             </button>
           </div>

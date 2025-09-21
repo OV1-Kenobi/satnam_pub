@@ -48,6 +48,7 @@ interface RedisConfig {
 interface NostrConfig {
   relayUrl: string;
   privateKey: string | undefined;
+  relays: string[]; // Centralized relay list for clients
 }
 
 /**
@@ -525,6 +526,15 @@ export const nostrConfig: NostrConfig = {
       return defaultUrl;
     })(),
   privateKey: getEnvVar("NOSTR_PRIVATE_KEY"),
+  relays: (() => {
+    const csv = getEnvVar("VITE_NOSTR_RELAYS") || getEnvVar("NOSTR_RELAYS");
+    const fallback =
+      "wss://nos.lol,wss://relay.damus.io,wss://relay.nostr.band";
+    return (csv || fallback)
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  })(),
 };
 
 /**
@@ -899,6 +909,7 @@ interface NFCConfig {
   enabled: boolean;
   pinTimeoutMs: number;
   confirmationMode: "per_unlock" | "per_operation";
+  defaultProgramUrl: string; // Default URL to program into NTAG424
 }
 
 export const nfcConfig: NFCConfig = {
@@ -906,6 +917,9 @@ export const nfcConfig: NFCConfig = {
   pinTimeoutMs: parseInt(getEnvVar("VITE_NFC_PIN_TIMEOUT") || "120000"),
   confirmationMode: (getEnvVar("VITE_NFC_CONFIRMATION_MODE") ||
     "per_unlock") as "per_unlock" | "per_operation",
+  defaultProgramUrl:
+    getEnvVar("VITE_NFC_DEFAULT_PROGRAM_URL") ||
+    "https://www.satnam.pub/id/profile.json",
 };
 
 /**

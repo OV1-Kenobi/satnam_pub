@@ -95,7 +95,7 @@ const Navigation: React.FC<NavigationProps> = ({
               onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg border-2 border-black text-xs"
             >
-              <img src="/ID-forge-icon.png" alt="Claim" className="h-3 w-3" />
+              <img src="/SatNam-logo.png" alt="Claim" className="h-3 w-3" />
               <span>Name Yourself</span>
             </button>
 
@@ -224,7 +224,7 @@ const Navigation: React.FC<NavigationProps> = ({
                 className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2"
               >
                 <img
-                  src="/ID-forge-icon.png"
+                  src="/SatNam-logo.png"
                   alt="Claim"
                   className="h-4 w-4"
                 />

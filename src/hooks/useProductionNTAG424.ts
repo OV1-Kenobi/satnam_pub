@@ -5,6 +5,8 @@
  */
 
 import { useCallback, useState } from "react";
+import { makeSunBinding } from "../lib/nip42/challenge-binding";
+import { authenticateWithRelays } from "../lib/nip42/relay-auth";
 
 export interface ProductionNTAG424AuthState {
   isAuthenticated: boolean;
@@ -338,6 +340,128 @@ export const useProductionNTAG424 = () => {
     });
   }, []);
 
+  /**
+   * NIP-42 live check bound to SUN nonce (if provided). Uses CEPS onauth wiring.
+   */
+  const performNIP42Auth = useCallback(
+    async (params: {
+      relays: string[];
+      sunNonce?: string;
+      timeoutMs?: number;
+    }): Promise<{
+      ok: boolean;
+      results: { relay: string; ok: boolean; error?: string }[];
+      bindingTag?: { tagName: string; value: string };
+    }> => {
+      try {
+        const bindingTag = params.sunNonce
+          ? makeSunBinding(params.sunNonce)
+          : undefined;
+        const results = await authenticateWithRelays(params.relays, {
+          timeoutMs: params.timeoutMs ?? 8000,
+        });
+        const ok = results.some((r) => r.ok);
+        return { ok, results, bindingTag };
+      } catch (e) {
+        return {
+          ok: false,
+          results: [],
+          bindingTag: params.sunNonce
+            ? makeSunBinding(params.sunNonce)
+            : undefined,
+        };
+      }
+    },
+    []
+  );
+
+  /**
+   * Read tag info (UID, limited Web NFC-exposed data). Server augments via /nfc-unified/read.
+   */
+  const readTagInfo = useCallback(async (): Promise<{
+    uid: string;
+    ndefRecords?: unknown;
+    sdmState?: unknown;
+  }> => {
+    if (typeof window === "undefined" || !("NDEFReader" in window)) {
+      throw new Error("NFC not supported on this device/browser");
+    }
+    const ndef = new (window as any).NDEFReader();
+    await ndef.scan();
+    return await new Promise((resolve, reject) => {
+      ndef.addEventListener("reading", async (event: any) => {
+        try {
+          const uid = event.serialNumber;
+          let serverAugment: any = {};
+          try {
+            const headers = await getAuthHeaders();
+            const res = await fetch(`${API_BASE}/nfc-unified/read`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...headers },
+              body: JSON.stringify({ tagUID: uid }),
+            });
+            serverAugment = await res.json().catch(() => ({}));
+          } catch {}
+          resolve({
+            uid,
+            ndefRecords: undefined,
+            sdmState: serverAugment?.data?.sdm,
+          });
+        } catch (e: any) {
+          reject(new Error(e?.message || "readTagInfo error"));
+        }
+      });
+      setTimeout(() => reject(new Error("NFC read timeout")), 15000);
+    });
+  }, []);
+
+  /**
+   * Program tag (server-coordinated). Web NFC cannot set SDM keys; we record intent + verify after.
+   */
+  const programTag = useCallback(
+    async (params: {
+      url: string;
+      pin: string;
+      enableSDM: boolean;
+    }): Promise<boolean> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/nfc-unified/program`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(params),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success)
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      return true;
+    },
+    []
+  );
+
+  const verifyTag = useCallback(async (): Promise<boolean> => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/nfc-unified/verify-tag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success)
+      throw new Error(json?.error || `HTTP ${res.status}`);
+    return true;
+  }, []);
+
+  const eraseTag = useCallback(async (): Promise<boolean> => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/nfc-unified/erase`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success)
+      throw new Error(json?.error || `HTTP ${res.status}`);
+    return true;
+  }, []);
+
   return {
     authState,
     isProcessing,
@@ -345,5 +469,11 @@ export const useProductionNTAG424 = () => {
     registerNewTag,
     initializeTag,
     resetAuthState,
+    // SCDiD/NIP-42 & NFC lifecycle helpers
+    performNIP42Auth,
+    readTagInfo,
+    programTag,
+    verifyTag,
+    eraseTag,
   };
 };
