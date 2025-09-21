@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>Satnam NFCプロビジョニングガイド</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="SatnamのNTAG424 NFC Physical MFAを安全にプロビジョニングするためのエンドユーザー向けクイックスタート" />
+  <style>
+    :root{--bg:#fff;--fg:#111;--muted:#555;--accent:#0b74de;--warn:#b00020;--ok:#0a7f3f}
+    *{box-sizing:border-box} body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:var(--fg);background:var(--bg);line-height:1.6;}
+    header{padding:24px;border-bottom:1px solid #eee;text-align:center}
+    h1{margin:0 0 4px;font-size:28px;color:var(--accent)} h2{margin:24px 0 12px;font-size:22px;border-bottom:2px solid #eee;padding-bottom:4px} h3{margin:18px 0 8px;font-size:18px}
+    p{line-height:1.6;margin:12px 0} ul{margin:12px 0 12px 20px} li{margin:8px 0}
+    .container{max-width:900px;margin:0 auto;padding:24px}
+    .grid{display:grid;gap:20px} .two{grid-template-columns:1fr 1fr} .three{grid-template-columns:repeat(3,1fr)}
+    .card{border:1px solid #ddd;border-radius:8px;padding:20px;background:#fafafa}
+    .badge{display:inline-block;padding:4px 12px;border-radius:999px;background:var(--ok);color:white;font-size:12px;font-weight:bold;margin-right:8px}
+    .callout{border-left:4px solid var(--accent);padding:16px 16px 16px 20px;background:#f8fbff;margin:16px 0}
+    .danger{border-left-color:var(--warn);background:#fff7f8;color:#8b0000}
+    .ok{border-left-color:var(--ok);background:#f7fff9}
+    code,kbd{background:#f2f2f2;padding:3px 6px;border-radius:4px;font-family:ui-monospace,Menlo,monospace}
+    .steps ol{margin:12px 0 12px 20px} .steps li{margin:10px 0;padding-left:4px}
+    .diagram{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f8f8f8;border:1px solid #ddd;border-radius:6px;padding:16px;white-space:pre;overflow:auto;font-size:14px}
+    .lang-nav{text-align:center;margin:16px 0;padding:12px;background:#f0f0f0;border-radius:6px}
+    .lang-nav a{margin:0 8px;color:var(--accent);text-decoration:none;font-weight:500}
+    .lang-nav a:hover{text-decoration:underline}
+    @media print{header .lang-nav,.no-print{display:none}.container{padding:12px} a[href]::after{content:" (" attr(href) ")";font-size:10px;color:#666}}
+    @media (max-width:768px){.three{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Satnam NFCプロビジョニングガイド</h1>
+    <div style="color:var(--muted);font-size:16px;margin-top:8px">NTAG424 NFC Physical MFA • プライバシーファースト • ゼロ知識</div>
+    <div class="lang-nav no-print">
+      <strong>言語:</strong>
+      <a href="satnam-nfc-provisioning-guide.html">English</a>
+      <a href="satnam-nfc-provisioning-guide-es.html">Español</a>
+      <a href="satnam-nfc-provisioning-guide-de.html">Deutsch</a>
+      <a href="satnam-nfc-provisioning-guide-ja.html">日本語</a>
+    </div>
+  </header>
+  <div class="container">
+
+    <div class="callout ok">
+      <strong>目標</strong>: 別のハードウェアブリッジなしで、Satnam NFC Physical MFA用にNTAG424タグを安全にプロビジョニングします。すべての検証は、ローカルSUN/CMACチェックを使用してSatnamのNetlify Functionsによって実行されます。
+    </div>
+
+    <h2>1. プロビジョニング方法を選択</h2>
+    <div class="grid three">
+      <div class="card">
+        <div class="badge">推奨</div>
+        <h3>Android（Boltcardアプリ）</h3>
+        <ul>
+          <li>NFC機能付きAndroidスマートフォン</li>
+          <li>Boltcard NFC Programming App</li>
+          <li>ほとんどのユーザーにとって最速のセットアップ</li>
+          <li>NTAG424 DNAおよびDNA TTをサポート</li>
+        </ul>
+        <p><strong>ダウンロードオプション:</strong></p>
+        <ul>
+          <li><strong>GitHub Releases（APK）:</strong><br/>
+              <code>github.com/boltcard/bolt-nfc-android-app/releases</code></li>
+          <li><strong>Google Play Store:</strong><br/>
+              「Boltcard NFC Programming」を検索するか、ID <code>com.lightningnfcapp</code>を使用</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>デスクトップ（NXP TagXplorer）</h3>
+        <ul>
+          <li>Windows/macOS/Linuxコンピュータ</li>
+          <li>互換性のあるNFCリーダー（PN532推奨）</li>
+          <li>NXPによるJavaアプリケーション</li>
+          <li>高度な低レベルNTAG424設定</li>
+        </ul>
+        <p><strong>リソース:</strong></p>
+        <ul>
+          <li><strong>ドキュメント:</strong> NXP UM11133クイックスタートガイド</li>
+          <li><strong>ダウンロード:</strong> NXP DocStore（無料アカウント必要）</li>
+          <li><strong>検索用語:</strong> "TagXplorer"</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>デバイス（Bolty ESP32 + PN532）</h3>
+        <ul>
+          <li>ESP32マイクロコントローラー + PN532 NFCモジュール</li>
+          <li>専用プロビジョニングデバイス</li>
+          <li>Webベースの設定インターフェース</li>
+          <li>一括プロビジョニングに最適</li>
+        </ul>
+        <p><strong>リソース:</strong></p>
+        <ul>
+          <li><strong>手順:</strong> LNbits Wiki "Tooling & Building"</li>
+          <li><strong>Webフラッシャー:</strong> <code>espressif.github.io/esptool-js/</code></li>
+          <li><strong>ファームウェア:</strong> LNbitsコミュニティリソースで利用可能</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout danger">
+      <strong>⚠️ セキュリティクリティカル:</strong> プロビジョニングブロブ（K0/K1/K2キーとSDM設定を含む）を安全なデバイス外で共有しないでください。パスワードマネージャーに保存してください。タグにプログラムした後でキーを紛失した場合、そのタグを再プログラムすることはできません。
+    </div>
+
+    <h2>2. Satnamからプロビジョニングブロブを生成</h2>
+    <p>Satnamアプリケーションで:</p>
+    <ol>
+      <li><strong>セキュリティ → NFC Physical MFA</strong>に移動</li>
+      <li><strong>「新しいタグをプロビジョニング」</strong>をクリック</li>
+      <li>これにより<code>/nfc-unified/initialize</code>エンドポイントが呼び出されます</li>
+      <li>返されたJSONブロブを安全に保存（クライアントサイドのみ、送信されません）</li>
+    </ol>
+    
+    <p>プロビジョニングブロブには以下が含まれます:</p>
+    <ul>
+      <li><code>url_base</code> — 書き込むNDEF URL（例: <code>https://www.satnam.pub/nfc/scan</code>）</li>
+      <li><code>k0</code>, <code>k1</code>, <code>k2</code> — 16進形式のAES-128キー</li>
+      <li><code>sdm</code> — PICC/CMAC挿入オフセット付きSUN/SDM設定</li>
+    </ul>
+
+    <h2>3. 方法別プロビジョニング手順</h2>
+    <div class="grid two steps">
+      <div class="card">
+        <h3>Android（Boltcardアプリ）</h3>
+        <ol>
+          <li><strong>インストール:</strong> GitHub ReleasesまたはPlay Storeからアプリをダウンロードしてインストール</li>
+          <li><strong>NFC有効化:</strong> スマートフォンのNFCがオンになっていることを確認</li>
+          <li><strong>URL設定:</strong> <em>Write</em>画面を開く → ブロブから<code>url_base</code>を入力</li>
+          <li><strong>キー設定:</strong> <em>Key change</em>画面を開く → 提供された通りに<code>K0</code>、<code>K1</code>、<code>K2</code>を適用</li>
+          <li><strong>SDM有効化:</strong> 動的PICC/CMAC URLパラメータのためにSUN/SDMが有効になっていることを確認</li>
+          <li><strong>オプションのプライバシー:</strong> UID ランダム化を有効化（不可逆的なプライバシー強化）</li>
+          <li><strong>タグプログラム:</strong> 成功確認まで、スマートフォンのNFCエリアに対してタグを完全に静止させて保持</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>デスクトップ（TagXplorer）</h3>
+        <ol>
+          <li><strong>セットアップ:</strong> Java + TagXplorerをインストール; 互換性のあるNFCリーダーを接続</li>
+          <li><strong>タグ検出:</strong> NTAG424をリーダーに置き、TagXplorerで検出</li>
+          <li><strong>キー変更:</strong> EV2/AESモードを使用して<code>K0</code>、<code>K1</code>、<code>K2</code>を設定</li>
+          <li><strong>SDM設定:</strong> 指定されたファイルでSDMを有効化; ブロブに従ってPICC/CMACオフセットを設定</li>
+          <li><strong>NDEF書き込み:</strong> <code>url_base</code>でNDEF URLレコードを作成</li>
+          <li><strong>オプション:</strong> 必要に応じてUID ランダム化を有効化</li>
+          <li><strong>検証:</strong> 設定がブロブ仕様と一致することを確認</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>デバイス（Bolty ESP32 + PN532）</h3>
+      <ol>
+        <li><strong>ファームウェアフラッシュ:</strong> LNbits wikiのBoltyバイナリでesptool-js Webフラッシャーを使用</li>
+        <li><strong>接続:</strong> デバイスを再起動、Wi‑Fiネットワーク<code>Bolty</code>に参加（パスワード: <code>wango123</code>）</li>
+        <li><strong>設定:</strong> ブラウザで<code>http://192.168.4.1</code>を開く</li>
+        <li><strong>値読み込み:</strong> <code>url_base</code>、<code>K0/K1/K2</code>、SDM設定を入力</li>
+        <li><strong>プログラム:</strong> 書き込み操作を実行; キー変更中はタグを静止させて保持</li>
+        <li><strong>検証:</strong> タグ機能とSDMパラメータ生成をテスト</li>
+      </ol>
+    </div>
+
+    <h2>4. プログラムされたタグの検証</h2>
+    <div class="grid two">
+      <div class="card">
+        <h3>クイック検証</h3>
+        <ul>
+          <li><strong>NFCテスト:</strong> NFC対応スマートフォンでタップ</li>
+          <li><strong>URL確認:</strong> 開かれたURLに動的SDMパラメータが含まれているはず</li>
+          <li><strong>パラメータ形式:</strong> URLでCMACとPICC値を探す</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>完全なSatnam統合テスト</h3>
+        <ul>
+          <li><strong>エンドツーエンド:</strong> タグをタップ → Satnamアプリが開く</li>
+          <li><strong>バックエンド検証:</strong> フロントエンドが<code>/nfc-unified/verify</code>を呼び出し</li>
+          <li><strong>成功レスポンス:</strong> ローカルSUN/CMAC検証が通過</li>
+          <li><strong>認証:</strong> ユーザーがNFC経由で正常に認証</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>5. 統合アーキテクチャ概要</h2>
+    <div class="diagram">ユーザーがタグをタップ → スマートフォンがNDEF URLを開く
+   ↓
+フロントエンドがSDMパラメータ（PICC/CMAC）をキャプチャ
+   ↓
+Netlify Function: /nfc-unified/verify
+   ↓
+ローカルSUN/CMAC検証（外部ブリッジなし）
+   ↓
+認証成功 → ユーザーセッション作成
+   ↓
+オプション: ウォレット/レジストリメタデータ用LNbits Boltcards</div>
+
+    <h2>6. 一般的な問題のトラブルシューティング</h2>
+    <div class="grid two">
+      <div class="card">
+        <h3>プログラミング失敗</h3>
+        <ul>
+          <li><strong>タグの動き:</strong> プログラミング中はタグを完全に静止させて保持</li>
+          <li><strong>NFC位置合わせ:</strong> スマートフォンのNFCコイルとの適切な位置合わせを確保</li>
+          <li><strong>アプリ干渉:</strong> プログラミング中は他のNFCアプリを閉じる</li>
+          <li><strong>リトライロジック:</strong> 一部の操作では複数回の試行が必要な場合があります</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>検証問題</h3>
+        <ul>
+          <li><strong>CMAC欠如:</strong> SDMが有効でないか、オフセットが間違っている</li>
+          <li><strong>間違ったURL:</strong> NDEFレコードが正しく書き込まれていない</li>
+          <li><strong>キー不一致:</strong> K0/K1/K2がSatnamの期待と一致しない</li>
+          <li><strong>リーダー問題:</strong> PN532またはNXPリーダーを使用; レガシーACR122Uを避ける</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>7. セキュリティベストプラクティス</h2>
+    <ul>
+      <li><strong>制御された環境:</strong> 未知のNFCデバイスがない安全な場所でプロビジョニング</li>
+      <li><strong>キー保存:</strong> プロビジョニングブロブをパスワードマネージャーに保存、平文では決して保存しない</li>
+      <li><strong>最初にテスト:</strong> 初期テストと検証にはスペアタグを使用</li>
+      <li><strong>バックアップ戦略:</strong> タグでキーを変更する前に、キーの安全なバックアップを保持</li>
+      <li><strong>プライバシー強化:</strong> 追加のプライバシーのためにUID ランダム化を検討</li>
+      <li><strong>検証ログ:</strong> <code>/nfc-unified/verify</code>成功ログを監視</li>
+    </ul>
+
+    <div class="callout">
+      <strong>💡 プロのヒント:</strong> ブラウザの印刷機能を使用して「PDFとして保存」を選択し、プロビジョニング中の安全な参照用にこのガイドのオフラインコピーを作成してください。
+    </div>
+
+    <p class="no-print" style="margin-top:32px;color:var(--muted);text-align:center;font-size:14px">
+      Satnam NFCプロビジョニングガイド • プライバシーファーストNIP‑05 DUIDアーキテクチャ • ゼロ知識セキュリティモデル
+    </p>
+  </div>
+</body>
+</html>

@@ -149,6 +149,19 @@ function App() {
     window.addEventListener('satnam:navigate', handler as EventListener);
     return () => window.removeEventListener('satnam:navigate', handler as EventListener);
   }, []);
+  // Global event to open Sign-In modal from nested components (e.g., NTAG424 modal pre-auth gating)
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setSignInModalOpen(true);
+      } catch (err) {
+        console.warn('satnam:open-signin handler error', err);
+      }
+    };
+    window.addEventListener('satnam:open-signin', handler as EventListener);
+    return () => window.removeEventListener('satnam:open-signin', handler as EventListener);
+  }, []);
+
 
   // Auto-close transient modals when navigating to new views
   useEffect(() => {
@@ -973,7 +986,7 @@ function App() {
             Claim Your True Name
           </h1>
           <h2 className="text-2xl md:text-3xl font-semibold text-purple-100 mb-8 drop-shadow-lg">
-            Own Your Digital Dynasty
+            Control Your Digital Dynasty
           </h2>
           <p className="text-xl text-purple-100 mb-12 max-w-4xl mx-auto leading-relaxed drop-shadow-lg">
             Create decentralized interoperable identities and human-readable
@@ -993,7 +1006,7 @@ function App() {
               onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 backdrop-blur-sm border-2 border-black"
             >
-              <img src="/ID-forge-icon.png" alt="Forge" className="h-5 w-5" />
+              <img src="/ID-forge-icon.png" alt="Claim" className="h-5 w-5" />
               <span>Claim Your Name</span>
             </button>
             <button
@@ -1054,6 +1067,88 @@ function App() {
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
+
+          {/* NFC Physical MFA Guidance */}
+          <div className="mt-6 text-purple-100/90 text-sm text-center max-w-3xl mx-auto">
+            <em>Flashing must be performed in the mobile apps first; after that, return here to complete identity claiming and payments setup.</em>
+          </div>
+
+          <div className="mt-10 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center shadow-lg">
+            <h3 className="text-2xl font-bold text-white mb-3">Set up NFC Physical MFA</h3>
+            <p className="text-purple-100 mb-6 max-w-3xl mx-auto">
+              Flash your NFC Physical MFA card using the GetFlash mobile app or a BoltCard-compatible app. Programming occurs in the mobile app (not in this browser). After flashing your NTAG424 DNA card, return here to Claim Your True Name and enable secure messaging and payments.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <a
+                href="https://getflash.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+              >
+                <span>Flash with getflash.io</span>
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <a
+                href="https://boltcard.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-doc="boltcard-how-to"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+              >
+                <span>BoltCard (site)</span>
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <a
+                href="/docs/satnam-nfc-provisioning-guide.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+              >
+                <span>Provisioning Guide</span>
+              </a>
+              <a
+                href="/docs/ntag424-blob-viewer.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+              >
+                <span>Blob Viewer</span>
+              </a>
+            </div>
+
+            {/* Placeholders for direct app store links & step-by-step guides */}
+            <div className="mt-3 flex flex-col sm:flex-row gap-3 justify-center items-center opacity-80">
+              <span aria-disabled className="bg-white/5 text-white/70 font-medium py-2 px-4 rounded-lg cursor-not-allowed select-none">
+                App Store (coming soon)
+              </span>
+              <span aria-disabled className="bg-white/5 text-white/70 font-medium py-2 px-4 rounded-lg cursor-not-allowed select-none">
+                Google Play (coming soon)
+              </span>
+            </div>
+
+
+            {/* Requirements & expectations */}
+            <div className="text-left max-w-3xl mx-auto mt-6 text-purple-200/90 text-sm">
+              <ul className="list-disc list-inside space-y-1">
+                <li>NFC-capable phone required</li>
+                <li>Install the GetFlash app or a BoltCard-compatible app to perform flashing</li>
+                <li>If your phone has no NFC, ask a family member to flash your card for you</li>
+                <li>Mobile app step — not performed in the browser</li>
+                <li>Supported tags: NTAG424 DNA</li>
+              </ul>
+            </div>
+
+            <p className="text-purple-200 text-sm mt-4">
+              Sequence: Install mobile app → Flash NFC card (mobile) → Return to SatNam.pub → Claim identity → Set up payments and messaging.
+            </p>
+            <p className="text-purple-300/90 text-xs mt-2">
+              Looking for BoltCard how‑to documentation? We’ll add the direct guide link here when it’s publicly available.
+            </p>
+            <p className="text-purple-300/90 text-xs mt-1">
+              For business integration support, contact <a className="underline hover:text-white" href="mailto:support@getflash.io">support@getflash.io</a>.
+            </p>
+          </div>
+
         </div>
       </div>
 
@@ -1085,7 +1180,7 @@ function App() {
               cryptographic verification that no one can take, fake, or censor.
             </p>
             <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto">
-              <img src="/ID-forge-icon.png" alt="Forge" className="h-4 w-4" />
+              <img src="/ID-forge-icon.png" alt="Claim" className="h-4 w-4" />
               <span>Create Identity</span>
             </button>
           </div>
@@ -1153,28 +1248,28 @@ function App() {
       >
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-12 text-center border border-white/20 shadow-lg">
           <h2 className="text-4xl font-bold text-white mb-8">
-            Forge Dynastic Sovereignty
+            Seeding Sovereign Dynasties
           </h2>
           <div className="grid md:grid-cols-3 gap-8 text-lg text-purple-100">
             <div>
-              <h3 className="font-bold text-white mb-3">100% Self-Sovereign</h3>
+              <h3 className="font-bold text-white mb-3">SatNam.pub: Your Self-Custodied & Credentialed Digital Identity Wallet</h3>
               <p>
                 You control your keys, your identity, and your dynasty. No
-                intermediaries, no dependencies.
+                intermediaries, no dependencies. Your Responsibility!
               </p>
             </div>
             <div>
-              <h3 className="font-bold text-white mb-3">Bitcoin-Only</h3>
+              <h3 className="font-bold text-white mb-3">Bitcoin-ONLY</h3>
               <p>
-                Built on the most secure and decentralized network. No gambling,
-                no compromise.
+                Built on the longest-running, most secure and decentralized network. Without casino-coins and without custodians.
+                Building on established trust, while decentralizing power. Using eCash to capture privacy and gain transaction speed within already trusted environments; between family members, businesses, and employees..
               </p>
             </div>
             <div>
-              <h3 className="font-bold text-white mb-3">Family-First</h3>
+              <h3 className="font-bold text-white mb-3">Family-First, Business-Second</h3>
               <p>
-                Designed to decentralize identity, cultivate multigenerational
-                wealth, and preserve cognitive capital.
+                We're building a cooperative of self-sovereign dynastic families and businesses. Sovereignty tools stamping your digital passport with YOUR identity. Curating essential tools for cultivating multigenerational
+                wealth, creating and conserving your cognitive capital for your descendants.
               </p>
             </div>
           </div>
@@ -1207,12 +1302,28 @@ function App() {
                 >
                   Automated Payments
                 </button>
-                <button
-                  onClick={() => handleProtectedRoute("educational-dashboard")}
-                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                >
-                  Cognitive Capital
-                </button>
+                {auth.authenticated ? (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const npub = (auth.user as any)?.npub as string | undefined;
+                        if (!npub) {
+                          showToast.error("Your npub is not available", { duration: 2500 });
+                          return;
+                        }
+                        await navigator.clipboard.writeText(npub);
+                        showToast.success("Copied your npub", { duration: 2500 });
+                      } catch (e) {
+                        showToast.error("Failed to copy npub", { duration: 3000 });
+                      }
+                    }}
+                    className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                    aria-label="Copy your npub to clipboard"
+                    title="Copy your npub"
+                  >
+                    Copy Npub
+                  </button>
+                ) : null}
                 <button
                   onClick={async () => {
                     try {
@@ -1230,7 +1341,7 @@ function App() {
                   className={"block text-purple-200 hover:text-yellow-400 transition-colors duration-200" + (loadingNfcModal ? " opacity-60 cursor-not-allowed" : "")}
                 >
                   <span className="block">Program Physical MFA tags</span>
-                  <span className="block text-xs text-purple-300">Program NTAG424 NFC tags for authentication</span>
+                  <span className="block text-xs text-purple-300">Flash/Bolt NTAG424 NFC passports/cards for authentication</span>
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("contacts")}
@@ -1403,11 +1514,11 @@ function App() {
                   className="h-4 w-4"
                   loading="lazy"
                 />
-                <span>100% Self-Sovereign</span>
+                <span>SatNam.pub: Your Self-Custodied & Credentialed Digital Identity Wallet</span>
               </span>
               <span className="flex items-center space-x-2">
                 <Bitcoin className="h-4 w-4" />
-                <span>Bitcoin-Only</span>
+                <span>Bitcoin-ONLY</span>
               </span>
               <span className="flex items-center space-x-2">
                 <img
@@ -1416,7 +1527,7 @@ function App() {
                   className="h-4 w-4"
                   loading="lazy"
                 />
-                <span>Family-First</span>
+                <span>Family-First, Business-Second</span>
               </span>
             </div>
           </div>

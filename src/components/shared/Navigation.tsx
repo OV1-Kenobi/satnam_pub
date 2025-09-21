@@ -59,6 +59,11 @@ const Navigation: React.FC<NavigationProps> = ({
     { label: "Advanced Coordination", action: () => setCurrentView("coordination") },
     { label: "Recovery Help", action: () => setCurrentView("recovery") },
     {
+      label: "NFC Setup Guide",
+      action: () => window.open("/docs/satnam-nfc-provisioning-guide.html", "_blank"),
+      external: true,
+    },
+    {
       label: "Citadel Academy",
       action: () => window.open("https://citadel.academy", "_blank"),
       external: true,
@@ -90,7 +95,7 @@ const Navigation: React.FC<NavigationProps> = ({
               onClick={() => setCurrentView("forge")}
               className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 shadow-lg border-2 border-black text-xs"
             >
-              <img src="/ID-forge-icon.png" alt="Forge" className="h-3 w-3" />
+              <img src="/ID-forge-icon.png" alt="Claim" className="h-3 w-3" />
               <span>Name Yourself</span>
             </button>
 
@@ -220,7 +225,7 @@ const Navigation: React.FC<NavigationProps> = ({
               >
                 <img
                   src="/ID-forge-icon.png"
-                  alt="Forge"
+                  alt="Claim"
                   className="h-4 w-4"
                 />
                 <span>Name Yourself</span>

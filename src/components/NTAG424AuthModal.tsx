@@ -59,6 +59,8 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   const [currentStep, setCurrentStep] = useState<AuthStep>('input');
   const [operationType, setOperationType] = useState<'auth' | 'register' | 'init'>('auth');
 
+  const auth = useAuth();
+
   // NTAG424 hook
   const { authState, isProcessing, authenticateWithNFC, registerNewTag, initializeTag, resetAuthState } = useProductionNTAG424();
 
@@ -253,160 +255,219 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
         {/* Content based on current step */}
         {currentStep === 'input' && (
           <div className="space-y-6">
-            {/* PIN Input */}
-            <div>
-              <label className="block text-sm font-medium text-purple-200 mb-2">
-                PIN Code
-              </label>
-              <div className="relative">
-                <input
-                  type={showPin ? "text" : "password"}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="Enter your 6-digit PIN"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                  maxLength={6}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPin(!showPin)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-300 hover:text-white"
-                >
-                  {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+            {!auth.authenticated ? (
+              <div className="space-y-4">
+                <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-4">
+                  <p className="text-purple-100 text-sm">
+                    To program your NTAG424 (n424) Physical MFA card, we must securely access your credentials from your Client Session Vault.
+                    Please sign in (Nostrich) or claim your identity first so we can bind your tag to the correct self-credentialed identity.
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      try { window.dispatchEvent(new CustomEvent('satnam:open-signin')); } catch { }
+                      onClose();
+                    }}
+                    className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg"
+                  >
+                    <Smartphone className="h-4 w-4" />
+                    <span>Nostrich Sign-in</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      try { window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'forge' } })); } catch { }
+                      onClose();
+                    }}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg"
+                  >
+                    <Key className="h-4 w-4" />
+                    <span>Claim Your True Name</span>
+                  </button>
+                </div>
+                <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                  <div className="flex items-start space-x-2 text-blue-300 text-sm">
+                    <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium mb-2">Need help Flashing your NFC Physical MFA card?</p>
+                      <div className="space-y-1">
+                        <a href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">📖 Provisioning Guide</a>
+                        <a href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">🔧 Blob Viewer Tool</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-purple-300 mt-1">
-                PIN authenticates your NFC tag locally. Your private keys are never stored on the tag.
-              </p>
-            </div>
-
-            {/* Registration fields (only show if mode allows registration) */}
-            {(mode === 'registration' || mode === 'both') && operationType === 'register' && (
+            ) : (
               <>
-                {/* Nostr Public Key */}
+                {/* PIN Input */}
                 <div>
                   <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Nostr Public Key (npub)
+                    PIN Code
                   </label>
-                  <input
-                    type="text"
-                    value={userNpub}
-                    onChange={(e) => setUserNpub(e.target.value)}
-                    placeholder="npub1..."
-                    className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPin ? "text" : "password"}
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Enter your 6-digit PIN"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                      maxLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPin(!showPin)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-300 hover:text-white"
+                    >
+                      {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                   <p className="text-xs text-purple-300 mt-1">
-                    Your Nostr public key for identity verification
+                    PIN authenticates your NFC tag locally. Your private keys are never stored on the tag.
                   </p>
                 </div>
 
-                {/* Family Role Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Family Role
-                  </label>
-                  <select
-                    value={familyRole}
-                    onChange={(e) => setFamilyRole(e.target.value as FederationRole)}
-                    className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                  >
-                    <option value="private">Private (Individual)</option>
-                    <option value="offspring">Offspring</option>
-                    <option value="adult">Adult</option>
-                    <option value="steward">Steward</option>
-                    <option value="guardian">Guardian</option>
-                  </select>
-                  <div className="mt-2 flex items-start space-x-2 text-xs text-purple-300">
-                    {getRoleIcon(familyRole)}
-                    <span>{getRoleDescription(familyRole)}</span>
+                {/* Registration fields (only show if mode allows registration) */}
+                {(mode === 'registration' || mode === 'both') && operationType === 'register' && (
+                  <>
+                    {/* Nostr Public Key */}
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Nostr Public Key (npub)
+                      </label>
+                      <input
+                        type="text"
+                        value={userNpub}
+                        onChange={(e) => setUserNpub(e.target.value)}
+                        placeholder="npub1..."
+                        className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                      />
+                      <p className="text-xs text-purple-300 mt-1">
+                        Your Nostr public key for identity verification
+                      </p>
+                    </div>
+
+                    {/* Family Role Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">
+                        Family Role
+                      </label>
+                      <select
+                        value={familyRole}
+                        onChange={(e) => setFamilyRole(e.target.value as FederationRole)}
+                        className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                      >
+                        <option value="private">Private (Individual)</option>
+                        <option value="offspring">Offspring</option>
+                        <option value="adult">Adult</option>
+                        <option value="steward">Steward</option>
+                        <option value="guardian">Guardian</option>
+                      </select>
+                      <div className="mt-2 flex items-start space-x-2 text-xs text-purple-300">
+                        {getRoleIcon(familyRole)}
+                        <span>{getRoleDescription(familyRole)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Initialization guidance */}
+                <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+                  <div className="flex items-start space-x-2 text-yellow-300 text-sm">
+                    <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold">Two-phase setup required</p>
+                      <p className="mt-1">
+                        Phase 1: Initialize your NTAG424 tag using the hardware bridge to set AES keys, SUN, and permissions. Phase 2: Return here and complete registration.
+                      </p>
+                      <a
+                        href="https://www.satnam.pub/docs/ntag424-initialization"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline text-yellow-300 hover:text-yellow-200 mt-1 inline-block"
+                      >
+                        Learn how to initialize your tag
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3">
+                  {(mode === 'authentication' || mode === 'both') && (
+                    <button
+                      onClick={handleAuthenticate}
+                      disabled={!/^[0-9]{6}$/.test(pin.trim()) || isProcessing}
+                      className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                    >
+                      <Smartphone className="h-4 w-4" />
+                      <span>Sign In with NFC</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  {(mode === 'registration' || mode === 'both') && (
+                    <button
+                      onClick={handleInitialize}
+                      disabled={isProcessing}
+                      className="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                    >
+                      <Smartphone className="h-4 w-4" />
+                      <span>Initialize Tag (Mobile PWA)</span>
+                    </button>
+                  )}
+
+                  {(mode === 'registration' || mode === 'both') && (
+                    <button
+                      onClick={() => setOperationType('register')}
+                      disabled={isProcessing}
+                      className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                    >
+                      <Key className="h-4 w-4" />
+                      <span>Register New Tag</span>
+                    </button>
+                  )}
+
+                  {mode === 'both' && operationType === 'register' && (
+                    <button
+                      onClick={handleRegister}
+                      disabled={!pin.trim() || !userNpub.trim() || isProcessing}
+                      className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
+                    >
+                      <QrCode className="h-4 w-4" />
+                      <span>Complete Registration</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Mode Toggle for 'both' mode */}
+                {mode === 'both' && (
+                  <div className="text-center">
+                    <button
+                      onClick={() => setOperationType(operationType === 'auth' ? 'register' : 'auth')}
+                      className="text-purple-300 hover:text-white text-sm underline transition-colors"
+                    >
+                      {operationType === 'auth' ? 'Need to register a new tag?' : 'Already have a registered tag?'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Documentation Links */}
+                <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                  <div className="flex items-start space-x-2 text-blue-300 text-sm">
+                    <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium mb-2">Need help Flashing your NFC Physical MFA card?</p>
+                      <div className="space-y-1">
+                        <a href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">📖 Provisioning Guide</a>
+                        <a href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">🔧 Blob Viewer Tool</a>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </>
-            )}
-
-            {/* Initialization guidance */}
-            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
-              <div className="flex items-start space-x-2 text-yellow-300 text-sm">
-                <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold">Two-phase setup required</p>
-                  <p className="mt-1">
-                    Phase 1: Initialize your NTAG424 tag using the hardware bridge to set AES keys, SUN, and permissions. Phase 2: Return here and complete registration.
-                  </p>
-                  <a
-                    href="https://www.satnam.pub/docs/ntag424-initialization"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline text-yellow-300 hover:text-yellow-200 mt-1 inline-block"
-                  >
-                    Learn how to initialize your tag
-                  </a>
-                </div>
-              </div>
-            </div>
-
-
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              {(mode === 'authentication' || mode === 'both') && (
-                <button
-                  onClick={handleAuthenticate}
-                  disabled={!/^[0-9]{6}$/.test(pin.trim()) || isProcessing}
-                  className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <Smartphone className="h-4 w-4" />
-                  <span>Sign In with NFC</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              )}
-
-              {(mode === 'registration' || mode === 'both') && (
-                <button
-                  onClick={handleInitialize}
-                  disabled={isProcessing}
-                  className="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <Smartphone className="h-4 w-4" />
-                  <span>Initialize Tag (Mobile PWA)</span>
-                </button>
-              )}
-
-
-              {(mode === 'registration' || mode === 'both') && (
-                <button
-                  onClick={() => setOperationType('register')}
-                  disabled={isProcessing}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <Key className="h-4 w-4" />
-                  <span>Register New Tag</span>
-                </button>
-              )}
-
-              {mode === 'both' && operationType === 'register' && (
-                <button
-                  onClick={handleRegister}
-                  disabled={!pin.trim() || !userNpub.trim() || isProcessing}
-                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2"
-                >
-                  <QrCode className="h-4 w-4" />
-                  <span>Complete Registration</span>
-                </button>
-              )}
-            </div>
-
-            {/* Mode Toggle for 'both' mode */}
-            {mode === 'both' && (
-              <div className="text-center">
-                <button
-                  onClick={() => setOperationType(operationType === 'auth' ? 'register' : 'auth')}
-                  className="text-purple-300 hover:text-white text-sm underline transition-colors"
-                >
-                  {operationType === 'auth' ? 'Need to register a new tag?' : 'Already have a registered tag?'}
-                </button>
-              </div>
             )}
           </div>
         )}
@@ -477,6 +538,23 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                     ? 'Your NFC tag is initialized and ready. You can now complete registration.'
                     : 'Your NFC tag has been registered successfully!'}
               </p>
+              <div className="mt-6 grid sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => { try { window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'forge' } })); } catch { } onClose(); }}
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg"
+                >
+                  <Crown className="h-4 w-4" />
+                  <span>Claim Your True Name (ID Badge)</span>
+                </button>
+                <button
+                  onClick={() => { try { window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'individual-finances' } })); } catch { } onClose(); }}
+                  className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg"
+                >
+                  <Zap className="h-4 w-4" />
+                  <span>Open Wallet & Payments</span>
+                </button>
+              </div>
+
               {authState.userNpub && (
                 <div className="mt-4 bg-green-900/20 border border-green-500/30 rounded-lg p-3">
                   <p className="text-green-300 text-sm">

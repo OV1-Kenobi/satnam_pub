@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Satnam NFC Provisioning Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="End-user quickstart for securely provisioning NTAG424 NFC Physical MFA for Satnam" />
+  <style>
+    :root{--bg:#fff;--fg:#111;--muted:#555;--accent:#0b74de;--warn:#b00020;--ok:#0a7f3f}
+    *{box-sizing:border-box} body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:var(--fg);background:var(--bg);}
+    header{padding:24px;border-bottom:1px solid #eee}
+    h1{margin:0 0 4px;font-size:26px} h2{margin:24px 0 8px;font-size:20px} h3{margin:18px 0 6px;font-size:16px}
+    p{line-height:1.55;margin:8px 0} ul{margin:8px 0 8px 20px} li{margin:6px 0}
+    .container{max-width:960px;margin:0 auto;padding:24px}
+    .grid{display:grid;gap:16px} .two{grid-template-columns:1fr 1fr} .three{grid-template-columns:repeat(3,1fr)}
+    .card{border:1px solid #eee;border-radius:8px;padding:16px}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#eee;color:#333;font-size:12px;margin-right:6px}
+    .callout{border-left:4px solid var(--accent);padding:12px 12px 12px 16px;background:#f8fbff}
+    .danger{border-left-color:var(--warn);background:#fff7f8}
+    .ok{border-left-color:var(--ok);background:#f7fff9}
+    code,kbd{background:#f2f2f2;padding:2px 6px;border-radius:4px}
+    .steps ol{margin:8px 0 8px 20px} .steps li{margin:8px 0}
+    .diagram{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:12px;white-space:pre;overflow:auto}
+    .lang-nav{text-align:center;margin:16px 0;padding:12px;background:#f0f0f0;border-radius:6px}
+    .lang-nav a{margin:0 8px;color:var(--accent);text-decoration:none;font-weight:500}
+    .lang-nav a:hover{text-decoration:underline}
+    @media print{header .lang-nav,.no-print{display:none}.container{padding:0} a[href]::after{content:" (" attr(href) ")";font-size:10px;color:#666}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Satnam NFC Provisioning Guide</h1>
+    <div style="color:var(--muted);font-size:16px;margin-top:8px">NTAG424 NFC Physical MFA • Privacy‑first • Zero‑knowledge</div>
+    <div class="lang-nav no-print">
+      <strong>Languages:</strong>
+      <a href="satnam-nfc-provisioning-guide.html">English</a>
+      <a href="satnam-nfc-provisioning-guide-es.html">Español</a>
+      <a href="satnam-nfc-provisioning-guide-de.html">Deutsch</a>
+      <a href="satnam-nfc-provisioning-guide-ja.html">日本語</a>
+    </div>
+  </header>
+  <div class="container">
+
+    <div class="callout ok">
+      <strong>Goal</strong>: Provision your NTAG424 tag securely for Satnam NFC Physical MFA without a separate hardware bridge. All verification is performed by Satnam’s Netlify Functions using local SUN/CMAC checks.
+    </div>
+
+    <h2>1) Choose your provisioning method</h2>
+    <div class="grid three">
+      <div class="card">
+        <div class="badge">Recommended</div>
+        <h3>Android (Boltcard App)</h3>
+        <ul>
+          <li>Android phone with NFC</li>
+          <li>App: Boltcard NFC Programming App</li>
+          <li>Fastest for most users</li>
+        </ul>
+        <p><strong>Download</strong>: APK or Play Store</p>
+        <ul>
+          <li>Releases (APK): https://github.com/boltcard/bolt-nfc-android-app/releases</li>
+          <li>Play Store: https://play.google.com/store/apps/details?id=com.lightningnfcapp</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Desktop (NXP TagXplorer)</h3>
+        <ul>
+          <li>Windows/macOS/Linux + compatible NFC reader (PN532 or NXP reader)</li>
+          <li>Java app by NXP for low‑level NTAG424 config</li>
+        </ul>
+        <p><strong>Docs</strong>: UM11133 Quick start</p>
+        <ul>
+          <li>PDF: https://www.nxp.com/docs/en/user-guide/UM11133.pdf</li>
+          <li>Download via NXP DocStore (free account; search “TagXplorer”)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Device (Bolty ESP32 + PN532)</h3>
+        <ul>
+          <li>ESP32 + PN532 module + web flasher</li>
+          <li>Dedicated provisioning device with browser UI</li>
+        </ul>
+        <p><strong>Resources</strong> (LNbits wiki): https://github.com/lnbits/lnbits/wiki/Tooling-&-Building-with-LNbits</p>
+        <p>Web flasher: https://espressif.github.io/esptool-js/</p>
+      </div>
+    </div>
+
+    <div class="callout danger" style="margin-top:12px">
+      <strong>Security critical</strong>: Never share your provisioning blob (K0/K1/K2, SDM config) outside your secure device. Store it in a password manager. If you lose the keys after changing them on the tag, you will not be able to re‑program that tag.
+    </div>
+
+    <h2>2) Get your provisioning blob from Satnam</h2>
+    <p>In Satnam: Security → NFC Physical MFA → “Provision new tag”. This calls <code>/nfc-unified/initialize</code> and provides a JSON blob (client‑side only) with:</p>
+    <ul>
+      <li><code>url_base</code> — the NDEF URL to write (e.g., https://www.satnam.pub/nfc/scan)</li>
+      <li><code>k0</code>, <code>k1</code>, <code>k2</code> — AES keys (hex)</li>
+      <li><code>sdm</code> — SUN/SDM enable + offsets (PICC/CMAC insertion)</li>
+    </ul>
+
+    <h2>3) Provisioning steps</h2>
+    <div class="grid two steps">
+      <div class="card">
+        <h3>Android (Boltcard App)</h3>
+        <ol>
+          <li>Install app (APK/Play) and enable NFC.</li>
+          <li>Open <em>Write</em> screen → set <code>url_base</code> from your blob.</li>
+          <li>Open <em>Key change</em> → apply <code>K0/K1/K2</code> exactly from blob.</li>
+          <li>Ensure SDM/SUN is enabled (dynamic <code>PICC/CMAC</code> appended to URL when read).</li>
+          <li>Optional: Enable UID randomization for privacy (irreversible).</li>
+          <li>Hold tag still on the phone until success.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>Desktop (TagXplorer)</h3>
+        <ol>
+          <li>Install Java + TagXplorer; connect a compatible reader (avoid legacy ACR122U).</li>
+          <li>Detect tag → Change keys: set <code>K0/K1/K2</code> (EV2/AES).</li>
+          <li>Enable SDM on the chosen file; configure <code>PICC/CMAC</code> offsets per blob.</li>
+          <li>Write NDEF URL record to <code>url_base</code>.</li>
+          <li>Optional: Enable UID randomization.</li>
+          <li>Verify (see below).</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>Device (Bolty ESP32 + PN532)</h3>
+        <ol>
+          <li>Flash ESP32 with Bolty binaries via esptool-js (see LNbits wiki).</li>
+          <li>Reboot, join Wi‑Fi <code>Bolty</code> (pass <code>wango123</code>), open <code>http://192.168.4.1</code>.</li>
+          <li>Load provisioning values (<code>url_base</code>, <code>K0/K1/K2</code>, SDM enable + offsets).</li>
+          <li>Write/program; keep tag stationary during key changes.</li>
+          <li>Optional: UID randomization → verify.</li>
+        </ol>
+      </div>
+    </div>
+
+    <h2>4) Verify your tag</h2>
+    <ul>
+      <li><strong>Quick</strong>: Tap with any NFC phone. The opened URL should include dynamic SDM params (e.g., CMAC/PICC).</li>
+      <li><strong>Satnam end‑to‑end</strong>: Tap → app opens Satnam → frontend calls <code>/nfc-unified/verify</code> with SDM fields → success response.</li>
+      <li><strong>Low‑level</strong>: Use TagXplorer to confirm keys, SDM enable, and NDEF URL record.</li>
+    </ul>
+
+    <h2>5) How it integrates (at a glance)</h2>
+    <div class="diagram">User Tap → Phone opens NDEF url_base
+   → Frontend captures SDM params (PICC/CMAC)
+   → Netlify Function /nfc-unified/verify
+   → Local SUN/CMAC verification (no third‑party bridge)
+   → Session/auth success
+   → (Optional) LNbits Boltcards used for wallet/registry metadata only
+    </div>
+
+    <h2>6) Troubleshooting</h2>
+    <ul>
+      <li><strong>Write failed / Tag moved</strong>: Keep the tag fully still; retry. Ensure phone NFC coil aligns with tag antenna.</li>
+      <li><strong>CMAC missing in URL</strong>: SDM not enabled or offsets incorrect. Re‑apply SDM config per blob.</li>
+      <li><strong>Cannot re‑program</strong>: Keys changed but lost. The tag cannot be re‑provisioned without correct keys.</li>
+      <li><strong>Desktop reader issues</strong>: Use PN532 or an NXP reader with NTAG424 support; avoid older ACR122U.</li>
+      <li><strong>Android errors</strong>: Reinstall app; ensure device NFC is on and no other NFC app is interfering.</li>
+    </ul>
+
+    <h2>7) Best practices</h2>
+    <ul>
+      <li>Provision in a controlled environment (no unknown NFC devices nearby).</li>
+      <li>Store the provisioning blob in a password manager; never email or chat it.</li>
+      <li>Test with a spare tag first; record success logs from <code>/nfc-unified/verify</code>.</li>
+    </ul>
+
+    <p class="no-print" style="margin-top:24px;color:var(--muted)">Tip: Use your browser’s Print → “Save as PDF” to export this guide.</p>
+  </div>
+</body>
+</html>
+

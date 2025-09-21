@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NTAG424 Provisioning Blob Viewer (Client‑side only)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <style>
+    :root{--bg:#0b1020;--panel:#111733;--fg:#e6e9f2;--muted:#a7b1cc;--accent:#6aa1ff;--warn:#ff4d6d;--ok:#5bd19b}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    header{padding:20px 16px;border-bottom:1px solid #1f2747;background:#0b1020;position:sticky;top:0}
+    h1{margin:0;font-size:20px} h2{margin:16px 0 8px;font-size:18px} h3{margin:12px 0 6px;font-size:16px}
+    a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+    .container{max-width:1000px;margin:0 auto;padding:20px}
+    .grid{display:grid;gap:16px} .two{grid-template-columns:1fr 1fr}
+    .panel{background:var(--panel);border:1px solid #1f2747;border-radius:12px;padding:16px}
+    textarea{width:100%;min-height:140px;background:#0d1330;color:var(--fg);border:1px solid #253064;border-radius:8px;padding:10px;font-family:ui-monospace,Menlo,monospace;resize:vertical}
+    input[type=file]{display:block;margin:8px 0;color:var(--fg)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .btn{background:#1c2a5c;border:1px solid #29418c;color:#dce5ff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px}
+    .btn:hover{background:#21306a} .btn:active{background:#1a2654}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1a244d;color:#bcd0ff;font-size:12px}
+    .field{display:grid;grid-template-columns:200px 1fr auto;align-items:center;gap:8px;margin:8px 0}
+    .value{background:#0d1330;border:1px solid #253064;border-radius:6px;padding:6px 8px;overflow:auto;white-space:nowrap;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+    .warn{border-left:4px solid var(--warn);background:#2a0f17;padding:12px;border-radius:8px}
+    .ok{border-left:4px solid var(--ok);background:#0f2a1c;padding:12px;border-radius:8px}
+    select{background:#0d1330;color:#e6e9f2;border:1px solid #253064;border-radius:8px;padding:8px}
+    code{background:#0d1330;border:1px solid #253064;border-radius:6px;padding:2px 6px;font-family:ui-monospace,Menlo,monospace}
+    footer{padding:24px;color:#8692b6;text-align:center;font-size:14px}
+    ol{margin:8px 0 8px 20px} li{margin:6px 0}
+    .status{margin-top:8px;padding:8px;border-radius:6px;font-size:14px}
+    .status.error{background:#2a0f17;color:#ff8aa0;border:1px solid #4a1f2a}
+    .status.success{background:#0f2a1c;color:#8fd19e;border:1px solid #1f4a2a}
+    @media (max-width:768px){.field{grid-template-columns:1fr;gap:4px}.field .value{margin-bottom:4px}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>NTAG424 Provisioning Blob Viewer <span class="pill">Client‑side only</span></h1>
+  <div style="margin-top:8px;color:var(--muted);font-size:14px">
+    Secure tool for viewing and formatting Satnam NFC provisioning data
+  </div>
+</header>
+<div class="container">
+  <div class="panel warn">
+    <strong>⚠️ Security Warning:</strong> Only paste or upload your provisioning blob on a trusted device. This page runs entirely client‑side and never transmits data to any server. Close this page after use and clear your browser cache if on a shared device.
+  </div>
+
+  <div class="panel">
+    <h2>1. Load Your Provisioning Blob (JSON)</h2>
+    <p style="color:var(--muted);margin-bottom:12px">
+      Paste the JSON blob from Satnam's <code>/nfc-unified/initialize</code> endpoint or upload a saved file.
+    </p>
+    <div class="row">
+      <input id="fileInput" type="file" accept="application/json,.json" />
+      <button class="btn" id="parseBtn">Parse JSON</button>
+      <button class="btn" id="clearBtn">Clear All</button>
+    </div>
+    <textarea id="jsonInput" placeholder='Paste your provisioning blob JSON here...
+
+Example format:
+{
+  "url_base": "https://www.satnam.pub/nfc/scan",
+  "k0": "11111111111111111111111111111111",
+  "k1": "22222222222222222222222222222222",
+  "k2": "33333333333333333333333333333333",
+  "sdm": {
+    "file_no": 2,
+    "picc_offset": 42,
+    "cmac_offset": 56
+  }
+}'></textarea>
+    <div id="parseStatus"></div>
+  </div>
+
+  <div id="fieldsPanel" class="panel" style="display:none">
+    <h2>2. Extracted Values</h2>
+    <p style="color:var(--muted);margin-bottom:12px">
+      Click "Copy" buttons to copy individual values to clipboard for use in provisioning tools.
+    </p>
+    <div id="fields"></div>
+  </div>
+
+  <div id="toolPanel" class="panel" style="display:none">
+    <h2>3. Tool‑Specific Instructions</h2>
+    <div class="row" style="margin-bottom:12px">
+      <label for="toolSelect" style="color:var(--muted)">Select your provisioning method:</label>
+      <select id="toolSelect">
+        <option value="android">Android (Boltcard App)</option>
+        <option value="tagxplorer">Desktop (NXP TagXplorer)</option>
+        <option value="bolty">Device (Bolty ESP32 + PN532)</option>
+      </select>
+    </div>
+    <div id="toolContent"></div>
+  </div>
+
+  <div class="panel ok">
+    <strong>💡 Verification Reminder:</strong> After provisioning your tag, verify it works by tapping it with your phone. The Satnam frontend will call <code>/nfc-unified/verify</code> with the SDM fields. Success confirms your K0/K1/K2 keys and SDM configuration are correct.
+  </div>
+
+  <footer>
+    <div>Satnam NFC Provisioning Blob Viewer</div>
+    <div style="margin-top:4px">Privacy‑first NIP‑05 DUID Architecture • Zero‑knowledge Security • No data transmission</div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const fileInput = document.getElementById('fileInput');
+  const jsonInput = document.getElementById('jsonInput');
+  const parseBtn = document.getElementById('parseBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const parseStatus = document.getElementById('parseStatus');
+  const fieldsPanel = document.getElementById('fieldsPanel');
+  const fieldsDiv = document.getElementById('fields');
+  const toolPanel = document.getElementById('toolPanel');
+  const toolSelect = document.getElementById('toolSelect');
+  const toolContent = document.getElementById('toolContent');
+
+  const safe = (v)=> typeof v === 'string' || typeof v === 'number' ? String(v) : JSON.stringify(v);
+  const copy = async (text, el)=>{
+    try{
+      await navigator.clipboard.writeText(text);
+      el.textContent='✓ Copied';
+      el.style.background='var(--ok)';
+      setTimeout(()=>{
+        el.textContent='Copy';
+        el.style.background='#1c2a5c';
+      }, 1200);
+    }catch(e){
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        el.textContent='✓ Copied';
+        el.style.background='var(--ok)';
+        setTimeout(()=>{
+          el.textContent='Copy';
+          el.style.background='#1c2a5c';
+        }, 1200);
+      } catch(fallbackError) {
+        alert('Copy failed. Please copy manually: ' + text);
+      }
+      document.body.removeChild(textarea);
+    }
+  };
+
+  fileInput.addEventListener('change', ()=>{
+    const f = fileInput.files && fileInput.files[0];
+    if(!f) return;
+    if(f.size > 1024*1024) { // 1MB limit
+      parseStatus.innerHTML = '<div class="status error">File too large (max 1MB)</div>';
+      return;
+    }
+    const r = new FileReader();
+    r.onload = ()=>{
+      jsonInput.value = r.result;
+      parseStatus.innerHTML = '<div class="status success">File loaded successfully</div>';
+    };
+    r.onerror = ()=> parseStatus.innerHTML = '<div class="status error">Failed to read file</div>';
+    r.readAsText(f);
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    jsonInput.value='';
+    parseStatus.innerHTML='';
+    fieldsPanel.style.display='none';
+    toolPanel.style.display='none';
+    fieldsDiv.innerHTML='';
+    toolContent.innerHTML='';
+    fileInput.value='';
+  });
+
+  parseBtn.addEventListener('click', ()=>{
+    parseStatus.innerHTML='';
+    fieldsDiv.innerHTML='';
+    toolContent.innerHTML='';
+
+    const input = jsonInput.value.trim();
+    if(!input) {
+      parseStatus.innerHTML = '<div class="status error">Please paste or upload JSON data first</div>';
+      return;
+    }
+
+    let obj;
+    try{
+      obj = JSON.parse(input);
+    }catch(e){
+      parseStatus.innerHTML = '<div class="status error">Invalid JSON format: ' + (e.message || 'Parse error') + '</div>';
+      return;
+    }
+
+    // Validate expected structure
+    if(!obj || typeof obj !== 'object') {
+      parseStatus.innerHTML = '<div class="status error">JSON must be an object</div>';
+      return;
+    }
+
+    // Expected keys with validation
+    const url_base = obj.url_base || obj.url || '';
+    const k0 = obj.k0 || '';
+    const k1 = obj.k1 || '';
+    const k2 = obj.k2 || '';
+    const sdm = obj.sdm || {};
+    const file_no = sdm.file_no;
+    const picc_offset = sdm.picc_offset;
+    const cmac_offset = sdm.cmac_offset;
+
+    // Basic validation
+    const warnings = [];
+    if(!url_base) warnings.push('Missing url_base');
+    if(!k0 || !k1 || !k2) warnings.push('Missing encryption keys (k0/k1/k2)');
+    if(k0 && k0.length !== 32) warnings.push('K0 should be 32 hex characters');
+    if(k1 && k1.length !== 32) warnings.push('K1 should be 32 hex characters');
+    if(k2 && k2.length !== 32) warnings.push('K2 should be 32 hex characters');
+    if(file_no == null || picc_offset == null || cmac_offset == null) warnings.push('Missing SDM configuration');
+
+    if(warnings.length > 0) {
+      parseStatus.innerHTML = '<div class="status error">⚠️ Validation warnings:<br/>' + warnings.map(w => '• ' + w).join('<br/>') + '</div>';
+    } else {
+      parseStatus.innerHTML = '<div class="status success">✓ JSON parsed successfully, all required fields present</div>';
+    }
+
+    const entries = [
+      ['url_base', url_base, 'Base URL for NDEF record'],
+      ['k0', k0, 'AES key 0 (32 hex chars)'],
+      ['k1', k1, 'AES key 1 (32 hex chars)'],
+      ['k2', k2, 'AES key 2 (32 hex chars)'],
+      ['sdm.file_no', file_no, 'SDM file number'],
+      ['sdm.picc_offset', picc_offset, 'PICC data offset'],
+      ['sdm.cmac_offset', cmac_offset, 'CMAC data offset']
+    ];
+
+    fieldsDiv.innerHTML = entries.map(([k,v,desc])=>{
+      const val = v==null? '—' : safe(v);
+      const id = 'copy_'+k.replace(/[^a-z0-9]/gi,'_');
+      const isEmpty = v==null || v==='';
+      const fieldClass = isEmpty ? 'field' : 'field';
+      const valueClass = isEmpty ? 'value' : 'value';
+      return `<div class="${fieldClass}">
+        <div><code>${k}</code><br/><small style="color:var(--muted)">${desc}</small></div>
+        <div class="${valueClass}" id="val_${id}" title="${desc}">${val}</div>
+        <button class="btn" data-copy="${id}" ${isEmpty ? 'disabled' : ''}>Copy</button>
+      </div>`;
+    }).join('');
+
+    fieldsDiv.querySelectorAll('button[data-copy]:not([disabled])').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const id = btn.getAttribute('data-copy');
+        const el = document.getElementById('val_'+id);
+        copy(el.textContent, btn);
+      })
+    });
+
+    fieldsPanel.style.display='block';
+    toolPanel.style.display='block';
+
+    const renderTool = ()=>{
+      const method = toolSelect.value;
+      const esc = (s)=> (s==null||s==='')? '<em style="color:var(--warn)">missing</em>' : `<code>${s}</code>`;
+
+      if(method==='android'){
+        toolContent.innerHTML = `
+          <h3>📱 Android (Boltcard App)</h3>
+          <ol>
+            <li><strong>Install:</strong> Download from <a href="https://github.com/boltcard/bolt-nfc-android-app/releases" target="_blank">GitHub Releases (APK)</a> or <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp" target="_blank">Google Play Store</a></li>
+            <li><strong>Write Screen:</strong> Set URL to ${esc(url_base)}</li>
+            <li><strong>Key Change Screen:</strong> Set keys exactly as shown:
+              <ul>
+                <li>K0 = ${esc(k0)}</li>
+                <li>K1 = ${esc(k1)}</li>
+                <li>K2 = ${esc(k2)}</li>
+              </ul>
+            </li>
+            <li><strong>Enable SDM:</strong> Ensure SUN/SDM is enabled for dynamic PICC/CMAC URL parameters</li>
+            <li><strong>Optional:</strong> Enable UID randomization for privacy (irreversible)</li>
+            <li><strong>Program:</strong> Hold tag completely still against phone's NFC area until success</li>
+          </ol>
+          <div class="warn"><strong>🔒 Security:</strong> Keep these keys secret. Anyone with access can rewrite your tag.</div>
+        `;
+      } else if(method==='tagxplorer'){
+        toolContent.innerHTML = `
+          <h3>🖥️ Desktop (NXP TagXplorer)</h3>
+          <ol>
+            <li><strong>Hardware:</strong> Use compatible NFC reader (PN532 or NXP reader recommended; avoid legacy ACR122U)</li>
+            <li><strong>Key Management:</strong> Change authentication keys to:
+              <ul>
+                <li>K0 = ${esc(k0)}</li>
+                <li>K1 = ${esc(k1)}</li>
+                <li>K2 = ${esc(k2)}</li>
+              </ul>
+            </li>
+            <li><strong>SDM Configuration:</strong> Enable SDM on file ${esc(file_no)} with:
+              <ul>
+                <li>PICC offset = ${esc(picc_offset)}</li>
+                <li>CMAC offset = ${esc(cmac_offset)}</li>
+              </ul>
+            </li>
+            <li><strong>NDEF Record:</strong> Write URL record with ${esc(url_base)}</li>
+            <li><strong>Verification:</strong> Confirm all settings match the blob specifications</li>
+          </ol>
+          <div class="ok"><strong>💡 Tip:</strong> TagXplorer provides detailed low-level control but requires more technical knowledge.</div>
+        `;
+      } else {
+        toolContent.innerHTML = `
+          <h3>🔧 Device (Bolty ESP32 + PN532)</h3>
+          <ol>
+            <li><strong>Flash Firmware:</strong> Use <a href="https://espressif.github.io/esptool-js/" target="_blank">esptool-js web flasher</a> with Bolty binaries from <a href="https://github.com/lnbits/lnbits/wiki/Tooling-&-Building-with-LNbits" target="_blank">LNbits wiki</a></li>
+            <li><strong>Connect:</strong> Join Wi-Fi network <code>Bolty</code> (password: <code>wango123</code>)</li>
+            <li><strong>Configure:</strong> Open <code>http://192.168.4.1</code> in browser</li>
+            <li><strong>Enter Values:</strong>
+              <ul>
+                <li>URL = ${esc(url_base)}</li>
+                <li>K0 = ${esc(k0)}</li>
+                <li>K1 = ${esc(k1)}</li>
+                <li>K2 = ${esc(k2)}</li>
+              </ul>
+            </li>
+            <li><strong>SDM Settings:</strong>
+              <ul>
+                <li>PICC offset = ${esc(picc_offset)}</li>
+                <li>CMAC offset = ${esc(cmac_offset)}</li>
+              </ul>
+            </li>
+            <li><strong>Program:</strong> Execute write operation; keep tag stationary during key changes</li>
+          </ol>
+          <div class="ok"><strong>🏭 Ideal for:</strong> Bulk provisioning or when you need a dedicated programming device.</div>
+        `;
+      }
+    };
+
+    toolSelect.onchange = renderTool;
+    renderTool();
+  });
+})();
+</script>
+</body>
+</html>
+
