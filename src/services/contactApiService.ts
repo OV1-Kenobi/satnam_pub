@@ -469,6 +469,89 @@ class ContactApiService {
       return [];
     }
   }
+
+  /**
+   * Update verification flags for a contact
+   */
+  async updateContactVerification(
+    contactHash: string,
+    updates: {
+      physical_mfa_verified?: boolean;
+      vp_verified?: boolean;
+      verification_proofs_encrypted?: string;
+    }
+  ): Promise<{ success: boolean }> {
+    try {
+      const resp = await this.makeRequest<{ success: boolean }>(
+        "/communications/update-contact-verification",
+        {
+          method: "POST",
+          body: JSON.stringify({ contact_hash: contactHash, updates }),
+        }
+      );
+      return resp;
+    } catch (error) {
+      console.error("Failed to update contact verification:", error);
+      showToast.error("Verification update failed", {
+        title: "Contact",
+        duration: 4000,
+      });
+      return { success: false };
+    }
+  }
+
+  /**
+   * Create an attestation for a contact (vouch)
+   */
+  async attestContact(
+    contactHash: string,
+    type: "physical_nfc" | "vp_jwt" | "inbox_relays" | "group_peer",
+    vpHash?: string,
+    metadata?: string
+  ): Promise<{ success: boolean }> {
+    try {
+      const resp = await this.makeRequest<{ success: boolean }>(
+        "/communications/attest-contact",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contact_hash: contactHash,
+            attestation_type: type,
+            vp_hash: vpHash,
+            metadata,
+          }),
+        }
+      );
+      return resp;
+    } catch (error) {
+      console.error("Failed to create attestation:", error);
+      showToast.error("Could not vouch for contact", {
+        title: "Attestation",
+        duration: 4000,
+      });
+      return { success: false };
+    }
+  }
+
+  /**
+   * Recalculate trust scores for the current user
+   */
+  async recalculateTrust(): Promise<{ success: boolean; updated?: number }> {
+    try {
+      const resp = await this.makeRequest<{
+        success: boolean;
+        updated?: number;
+      }>("/communications/recalculate-trust", { method: "POST" });
+      return resp;
+    } catch (error) {
+      console.error("Failed to recalculate trust:", error);
+      showToast.error("Trust recalculation failed", {
+        title: "Trust",
+        duration: 4000,
+      });
+      return { success: false };
+    }
+  }
 }
 
 // Singleton instance for use across the application
@@ -515,6 +598,27 @@ export const contactApi = {
   setAuthToken: (token: string) => {
     contactApiService.setAuthToken(token);
   },
+
+  /** Update verification flags */
+  updateContactVerification: async (
+    contactHash: string,
+    updates: {
+      physical_mfa_verified?: boolean;
+      vp_verified?: boolean;
+      verification_proofs_encrypted?: string;
+    }
+  ) => contactApiService.updateContactVerification(contactHash, updates),
+
+  /** Create an attestation (vouch) */
+  attestContact: async (
+    contactHash: string,
+    type: "physical_nfc" | "vp_jwt" | "inbox_relays" | "group_peer",
+    vpHash?: string,
+    metadata?: string
+  ) => contactApiService.attestContact(contactHash, type, vpHash, metadata),
+
+  /** Recalculate trust scores */
+  recalculateTrust: async () => contactApiService.recalculateTrust(),
 };
 
 export default contactApiService;

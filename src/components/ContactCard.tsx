@@ -8,8 +8,16 @@
 import { Edit3, Gift, MessageCircle, MoreVertical, Zap } from 'lucide-react';
 import React, { useState } from 'react';
 import { nostrProfileService } from '../lib/nostr-profile-service.js';
+import { contactApi } from '../services/contactApiService';
+import nip05ResolverClient from '../services/nip05ResolverClient';
+import { showToast } from '../services/toastService';
 import { Contact } from '../types/contacts';
 import ContextualAvatar from './ContextualAvatar';
+
+import { CentralEventPublishingService } from '../../lib/central_event_publishing_service';
+
+
+
 
 interface ContactCardProps {
   contact: Contact;
@@ -45,6 +53,18 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(contact.profileImageUrl);
   const [profileImageLoading, setProfileImageLoading] = useState<boolean>(false);
 
+  // NIP-05 resolution state (memoized client)
+  const [nip05Did, setNip05Did] = useState<string | null>(null);
+  const [nip05Mirrors, setNip05Mirrors] = useState<string[] | null>(null);
+  const [issuerStatus, setIssuerStatus] = useState<string | null>(null);
+
+  // Trust score (server-computed)
+  const [trustResult, setTrustResult] = useState<null | {
+    score: number;
+    level: 'low' | 'medium' | 'high';
+    components: { physical: number; vp: number; social: number; recencyPenalty: number };
+  }>(null);
+
   /**
    * MASTER CONTEXT COMPLIANCE: User-controlled local contact operation logging
    * Stores contact operations in user's local encrypted storage (localStorage)
@@ -76,6 +96,91 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       localStorage.setItem("satnam_contact_history", JSON.stringify(operationHistory));
     } catch (error) {
       // Silent fail for privacy - no external logging
+    }
+
+  };
+
+  // Verification status and trust score (optional fields from backend joins)
+
+
+  // Verification status and trust score (optional fields from backend joins)
+  const verStatus = contact as unknown as {
+    physicallyVerified?: boolean;
+    vpVerified?: boolean;
+    trust_score_encrypted?: string;
+    trustScore?: number;
+    hash?: string;
+  };
+
+  const trustDisplay: string | null = (() => {
+    if (trustResult && typeof trustResult.score === 'number') return String(Math.round(trustResult.score));
+    if (typeof verStatus.trustScore === 'number') return String(Math.round(verStatus.trustScore));
+    if (typeof verStatus.trust_score_encrypted === 'string' && verStatus.trust_score_encrypted.startsWith('v1:')) {
+      const parts = verStatus.trust_score_encrypted.split(':');
+
+      const v = Number(parts[1]);
+      if (!Number.isNaN(v)) return String(Math.round(v));
+    }
+    return null;
+  })();
+
+  const handleVouchClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    try {
+      await contactApi.attestContact(verStatus.hash || contact.id, 'group_peer');
+      showToast.success('Vouch submitted');
+      // CEPS integration: robust, non-blocking messaging with hierarchy
+      try {
+        const ceps: any = new CentralEventPublishingService();
+        const recipientNpub: string = contact.npub;
+        const recipientHex: string = (() => {
+          try { return ceps.npubToHex(recipientNpub); } catch { return recipientNpub; }
+        })();
+
+        const content = JSON.stringify({ type: 'vouch', contactId: contact.id, ts: Date.now() });
+
+        // Primary: NIP-17 (unsigned kind:14 → seal kind:13 → gift-wrap 1059), with inbox relay discovery
+        let published = false;
+        try {
+          const unsigned14 = ceps.buildUnsignedKind14DirectMessage(content, recipientHex);
+          const sealed13 = await ceps.sealKind13WithActiveSession(unsigned14, recipientHex);
+          const wrapped1059 = await ceps.giftWrap1059(sealed13, recipientHex);
+          // Ensure recipient p-tag for inbox discovery
+          (wrapped1059 as any).tags = Array.isArray((wrapped1059 as any).tags) ? (wrapped1059 as any).tags : [];
+          if (!(wrapped1059 as any).tags.find((t: any) => Array.isArray(t) && t[0] === 'p')) {
+            (wrapped1059 as any).tags.push(["p", recipientHex]);
+          }
+          await ceps.publishOptimized(wrapped1059, { recipientPubHex: recipientHex, senderPubHex: (wrapped1059 as any).pubkey });
+          published = true;
+        } catch { }
+
+
+        // Fallback 1: NIP-59 gift-wrapped DM (session-based)
+        if (!published) {
+          try {
+            await ceps.sendGiftWrappedDirectMessage(
+              {
+                encryptedNpub: recipientNpub, // CEPS expects npub in some paths
+                trustLevel: 'known',
+                supportsGiftWrap: true,
+                preferredEncryption: 'gift-wrap',
+                nameHash: '', displayNameHash: '', nip05Hash: '', addedAt: new Date(), addedByHash: '', tagsHash: [],
+              } as any,
+              { type: 'vouch', contactId: contact.id, ts: Date.now() }
+            );
+            published = true;
+          } catch { }
+        }
+
+        // Fallback 2: NIP-04/44 standard DM (session-based)
+        if (!published) {
+          try {
+            await ceps.sendStandardDirectMessage(recipientNpub, content);
+          } catch { }
+        }
+      } catch {/* no-op */ }
+    } catch (error) {
+      showToast.error('Failed to vouch', { title: 'Attestation', duration: 4000 });
     }
   };
 
@@ -175,6 +280,32 @@ export const ContactCard: React.FC<ContactCardProps> = ({
         setProfileImageLoading(false);
       }
     }
+
+    // Lazy resolve NIP-05 → did:scid and mirrors (memoized)
+    try {
+      if (contact.nip05 && !nip05Did) {
+        const res = await nip05ResolverClient.resolve(contact.nip05);
+        setNip05Did(res.didScid);
+        setNip05Mirrors(res.mirrors);
+        setIssuerStatus(res.issuerRegistryStatus);
+      }
+    } catch { }
+
+    // Server trust-score refresh on hover
+    try {
+      const recencyDays = contact.lastContact ? Math.max(0, Math.floor((Date.now() - contact.lastContact.getTime()) / 86400000)) : 999;
+      const body = {
+        physicallyVerified: !!verStatus.physicallyVerified,
+        vpVerified: !!verStatus.vpVerified,
+        socialAttestations: { count: contact.contactCount || 0, distinctIssuers: 0, recentCount30d: Math.min(contact.contactCount || 0, 30) },
+        recencyDays,
+      };
+      const resp = await fetch('/.netlify/functions/trust-score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (resp.ok) {
+        const j = await resp.json();
+        if (j?.success && j?.data) setTrustResult(j.data);
+      }
+    } catch { }
   };
 
   const handleMouseLeave = (): void => {
@@ -222,8 +353,18 @@ export const ContactCard: React.FC<ContactCardProps> = ({
               <span className="text-sm font-medium">Message</span>
             </button>
           )}
+          <button
+            onClick={handleVouchClick}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+            title="Create trust attestation"
+          >
+            <Gift className="h-4 w-4" />
+            <span className="text-sm font-medium">Vouch</span>
+          </button>
+
         </div>
-      )}
+      )
+      }
       {/* Menu Button */}
       <div className="absolute top-3 right-3">
         <button
@@ -313,11 +454,41 @@ export const ContactCard: React.FC<ContactCardProps> = ({
               ✓ NIP-05
             </span>
           )}
+          {verStatus.physicallyVerified && (
+            <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-medium border border-emerald-500/30">
+              ✓ Physically Verified
+            </span>
+          )}
+          {verStatus.vpVerified && (
+            <span className="px-2 py-1 bg-teal-500/20 text-teal-300 rounded-full text-xs font-medium border border-teal-500/30">
+              ✓ VP Verified
+            </span>
+          )}
+
         </div>
 
         {/* NIP-05 */}
         {contact.nip05 && (
-          <p className="text-blue-400 text-sm mb-1 truncate">📧 {contact.nip05}</p>
+          <div className="mb-1 space-y-1">
+            <p className="text-blue-400 text-sm truncate">📧 {contact.nip05}</p>
+            {nip05Did && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full text-[10px] border border-blue-500/30">
+                  DID: {nip05Did.split(":").slice(0, 3).join(":")}…
+                </span>
+                {issuerStatus && (
+                  <span className="px-2 py-0.5 bg-green-500/20 text-green-300 rounded-full text-[10px] border border-green-500/30">
+                    Issuer: {issuerStatus}
+                  </span>
+                )}
+                {Array.isArray(nip05Mirrors) && nip05Mirrors.length > 0 && (
+                  <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded-full text-[10px] border border-purple-500/30">
+                    Mirrors: {nip05Mirrors.length}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* NPub */}
@@ -347,6 +518,15 @@ export const ContactCard: React.FC<ContactCardProps> = ({
             {contact.messageReliabilityScore && contact.messageReliabilityScore > 80 && (
               <span className="text-green-400">⚡</span>
             )}
+            {trustDisplay && (
+              <span
+                className={`${trustResult?.level === 'high' ? 'bg-green-500/20 text-green-300' : trustResult?.level === 'medium' ? 'bg-yellow-500/20 text-yellow-300' : trustResult?.level === 'low' ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'} px-2 py-1 rounded-full`}
+                title={trustResult ? `Score: ${Math.round(trustResult.score)} | Phys: ${trustResult.components.physical}, VP: ${trustResult.components.vp}, Social: ${trustResult.components.social}, Recency: ${trustResult.components.recencyPenalty}` : 'Trust score pending'}
+              >
+                Trust: {trustDisplay}
+              </span>
+            )}
+
           </div>
         </div>
 
@@ -371,16 +551,18 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       </div>
 
       {/* Click overlay to close menu when clicking outside */}
-      {showMenu && (
-        <div
-          className="fixed inset-0 z-10"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowMenu(false);
-          }}
-        />
-      )}
-    </div>
+      {
+        showMenu && (
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(false);
+            }}
+          />
+        )
+      }
+    </div >
   );
 };
 

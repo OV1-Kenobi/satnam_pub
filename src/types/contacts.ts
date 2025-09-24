@@ -56,6 +56,13 @@ export interface Contact {
   messageReliabilityScore?: number;
   groupMembershipCount?: number;
 
+  // Verification and trust metrics (optional for backward compatibility)
+  /** Physical verification status (in-person verification completed) */
+  physicallyVerified?: boolean;
+  /** Verified Person status (identity verification completed) */
+  vpVerified?: boolean;
+  /** Cached trust score from ContactTrustMetrics (0-100, derived from encrypted calculations) */
+  cachedTrustScore?: number; // 0-100
   // MASTER CONTEXT COMPLIANCE: Nostr profile image integration
   profileImageUrl?: string;
   lastProfileUpdate?: Date;

@@ -105,7 +105,7 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 
 ### 🌐 **Nostr Protocol Integration**
 
-- Native Nostr protocol implementation (NIP-04, NIP-05, NIP-07, NIP-17, NIP-28, NIP-29, NIP-59)
+- Native Nostr protocol implementation (NIP-04, NIP-05, NIP-07, NIP-17, NIP-26, NIP-41, NIP-42, NIP-44, NIP-58, NIP-59)
 - Human-readable verification system (username@satnam.pub)
 - Lightning addresses for seamless 'Zap' payments
 - Cross-platform identity portability
@@ -384,14 +384,16 @@ Satnam.pub is built exclusively on open protocols:
 - **Bitcoin:** The foundation of all value transfer
 - **Lightning Network:** Instant, low-fee payments
 - **Nostr:** Decentralized identity and messaging
-  - NIP-04: Encrypted direct messages
+  - NIP-04: Encrypted direct messages (legacy/fallback)
   - NIP-05: DNS-based verification
   - NIP-07: Browser extension signing
-  - NIP-17: Event treatment recommendations
-  - NIP-28: Public chat channels
-  - NIP-29: Group chat key management
+  - NIP-17: Event treatment and inbox relay discovery workflow
+  - NIP-26: Delegated event signing (key rotation support)
+  - NIP-41: Key migration events (whitelist and migrate)
+  - NIP-42: Authenticated relay connections (AUTH)
+  - NIP-44: Modern DM encryption (XChaCha20-Poly1305)
   - NIP-58: Badge system for achievements
-  - NIP-59: Gift Wrapped messages
+  - NIP-59: Gift-wrapped messages (primary DM method currently)
 - **Fedimint:** Federation-based custody, privacy, and Nsec key protection/rotation
 - **Cashu:** Private eCash for Bitcoin
 
@@ -532,21 +534,13 @@ Satnam.pub implements a zero-knowledge security model where:
 
 ### 🔑 **Secure DUID Architecture**
 
-Satnam.pub implements a two-phase secure Deterministic User ID (DUID) system:
+Satnam.pub implements a server-side Deterministic User ID (DUID) system aligned with our privacy-first architecture:
 
-**Phase 1: Client-Side Public Generation**
-
-- `duid_public = SHA-256("DUIDv1" + npub)`
-- Stable across password changes (npub-only derivation)
-- No client-side secrets required
-- Privacy-preserving deterministic identifier
-
-**Phase 2: Server-Side Secret Indexing**
-
-- `duid_index = HMAC-SHA-256(server_secret, duid_public)`
-- Prevents enumeration attacks
-- Maintains O(1) authentication performance
-- Server-only secret never exposed to client
+- Server-side derivation only (no client-side DUID generation)
+- HMAC-SHA-256(DUID_SERVER_SECRET, NIP-05 identifier) for deterministic IDs
+- Stable across password changes (identifier-based)
+- Enumeration-resistant opaque identifiers
+- Zero-knowledge boundary preserved (client never receives server secret)
 
 **Security Benefits:**
 
@@ -554,6 +548,7 @@ Satnam.pub implements a two-phase secure Deterministic User ID (DUID) system:
 - ✅ **Stable Identifiers**: DUIDs survive password changes
 - ✅ **Enumeration Resistant**: Unpredictable database keys
 - ✅ **Performance Optimized**: Constant-time authentication
+- ✅ **Zero-Knowledge**: Client never derives or stores server-indexable IDs
 
   In the pipeline:
 

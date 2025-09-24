@@ -1071,9 +1071,9 @@ function App() {
           {/* NFC Name Tag provisioning */}
 
           <div className="mt-10 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center shadow-lg">
-            <h3 className="text-2xl font-bold text-white mb-3">Store Your ID Credentials On Your Name Tag</h3>
+            <h3 className="text-2xl font-bold text-white mb-3">'Stamp' Your ID Onto Your NFC Name Tag</h3>
             <p className="text-purple-100 mb-6 max-w-3xl mx-auto">
-              First, log in or claim your name on Satnam.pub. Then use the Boltcard Programming App (Android) to program your NTAG424 DNA name tag. Return here to complete setup for messaging and payments.
+              First, sign in or claim your name on Satnam.pub. Then “stamp” your NFC name tag so your ID can be read with a tap. Use Boltcard (Android) or the DnaCommunicator iOS toolkit. Your private keys never leave your device.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <a
@@ -1083,7 +1083,16 @@ function App() {
                 data-doc="boltcard-how-to"
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
               >
-                <span>Boltcard Programming App</span>
+                <span>Boltcard Programming App (Android)</span>
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <a
+                href="https://github.com/ACINQ/DnaCommunicator"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+              >
+                <span>DnaCommunicator (iOS Toolkit)</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
               <a
@@ -1107,9 +1116,10 @@ function App() {
             {/* Requirements & expectations */}
             <div className="text-left max-w-3xl mx-auto mt-6 text-purple-200/90 text-sm">
               <ul className="list-disc list-inside space-y-1">
-                <li>NFC-capable Android phone with Boltcard app</li>
-                <li>iOS users: borrow an Android device or visit a community provisioning station</li>
-                <li>Supported tag: NTAG424 DNA (SUN/SDM). On-tag data must stay small (≈416–448 bytes practical)</li>
+                <li>Android: Use the Boltcard Programming app to set up your NTAG424 DNA tag</li>
+                <li>iOS: Use the DnaCommunicator sample app (requires Xcode) to program your NTAG424 DNA tag</li>
+                <li>Supported tag: NTAG424 DNA (SUN/SDM). Keep on‑tag data small (about 416–448 bytes practical)</li>
+                <li>Privacy‑first: programming happens on your device; no private keys or secrets leave your phone</li>
                 <li>URL format: https://www.satnam.pub/t/&lt;duid&gt;?sdm=&lt;sdm_payload&gt;&u=&lt;uid&gt; (keep overall length ≤ 200 bytes)</li>
               </ul>
             </div>

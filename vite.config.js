@@ -42,10 +42,15 @@ export default defineConfig({
   },
 
   server: {
-    port: 8888,
+    port: 5173,
     host: "127.0.0.1",
+    // Ensure HMR WS works when proxied through Netlify Dev (:8888)
+    hmr:
+      process && (process.env.NETLIFY === "true" || process.env.NETLIFY_DEV === "true" || process.env.NETLIFY_LOCAL === "true")
+        ? { clientPort: 8888, protocol: "ws", host: "127.0.0.1" }
+        : undefined,
     headers: {
-      "Access-Control-Allow-Origin": "http://127.0.0.1:8888",
+      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
@@ -58,15 +63,15 @@ export default defineConfig({
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         // Handle .mjs files specifically
-        if (req.url && req.url.includes('.mjs')) {
-          res.setHeader('Content-Type', 'application/javascript');
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.setHeader('Cache-Control', 'no-cache');
+        if (req.url && req.url.includes(".mjs")) {
+          res.setHeader("Content-Type", "application/javascript");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Cache-Control", "no-cache");
         }
         // Handle @vite internal modules
-        if (req.url && req.url.startsWith('/@vite/')) {
-          res.setHeader('Content-Type', 'application/javascript');
-          res.setHeader('X-Content-Type-Options', 'nosniff');
+        if (req.url && req.url.startsWith("/@vite/")) {
+          res.setHeader("Content-Type", "application/javascript");
+          res.setHeader("X-Content-Type-Options", "nosniff");
         }
         next();
       });

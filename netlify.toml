@@ -11,7 +11,7 @@
 
 # Development server configuration
 [dev]
-  targetPort = 8888  # Tell Netlify Dev to look for Vite on port 8888
+  targetPort = 5173  # Proxy 8888 -> 5173 (Vite)
   # Ensure proper MIME types for module scripts
   autoLaunch = false  # Prevent auto-opening browser to avoid conflicts
   # Force proper MIME type handling
