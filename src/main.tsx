@@ -110,11 +110,67 @@ createRoot(document.getElementById("root")!).render(
 );
 
 
-// Register service worker for PWA (non-blocking)
-if ('serviceWorker' in navigator) {
+// Register service worker for PWA (feature-flagged)
+const ENABLE_PWA = import.meta.env?.VITE_ENABLE_PWA === 'true';
+
+if (ENABLE_PWA && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((err) => {
       console.warn('Service worker registration failed:', err);
     });
   });
+} else {
+  // PWA temporarily disabled during active development; service worker not registered
+  if ('serviceWorker' in navigator) {
+    // Non-blocking cleanup of any previously-installed service workers and their caches
+    window.addEventListener('load', () => {
+      (async () => {
+        try {
+          console.info('[PWA] Disabled: attempting to unregister existing service workers and clear caches.');
+
+          // Unregister all existing service workers for this origin
+          try {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            if (regs && regs.length > 0) {
+              await Promise.all(
+                regs.map(async (r) => {
+                  try {
+                    const ok = await r.unregister();
+                    console.info(`[PWA] Unregister ${r.scope}: ${ok ? 'ok' : 'failed'}`);
+                  } catch (e) {
+                    console.warn('[PWA] Unregister failed:', e instanceof Error ? e.message : String(e));
+                  }
+                })
+              );
+            } else {
+              console.info('[PWA] No existing service workers to unregister.');
+            }
+          } catch (e) {
+            console.warn('[PWA] Failed to enumerate service workers:', e instanceof Error ? e.message : String(e));
+          }
+
+          // Clear all caches (including prior PWA caches like satnam-pwa-v1)
+          try {
+            if ('caches' in window) {
+              const names = await caches.keys();
+              await Promise.all(
+                names.map(async (name) => {
+                  try {
+                    const deleted = await caches.delete(name);
+                    console.info(`[PWA] Cache ${name} delete: ${deleted}`);
+                  } catch (e) {
+                    console.warn('[PWA] Cache delete failed:', e instanceof Error ? e.message : String(e));
+                  }
+                })
+              );
+            }
+          } catch (e) {
+            console.warn('[PWA] Failed to clear caches:', e instanceof Error ? e.message : String(e));
+          }
+        } catch (e) {
+          console.warn('[PWA] Cleanup failed:', e instanceof Error ? e.message : String(e));
+        }
+      })();
+    });
+  }
 }
