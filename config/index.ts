@@ -472,23 +472,37 @@ export const apiConfig: ApiConfig = {
 /**
  * Authentication configuration
  */
+function getJwtSecret(): string {
+  // Browser builds must not enforce server secrets
+  if (typeof window !== "undefined") {
+    return "browser-stub-jwt-secret";
+  }
+  const secret = getEnvVar("JWT_SECRET");
+  if (secret) return secret;
+  const nodeEnv = (getEnvVar("NODE_ENV") || "").toLowerCase();
+  if (nodeEnv === "production") {
+    throw new Error(
+      "JWT_SECRET environment variable is required in production"
+    );
+  }
+  // Development fallback (server-side only)
+  const array = new Uint8Array(32);
+  const webCrypto = (globalThis as any).crypto;
+  if (webCrypto && typeof webCrypto.getRandomValues === "function") {
+    webCrypto.getRandomValues(array);
+  } else {
+    for (let i = 0; i < array.length; i++) array[i] = (i * 7 + 13) & 0xff;
+  }
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+}
+
 export const authConfig: AuthConfig = {
   tokenStorageKey: "satnam_auth_token",
-  jwtSecret:
-    getEnvVar("JWT_SECRET") ||
-    (() => {
-      if (getEnvVar("NODE_ENV") === "production") {
-        throw new Error(
-          "JWT_SECRET environment variable is required in production"
-        );
-      }
-      // Generate a random secret for development environments only using Web Crypto API
-      const array = new Uint8Array(32);
-      crypto.getRandomValues(array);
-      return Array.from(array, (byte) =>
-        byte.toString(16).padStart(2, "0")
-      ).join("");
-    })(),
+  get jwtSecret() {
+    return getJwtSecret();
+  },
   jwtExpiresIn: getEnvVar("JWT_EXPIRES_IN") || "7d",
   nostrAuthKind: 27235,
   nostrAuthChallenge:
