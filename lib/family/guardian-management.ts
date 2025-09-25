@@ -13,7 +13,6 @@
  * ✅ Security-sensitive guardian approval workflows
  */
 
-import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import {
   FamilyGuardian,
   FamilySSLConfig,
@@ -22,6 +21,8 @@ import {
 } from "../../netlify/functions/crypto/shamir-secret-sharing";
 import db from "../../netlify/functions/db";
 import { PrivacyUtils } from "../../src/lib/privacy/encryption";
+
+import { central_event_publishing_service as CEPS } from "../central_event_publishing_service";
 
 /**
  * Get environment variable with import.meta.env fallback for browser compatibility
@@ -207,10 +208,16 @@ export class FamilyGuardianManager {
         };
       }
 
-      // Generate new Nostr key pair for the family
-      const privateKeyHex = generateSecretKey();
-      const nsec = nip19.nsecEncode(privateKeyHex);
-      const npub = nip19.npubEncode(getPublicKey(privateKeyHex));
+      // Generate new Nostr key pair for the family (Web Crypto + CEPS)
+      const sk = new Uint8Array(32);
+      (typeof window !== "undefined" ? window.crypto : crypto).getRandomValues(
+        sk
+      );
+      const privateKeyHex = Array.from(sk)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const nsec = CEPS.encodeNsec(sk);
+      const npub = CEPS.encodeNpub(CEPS.getPublicKeyHex(privateKeyHex));
 
       // Create guardians in database
       const familyGuardians: FamilyGuardian[] = [];
@@ -714,7 +721,7 @@ export class FamilyGuardianManager {
       // Update request
       await db.query(
         `
-        UPDATE family_key_reconstruction_requests 
+        UPDATE family_key_reconstruction_requests
         SET guardian_responses = $1, status = $2
         WHERE request_id = $3
       `,
@@ -757,7 +764,7 @@ export class FamilyGuardianManager {
 
     const result = await db.query(
       `
-      SELECT * FROM secure_guardian_shards 
+      SELECT * FROM secure_guardian_shards
       WHERE encrypted_guardian_id = $1 AND encrypted_federation_id = $2 AND shard_index = ANY($3)
     `,
       [
@@ -815,7 +822,7 @@ export class FamilyGuardianManager {
 
       const result = await db.query(
         `
-        SELECT * FROM secure_family_nostr_protection 
+        SELECT * FROM secure_family_nostr_protection
         WHERE encrypted_family_member_id = $1 OR encrypted_user_id = $1
         LIMIT 1
       `,
@@ -928,7 +935,7 @@ export class FamilyGuardianManager {
       // Mark request as completed
       await db.query(
         `
-        UPDATE family_key_reconstruction_requests 
+        UPDATE family_key_reconstruction_requests
         SET status = 'completed', completed_at = NOW()
         WHERE request_id = $1
       `,
@@ -971,32 +978,32 @@ export const GUARDIAN_RECONSTRUCTION_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS family_key_reconstruction_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id TEXT NOT NULL UNIQUE,
-    
+
     encrypted_family_id TEXT NOT NULL,
     family_salt TEXT NOT NULL,
     family_iv TEXT NOT NULL,
     family_tag TEXT NOT NULL,
-    
+
     encrypted_key_id TEXT NOT NULL,
     key_salt TEXT NOT NULL,
     key_iv TEXT NOT NULL,
     key_tag TEXT NOT NULL,
-    
+
     encrypted_requester_id TEXT NOT NULL,
     requester_salt TEXT NOT NULL,
     requester_iv TEXT NOT NULL,
     requester_tag TEXT NOT NULL,
-    
+
     reason TEXT NOT NULL CHECK (reason IN ('key_rotation', 'recovery', 'inheritance', 'emergency', 'signing')),
     required_threshold INTEGER NOT NULL,
     current_signatures JSONB NOT NULL DEFAULT '[]',
     guardian_responses JSONB NOT NULL DEFAULT '[]',
-    
+
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'threshold_met', 'completed', 'failed', 'expired')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     completed_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- Audit fields
     ip_address_hash TEXT,
     user_agent_hash TEXT

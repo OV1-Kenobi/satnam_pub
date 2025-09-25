@@ -1,5 +1,4 @@
 // utils/nsec-security.ts
-import { nip19 } from "../src/lib/nostr-browser";
 
 export interface SecureNsecValidator {
   isValidNsec: boolean;
@@ -14,7 +13,7 @@ export function validateNsecSecurity(
     userAgent?: string;
     isHttps?: boolean;
     hasExtension?: boolean;
-  },
+  }
 ): SecureNsecValidator {
   const warnings: string[] = [];
   const recommendations: string[] = [];
@@ -23,10 +22,11 @@ export function validateNsecSecurity(
   // Basic nsec format validation
   let isValidNsec = false;
   try {
-    const decoded = nip19.decode(nsec);
-    isValidNsec =
-      decoded.type === "nsec" &&
-      (typeof decoded.data === "string" || Array.isArray(decoded.data));
+    const { central_event_publishing_service: CEPS } = await import(
+      "../lib/central_event_publishing_service"
+    );
+    const bytes = CEPS.decodeNsec(nsec);
+    isValidNsec = bytes instanceof Uint8Array && bytes.length > 0;
   } catch {
     isValidNsec = false;
   }
@@ -59,7 +59,7 @@ export function validateNsecSecurity(
     // Check for extension availability
     if (!context.hasExtension) {
       recommendations.push(
-        "Consider using a Nostr browser extension for better security",
+        "Consider using a Nostr browser extension for better security"
       );
       securityLevel = securityLevel === "high" ? "medium" : securityLevel;
     }
@@ -112,7 +112,7 @@ export function createSecureNsecInput(): {
 }
 
 export function generateSecurityWarnings(
-  level: "high" | "medium" | "low",
+  level: "high" | "medium" | "low"
 ): string[] {
   const baseWarnings = [
     "🔐 Your nsec is your master key - treat it like your bank password",

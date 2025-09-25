@@ -10,6 +10,7 @@
  * - Supports batch operations while nsec is available in memory
  * - Preserves existing Identity Forge architecture and completion flow
  */
+import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 
 interface TemporaryNsecSession {
   nsecHex: string;
@@ -101,20 +102,12 @@ class SecureNsecManager {
     let nsecHex: string;
 
     if (/^nsec1/i.test(nsecInput)) {
-      // Convert bech32 nsec to hex format
+      // Convert bech32 nsec to hex format via CEPS for consistency
       try {
-        const { nip19 } = await import("nostr-tools");
-        const decoded = nip19.decode(nsecInput);
-        if (decoded.type !== "nsec") {
-          throw new Error("Invalid nsec bech32 type");
-        }
-        const data = decoded.data as unknown;
-        nsecHex =
-          typeof data === "string"
-            ? data
-            : Array.from(data as Uint8Array)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("");
+        const bytes = CEPS.decodeNsec(nsecInput);
+        nsecHex = Array.from(bytes)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
       } catch (error) {
         throw new Error("Invalid nsec bech32 format");
       }

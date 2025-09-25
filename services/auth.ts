@@ -6,15 +6,9 @@
  */
 
 import { db } from "../lib";
+import { central_event_publishing_service as CEPS } from "../lib/central_event_publishing_service";
 import { authConfig, nip05Config } from "../src/lib/browser-config";
-import {
-  generateSecretKey as generatePrivateKey,
-  getEventHash,
-  getPublicKey,
-  nip19,
-  verifyEvent,
-} from "../src/lib/nostr-browser";
-import { NostrEvent, User } from "../types/user";
+import { asNip05, NostrEvent, User } from "../types/user";
 import {
   constantTimeEquals,
   generateRandomHex,
@@ -119,19 +113,14 @@ export async function createNostrIdentity(
     throw new Error("Username already exists");
   }
 
-  // Generate Nostr keypair
-  const privateKeyBytes = generatePrivateKey();
-  const privateKey = Array.from(privateKeyBytes)
+  // Generate Nostr keypair (Web Crypto for SK, CEPS for derivations)
+  const sk = new Uint8Array(32);
+  crypto.getRandomValues(sk);
+  const privateKey = Array.from(sk)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  const publicKeyBytes = getPublicKey(privateKeyBytes);
-  const publicKey = Array.from(publicKeyBytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  // Use correct npub encoding: remove compression prefix
-  const publicKeyWithoutPrefix = publicKey.slice(2);
-  const npub = nip19.npubEncode(publicKeyWithoutPrefix);
+  const publicKey = CEPS.getPublicKeyHex(privateKey);
+  const npub = CEPS.encodeNpub(publicKey);
 
   // Create NIP-05 identifier and lightning address
   const nip05 = `${username}@${nip05Config.domain}`;
@@ -169,16 +158,16 @@ export async function createNostrIdentity(
       .join("");
 
   // Insert new user
-  const result = await db.query(
+  const insertResult = (await db.query(
     `INSERT INTO users (
-      username, 
-      npub, 
-      nip05, 
-      lightning_address, 
-      role, 
+      username,
+      npub,
+      nip05,
+      lightning_address,
+      role,
       created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6) 
-    RETURNING id, username, npub, nip05, lightning_address, role, created_at`,
+    ) VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id`,
     [
       username,
       npub,
@@ -187,16 +176,36 @@ export async function createNostrIdentity(
       "user",
       Math.floor(Date.now() / 1000),
     ]
-  );
+  )) as { rows: Array<{ id: string }> };
 
-  const user = result.rows[0];
+  const createdUserId = insertResult.rows[0]?.id;
 
   // Store recovery code hash (not the code itself)
   const recoveryCodeHash = await sha256(recovery_code);
   await db.query(
     "INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)",
-    [user.id, recoveryCodeHash]
+    [createdUserId, recoveryCodeHash]
   );
+
+  const user: User = {
+    id: createdUserId,
+    username,
+    auth_hash: await sha256(npub),
+    encrypted_profile: undefined,
+    is_discoverable: false,
+    user_status: "active",
+    onboarding_completed: true,
+    invited_by: undefined,
+    encryption_hint: undefined,
+    relay_url: undefined,
+    role: "user",
+    familyId: undefined,
+    avatar: undefined,
+    created_at: Math.floor(Date.now() / 1000),
+    last_login: undefined,
+    npub,
+    nip05: asNip05(nip05)!,
+  };
 
   return {
     user,
@@ -250,16 +259,10 @@ export async function generateAuthChallenge(
 export async function authenticateWithNWC(
   signed_event: NostrEvent
 ): Promise<{ user: User; token: string }> {
-  // Verify the event signature
-  const isValid = verifyEvent(signed_event);
+  // Verify the event signature and hash via CEPS
+  const isValid = CEPS.verifyEvent(signed_event);
   if (!isValid) {
-    throw new Error("Invalid signature");
-  }
-
-  // Verify event hash
-  const computedHash = getEventHash(signed_event);
-  if (computedHash !== signed_event.id) {
-    throw new Error("Invalid event hash");
+    throw new Error("Invalid signature or event");
   }
 
   // Check if event is recent (within last 5 minutes)
@@ -274,19 +277,24 @@ export async function authenticateWithNWC(
     throw new Error("Missing challenge tag");
   }
 
-  const expected = await db.query(
+  const expectedRes = (await db.query(
     "SELECT challenge, npub, used, expires_at FROM auth_challenges WHERE id = $1",
     [challengeId]
-  );
+  )) as {
+    rows: Array<{
+      challenge: string;
+      npub: string;
+      used: boolean;
+      expires_at: string;
+    }>;
+  };
+  const expectedRow = expectedRes.rows[0];
 
   if (
-    expected.rows.length === 0 ||
-    !(await constantTimeEquals(
-      expected.rows[0].challenge,
-      signed_event.content
-    )) ||
-    expected.rows[0].used ||
-    new Date(expected.rows[0].expires_at) < new Date()
+    expectedRes.rows.length === 0 ||
+    !(await constantTimeEquals(expectedRow.challenge, signed_event.content)) ||
+    expectedRow.used ||
+    new Date(expectedRow.expires_at) < new Date()
   ) {
     throw new Error("Invalid or expired challenge");
   }
@@ -297,49 +305,90 @@ export async function authenticateWithNWC(
   ]);
 
   // Find or create user
-  let user = await db.query("SELECT * FROM users WHERE npub = $1", [
-    expected.rows[0].npub,
-  ]);
+  let userRes = (await db.query(
+    "SELECT id, npub, role, username, created_at, nip05 FROM users WHERE npub = $1",
+    [expectedRow.npub]
+  )) as {
+    rows: Array<{
+      id: string;
+      npub: string;
+      role: "user" | "admin";
+      username?: string;
+      created_at?: number;
+      nip05?: string;
+    }>;
+  };
 
-  if (user.rows.length === 0) {
+  if (userRes.rows.length === 0) {
     // Create new user with default values
     const username = `user_${Math.random().toString(36).substr(2, 9)}`;
     const nip05 = `${username}@${nip05Config.domain}`;
 
-    const result = await db.query(
+    const insertRes = (await db.query(
       `INSERT INTO users (
-        username, 
-        npub, 
-        nip05, 
-        lightning_address, 
-        role, 
+        username,
+        npub,
+        nip05,
+        lightning_address,
+        role,
         created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6) 
-      RETURNING id, username, npub, nip05, lightning_address, role, created_at`,
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, npub, role, username, created_at, nip05`,
       [
         username,
-        expected.rows[0].npub,
+        expectedRow.npub,
         nip05,
         nip05,
         "user",
         Math.floor(Date.now() / 1000),
       ]
-    );
-    user = result;
+    )) as {
+      rows: Array<{
+        id: string;
+        npub: string;
+        role: "user" | "admin";
+        username?: string;
+        created_at?: number;
+        nip05?: string;
+      }>;
+    };
+    userRes = insertRes;
   }
+
+  const userRow = userRes.rows[0];
 
   // Generate JWT token
   const token = await signJWT(
     {
-      id: user.rows[0].id,
-      npub: user.rows[0].npub,
-      role: user.rows[0].role,
+      id: userRow.id,
+      npub: userRow.npub,
+      role: userRow.role,
     },
     authConfig.jwtSecret
   );
 
+  const user: User = {
+    id: userRow.id,
+    username: userRow.username ?? "user",
+    auth_hash: await sha256(userRow.npub),
+    encrypted_profile: undefined,
+    is_discoverable: false,
+    user_status: "active",
+    onboarding_completed: true,
+    invited_by: undefined,
+    encryption_hint: undefined,
+    relay_url: undefined,
+    role: userRow.role,
+    familyId: undefined,
+    avatar: undefined,
+    created_at: (userRow.created_at as number) ?? Math.floor(Date.now() / 1000),
+    last_login: undefined,
+    npub: userRow.npub,
+    nip05: userRow.nip05 ? asNip05(userRow.nip05) : undefined,
+  };
+
   return {
-    user: user.rows[0],
+    user,
     token,
   };
 }
@@ -392,10 +441,10 @@ export async function authenticateWithOTP(
   session_token: string
 ): Promise<{ user: User; token: string }> {
   // Verify OTP
-  const otpResult = await db.query(
+  const otpResult = (await db.query(
     "SELECT otp, used, expires_at FROM otp_codes WHERE npub = $1 ORDER BY created_at DESC LIMIT 1",
     [npub]
-  );
+  )) as { rows: Array<{ otp: string; used: boolean; expires_at: string }> };
 
   if (
     otpResult.rows.length === 0 ||
@@ -413,40 +462,83 @@ export async function authenticateWithOTP(
   );
 
   // Find or create user
-  let user = await db.query("SELECT * FROM users WHERE npub = $1", [npub]);
+  let userRes = (await db.query(
+    "SELECT id, npub, role, username, created_at, nip05 FROM users WHERE npub = $1",
+    [npub]
+  )) as {
+    rows: Array<{
+      id: string;
+      npub: string;
+      role: "user" | "admin";
+      username?: string;
+      created_at?: number;
+      nip05?: string;
+    }>;
+  };
 
-  if (user.rows.length === 0) {
+  if (userRes.rows.length === 0) {
     // Create new user with default values
     const username = `user_${Math.random().toString(36).substr(2, 9)}`;
     const nip05 = `${username}@${nip05Config.domain}`;
 
-    const result = await db.query(
+    const insertRes = (await db.query(
       `INSERT INTO users (
-        username, 
-        npub, 
-        nip05, 
-        lightning_address, 
-        role, 
+        username,
+        npub,
+        nip05,
+        lightning_address,
+        role,
         created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6) 
-      RETURNING id, username, npub, nip05, lightning_address, role, created_at`,
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, npub, role, username, created_at, nip05`,
       [username, npub, nip05, nip05, "user", Math.floor(Date.now() / 1000)]
-    );
-    user = result;
+    )) as {
+      rows: Array<{
+        id: string;
+        npub: string;
+        role: "user" | "admin";
+        username?: string;
+        created_at?: number;
+        nip05?: string;
+      }>;
+    };
+    userRes = insertRes;
   }
+
+  const userRow = userRes.rows[0];
 
   // Generate JWT token
   const token = await signJWT(
     {
-      id: user.rows[0].id,
-      npub: user.rows[0].npub,
-      role: user.rows[0].role,
+      id: userRow.id,
+      npub: userRow.npub,
+      role: userRow.role,
     },
     authConfig.jwtSecret
   );
 
+  const user: User = {
+    id: userRow.id,
+    username: userRow.username ?? "user",
+    auth_hash: await sha256(userRow.npub),
+    encrypted_profile: undefined,
+    is_discoverable: false,
+    user_status: "active",
+    onboarding_completed: true,
+    invited_by: undefined,
+    encryption_hint: undefined,
+    relay_url: undefined,
+    role: userRow.role,
+    familyId: undefined,
+    avatar: undefined,
+    created_at: (userRow.created_at as number) ?? Math.floor(Date.now() / 1000),
+    last_login: undefined,
+    npub: userRow.npub,
+    nip05: userRow.nip05 ? asNip05(userRow.nip05) : undefined,
+  };
+
   return {
-    user: user.rows[0],
+    user,
     token,
   };
 }

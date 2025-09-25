@@ -4,8 +4,8 @@
  * @compliance Browser-compatible, ephemeral key generation, secure share distribution
  */
 
-import { bytesToHex, hexToBytes } from "@noble/curves/utils";
-import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { bytesToHex } from "@noble/curves/utils";
+import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 import {
   CryptoOperationResult,
   MemoryWipeTarget,
@@ -67,10 +67,13 @@ class ZeroKnowledgeNsecManager {
     // Validate configuration
     await this.validateFederationConfig(federationConfig);
 
-    // Generate nsec ephemerally
-    const secretKey = generateSecretKey();
-    const nsec = bytesToHex(secretKey);
-    const publicKey = getPublicKey(secretKey);
+    // Generate nsec ephemerally (Web Crypto for SK, CEPS for derivations)
+    const sk = new Uint8Array(32);
+    (typeof window !== "undefined" ? window.crypto : crypto).getRandomValues(
+      sk
+    );
+    const nsec = bytesToHex(sk);
+    const publicKey = CEPS.getPublicKeyHex(nsec);
 
     // Track sensitive data for cleanup
     const sensitiveData: MemoryWipeTarget[] = [{ data: nsec, type: "string" }];
@@ -210,7 +213,7 @@ class ZeroKnowledgeNsecManager {
 
       // Convert to nsec format
       const nsec = CryptoUtils.bigIntToHex(reconstructedSecret, 64);
-      const publicKey = getPublicKey(hexToBytes(nsec));
+      const publicKey = CEPS.getPublicKeyHex(nsec);
 
       // Track reconstructed nsec for cleanup
       sensitiveData.push({ data: nsec, type: "string" });

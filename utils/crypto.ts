@@ -4,9 +4,6 @@
 // All crypto imports are lazy loaded for better performance
 // All crypto operations are now lazy loaded
 
-import { secp256k1 } from "@noble/curves/secp256k1";
-import { bytesToHex, hexToBytes } from "@noble/curves/utils";
-
 /**
  * Generate a random hex string of specified length
  */
@@ -581,22 +578,12 @@ export async function signNostrEvent(
   }
 
   try {
-    // Secure hex conversion with validation
-    const privateKeyBytes = secureHexToBytes(privateKey);
-    if (!privateKeyBytes || privateKeyBytes.length !== 32) {
-      throw new Error("Invalid private key hex format");
-    }
-
-    // Create a new Uint8Array with proper ArrayBuffer for finalizeEvent compatibility
-    const privateKeyBuffer = new Uint8Array(privateKeyBytes);
-
-    const signedEvent = finalizeEvent(event, privateKeyBuffer);
-
-    // Secure memory cleanup
-    privateKeyBytes.fill(0);
+    const { central_event_publishing_service: CEPS } = await import(
+      "../lib/central_event_publishing_service"
+    );
+    const signedEvent = CEPS.signEvent(event, privateKey);
     await secureCleanup([privateKey]);
-
-    return signedEvent;
+    return signedEvent as any;
   } catch (error) {
     console.error("Nostr event signing failed:", error);
     throw new Error("Failed to sign Nostr event");
@@ -676,10 +663,10 @@ export async function createNostrEvent(
   content: string;
   sig: string;
 }> {
-  // Convert hex string to Uint8Array
-  const privateKeyBytes = hexToBytes(privateKey);
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-  const pubkey = bytesToHex(publicKeyBytes);
+  const { central_event_publishing_service: CEPS } = await import(
+    "../lib/central_event_publishing_service"
+  );
+  const pubkey = CEPS.getPublicKeyHex(privateKey);
   const event = {
     kind,
     pubkey,
@@ -688,5 +675,5 @@ export async function createNostrEvent(
     content,
   };
 
-  return finalizeEvent(event, privateKeyBytes);
+  return CEPS.signEvent(event, privateKey) as any;
 }

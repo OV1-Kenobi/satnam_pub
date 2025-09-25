@@ -31,6 +31,17 @@ beforeAll(async () => {
     );
   }
 
+  // Provide Web Crypto and TextEncoder for libs that expect Node globals
+  if (!(globalThis as any).crypto || !(globalThis as any).crypto.subtle) {
+    const { webcrypto } = await import("node:crypto");
+    (globalThis as any).crypto = webcrypto as unknown as Crypto;
+  }
+  if (!(globalThis as any).TextEncoder) {
+    const { TextEncoder } = await import("node:util");
+    (globalThis as any).TextEncoder =
+      TextEncoder as unknown as typeof globalThis.TextEncoder;
+  }
+
   // Initialize the shared test client to prevent multiple GoTrueClient instances
   const { getTestSupabaseClient } = await import("./lib/__tests__/test-setup");
   getTestSupabaseClient(); // Initialize the shared client early

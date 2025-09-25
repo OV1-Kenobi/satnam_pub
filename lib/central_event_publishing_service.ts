@@ -1844,7 +1844,17 @@ export class CentralEventPublishingService {
       : bytesToHex(dec.data as Uint8Array);
   }
   nsecToBytes(nsec: string): Uint8Array {
-    return hexToBytes(nsec);
+    // Accept bech32 (nsec1...) or 64-hex
+    try {
+      const dec = nip19.decode(nsec);
+      if (dec.type === "nsec") {
+        return typeof dec.data === "string"
+          ? hexToBytes(dec.data as string)
+          : (dec.data as Uint8Array);
+      }
+    } catch {}
+    if (/^[0-9a-fA-F]{64}$/.test(nsec)) return hexToBytes(nsec);
+    throw new Error("Invalid nsec format");
   }
   decodeNpub(npub: string): string {
     return this.npubToHex(npub);
@@ -1853,15 +1863,26 @@ export class CentralEventPublishingService {
     return nip19.npubEncode(pubkeyHex);
   }
   encodeNsec(privBytes: Uint8Array): string {
-    // Ensure type compatibility by converting bytes to hex for nsecEncode
-    return nip19.nsecEncode(bytesToHex(privBytes));
+    // Pass raw bytes to nip19.nsecEncode to match current nostr-tools API
+    return (nip19 as any).nsecEncode(privBytes);
   }
   decodeNsec(nsec: string): Uint8Array {
     const dec = nip19.decode(nsec);
-    if (dec.type !== "nsec" || !(dec.data instanceof Uint8Array)) {
+    if (dec.type !== "nsec") {
       throw new Error("Invalid nsec format");
     }
-    return dec.data as Uint8Array;
+    return typeof dec.data === "string"
+      ? hexToBytes(dec.data as string)
+      : (dec.data as Uint8Array);
+  }
+  derivePubkeyHexFromNsec(nsec: string): string {
+    const privBytes = this.nsecToBytes(nsec);
+    const privHex = bytesToHex(privBytes);
+    return getPublicKey(privHex);
+  }
+  deriveNpubFromNsec(nsec: string): string {
+    const pubHex = this.derivePubkeyHexFromNsec(nsec);
+    return nip19.npubEncode(pubHex);
   }
 
   // ---- NIP-17 builders and wrappers ----

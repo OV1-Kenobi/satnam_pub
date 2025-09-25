@@ -397,6 +397,19 @@ export const db = {
   },
 
   /**
+   * Legacy query interface placeholder to maintain backward compatibility.
+   * Use models.* or getClient() with typed operations instead.
+   */
+  async query(
+    _sql: string,
+    _params?: unknown[]
+  ): Promise<{ rows: Array<Record<string, unknown>> }> {
+    throw new Error(
+      "db.query is not supported in Supabase client mode. Use db.models or db.getClient()."
+    );
+  },
+
+  /**
    * Test database connection
    */
   async testConnection(): Promise<{ connected: boolean; error?: string }> {

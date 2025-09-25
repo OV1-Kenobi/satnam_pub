@@ -1,10 +1,3 @@
-import { secp256k1 } from "@noble/curves/secp256k1";
-import { bytesToHex } from "@noble/curves/utils";
-
-// Import proper NIP-19 encoding functions from nostr-tools
-import { bech32 } from "@scure/base";
-import { nip19 } from "nostr-tools";
-
 export class CryptoLazy {
   private static instance: CryptoLazy;
 
@@ -17,17 +10,20 @@ export class CryptoLazy {
 
   // Replace line 294 Node.js crypto import
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
-    const privateKeyBytes = secp256k1.utils.randomPrivateKey();
-    const publicKey = secp256k1.getPublicKey(privateKeyBytes);
-    const publicKeyHex = bytesToHex(publicKey);
-
-    // Use proper NIP-19 bech32 encoding
-    // npubEncode expects 64-char hex (without compression prefix), nsecEncode expects Uint8Array
-    const publicKeyWithoutPrefix = publicKeyHex.slice(2); // Remove "02"/"03" compression prefix
-
+    const sk = new Uint8Array(32);
+    (typeof window !== "undefined" ? window.crypto : crypto).getRandomValues(
+      sk
+    );
+    const skHex = Array.from(sk)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const { central_event_publishing_service: CEPS } = await import(
+      "../lib/central_event_publishing_service"
+    );
+    const pubHex = CEPS.getPublicKeyHex(skHex);
     return {
-      nsec: nip19.nsecEncode(privateKeyBytes as any),
-      npub: nip19.npubEncode(publicKeyWithoutPrefix),
+      nsec: CEPS.encodeNsec(sk),
+      npub: CEPS.encodeNpub(pubHex),
     };
   }
 
@@ -165,37 +161,24 @@ export async function generateNostrKeyPair(): Promise<{
   nsec: string;
 }> {
   console.log(
-    "🔍 CRYPTO-LAZY generateNostrKeyPair called - USING DIRECT BECH32!"
+    "🔍 CRYPTO-LAZY generateNostrKeyPair called - using CEPS helpers"
   );
 
-  const privateKeyBytes = secp256k1.utils.randomPrivateKey();
-  const privateKey = bytesToHex(privateKeyBytes);
-  // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-  const publicKeyHex = bytesToHex(publicKeyBytes);
-
-  // Use direct bech32 encoding: extract x-coordinate (32 bytes)
-  const publicKeyXCoordinate = publicKeyBytes.slice(1); // Remove compression prefix byte
-
-  console.log("🔍 CRYPTO-LAZY direct bech32 encoding:", {
-    originalHex: publicKeyHex,
-    bytesLength: publicKeyBytes.length,
-    xCoordinateLength: publicKeyXCoordinate.length,
-    expectedXCoordinateLength: 32,
-  });
-
-  const npub = bech32.encodeFromBytes("npub", publicKeyXCoordinate);
-  const nsec = nip19.nsecEncode(privateKeyBytes as any);
-
-  console.log("🔍 CRYPTO-LAZY direct bech32 result:", {
-    npubLength: npub.length,
-    nsecLength: nsec.length,
-    npubValid: npub.length === 63 && npub.startsWith("npub1"),
-  });
+  const sk = new Uint8Array(32);
+  (typeof window !== "undefined" ? window.crypto : crypto).getRandomValues(sk);
+  const privateKey = Array.from(sk)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const { central_event_publishing_service: CEPS } = await import(
+    "../lib/central_event_publishing_service"
+  );
+  const pubkeyHex = CEPS.getPublicKeyHex(privateKey);
+  const npub = CEPS.encodeNpub(pubkeyHex);
+  const nsec = CEPS.encodeNsec(sk);
 
   return {
     privateKey,
-    publicKey: publicKeyHex,
+    publicKey: pubkeyHex,
     npub,
     nsec,
   };

@@ -5,10 +5,11 @@
  */
 
 // Frontend-only imports - browser compatible
-import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { bytesToHex, hexToBytes } from "@noble/curves/utils.js";
 import { bech32 } from "@scure/base";
-import { nip19 } from "nostr-tools";
+
+import { bytesToHex } from "@noble/curves/utils";
+
+import { central_event_publishing_service as CEPS } from "../lib/central_event_publishing_service";
 
 // Secure, audited bech32 encoder using @scure/base
 export function bech32Encode(hrp: string, data: Uint8Array): string {
@@ -56,174 +57,28 @@ export class CryptoFactory {
    */
   async generateNostrKeyPair(recoveryPhrase?: string): Promise<NostrKeyPair> {
     try {
-      console.log("🔑 Starting Nostr key pair generation...", {
-        hasRecoveryPhrase: !!recoveryPhrase,
-        phraseLength: recoveryPhrase ? recoveryPhrase.split(" ").length : 0,
-        secp256k1Available: !!secp256k1,
-        utilsAvailable: !!secp256k1?.utils,
-        randomSecretKeyAvailable:
-          typeof secp256k1?.utils?.randomSecretKey === "function",
-        getPublicKeyAvailable: typeof secp256k1?.getPublicKey === "function",
-        bytesToHexAvailable: typeof bytesToHex === "function",
-        nip19Available: !!nip19,
-        webCryptoAvailable:
-          typeof crypto !== "undefined" && !!crypto.getRandomValues,
-      });
-
-      let privateKeyBytes: Uint8Array;
-
+      let privateKeyHex: string;
       if (recoveryPhrase) {
-        console.log("🔄 Generating from recovery phrase...");
-        try {
-          // Generate from recovery phrase
-          const privateKeyHex = await this.privateKeyFromPhrase(recoveryPhrase);
-          privateKeyBytes = hexToBytes(privateKeyHex);
-          console.log(
-            "✅ Private key generated from phrase, length:",
-            privateKeyBytes.length
-          );
-        } catch (phraseError) {
-          console.error(
-            "❌ Failed to generate from recovery phrase:",
-            phraseError
-          );
-          const errorMsg =
-            phraseError instanceof Error
-              ? phraseError.message
-              : String(phraseError);
-          throw new Error(`Recovery phrase processing failed: ${errorMsg}`);
-        }
+        privateKeyHex = await this.privateKeyFromPhrase(recoveryPhrase);
       } else {
-        console.log("🔄 Generating random private key...");
-        try {
-          // Generate random private key - keep as Uint8Array
-          privateKeyBytes = secp256k1.utils.randomSecretKey();
-          console.log(
-            "✅ Random private key generated, length:",
-            privateKeyBytes.length
-          );
-        } catch (randomError) {
-          console.error(
-            "❌ Failed to generate random private key:",
-            randomError
-          );
-          const errorMsg =
-            randomError instanceof Error
-              ? randomError.message
-              : String(randomError);
-          throw new Error(`Random key generation failed: ${errorMsg}`);
-        }
+        const sk = new Uint8Array(32);
+        crypto.getRandomValues(sk);
+        privateKeyHex = Array.from(sk)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
       }
-
-      console.log("✅ Private key generated:", {
-        keyLength: privateKeyBytes.length,
-        keyType: typeof privateKeyBytes,
-      });
-
-      console.log("🔄 Generating compressed public key from private key...");
-      // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
-      const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
-      const publicKeyHex = bytesToHex(publicKey);
-
-      console.log("🔍 ULTRA-DETAILED KEY GENERATION DEBUG:");
-      console.log("Private Key Analysis:", {
-        length: privateKeyBytes.length,
-        type: typeof privateKeyBytes,
-        constructor: privateKeyBytes.constructor.name,
-        isUint8Array: privateKeyBytes instanceof Uint8Array,
-        firstFewBytes: Array.from(privateKeyBytes.slice(0, 8)),
-        lastFewBytes: Array.from(privateKeyBytes.slice(-8)),
-      });
-
-      console.log("Public Key Analysis:", {
-        length: publicKey.length,
-        type: typeof publicKey,
-        constructor: publicKey.constructor.name,
-        isUint8Array: publicKey instanceof Uint8Array,
-        firstFewBytes: Array.from(publicKey.slice(0, 8)),
-        lastFewBytes: Array.from(publicKey.slice(-8)),
-        expectedLength: "33 bytes (compressed secp256k1)",
-      });
-
-      console.log("Public Key Hex Analysis:", {
-        length: publicKeyHex.length,
-        type: typeof publicKeyHex,
-        fullHex: publicKeyHex,
-        expectedLength: "66 characters",
-        startsWithValidPrefix:
-          publicKeyHex.startsWith("02") || publicKeyHex.startsWith("03"),
-        isValidHex: /^[0-9a-fA-F]+$/.test(publicKeyHex),
-      });
-
-      console.log("🔄 Encoding keys to NIP-19 format using direct bech32...");
-
-      // Extract the 32-byte x-coordinate from the 33-byte compressed public key
-      const publicKeyXCoordinate = publicKey.slice(1); // Remove compression prefix byte
-
-      console.log("🔍 DIRECT BECH32 ENCODING DEBUG:", {
-        originalPublicKeyLength: publicKey.length,
-        publicKeyHexLength: publicKeyHex.length,
-        xCoordinateLength: publicKeyXCoordinate.length,
-        expectedXCoordinateLength: 32,
-      });
-
-      // CRITICAL FIX: Ensure proper 32-byte keys (64-character hex)
-      // Pad private key bytes to ensure exactly 32 bytes
-      const paddedPrivateKeyBytes = new Uint8Array(32);
-      paddedPrivateKeyBytes.set(privateKeyBytes, 32 - privateKeyBytes.length);
-
-      // Pad public key x-coordinate to ensure exactly 32 bytes
-      const paddedPublicKeyXCoordinate = new Uint8Array(32);
-      paddedPublicKeyXCoordinate.set(
-        publicKeyXCoordinate,
-        32 - publicKeyXCoordinate.length
+      if (!/^[0-9a-fA-F]{64}$/.test(privateKeyHex)) {
+        throw new Error("Invalid private key format generated");
+      }
+      const publicKeyHex = CEPS.getPublicKeyHex(privateKeyHex);
+      const npub = CEPS.encodeNpub(publicKeyHex);
+      // Convert hex to bytes for nsec encoding
+      const privBytes = new Uint8Array(
+        privateKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
       );
-
-      // Generate hex strings for return values (guaranteed 64 characters)
-      const privateKeyHex = bytesToHex(paddedPrivateKeyBytes);
-      const publicKeyXHex = bytesToHex(paddedPublicKeyXCoordinate);
-
-      // Generate npub using nostr-tools with properly padded hex
-      const npub = nip19.npubEncode(publicKeyXHex);
-
-      // Generate nsec using nostr-tools with properly padded Uint8Array
-      const nsec = nip19.nsecEncode(paddedPrivateKeyBytes as any);
-
-      console.log("🔍 FIXED BECH32 ENCODING RESULT:", {
-        npub: npub,
-        npubLength: npub.length,
-        nsec: nsec.substring(0, 10) + "...",
-        nsecLength: nsec.length,
-        npubValid: npub.length === 64 && npub.startsWith("npub1"), // FIXED: Expect 64 chars
-        nsecValid: nsec.length === 64 && nsec.startsWith("nsec1"), // FIXED: Expect 64 chars
-      });
-
-      console.log("✅ Nostr key pair generated successfully:", {
-        npubLength: npub.length,
-        nsecLength: nsec.length,
-        npubValid: npub.length === 64 && npub.startsWith("npub1"), // FIXED: Expect 64 chars
-        nsecValid: nsec.length === 64 && nsec.startsWith("nsec1"), // FIXED: Expect 64 chars
-        npubPrefix: npub.substring(0, 10) + "...",
-        nsecPrefix: nsec.substring(0, 10) + "...",
-      });
-
-      console.log("🔍 HEX PADDING VERIFICATION:", {
-        privateKeyHexLength: privateKeyHex.length,
-        publicKeyXHexLength: publicKeyXHex.length,
-        privateKeyValid: privateKeyHex.length === 64,
-        publicKeyValid: publicKeyXHex.length === 64,
-        privateKeyHex: privateKeyHex.substring(0, 16) + "...",
-        publicKeyXHex: publicKeyXHex.substring(0, 16) + "...",
-      });
-
-      return {
-        privateKey: privateKeyHex, // FIXED: Guaranteed 64-character hex string
-        publicKey: publicKeyXHex, // FIXED: Guaranteed 64-character hex string
-        npub,
-        nsec,
-      };
+      const nsec = CEPS.encodeNsec(privBytes);
+      return { privateKey: privateKeyHex, publicKey: publicKeyHex, npub, nsec };
     } catch (error) {
-      console.error("❌ Failed to generate Nostr key pair:", error);
       throw new Error(
         `Nostr key pair generation failed: ${
           error instanceof Error ? error.message : String(error)
@@ -244,8 +99,11 @@ export class CryptoFactory {
     );
 
     // Simple fallback for compatibility
-    const entropyBytes = secp256k1.utils.randomSecretKey();
-    const entropy = bytesToHex(entropyBytes);
+    const entropyBytes = new Uint8Array(32);
+    crypto.getRandomValues(entropyBytes);
+    const entropy = Array.from(entropyBytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     const words = this.generateWordsFromEntropy(entropy, wordCount);
     const phrase = words.join(" ");
 
@@ -658,71 +516,6 @@ export function areCryptoModulesLoaded(): boolean {
   }
 }
 
-export async function testCryptoOperations(): Promise<boolean> {
-  try {
-    console.log("🧪 Testing crypto operations...");
-
-    // Test basic crypto operations independently
-    console.log("🔍 Testing utils.randomSecretKey()...");
-    const privateKeyBytes = secp256k1.utils.randomSecretKey();
-    if (!privateKeyBytes || privateKeyBytes.length !== 32) {
-      throw new Error("randomPrivateKey failed");
-    }
-    console.log("✅ utils.randomPrivateKey() works");
-
-    console.log("🔍 Testing getPublicKey() with compression...");
-    const publicKey = (getPublicKey as any)(privateKeyBytes, true);
-    if (!publicKey || publicKey.length !== 33) {
-      throw new Error(
-        `getPublicKey failed: expected 33 bytes, got ${publicKey?.length}`
-      );
-    }
-    console.log("✅ getPublicKey() with compression works");
-
-    console.log("🔍 Testing nip19 npub encoding...");
-    const publicKeyHex = bytesToHex(publicKey);
-
-    // Use nostr-tools nip19 encoding: extract x-coordinate (32 bytes)
-    const publicKeyXCoordinate = publicKey.slice(1); // Remove compression prefix byte
-    const publicKeyXHex = bytesToHex(publicKeyXCoordinate);
-    const npub = nip19.npubEncode(publicKeyXHex);
-    if (!npub || !npub.startsWith("npub1") || npub.length !== 64) {
-      throw new Error(
-        `Direct bech32 encoding failed: ${npub} (length: ${npub?.length}) - Expected 64 characters`
-      );
-    }
-    console.log("✅ nip19 npub encoding works");
-
-    // Use Uint8Array for nsecEncode (as required by runtime)
-    const nsec = nip19.nsecEncode(privateKeyBytes as any);
-    if (!nsec || !nsec.startsWith("nsec1") || nsec.length !== 64) {
-      throw new Error(
-        `nsecEncode failed: ${nsec} (length: ${nsec?.length}) - Expected 64 characters`
-      );
-    }
-    console.log("✅ nip19.nsecEncode() works");
-
-    // Test key pair generation through factory
-    console.log("🔍 Testing crypto factory key generation...");
-    const keyPair = await cryptoFactory.generateNostrKeyPair();
-    if (
-      !keyPair.npub ||
-      !keyPair.nsec ||
-      !keyPair.npub.startsWith("npub1") ||
-      !keyPair.nsec.startsWith("nsec1")
-    ) {
-      throw new Error("Factory key pair generation failed");
-    }
-    console.log("✅ Crypto factory key generation works");
-
-    console.log("🎉 All crypto operations test passed");
-    return true;
-  } catch (error) {
-    console.error("❌ Crypto operations test failed:", error);
-    return false;
-  }
-}
-
 export function clearCryptoCache(): void {
   // No-op for browser-only version
 }
@@ -742,181 +535,6 @@ export function getCryptoEnvironmentInfo(): {
 }
 
 // Simple immediate test function with detailed results capture
-(window as any).testNpubEncoding = async () => {
-  console.log("🧪 TESTING NPUB ENCODING DIRECTLY...");
-
-  const results = {
-    nip19Inspection: null as any,
-    inputData: null as any,
-    outputResult: null as any,
-    error: null as any,
-    success: false,
-  };
-
-  try {
-    // First, inspect the nip19 object
-    results.nip19Inspection = {
-      type: typeof nip19,
-      keys: Object.keys(nip19),
-      npubEncode: typeof nip19.npubEncode,
-      nsecEncode: typeof nip19.nsecEncode,
-    };
-    console.log("nip19 object inspection:", results.nip19Inspection);
-
-    // Test with a known public key hex (33 bytes = 66 hex chars)
-    const testPublicKeyHex =
-      "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-
-    results.inputData = {
-      publicKeyHex: testPublicKeyHex,
-      length: testPublicKeyHex.length,
-      expectedLength: 66,
-      startsWithValidPrefix:
-        testPublicKeyHex.startsWith("02") || testPublicKeyHex.startsWith("03"),
-    };
-    console.log("Input data:", results.inputData);
-
-    console.log("🔄 Using direct bech32 encoding approach...");
-
-    // Convert hex to bytes and extract x-coordinate (32 bytes)
-    const testPublicKeyBytes = new Uint8Array(
-      testPublicKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-    );
-    const testPublicKeyXCoordinate = testPublicKeyBytes.slice(1); // Remove compression prefix byte
-
-    console.log("Direct bech32 encoding data:", {
-      originalHex: testPublicKeyHex,
-      originalLength: testPublicKeyHex.length,
-      bytesLength: testPublicKeyBytes.length,
-      xCoordinateLength: testPublicKeyXCoordinate.length,
-      expectedXCoordinateLength: 32,
-    });
-
-    const testPublicKeyXHex = bytesToHex(testPublicKeyXCoordinate);
-    const npub = nip19.npubEncode(testPublicKeyXHex);
-    console.log("🔄 nip19.npubEncode returned:", typeof npub);
-
-    results.outputResult = {
-      npub: npub,
-      length: npub.length,
-      expectedLength: 64, // FIXED: Expect 64 characters
-      isCorrectLength: npub.length === 64, // FIXED: Expect 64 characters
-      startsWithNpub1: npub.startsWith("npub1"),
-      fullOutput: npub,
-    };
-    console.log("Output result:", results.outputResult);
-
-    if (npub.length !== 64) {
-      // FIXED: Expect 64 characters
-      console.error("❌ NPUB ENCODING FAILED - Wrong length!");
-      console.error("Expected: 64 characters"); // FIXED: Expect 64 characters
-      console.error("Actual: " + npub.length + " characters");
-      console.error("Full npub: " + npub);
-      results.success = false;
-    } else {
-      console.log("✅ NPUB ENCODING SUCCESS!");
-      results.success = true;
-    }
-
-    // Store results globally for page display
-    (window as any).lastTestResults = results;
-    return results.success;
-  } catch (error) {
-    results.error = {
-      name: error instanceof Error ? error.name : "Unknown",
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : "No stack trace",
-    };
-    console.error("❌ NPUB ENCODING ERROR:", error);
-    console.error("Error details:", results.error);
-
-    // Store results globally for page display
-    (window as any).lastTestResults = results;
-    return false;
-  }
-};
-
-// Test functions available for manual debugging
-console.log("🔧 Crypto debugging functions available:");
-console.log("- testNpubEncoding(): Test npub encoding with known data");
-console.log("- testCryptoDebug(): Full crypto operations test");
-
-// Global test function for browser console debugging
-(window as any).testCryptoDebug = async () => {
-  console.log("🔧 CRYPTO DEBUG TEST STARTING...");
-
-  try {
-    // Test 1: Basic imports
-    console.log("🔍 Testing basic imports...");
-    console.log("secp256k1.utils:", typeof secp256k1.utils);
-    console.log("getPublicKey:", typeof getPublicKey);
-    console.log("nip19:", typeof nip19);
-    console.log("bytesToHex:", typeof bytesToHex);
-
-    // Test 2: Minimal npub encoding test with known data
-    console.log("🔍 Testing minimal npub encoding...");
-
-    // Use a known test private key (32 bytes)
-    const testPrivateKeyHex =
-      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const testPrivateKeyBytes = new Uint8Array(32);
-    for (let i = 0; i < 32; i++) {
-      testPrivateKeyBytes[i] = parseInt(testPrivateKeyHex.substr(i * 2, 2), 16);
-    }
-
-    console.log("Test private key:", {
-      hex: testPrivateKeyHex,
-      bytes: Array.from(testPrivateKeyBytes),
-      length: testPrivateKeyBytes.length,
-    });
-
-    const testPublicKey = secp256k1.getPublicKey(testPrivateKeyBytes, true);
-    // Strip compression prefix (0x02/0x03) to obtain 32-byte x-coordinate for Nostr
-    const testPublicKeyX = testPublicKey.slice(1);
-    const testPublicKeyHex = bytesToHex(testPublicKey);
-    const testPublicKeyXHex = bytesToHex(testPublicKeyX);
-
-    console.log("Test public key:", {
-      bytes: Array.from(testPublicKey),
-      hex: testPublicKeyHex,
-      length: testPublicKeyHex.length,
-      expectedLength: 66,
-      xCoordHex: testPublicKeyXHex,
-      xCoordLength: testPublicKeyX.length,
-      xCoordExpectedLength: 32,
-    });
-
-    // Use 32-byte x-coordinate hex for npub encoding as required by Nostr
-    const testNpub = nip19.npubEncode(testPublicKeyXHex);
-    console.log("Test npub result:", {
-      npub: testNpub,
-      length: testNpub.length,
-      expectedLength: 64, // FIXED: Expect 64 characters
-      isCorrectLength: testNpub.length === 64, // FIXED: Expect 64 characters
-    });
-
-    // Test 3: Crypto factory instance
-    console.log("🔍 Testing crypto factory...");
-    const factory = CryptoFactory.getInstance();
-    console.log("factory:", !!factory);
-
-    // Test 4: Key generation
-    console.log("🔍 Testing key generation...");
-    const result = await testCryptoOperations();
-    console.log("testCryptoOperations result:", result);
-
-    // Test 5: Preload function
-    console.log("🔍 Testing preload function...");
-    await preloadCryptoModules();
-    console.log("✅ Preload completed");
-
-    console.log("🎉 CRYPTO DEBUG TEST COMPLETED SUCCESSFULLY");
-    return true;
-  } catch (error) {
-    console.error("❌ CRYPTO DEBUG TEST FAILED:", error);
-    return false;
-  }
-};
 
 export function getPreferredCryptoImplementation(): string {
   return "browser";
@@ -959,7 +577,10 @@ export async function generateRandomHex(length: number = 32): Promise<string> {
   crypto.getRandomValues(bytes);
 
   // Convert to hex and truncate to exact requested length
-  return bytesToHex(bytes).substring(0, length);
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hex.substring(0, length);
 }
 
 export async function generateSecureToken(): Promise<string> {

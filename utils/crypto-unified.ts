@@ -1,9 +1,5 @@
-import { secp256k1 } from "@noble/curves/secp256k1";
-import { bytesToHex } from "@noble/curves/utils";
 import * as CryptoJS from "crypto-js";
-
-// Import proper NIP-19 encoding functions from nostr-tools
-import { nip19 } from "nostr-tools";
+import { central_event_publishing_service as CEPS } from "../lib/central_event_publishing_service";
 
 export class CryptoUnified {
   private static instance: CryptoUnified;
@@ -16,18 +12,18 @@ export class CryptoUnified {
   }
 
   async generateNostrKeys(): Promise<{ nsec: string; npub: string }> {
-    const privateKeyBytes = secp256k1.utils.randomPrivateKey();
-    // Force compressed public key generation (33 bytes, starts with 0x02/0x03)
-    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-    const publicKeyHex = bytesToHex(publicKeyBytes);
-
-    // Use proper NIP-19 bech32 encoding
-    // npubEncode expects 64-char hex (without compression prefix), nsecEncode expects Uint8Array
-    const publicKeyWithoutPrefix = publicKeyHex.slice(2); // Remove "02"/"03" compression prefix
-
+    // Generate 32 random bytes using Web Crypto API
+    const sk = new Uint8Array(32);
+    (typeof window !== "undefined" ? window.crypto : crypto).getRandomValues(
+      sk
+    );
+    const skHex = Array.from(sk)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const pubHex = CEPS.getPublicKeyHex(skHex);
     return {
-      nsec: nip19.nsecEncode(privateKeyBytes as any),
-      npub: nip19.npubEncode(publicKeyWithoutPrefix),
+      nsec: CEPS.encodeNsec(sk),
+      npub: CEPS.encodeNpub(pubHex),
     };
   }
 

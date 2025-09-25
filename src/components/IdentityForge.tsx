@@ -38,6 +38,9 @@ import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 
 
+import OTPVerificationPanel from "./OTPVerificationPanel";
+import SovereigntyEducation from "./SovereigntyEducation";
+
 
 interface FormData {
   username: string;
@@ -460,13 +463,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         keyType = 'private';
 
         try {
-
-          // Validate and decode the nsec using central service helpers
-          const privateKeyBytes = CEPS.decodeNsec(cleanedKey);
-          const { schnorr } = await import('@noble/curves/secp256k1');
-          const { bytesToHex } = await import('@noble/curves/utils');
-          const publicKeyBytes = schnorr.getPublicKey(privateKeyBytes);
-          const publicKeyHex = bytesToHex(publicKeyBytes);
+          // Canonical derivation via CEPS using nostr-tools under the hood
+          const publicKeyHex = CEPS.derivePubkeyHexFromNsec(cleanedKey);
           publicKey = publicKeyHex;
           npub = CEPS.encodeNpub(publicKeyHex);
 
@@ -2407,7 +2405,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       npub={formData.pubkey}
                       nip05={`${formData.username}@satnam.pub`}
                       lightningAddress={formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined}
-                      onVerified={({ sessionId, expiresAt }) => {
+                      onVerified={({ sessionId, expiresAt }: { sessionId: string; expiresAt: string }) => {
                         setOtpVerified(true);
                         setOtpSessionId(sessionId);
                         setOtpExpiresAt(expiresAt);

@@ -1071,28 +1071,54 @@ function App() {
           {/* NFC Name Tag provisioning */}
 
           <div className="mt-10 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center shadow-lg">
+            {/* Authentication entrypoint for NFC flow */}
+            <div className="mb-4 flex justify-center">
+              <button
+                onClick={async () => {
+                  try {
+                    setLoadingNfcModal(true);
+                    await import("./components/NTAG424AuthModal");
+                    setNfcModalOpen(true);
+                  } catch (e) {
+                    console.error("Failed to load NFC modal chunk:", e);
+                    showToast.error("Unable to open NFC authentication. Please try again.", { title: "NFC Module Error" });
+                  } finally {
+                    setLoadingNfcModal(false);
+                  }
+                }}
+                aria-disabled={loadingNfcModal}
+                className={
+                  "inline-flex items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 shadow-lg" +
+                  (loadingNfcModal ? " opacity-60 cursor-not-allowed" : "")
+                }
+                title="Register/Signin Your Name Tag"
+              >
+                Register/Signin Your Name Tag
+              </button>
+            </div>
+
             <h3 className="text-2xl font-bold text-white mb-3">'Stamp' Your ID Onto Your NFC Name Tag</h3>
             <p className="text-purple-100 mb-6 max-w-3xl mx-auto">
-              First, sign in or claim your name on Satnam.pub. Then “stamp” your NFC name tag so your ID can be read with a tap. Use Boltcard (Android) or the DnaCommunicator iOS toolkit. Your private keys never leave your device.
+              First, prepare your Name Tag (provision keys + NDEF URL) using the Boltcard Programming App on Android, then authenticate here by tapping to register/sign in. Your private keys never leave your device.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <a
-                href="https://boltcard.com"
+                href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share"
                 target="_blank"
                 rel="noopener noreferrer"
-                data-doc="boltcard-how-to"
+                data-doc="boltcard-playstore"
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
               >
-                <span>Boltcard Programming App (Android)</span>
+                <span>Install Boltcard Programming App (Android)</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
               <a
-                href="https://github.com/ACINQ/DnaCommunicator"
+                href="https://ereignishorizont.xyz/en/boltcard_en/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
               >
-                <span>DnaCommunicator (iOS Toolkit)</span>
+                <span>Boltcard Setup Guide (External)</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
               <a
@@ -1305,23 +1331,14 @@ function App() {
                   </button>
                 ) : null}
                 <button
-                  onClick={async () => {
-                    try {
-                      setLoadingNfcModal(true);
-                      await import("./components/NTAG424AuthModal");
-                      setNfcModalOpen(true);
-                    } catch (e) {
-                      console.error("Failed to load NFC modal chunk:", e);
-                      showToast.error("Unable to load NFC programming. Please try again.", { title: "NFC Module Error" });
-                    } finally {
-                      setLoadingNfcModal(false);
-                    }
-                  }}
-                  aria-disabled={loadingNfcModal}
-                  className={"block text-purple-200 hover:text-yellow-400 transition-colors duration-200" + (loadingNfcModal ? " opacity-60 cursor-not-allowed" : "")}
+                  onClick={() => window.open('/docs/satnam-nfc-provisioning-guide.html', '_blank', 'noopener,noreferrer')}
+                  className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                  title="Prepare Your Name Tag/s"
                 >
-                  <span className="block">Program Physical MFA tags</span>
-                  <span className="block text-xs text-purple-300">Flash/Bolt NTAG424 NFC passports/cards for authentication</span>
+                  <span className="block">Prepare Your Name Tag/s</span>
+                  <span className="block text-xs text-purple-300">
+                    Read setup guide • <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" className="underline">Install Boltcard App</a>
+                  </span>
                 </button>
                 <button
                   onClick={() => handleProtectedRoute("contacts")}

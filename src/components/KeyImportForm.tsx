@@ -31,16 +31,9 @@ export const KeyImportForm: React.FC<KeyImportFormProps> = ({ onImported, onErro
       let isPrivate = false;
 
       if (/^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(raw)) {
-        // nsec -> decode to bytes, derive pubkey, npub
-        const privBytes = CEPS.decodeNsec(raw);
-        const { secp256k1 } = await import('@noble/curves/secp256k1');
-        const { bytesToHex } = await import('@noble/curves/utils');
-        if (!privBytes || privBytes.length !== 32) throw new Error('Invalid private key bytes');
-        const pubBytes = secp256k1.getPublicKey(privBytes, true); // compressed (33 bytes)
-        const pubHexFull = bytesToHex(pubBytes);
-        pubHex = pubHexFull.slice(2); // x-only (32 bytes => 64 hex chars)
-        if (pubHex.length !== 64) throw new Error('Invalid public key derivation');
-        npub = CEPS.encodeNpub(pubHex);
+        // nsec -> canonical derivation via CEPS (nostr-tools under the hood)
+        npub = CEPS.deriveNpubFromNsec(raw);
+        pubHex = CEPS.decodeNpub(npub);
         isPrivate = true;
       } else if (/^npub1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(raw)) {
         // npub -> decode to hex
@@ -51,14 +44,9 @@ export const KeyImportForm: React.FC<KeyImportFormProps> = ({ onImported, onErro
       } else if (/^[0-9a-fA-F]{64}$/.test(raw)) {
         // hex private key (discouraged, but support with warning)
         const privHex = raw.toLowerCase();
-        const { secp256k1 } = await import('@noble/curves/secp256k1');
-        const { hexToBytes, bytesToHex } = await import('@noble/curves/utils');
-        const privBytes = hexToBytes(privHex);
-        if (privBytes.length !== 32) throw new Error('Invalid private key bytes');
-        const pubBytes = secp256k1.getPublicKey(privBytes, true); // compressed
-        const pubHexFull = bytesToHex(pubBytes);
-        pubHex = pubHexFull.slice(2);
-        if (pubHex.length !== 64) throw new Error('Invalid public key derivation');
+        const pubFromHex = CEPS.getPublicKeyHex(privHex);
+        if (!pubFromHex || pubFromHex.length !== 64) throw new Error('Invalid public key derivation');
+        pubHex = pubFromHex;
         npub = CEPS.encodeNpub(pubHex);
         isPrivate = true;
       } else {

@@ -4,7 +4,8 @@
  * with guardian-based recovery mechanisms for family coordination
  */
 
-import { getPublicKey, nip19 } from "../src/lib/nostr-browser";
+import { central_event_publishing_service as CEPS } from "./central_event_publishing_service";
+
 // import { EventSigner } from "./crypto/event-signer"; // Temporarily disabled
 import createDatabase from "./db";
 import { FederationManager } from "./fedimint/federation-manager";
@@ -94,11 +95,7 @@ export class FamilyNostrProtection {
       let privateKeyBytes: Uint8Array;
       try {
         if (nsec.startsWith("nsec")) {
-          const decoded = nip19.decode(nsec);
-          if (decoded.type !== "nsec") {
-            throw new Error("Invalid nsec format");
-          }
-          privateKeyBytes = decoded.data as any;
+          privateKeyBytes = CEPS.decodeNsec(nsec);
         } else {
           privateKeyBytes = new Uint8Array(Buffer.from(nsec, "hex"));
         }
@@ -260,9 +257,13 @@ export class FamilyNostrProtection {
         };
       }
 
-      // Convert to nsec format
-      const nsec = nip19.nsecEncode(reconstructedSecret as any);
-      const publicKey = (getPublicKey as any)(reconstructedSecret as any);
+      // Convert to nsec format and derive public key using CEPS helpers
+      const nsec = CEPS.encodeNsec(reconstructedSecret as Uint8Array);
+      const publicKey = CEPS.getPublicKeyHex(
+        Array.from(reconstructedSecret as Uint8Array)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+      );
 
       return {
         success: true,
