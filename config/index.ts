@@ -874,21 +874,6 @@ export function getBitcoinDeploymentInfo(): {
 }
 
 /**
- * MIGRATION COMPATIBILITY: Legacy property access
- * @deprecated Use config.environment instead of config.nodeEnv
- */
-Object.defineProperty(serverConfig, "nodeEnv", {
-  get() {
-    console.warn(
-      "DEPRECATION WARNING: serverConfig.nodeEnv is deprecated. Use serverConfig.environment instead."
-    );
-    return this.environment;
-  },
-  enumerable: false,
-  configurable: false,
-});
-
-/**
  * Pubky configuration
  */
 export const pubkyConfig: PubkyConfig = {
@@ -1182,6 +1167,23 @@ export const server = new Proxy({} as ServerConfig, {
 export const api = apiConfig;
 export const app = { baseUrl: "https://satnam.pub" };
 export { nostrConfig as nostr, redisConfig as redis };
+
+// MIGRATION COMPATIBILITY: Legacy property access
+// @deprecated Use server.environment instead of server.nodeEnv
+try {
+  Object.defineProperty(server as any, "nodeEnv", {
+    get() {
+      console.warn(
+        "DEPRECATION WARNING: server.nodeEnv is deprecated. Use server.environment instead."
+      );
+      return (getServerConfig() as any).environment;
+    },
+    enumerable: false,
+    configurable: false,
+  });
+} catch {
+  // Ignore if defineProperty fails in unusual environments
+}
 
 // Default export for compatibility
 export default config;
