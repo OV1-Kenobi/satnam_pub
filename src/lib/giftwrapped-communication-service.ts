@@ -1,4 +1,4 @@
-import { nostrConfig } from "../../config/index";
+import { config } from "../../config.js";
 
 export interface GiftwrappedMessageConfig {
   content: string;
@@ -36,7 +36,7 @@ export class GiftwrappedCommunicationService {
   private relays: string[];
 
   constructor() {
-    const configured = (nostrConfig?.relays || []).filter(
+    const configured = (config?.nostr?.relays || []).filter(
       (r) => typeof r === "string" && r.startsWith("wss://")
     );
     this.relays =

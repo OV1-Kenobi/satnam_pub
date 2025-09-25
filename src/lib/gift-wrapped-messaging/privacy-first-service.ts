@@ -5,7 +5,7 @@
  * Integrates with the PrivateCommunicationModal for seamless messaging experience.
  */
 
-import { nostrConfig } from "../../../config/index";
+import { config } from "../../../config.js";
 export interface PrivacyConsentResponse {
   consentGiven: boolean;
   warningAcknowledged: boolean;
@@ -102,7 +102,7 @@ export interface ContactData {
 
 export const MESSAGING_CONFIG: MessagingConfig = {
   relays: (() => {
-    const list = (nostrConfig?.relays || []).filter(
+    const list = (config?.nostr?.relays || []).filter(
       (r) => typeof r === "string" && r.startsWith("wss://")
     );
     return list.length > 0

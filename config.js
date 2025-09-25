@@ -84,6 +84,16 @@ export const config = {
   },
 };
 
+// Browser-safe NFC configuration
+export const nfcConfig = {
+  enabled: getEnvVar("VITE_ENABLE_NFC_MFA", "false") === "true",
+  pinTimeoutMs: parseInt(getEnvVar("VITE_NFC_PIN_TIMEOUT", "120000")),
+  confirmationMode: getEnvVar("VITE_NFC_CONFIRMATION_MODE", "per_unlock"),
+  defaultProgramUrl:
+    getEnvVar("VITE_NFC_DEFAULT_PROGRAM_URL", "https://www.satnam.pub/id/profile.json"),
+};
+
+
 // Legacy export for compatibility
 export const authConfig = {
   relayUrl: config.nostr.relays[0] || "wss://relay.damus.io",

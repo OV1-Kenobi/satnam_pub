@@ -26,8 +26,8 @@ import {
   Zap
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
-import { config } from "../../config";
-import { nfcConfig } from "../../config/index";
+import { config, nfcConfig } from "../../config.js";
+
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
 import { FederationRole } from '../types/auth';
 import { useAuth } from "./auth/AuthProvider";
