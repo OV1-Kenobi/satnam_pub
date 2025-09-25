@@ -28,21 +28,7 @@ export default async function attestContact(req, res) {
   if (req.method !== "POST") { res.status(405).json({ success: false, error: "Method not allowed" }); return; }
 
   const authHeader = req.headers?.authorization || req.headers?.Authorization || "";
-let supabaseMod;
-let SecureSessionManager;
-
-async function getSecureSessionManager() {
-  if (!SecureSessionManager) {
-    const sec = await import("../../netlify/functions_active/security/session-manager.js");
-    SecureSessionManager = sec.SecureSessionManager;
-  }
-  return SecureSessionManager;
-}
-
-// In the handler:
-const authHeader = req.headers?.authorization || req.headers?.Authorization || "";
-const SessionManager = await getSecureSessionManager();
-const session = await SessionManager.validateSessionFromHeader(String(authHeader));
+  if (!SecureSessionManager) { const sec = await import("../../netlify/functions_active/security/session-manager.js"); SecureSessionManager = sec.SecureSessionManager; }
   const session = await SecureSessionManager.validateSessionFromHeader(String(authHeader));
   if (!session || !session.hashedId) { res.status(401).json({ success: false, error: "Unauthorized" }); return; }
 

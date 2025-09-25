@@ -271,81 +271,83 @@ function parseDatabaseUrl(url?: string) {
   }
 }
 
-// Validate critical environment variables
-const envSchema = z.object({
-  JWT_SECRET: z.string().min(32).optional(),
-  DATABASE_URL: z.string().url().optional(),
-  REDIS_URL: z.string().url().optional(),
-  NODE_ENV: z.enum(["development", "production", "test"]).optional(),
-  API_BASE_URL: z.string().url().optional(),
-  JWT_EXPIRES_IN: z.string().optional(),
-  NOSTR_AUTH_CHALLENGE: z.string().optional(),
-  DATABASE_SSL: z.coerce.boolean().optional(),
-  PORT: z.coerce.number().int().positive().optional(),
-  NOSTR_RELAY_URL: z.string().url().optional(),
-  NOSTR_PRIVATE_KEY: z.string().optional(),
-  LIGHTNING_NODE_URL: z.string().url().optional(),
-  LIGHTNING_MACAROON: z.string().optional(),
-  LIGHTNING_CERT_PATH: z.string().optional(),
-  VOLTAGE_LNBITS_URL: z.string().url().optional(),
-  VITE_VOLTAGE_LNBITS_URL: z.string().url().optional(),
-  VOLTAGE_LNBITS_ADMIN_KEY: z.string().optional(),
-  VITE_VOLTAGE_LNBITS_ADMIN_KEY: z.string().optional(),
-  PHOENIXD_NODE_URL: z.string().url().optional(),
-  PHOENIXD_MACAROON: z.string().optional(),
-  BREEZ_NODE_CONFIG: z.string().optional(),
-  NWC_CONNECTION_STRINGS: z.string().optional(),
-  NIP05_DOMAIN: z.string().optional(),
-  FAMILY_DOMAIN: z.string().optional(),
-  FAMILY_USERNAME_MAX_LENGTH: z.coerce.number().int().positive().optional(),
+// Validate critical environment variables (lazy construction to avoid TDZ/cycle issues in browser builds)
+function getEnvSchema() {
+  return z.object({
+    JWT_SECRET: z.string().min(32).optional(),
+    DATABASE_URL: z.string().url().optional(),
+    REDIS_URL: z.string().url().optional(),
+    NODE_ENV: z.enum(["development", "production", "test"]).optional(),
+    API_BASE_URL: z.string().url().optional(),
+    JWT_EXPIRES_IN: z.string().optional(),
+    NOSTR_AUTH_CHALLENGE: z.string().optional(),
+    DATABASE_SSL: z.coerce.boolean().optional(),
+    PORT: z.coerce.number().int().positive().optional(),
+    NOSTR_RELAY_URL: z.string().url().optional(),
+    NOSTR_PRIVATE_KEY: z.string().optional(),
+    LIGHTNING_NODE_URL: z.string().url().optional(),
+    LIGHTNING_MACAROON: z.string().optional(),
+    LIGHTNING_CERT_PATH: z.string().optional(),
+    VOLTAGE_LNBITS_URL: z.string().url().optional(),
+    VITE_VOLTAGE_LNBITS_URL: z.string().url().optional(),
+    VOLTAGE_LNBITS_ADMIN_KEY: z.string().optional(),
+    VITE_VOLTAGE_LNBITS_ADMIN_KEY: z.string().optional(),
+    PHOENIXD_NODE_URL: z.string().url().optional(),
+    PHOENIXD_MACAROON: z.string().optional(),
+    BREEZ_NODE_CONFIG: z.string().optional(),
+    NWC_CONNECTION_STRINGS: z.string().optional(),
+    NIP05_DOMAIN: z.string().optional(),
+    FAMILY_DOMAIN: z.string().optional(),
+    FAMILY_USERNAME_MAX_LENGTH: z.coerce.number().int().positive().optional(),
 
-  // supabase
-  SUPABASE_URL: z.string().url().optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-  SUPABASE_ANON_KEY: z.string().optional(),
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
+    // supabase
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+    SUPABASE_ANON_KEY: z.string().optional(),
+    NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
 
-  // bitcoin security
-  PRIVACY_MASTER_KEY: z.string().min(32).optional(),
-  BITCOIN_RPC_USER: z.string().optional(),
-  BITCOIN_RPC_PASSWORD: z.string().min(16).optional(),
-  BITCOIN_RPC_HOST: z.string().optional(),
-  BITCOIN_RPC_PORT: z.coerce.number().int().positive().optional(),
+    // bitcoin security
+    PRIVACY_MASTER_KEY: z.string().min(32).optional(),
+    BITCOIN_RPC_USER: z.string().optional(),
+    BITCOIN_RPC_PASSWORD: z.string().min(16).optional(),
+    BITCOIN_RPC_HOST: z.string().optional(),
+    BITCOIN_RPC_PORT: z.coerce.number().int().positive().optional(),
 
-  // database individual variables
-  DB_HOST: z.string().optional(),
-  DB_PORT: z.coerce.number().int().positive().optional(),
-  DB_NAME: z.string().optional(),
-  DB_USER: z.string().optional(),
-  DB_PASSWORD: z.string().optional(),
-  DB_SSL: z.coerce.boolean().optional(),
+    // database individual variables
+    DB_HOST: z.string().optional(),
+    DB_PORT: z.coerce.number().int().positive().optional(),
+    DB_NAME: z.string().optional(),
+    DB_USER: z.string().optional(),
+    DB_PASSWORD: z.string().optional(),
+    DB_SSL: z.coerce.boolean().optional(),
 
-  // feature flags
-  ENABLE_SSS: z.coerce.boolean().optional(),
-  ENABLE_PRIVACY_MODE: z.coerce.boolean().optional(),
-  ENABLE_FEDERATED_SIGNING: z.coerce.boolean().optional(),
-  ENABLE_GUARDIAN_NOTIFICATIONS: z.coerce.boolean().optional(),
+    // feature flags
+    ENABLE_SSS: z.coerce.boolean().optional(),
+    ENABLE_PRIVACY_MODE: z.coerce.boolean().optional(),
+    ENABLE_FEDERATED_SIGNING: z.coerce.boolean().optional(),
+    ENABLE_GUARDIAN_NOTIFICATIONS: z.coerce.boolean().optional(),
 
-  // development flags
-  DEBUG_LOGGING: z.coerce.boolean().optional(),
-  SQL_LOGGING: z.coerce.boolean().optional(),
-  PRIVACY_AUDIT: z.coerce.boolean().optional(),
+    // development flags
+    DEBUG_LOGGING: z.coerce.boolean().optional(),
+    SQL_LOGGING: z.coerce.boolean().optional(),
+    PRIVACY_AUDIT: z.coerce.boolean().optional(),
 
-  // server configuration
-  HOST: z.string().optional(),
-  SALT_ROUNDS: z.coerce.number().int().positive().optional(),
+    // server configuration
+    HOST: z.string().optional(),
+    SALT_ROUNDS: z.coerce.number().int().positive().optional(),
 
-  // pubky / pkarr
-  PUBKY_HOMESERVER_URL: z.string().url().optional(),
-  PUBKY_PKARR_RELAYS: z.string().optional(),
-  PUBKY_ENABLE_MIGRATION: z.coerce.boolean().optional(),
-  PUBKY_SOVEREIGNTY_TRACKING: z.coerce.boolean().optional(),
-  PKARR_RELAY_TIMEOUT: z.coerce.number().int().nonnegative().optional(),
-  PKARR_RECORD_TTL: z.coerce.number().int().nonnegative().optional(),
-  PKARR_BACKUP_RELAYS: z.coerce.number().int().nonnegative().optional(),
-  PKARR_PUBLISH_RETRIES: z.coerce.number().int().nonnegative().optional(),
-});
+    // pubky / pkarr
+    PUBKY_HOMESERVER_URL: z.string().url().optional(),
+    PUBKY_PKARR_RELAYS: z.string().optional(),
+    PUBKY_ENABLE_MIGRATION: z.coerce.boolean().optional(),
+    PUBKY_SOVEREIGNTY_TRACKING: z.coerce.boolean().optional(),
+    PKARR_RELAY_TIMEOUT: z.coerce.number().int().nonnegative().optional(),
+    PKARR_RECORD_TTL: z.coerce.number().int().nonnegative().optional(),
+    PKARR_BACKUP_RELAYS: z.coerce.number().int().nonnegative().optional(),
+    PKARR_PUBLISH_RETRIES: z.coerce.number().int().nonnegative().optional(),
+  });
+}
 
 /**
  * CRITICAL SECURITY: Dynamic environment object creation for Master Context compliance
@@ -419,8 +421,10 @@ function createDynamicEnvironmentObject() {
  * Validates environment variables for Bitcoin security requirements
  */
 function validateEnvironmentForBitcoinBanking(): void {
+  // Skip server-side env validation in browser builds to avoid bundling/time-of-eval issues
+  if (typeof window !== "undefined") return;
   const dynamicEnv = createDynamicEnvironmentObject();
-  const envValidation = envSchema.safeParse(dynamicEnv);
+  const envValidation = getEnvSchema().safeParse(dynamicEnv);
 
   if (!envValidation.success) {
     const errors = envValidation.error.format();
@@ -732,15 +736,18 @@ let cachedConfig: ServerConfig | null = null;
 let validationCached: boolean = false;
 
 export function getServerConfig(): ServerConfig {
+  // Server-only guard
+  if (typeof window !== "undefined") {
+    throw new Error(
+      "getServerConfig() is server-only and must not be called in browser builds"
+    );
+  }
   if (!cachedConfig) {
     cachedConfig = createServerConfig();
     validationCached = true;
   }
   return cachedConfig;
 }
-
-// Maintain backward compatibility
-export const serverConfig: ServerConfig = getServerConfig();
 
 // Testing utilities
 export function resetServerConfig(): void {
@@ -1109,30 +1116,55 @@ export const featureFlags = {
   enableEducationPlatform: true,
 };
 
-// Export a unified config object for convenience
-export const config = {
-  api: apiConfig,
-  auth: authConfig,
-  database: dbConfig,
-  redis: redisConfig,
-  nostr: nostrConfig,
-  lightning: lightningConfig,
-  nip05: nip05Config,
-  family: familyConfig,
-  nfc: nfcConfig,
-  server: serverConfig,
-  pubky: pubkyConfig,
-  pkarr: pkarrConfig,
-  supabase: supabaseConfig,
-  features: features,
-  development: dev,
-  privacy: privacy,
+// Export a unified config object for convenience (lazy getters; no top-level evaluation)
+const __config: any = {};
+Object.defineProperties(__config, {
+  api: { get: () => apiConfig, enumerable: true },
+  auth: { get: () => authConfig, enumerable: true },
+  database: { get: () => dbConfig, enumerable: true },
+  redis: { get: () => redisConfig, enumerable: true },
+  nostr: { get: () => nostrConfig, enumerable: true },
+  lightning: { get: () => lightningConfig, enumerable: true },
+  nip05: { get: () => nip05Config, enumerable: true },
+  family: { get: () => familyConfig, enumerable: true },
+  nfc: { get: () => nfcConfig, enumerable: true },
+  server: { get: () => getServerConfig(), enumerable: true },
+  pubky: { get: () => pubkyConfig, enumerable: true },
+  pkarr: { get: () => pkarrConfig, enumerable: true },
+  supabase: { get: () => supabaseConfig, enumerable: true },
+  features: { get: () => features, enumerable: true },
+  development: { get: () => dev, enumerable: true },
+  privacy: { get: () => privacy, enumerable: true },
+});
+export const config = __config as {
+  api: typeof apiConfig;
+  auth: typeof authConfig;
+  database: typeof dbConfig;
+  redis: typeof redisConfig;
+  nostr: typeof nostrConfig;
+  lightning: typeof lightningConfig;
+  nip05: typeof nip05Config;
+  family: typeof familyConfig;
+  nfc: typeof nfcConfig;
+  server: ServerConfig;
+  pubky: typeof pubkyConfig;
+  pkarr: typeof pkarrConfig;
+  supabase: typeof supabaseConfig;
+  features: typeof features;
+  development: typeof dev;
+  privacy: typeof privacy;
 };
 
-// Backward compatibility exports for config.ts migration
+// Backward compatibility exports for config.ts migration (lazy)
 export const db = dbConfig;
 export const supabase = supabaseConfig;
-export const server = serverConfig;
+export const server = new Proxy({} as ServerConfig, {
+  get: (_t, p) => (getServerConfig() as any)[p as any],
+  has: (_t, p) => p in (getServerConfig() as any),
+  ownKeys: () => Reflect.ownKeys(getServerConfig() as any),
+  getOwnPropertyDescriptor: (_t, p) =>
+    Object.getOwnPropertyDescriptor(getServerConfig() as any, p),
+}) as unknown as ServerConfig;
 export const api = apiConfig;
 export const app = { baseUrl: "https://satnam.pub" };
 export { nostrConfig as nostr, redisConfig as redis };
