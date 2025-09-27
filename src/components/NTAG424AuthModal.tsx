@@ -26,13 +26,16 @@ import {
   Zap
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
-import { config, nfcConfig } from "../../config.js";
-
+import { config } from "../../config";
+import { nfcConfig } from "../../config/index";
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
 import { FederationRole } from '../types/auth';
 import { useAuth } from "./auth/AuthProvider";
 
 import { showToast } from "../services/toastService";
+
+import { isLightningAddressReachable, parseLightningAddress, toLnurlpUrl } from "../utils/lightning-address";
+
 
 
 interface NTAG424AuthModalProps {
@@ -63,6 +66,13 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
   const [userNpub, setUserNpub] = useState("");
   const [familyRole, setFamilyRole] = useState<FederationRole>("offspring");
   const [showPin, setShowPin] = useState(false);
+  // Optional custom Lightning Address for NFC programming
+  const [useCustomLightningAddress, setUseCustomLightningAddress] = useState(false);
+  const [customLightningAddress, setCustomLightningAddress] = useState("");
+  const [customAddrValid, setCustomAddrValid] = useState<boolean | null>(null);
+  const [customAddrReachable, setCustomAddrReachable] = useState<boolean | null>(null);
+  const [checkingCustomAddr, setCheckingCustomAddr] = useState(false);
+
   const [currentStep, setCurrentStep] = useState<AuthStep>('input');
 
 
@@ -353,6 +363,29 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                   </p>
                 </div>
 
+                {/* Custom Lightning Address programming (optional) */}
+                <div className="mt-4 space-y-2">
+                  <label className="inline-flex items-center gap-2 text-sm text-purple-200">
+                    <input
+                      type="checkbox"
+                      checked={useCustomLightningAddress}
+                      onChange={(e) => setUseCustomLightningAddress(e.target.checked)}
+                    />
+                    <span>Use Custom Lightning Address</span>
+                  </label>
+                  {useCustomLightningAddress && (
+                    <div className="relative">
+                      <input
+                        value={customLightningAddress}
+                        onChange={(e) => setCustomLightningAddress(e.target.value)}
+                        placeholder="alice@example.com"
+                        className="w-full bg-purple-800 border border-purple-600 rounded-lg px-4 py-3 text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                      />
+                      <p className="text-xs text-purple-300 mt-1">Format: local@domain.tld</p>
+                    </div>
+                  )}
+                </div>
+
                 {/* Registration fields (only show if mode allows registration) */}
                 {(mode === 'registration' || mode === 'both') && operationType === 'register' && (
                   <>
@@ -443,19 +476,45 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                                 showToast.error('Invalid PIN format', { title: 'NFC' });
                                 return;
                               }
-                              // URL selection via centralized config; validate format and scheme
-                              const url = nfcConfig.defaultProgramUrl;
-                              try {
-                                const parsed = new URL(url);
-                                if (parsed.protocol !== 'https:') {
-                                  showToast.error('Invalid URL: must use https', { title: 'NFC' });
+                              // Determine URL: custom Lightning Address (optional) or default
+                              let url: string;
+                              if (useCustomLightningAddress) {
+                                const input = customLightningAddress.trim();
+                                if (!input) {
+                                  showToast.error('Enter a Lightning Address', { title: 'NFC' });
                                   return;
                                 }
-                              } catch {
-                                showToast.error('Invalid URL format', { title: 'NFC' });
-                                return;
+                                const parsedLA = parseLightningAddress(input);
+                                if (!parsedLA) {
+                                  showToast.error('Invalid Lightning Address format (local@domain)', { title: 'NFC' });
+                                  return;
+                                }
+                                showToast.info('Validating Lightning Address …', { title: 'NFC' });
+                                const reachable = await isLightningAddressReachable(input);
+                                if (!reachable) {
+                                  showToast.error('Lightning Address unreachable for NFC programming', { title: 'NFC' });
+                                  return;
+                                }
+                                const lnurl = toLnurlpUrl(input);
+                                if (!lnurl) {
+                                  showToast.error('Could not derive LNURL-pay URL from address', { title: 'NFC' });
+                                  return;
+                                }
+                                url = lnurl;
+                              } else {
+                                url = nfcConfig.defaultProgramUrl;
+                                try {
+                                  const parsed = new URL(url);
+                                  if (parsed.protocol !== 'https:') {
+                                    showToast.error('Invalid URL: must use https', { title: 'NFC' });
+                                    return;
+                                  }
+                                } catch {
+                                  showToast.error('Invalid URL format', { title: 'NFC' });
+                                  return;
+                                }
                               }
-                              showToast.info('Programming ...', { title: 'NFC' });
+                              showToast.info('Programming …', { title: 'NFC' });
                               await programTag({ url, pin: pin.trim(), enableSDM: true });
                               showToast.success('Program intent recorded', { title: 'NFC' });
                             } catch (e: any) {
@@ -742,7 +801,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 };
 

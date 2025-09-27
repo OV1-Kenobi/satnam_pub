@@ -34,6 +34,7 @@
     "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
     "@cmdcode/frost": "^1.1.3",
+    "@getalby/lightning-tools": "^6.0.0",
     "@netlify/functions": "^4.1.9",
     "@noble/ciphers": "^1.3.0",
     "@noble/curves": "^2.0.0",

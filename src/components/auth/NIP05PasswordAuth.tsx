@@ -24,6 +24,10 @@ import { recoverySessionBridge } from '../../lib/auth/recovery-session-bridge';
 import type { UserIdentity } from '../../lib/auth/user-identities-auth';
 import { useAuth } from './AuthProvider';
 
+import { config } from "../../../config";
+
+
+
 interface NIP05PasswordAuthProps {
   isOpen: boolean;
   onClose: () => void;
@@ -106,7 +110,7 @@ export function NIP05PasswordAuth({
     }
 
     const [, domain] = nip05.split('@');
-    const whitelistedDomains = ['satnam.pub', 'citadel.academy'];
+    const whitelistedDomains = config.nip05.allowedDomains;
 
     if (!whitelistedDomains.includes(domain)) {
       return { valid: false, error: 'Domain not whitelisted. Use satnam.pub or citadel.academy' };

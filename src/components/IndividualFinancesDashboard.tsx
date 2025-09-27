@@ -58,11 +58,15 @@ import NotificationsTab from './NotificationsTab';
 import PaymentAutomationModal from './PaymentAutomationModal';
 import SimplePaymentModal from './SimplePaymentModal';
 
+
 // Import Privacy Components
 import { PrivacyLevel } from '../types/privacy';
 
 import PrivacyEnhancedPaymentModal from './enhanced/PrivacyEnhancedPaymentModal';
 import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
+
+import LNBitsIntegrationPanel from './LNBitsIntegrationPanel';
+
 
 // Import API service
 
@@ -1639,7 +1643,7 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
 export function IndividualFinancesDashboard({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
   const [wallet, setWallet] = useState<EnhancedIndividualWallet | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'privacy' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'lnbits' | 'privacy' | 'notifications'>('overview');
   const [notificationStats, setNotificationStats] = useState({ unread: 0, total: 0 });
   const [showCascadeModal, setShowCascadeModal] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
@@ -1649,6 +1653,10 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   const [showNWCSetup, setShowNWCSetup] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
+
+  // Feature flags
+  const lnbitsEnabled = (import.meta.env.VITE_LNBITS_INTEGRATION_ENABLED || '').toString().toLowerCase() === 'true';
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   // Privacy-related state
@@ -1658,7 +1666,9 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
   // Auth context
-  const { user, userRole, familyId } = useAuth();
+  const { user } = useAuth();
+  const derivedUserRole = (user && 'federationRole' in (user as any) ? (user as any).federationRole : (user as any)?.role) || 'private';
+  const derivedFamilyId = (user && 'familyId' in (user as any) ? (user as any).familyId : undefined);
 
   // Enhanced user validation with proper null safety
   useEffect(() => {
@@ -2014,6 +2024,7 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
             { key: 'overview', label: 'Overview', color: 'gray' },
             { key: 'lightning', label: 'Lightning & Zaps', color: 'orange' },
             { key: 'cashu', label: 'Cashu & Bearer Notes', color: 'blue' },
+            ...(lnbitsEnabled ? [{ key: 'lnbits', label: 'LNbits', color: 'yellow' }] : []),
             { key: 'privacy', label: 'Privacy Controls', color: 'purple' },
             {
               key: 'notifications',
@@ -2037,6 +2048,8 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
       </div>
 
       {/* Enhanced Tab Content */}
+      {lnbitsEnabled && activeTab === 'lnbits' && <LNBitsIntegrationPanel />}
+
       {activeTab === 'overview' && (
         <EnhancedOverviewTab
           wallet={wallet}
@@ -2064,10 +2077,10 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         <EmergencyRecoveryModal
           isOpen={showRecoveryModal}
           onClose={handleCloseRecoveryModal}
-          userRole={(userRole as FederationRole) || 'private'} // Default to 'private' per Master Context
+          userRole={(derivedUserRole as FederationRole) || 'private'} // Default to 'private' per Master Context
           userId={user?.hashedUUID?.slice(0, 16) || 'anon'} // Use encrypted UUID, never expose raw IDs
           userNpub={''} // Never expose npub per Master Context zero-knowledge protocols
-          familyId={familyId || undefined} // Handle null properly
+          familyId={derivedFamilyId || undefined} // Handle null properly
         />
       )}
 
@@ -2156,7 +2169,9 @@ export function CrossMintIndividualDashboard({ memberId, memberData }: Individua
   const [showNWCSetup, setShowNWCSetup] = useState(false);
 
   // Auth context
-  const { user, userRole, familyId } = useAuth();
+  const { user } = useAuth();
+  const derivedUserRole = (user && 'federationRole' in (user as any) ? (user as any).federationRole : (user as any)?.role) || 'private';
+  const derivedFamilyId = (user && 'familyId' in (user as any) ? (user as any).familyId : undefined);
 
   // Create individual member for PaymentModal (representing self)
   const individualMember = wallet ? [{

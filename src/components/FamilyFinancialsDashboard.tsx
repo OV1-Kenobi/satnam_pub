@@ -33,6 +33,8 @@ import PaymentAutomationModal from './PaymentAutomationModal';
 import { PaymentModal } from './shared';
 import UnifiedFamilyPayments from './UnifiedFamilyPayments';
 
+import LNBitsIntegrationPanel from './LNBitsIntegrationPanel';
+
 // Import Credits Balance
 import { CreditsBalance } from './CreditsBalance';
 
@@ -280,7 +282,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   onBack
 }) => {
   // NWC Wallet Integration Hooks
-  const { userRole, user } = useAuth();
+  const { user } = useAuth();
   const userDuid = user?.hashedUUID || user?.id;
 
   // Enhanced user validation with proper null safety
@@ -322,7 +324,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   } = useNWCWallet();
 
   // State management - using privacy-first federation data
-  const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd'>('overview');
+  const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd' | 'lnbits'>('overview');
   const [familyName] = useState(familyFederationData?.federationName || "Family Federation");
   const [familyFederationId] = useState(familyFederationData?.id);
   // federationDuid available but not currently used
@@ -358,6 +360,9 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   // NWC Integration Modal States
   const [showNWCSetup, setShowNWCSetup] = useState(false);
   const [showSovereigntyEducation, setShowSovereigntyEducation] = useState(false);
+
+  // Feature flags
+  const lnbitsEnabled = (import.meta.env.VITE_LNBITS_INTEGRATION_ENABLED || '').toString().toLowerCase() === 'true';
 
   // Enhanced treasury state - now loaded from family wallet APIs
   const [familyWalletData, setFamilyWalletData] = useState<{
@@ -793,6 +798,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     { id: 'fedimint', label: 'Fedimint', icon: Shield },
     { id: 'payments', label: 'Payments', icon: Activity },
     { id: 'phoenixd', label: 'PhoenixD', icon: Globe },
+    ...(lnbitsEnabled ? [{ id: 'lnbits', label: 'LNbits', icon: Zap }] : []),
   ];
 
   const renderOverview = () => (
@@ -1030,6 +1036,11 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
         return <UnifiedFamilyPayments familyId={familyFederationId || ''} familyMembers={familyMembers} />;
       case 'phoenixd':
         return <EnhancedLiquidityDashboard familyId={familyFederationId || ''} />;
+      case 'lnbits':
+        if (!lnbitsEnabled) {
+          return renderOverview();
+        }
+        return <LNBitsIntegrationPanel />;
       default:
         return renderOverview();
     }
@@ -1347,7 +1358,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
       {/* Educational Dashboard Modal */}
       {showEducationalDashboard && (
         <EducationalDashboard
-          userPubkey={user?.npub || 'demo_family_admin'}
+          userPubkey={(user && 'npub' in (user as any) ? (user as any).npub : undefined) || 'demo_family_admin'}
           familyId={familyFederationId || 'demo_family_id'}
           onClose={() => setShowEducationalDashboard(false)}
         />

@@ -23,6 +23,9 @@ import IndividualFinancesDashboard from "./components/IndividualFinancesDashboar
 import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
+
+import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
+
 import { useAuth } from "./components/auth/AuthProvider";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
 import IdentityForgeGuard from "./components/auth/IdentityForgeGuard";
@@ -30,10 +33,12 @@ import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMes
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
+
 import SecureTokenManager from "./lib/auth/secure-token-manager";
 import { validateInvitation } from "./lib/invitation-validator";
 
 import { showToast } from "./services/toastService";
+
 
 
 const NTAG424AuthModal = lazy(() => import("./components/NTAG424AuthModal"));
@@ -67,6 +72,7 @@ function App() {
     | "individual-payment-automation"
     | "contacts"
     | "ln-node-management"
+    | "lnbits-setup"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
@@ -585,7 +591,38 @@ function App() {
         />
       </PageWrapper>
     );
+
+
   }
+
+  if (currentView === "lnbits-setup") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <button
+            onClick={() => setCurrentView("landing")}
+            className="inline-flex items-center text-purple-200 hover:text-white underline"
+            aria-label="Back to Home"
+          >
+            Back
+          </button>
+          <h1 className="text-3xl font-bold text-white mt-2">LNbits Setup</h1>
+          <p className="text-purple-100 mb-6">Create your wallet and optional Lightning Address. This information will be used in Step 3 when you program your Name Tag.</p>
+          <LNBitsIntegrationPanel />
+        </div>
+      </PageWrapper>
+    );
+  }
+
 
   if (currentView === "ln-node-management") {
     return (
@@ -1071,87 +1108,138 @@ function App() {
           {/* NFC Name Tag provisioning */}
 
           <div className="mt-10 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center shadow-lg">
-            {/* Authentication entrypoint for NFC flow */}
-            <div className="mb-4 flex justify-center">
-              <button
-                onClick={async () => {
-                  try {
-                    setLoadingNfcModal(true);
-                    await import("./components/NTAG424AuthModal");
-                    setNfcModalOpen(true);
-                  } catch (e) {
-                    console.error("Failed to load NFC modal chunk:", e);
-                    showToast.error("Unable to open NFC authentication. Please try again.", { title: "NFC Module Error" });
-                  } finally {
-                    setLoadingNfcModal(false);
-                  }
-                }}
-                aria-disabled={loadingNfcModal}
-                className={
-                  "inline-flex items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 shadow-lg" +
-                  (loadingNfcModal ? " opacity-60 cursor-not-allowed" : "")
-                }
-                title="Register/Signin Your Name Tag"
-              >
-                Register/Signin Your Name Tag
-              </button>
-            </div>
 
-            <h3 className="text-2xl font-bold text-white mb-3">'Stamp' Your ID Onto Your NFC Name Tag</h3>
+
+            <h3 className="text-2xl font-bold text-white mb-3">Set up your NFC Name Tag: Start your ID Credentialing Quest</h3>
             <p className="text-purple-100 mb-6 max-w-3xl mx-auto">
-              First, prepare your Name Tag (provision keys + NDEF URL) using the Boltcard Programming App on Android, then authenticate here by tapping to register/sign in. Your private keys never leave your device.
+              Follow five simple steps to prepare your physical Name Tag, establish your personal Source of Truth Architecture,
+              and finish with Stamping (registering your credentials onto the tag). Simple, private, and in your control.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <ol className="text-left max-w-3xl mx-auto text-purple-100 list-decimal list-inside space-y-2">
+              <li>
+                <strong>Step 1 — Claim Your True Name:</strong> Choose one:
+                <button
+                  onClick={() => setCurrentView("forge")}
+                  className="ml-2 inline-flex items-center bg-purple-700 hover:bg-purple-800 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
+                  title="I'm new: Create a sovereign identity (npub/NIP-05)"
+                >I'm New: Open Identity Forge</button>
+                <button
+                  onClick={() => setSignInModalOpen(true)}
+                  className="ml-2 inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
+                  title="I'm returning: Sign in to your Satnam account"
+                >I'm Returning: Sign In</button>
+                <div className="mt-1 text-purple-200/90 text-xs">Identity created in this step will label your wallet and Name Tag in later steps.</div>
+              </li>
+              <li>
+                <strong>Step 2 — Wallet Creation:</strong> Create your LNbits wallet and (optionally) set up a Lightning Address. You’ll use this wallet info in Step 3 when programming your tag.
+                <button
+                  onClick={() => setCurrentView("lnbits-setup")}
+                  className="ml-2 inline-flex items-center bg-orange-500 hover:bg-orange-600 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
+                  title="Open LNbits setup directly"
+                >Open LNbits Setup</button>
+              </li>
+              <li>
+                <strong>Step 3 — Tool Acquisition:</strong> Install the Boltcard programming app on your phone (links below). In the app, you’ll enter the wallet details you created in Step 2.
+              </li>
+              <li>
+                <strong>Step 4 — Stamp Your ID onto Your NFC Name Tag:</strong> Use the programming app to provision your tag with your True Name (identity) and wallet data. Then return here and tap your Name Tag to register/authenticate — establishing secured Networks of Trusted Peers for communications and payments.
+              </li>
+              <li>
+                <strong>Step 5 — Register Your True Name Tag:</strong> Once your tag is programmed, register it to your Satnam account to enable physical multi-factor authentication of peers, messages, and payments.
+                <div className="mt-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        setLoadingNfcModal(true);
+                        await import("./components/NTAG424AuthModal");
+                        setNfcModalOpen(true);
+                      } catch (e) {
+                        console.error("Failed to load NFC modal chunk:", e);
+                        showToast.error("Unable to open NFC authentication. Please try again.", { title: "NFC Module Error" });
+                      } finally {
+                        setLoadingNfcModal(false);
+                      }
+                    }}
+                    aria-disabled={loadingNfcModal}
+                    className={
+                      "inline-flex items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 px-5 rounded-lg transition-all duration-300 shadow" +
+                      (loadingNfcModal ? " opacity-60 cursor-not-allowed" : "")
+                    }
+                    title="Register Your True Name Tag"
+                  >
+                    Register Your True Name Tag
+                  </button>
+                </div>
+              </li>
+
+            </ol>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-4">
+              <a
+                href="https://apps.apple.com/us/app/boltcard-nfc-programmer/id6450968873"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+                title="Install Boltcard Programmer (iOS)"
+              >
+                <span>Install for iOS (Boltcard Programmer)</span>
+                <ExternalLink className="h-4 w-4" />
+              </a>
               <a
                 href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share"
                 target="_blank"
                 rel="noopener noreferrer"
-                data-doc="boltcard-playstore"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
-              >
-                <span>Install Boltcard Programming App (Android)</span>
-                <ExternalLink className="h-4 w-4" />
-              </a>
-              <a
-                href="https://ereignishorizont.xyz/en/boltcard_en/"
-                target="_blank"
-                rel="noopener noreferrer"
                 className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+                title="Install Boltcard Programming (Android)"
               >
-                <span>Boltcard Setup Guide (External)</span>
+                <span>Install for Android (Boltcard Programming)</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
               <a
-                href="/docs/satnam-nfc-provisioning-guide.html"
+                href="/docs/name-tag-id-credentialing-quest.html"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+                title="Open the Name Tag ID Credentialing Quest"
               >
                 <span>Provisioning Guide</span>
               </a>
-              <a
-                href="/docs/ntag424-blob-viewer.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
-              >
-                <span>Blob Viewer</span>
-              </a>
+
             </div>
 
-            {/* Requirements & expectations */}
+            {/* Additional resources (footnote) */}
+            <div className="text-left max-w-3xl mx-auto mt-4 text-purple-200/80 text-xs">
+              <div className="opacity-90">Additional resources:</div>
+              <ul className="list-disc list-inside space-y-1 mt-1">
+                <li>
+                  <a href="https://github.com/boltcard/bolt-nfc-android-app/releases" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-100">
+                    Android APK Releases (Boltcard)
+                  </a>
+                </li>
+                <li>
+                  <a href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-100">
+                    NTAG424 Blob Viewer Tool
+                  </a>
+                </li>
+                <li>
+                  <a href="https://ereignishorizont.xyz/en/boltcard_en/" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-100">
+                    External Boltcard Guide
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+
+            {/* Friendly notes */}
             <div className="text-left max-w-3xl mx-auto mt-6 text-purple-200/90 text-sm">
               <ul className="list-disc list-inside space-y-1">
-                <li>Android: Use the Boltcard Programming app to set up your NTAG424 DNA tag</li>
-                <li>iOS: Use the DnaCommunicator sample app (requires Xcode) to program your NTAG424 DNA tag</li>
-                <li>Supported tag: NTAG424 DNA (SUN/SDM). Keep on‑tag data small (about 416–448 bytes practical)</li>
-                <li>Privacy‑first: programming happens on your device; no private keys or secrets leave your phone</li>
-                <li>URL format: https://www.satnam.pub/t/&lt;duid&gt;?sdm=&lt;sdm_payload&gt;&u=&lt;uid&gt; (keep overall length ≤ 200 bytes)</li>
+                <li>Your Name Tag is private: programming happens on your device; secrets never leave your phone.</li>
+                <li>Supported tag: NTAG424 DNA (keeps on-tag data small for fast taps).</li>
+                <li>Need more details? The Provisioning Guide includes extra help and community links.</li>
               </ul>
             </div>
 
             <p className="text-purple-200 text-sm mt-4">
-              Sequence: Log in or claim your name → Program your tag with Boltcard → Return to Satnam.pub to finish setup.
+              Your journey to digital sovereignty begins here, by adding physical authentication of your identity. Take it step by step, you've got this.
             </p>
           </div>
 
@@ -1337,7 +1425,7 @@ function App() {
                 >
                   <span className="block">Prepare Your Name Tag/s</span>
                   <span className="block text-xs text-purple-300">
-                    Read setup guide • <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" className="underline">Install Boltcard App</a>
+                    Read setup guide • <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" className="underline">Install Boltcard Programming App</a>
                   </span>
                 </button>
                 <button

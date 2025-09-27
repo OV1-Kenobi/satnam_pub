@@ -30,15 +30,17 @@ export default defineConfig({
   },
 
   resolve: {
-    alias: {
-      "@": resolve("src"),
-      "@/components": resolve("src/components"),
-      "@/lib": resolve("src/lib"),
-      "@/hooks": resolve("src/hooks"),
-      "@/services": resolve("src/services"),
-      "@/types": resolve("src/types"),
-      "@/utils": resolve("src/utils"),
-    },
+    alias: [
+      // Ensure more specific alias is evaluated before '@'
+      { find: "@/api", replacement: resolve("api") },
+      { find: "@/components", replacement: resolve("src/components") },
+      { find: "@/lib", replacement: resolve("src/lib") },
+      { find: "@/hooks", replacement: resolve("src/hooks") },
+      { find: "@/services", replacement: resolve("src/services") },
+      { find: "@/types", replacement: resolve("src/types") },
+      { find: "@/utils", replacement: resolve("src/utils") },
+      { find: "@", replacement: resolve("src") },
+    ],
   },
 
   server: {

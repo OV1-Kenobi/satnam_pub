@@ -41,6 +41,7 @@ function getEnvVar(key) {
 // Export all client-side API endpoint modules with explicit disambiguation
 export * from "./communications.js";
 export * from "./family.js";
+export * from "./lnbits.js";
 
 // Explicit re-exports to resolve User typedef conflict
 export {

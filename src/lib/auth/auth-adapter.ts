@@ -13,6 +13,7 @@ const getSupabaseClient = async () => {
   }
   return supabaseClient;
 };
+import { config } from "../../../config";
 
 // Privacy-first types (Nostr-only)
 export interface PrivateAuthUser {
@@ -492,7 +493,7 @@ export class SupabaseAuthAdapter {
 
       // Check against allowed domains for security
       const [, domain] = nip05.split("@");
-      const allowedDomains = ["satnam.pub", "citadel.academy"]; // From config
+      const allowedDomains = config.nip05.allowedDomains;
 
       if (!allowedDomains.includes(domain)) {
         console.error("NIP-05 domain not in allowlist:", domain);

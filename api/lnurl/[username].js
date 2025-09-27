@@ -16,6 +16,31 @@ async function getApiBaseUrl() {
 async function getLightningDomain() {
   return getEnvVar("LIGHTNING_ADDRESS_DOMAIN") || "satnam.pub";
 }
+function getApprovedDomains() {
+  const v = process.env.VITE_NIP05_ALLOWED_DOMAINS || "satnam.pub,citadel.academy";
+  return v
+    .split(",")
+    .map(s => s.trim().toLowerCase())
+    .map(s => s.split(":")[0])
+    .filter(Boolean);
+}
+
+function parseHost(req) {
+  const xfwd = req.headers["x-forwarded-host"] || req.headers["X-Forwarded-Host"];
+  const host = (xfwd || req.headers.host || "").toString().toLowerCase();
+  return host.split(":")[0];
+}
+
+function getRequestDomain(req) {
+  try {
+    const host = parseHost(req);
+    const allowed = new Set(getApprovedDomains());
+    return allowed.has(host) ? host : (process.env.LIGHTNING_ADDRESS_DOMAIN || "satnam.pub");
+  } catch (_) {
+    return process.env.LIGHTNING_ADDRESS_DOMAIN || "satnam.pub";
+  }
+}
+
 
 /**
  * @typedef {Object} LNURLPayResponse
@@ -126,7 +151,7 @@ function calculatePaymentLimits(familyMember) {
 async function getBaseUrl(req) {
   const url = new URL(req.url);
   const customDomain = await getLightningDomain();
-  
+
   if (customDomain && customDomain !== "satnam.pub") {
     return `https://${customDomain}`;
   }
@@ -178,10 +203,13 @@ export default async function handler(req, res) {
 
     const familyMember = await getFamilyMember(username);
 
+    const requestDomain = getRequestDomain(req);
+
+
     if (!familyMember) {
       res.status(404).json({
         status: "ERROR",
-        reason: `Lightning Address ${username}@satnam.pub is not registered`,
+        reason: `Lightning Address ${username}@${requestDomain} is not registered`,
         code: "FAMILY_MEMBER_NOT_FOUND",
         requestId,
       });
@@ -189,8 +217,8 @@ export default async function handler(req, res) {
     }
 
     const limits = calculatePaymentLimits(familyMember);
-    const baseUrl = await getBaseUrl(req);
-    const domain = await getLightningDomain();
+    const baseUrl = `https://${requestDomain}`;
+    const domain = requestDomain;
 
     const lnurlResponse = {
       callback: `${baseUrl}/api/lnurl/${username}/callback`,

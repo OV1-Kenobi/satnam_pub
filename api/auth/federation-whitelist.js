@@ -14,7 +14,11 @@ import { supabase } from "../../netlify/functions/supabase.js";
  * CRITICAL SECURITY: Restricted NIP-05 domain whitelist - ONLY approved domains
  * No dynamic additions allowed - hardcoded for security
  */
-const APPROVED_DOMAINS = ['satnam.pub', 'citadel.academy'];
+function getApprovedDomains() {
+  const v = process.env.VITE_NIP05_ALLOWED_DOMAINS || "satnam.pub,citadel.academy";
+  return v.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+const APPROVED_DOMAINS = getApprovedDomains();
 
 /**
  * CRITICAL SECURITY: Privacy-first operation logging for user transparency

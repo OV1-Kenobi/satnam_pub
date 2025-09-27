@@ -38,8 +38,14 @@ import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 
 
+import { config } from "../../config";
 import OTPVerificationPanel from "./OTPVerificationPanel";
 import SovereigntyEducation from "./SovereigntyEducation";
+
+import { isLightningAddressReachable, parseLightningAddress } from "../utils/lightning-address";
+
+
+
 
 
 interface FormData {
@@ -116,6 +122,36 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     lightningEnabled: true,
     agreedToTerms: false,
   });
+  // Multi-domain NIP-05 + external Lightning Address support
+  const allowedDomains = (config?.nip05?.allowedDomains || ["satnam.pub"]).filter((d: string) => typeof d === 'string' && d.trim());
+  const [selectedDomain, setSelectedDomain] = useState<string>(allowedDomains[0] || "satnam.pub");
+  const [externalLightningAddress, setExternalLightningAddress] = useState<string>("");
+  const [extAddrValid, setExtAddrValid] = useState<boolean | null>(null);
+  const [extAddrReachable, setExtAddrReachable] = useState<boolean | null>(null);
+  const [checkingExtAddr, setCheckingExtAddr] = useState<boolean>(false);
+
+  function validateLightningAddressFormat(addr: string): { local: string; domain: string } | null {
+    const p = parseLightningAddress(addr);
+    return p ? { local: p.local, domain: p.domain } : null;
+  }
+
+  async function verifyLightningAddressReachable(local: string, domain: string): Promise<boolean> {
+    return isLightningAddressReachable(`${local}@${domain}`);
+  }
+
+  useEffect(() => {
+    if (!externalLightningAddress) { setExtAddrValid(null); setExtAddrReachable(null); return; }
+    const parsed = validateLightningAddressFormat(externalLightningAddress);
+    setExtAddrValid(!!parsed);
+    if (!parsed) { setExtAddrReachable(null); return; }
+    let cancelled = false;
+    setCheckingExtAddr(true);
+    verifyLightningAddressReachable(parsed.local, parsed.domain)
+      .then(ok => { if (!cancelled) setExtAddrReachable(ok); })
+      .finally(() => { if (!cancelled) setCheckingExtAddr(false); });
+    return () => { cancelled = true; };
+  }, [externalLightningAddress]);
+
 
   // Zero-Knowledge Ephemeral Nsec Display (Master Context Compliance)
   const [ephemeralNsec, setEphemeralNsec] = useState<string | null>(null);
@@ -644,8 +680,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         about: profileData.bio,
         picture: profileData.picture,
         website: profileData.website,
-        nip05: `${formData.username}@satnam.pub`,
-        lud16: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined,
+        nip05: `${formData.username}@${selectedDomain}`,
+        lud16: formData.lightningEnabled ? (externalLightningAddress && extAddrValid && extAddrReachable ? externalLightningAddress : `${formData.username}@${selectedDomain}`) : undefined,
       };
 
       // Ensure a SecureSession exists before publishing; create one from ephemeralNsec if needed
@@ -1049,8 +1085,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         confirmPassword: formData.confirmPassword,
         npub: formData.pubkey, // Include the public key
         encryptedNsec: encryptedNsec, // Include encrypted private key
-        nip05: `${formData.username}@satnam.pub`,
-        lightningAddress: formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined,
+        nip05: `${formData.username}@${selectedDomain}`,
+        lightningAddress: formData.lightningEnabled ? (externalLightningAddress && extAddrValid && extAddrReachable ? externalLightningAddress : `${formData.username}@${selectedDomain}`) : undefined,
         generateInviteToken: true,
         // Include invitation token if user was invited
         invitationToken: invitationToken || undefined,
@@ -1092,7 +1128,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           console.warn('🔐 POST-REG AUTH: SecureTokenManager initialization warning:', initError);
         }
 
-        const nip05Identifier = `${formData.username}@satnam.pub`;
+        const nip05Identifier = `${formData.username}@${selectedDomain}`;
         let sessionToken = result?.session?.token || result?.sessionToken;
 
 
@@ -1471,7 +1507,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 mb-8">
               <p className="text-purple-200 mb-2">Your sovereign identity:</p>
               <p className="text-white font-mono text-lg">
-                {formData.username}@satnam.pub
+                {formData.username}@{selectedDomain}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -1479,7 +1515,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 onClick={async () => {
                   if (!sessionInfo) {
                     const token = SecureTokenManager.getAccessToken();
-                    const nip05Identifier = `${formData.username}@satnam.pub`;
+                    const nip05Identifier = `${formData.username}@${selectedDomain}`;
                     const fallback: SessionInfo = {
                       isAuthenticated: !!token,
                       sessionToken: token || undefined,
@@ -1696,10 +1732,62 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   {formData.username && (
                     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
                       <p className="text-purple-200 mb-2">
+
+                        {/* NIP-05 Domain Selection + External Lightning Address */}
+                        <div className="space-y-4 pt-4 border-t border-white/10">
+                          <h4 className="text-white font-semibold text-lg">NIP-05 and Lightning</h4>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm text-purple-200 mb-1">NIP-05 Domain</label>
+                              <select
+                                value={selectedDomain}
+                                onChange={(e) => setSelectedDomain(e.target.value)}
+                                className="w-full bg-white/10 border border-white/20 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              >
+                                {allowedDomains.map((d: string) => (
+                                  <option key={d} value={d}>{d}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm text-purple-200 mb-1">External Lightning Address (Optional)</label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  value={externalLightningAddress}
+                                  onChange={(e) => setExternalLightningAddress(e.target.value)}
+                                  placeholder="alice@example.com"
+                                  className="w-full bg-white/10 border border-white/20 rounded-lg p-3 pr-10 text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                                {externalLightningAddress && (
+                                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                    {checkingExtAddr ? (
+                                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : extAddrValid && extAddrReachable ? (
+                                      <Check className="h-5 w-5 text-green-400" />
+                                    ) : extAddrValid && extAddrReachable === false ? (
+                                      <X className="h-5 w-5 text-red-400" />
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
+                              {externalLightningAddress && !extAddrValid && (
+                                <p className="text-xs text-red-300 mt-1">Invalid address format</p>
+                              )}
+                              {externalLightningAddress && extAddrValid && extAddrReachable === false && (
+                                <p className="text-xs text-red-300 mt-1">Address not reachable</p>
+                              )}
+                              {externalLightningAddress && extAddrValid && extAddrReachable && (
+                                <p className="text-xs text-green-300 mt-1">Address verified</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
                         Your identity will be:
                       </p>
                       <p className="text-white font-mono text-lg">
-                        {formData.username}@satnam.pub
+                        {formData.username}@{selectedDomain}
                       </p>
                       {usernameAvailable === false && (
                         <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mt-3">
@@ -1805,7 +1893,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         Enable Lightning Address
                       </h4>
                       <p className="text-purple-200 text-sm">
-                        Allow others to send you Bitcoin payments at {formData.username}@satnam.pub
+                        Allow others to send you Bitcoin payments at {formData.username}@{selectedDomain}
                       </p>
                     </div>
                     <button
@@ -1836,7 +1924,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         </div>
                         <div>
                           <p className="text-orange-200 font-mono text-sm">
-                            {formData.username}@satnam.pub
+                            {formData.username}@{selectedDomain}
                           </p>
                           <p className="text-orange-300 text-xs">
                             Ready for Bitcoin payments
@@ -2403,8 +2491,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   <div className="bg-white/10 border border-white/20 rounded-lg p-4">
                     <OTPVerificationPanel
                       npub={formData.pubkey}
-                      nip05={`${formData.username}@satnam.pub`}
-                      lightningAddress={formData.lightningEnabled ? `${formData.username}@satnam.pub` : undefined}
+                      nip05={`${formData.username}@${selectedDomain}`}
+                      lightningAddress={formData.lightningEnabled ? (externalLightningAddress && extAddrValid && extAddrReachable ? externalLightningAddress : `${formData.username}@${selectedDomain}`) : undefined}
                       onVerified={({ sessionId, expiresAt }: { sessionId: string; expiresAt: string }) => {
                         setOtpVerified(true);
                         setOtpSessionId(sessionId);
@@ -2525,7 +2613,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                             <h5 className="text-white font-bold">
                               {profileData.displayName || 'Your Display Name'}
                             </h5>
-                            <span className="text-blue-400 text-sm">✓ {formData.username}@satnam.pub</span>
+                            <span className="text-blue-400 text-sm">✓ {formData.username}@{selectedDomain}</span>
                           </div>
                           <p className="text-purple-200 text-sm mb-2">
                             {profileData.bio || 'Your bio will appear here...'}
@@ -2547,9 +2635,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
                     <h5 className="text-green-200 font-semibold text-sm mb-2">✅ Automatically Configured</h5>
                     <ul className="text-green-200/80 text-xs space-y-1">
-                      <li>• NIP-05 Identifier: {formData.username}@satnam.pub</li>
+                      <li>• NIP-05 Identifier: {formData.username}@{selectedDomain}</li>
                       {formData.lightningEnabled && (
-                        <li>• Lightning Address: {formData.username}@satnam.pub</li>
+                        <li>• Lightning Address: {formData.username}@{selectedDomain}</li>
                       )}
                       <li>• Profile will be published to the Nostr network for global visibility</li>
                     </ul>
@@ -2609,7 +2697,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       </p>
                       <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 mt-6">
                         <p className="text-white font-mono text-lg">
-                          {formData.username}@satnam.pub
+                          {formData.username}@{selectedDomain}
                         </p>
                         <p className="text-purple-200 text-sm mt-2">
                           Your unforgeable True Name on the sovereign web
@@ -2922,7 +3010,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           Update my Nostr profile with new NIP-05 identifier
                         </label>
                         <p className="text-green-200/80 text-sm mt-1">
-                          Add <span className="font-mono">{formData.username}@satnam.pub</span> as your verified NIP-05 identifier.
+                          Add <span className="font-mono">{formData.username}@{selectedDomain}</span> as your verified NIP-05 identifier.
                           This will be your new verified identity on Satnam while preserving your existing Nostr presence.
                         </p>
                       </div>
@@ -2943,7 +3031,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           Use Satnam Lightning address for Bitcoin payments
                         </label>
                         <p className="text-orange-200/80 text-sm mt-1">
-                          Enable <span className="font-mono">{formData.username}@satnam.pub</span> as your Lightning address for receiving Bitcoin payments.
+                          Enable <span className="font-mono">{formData.username}@{selectedDomain}</span> as your Lightning address for receiving Bitcoin payments.
                           {detectedProfile?.lud16 && (
                             <span className="block mt-1">
                               Your existing Lightning address ({detectedProfile.lud16}) will be preserved in your profile.
