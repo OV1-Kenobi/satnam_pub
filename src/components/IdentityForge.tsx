@@ -44,6 +44,17 @@ import SovereigntyEducation from "./SovereigntyEducation";
 
 import { isLightningAddressReachable, parseLightningAddress } from "../utils/lightning-address";
 
+import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/endpoints/lnbits.js";
+
+
+
+// Feature flag: LNBits integration
+const rawLnBitsFlag =
+  (import.meta as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED ??
+  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED : undefined);
+
+const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 'true';
+
 
 
 
@@ -178,8 +189,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [showNsecConfirmation, setShowNsecConfirmation] = useState(false);
   const [nsecStoredConfirmed, setNsecStoredConfirmed] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
-  const [autoCleanupTimer, setAutoCleanupTimer] = useState<NodeJS.Timeout | null>(null);
-  const [countdownTimer, setCountdownTimer] = useState<NodeJS.Timeout | null>(null);
+  const [, setAutoCleanupTimer] = useState<NodeJS.Timeout | null>(null);
+  const [, setCountdownTimer] = useState<NodeJS.Timeout | null>(null);
 
   // Ref to track timer state and prevent race conditions
   const timerStateRef = useRef({ cleanupTimer: null as NodeJS.Timeout | null, countdown: null as NodeJS.Timeout | null });
@@ -217,8 +228,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   // OTP verification state for migration flow
   const [otpVerified, setOtpVerified] = useState(false);
-  const [otpSessionId, setOtpSessionId] = useState<string | null>(null);
-  const [otpExpiresAt, setOtpExpiresAt] = useState<string | null>(null);
+  const [, setOtpSessionId] = useState<string | null>(null);
+  const [, setOtpExpiresAt] = useState<string | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -714,6 +725,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
   const [isComplete, setIsComplete] = useState(false);
+
+  // LNBits Boltcard provisioning state
+  const [isProvisioningCard, setIsProvisioningCard] = useState(false);
+  const [boltcardInfo, setBoltcardInfo] = useState<{ cardId: string; authQr?: string | null } | null>(null);
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registrationResult, setRegistrationResult] = useState<IdentityRegistrationResult | null>(null);
@@ -1180,23 +1196,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           throw new Error('Unable to establish valid session after registration');
         }
 
-        const authResult = {
-          success: true,
-          user: {
-            id: payload.hashedId,
-            user_salt: '',
-            password_hash: '',
-            password_salt: '',
-            failed_attempts: 0,
-            role: (result?.user?.role || result?.data?.user?.role || 'private'),
-            is_active: true,
-            hashedId: payload.hashedId,
-            authMethod: 'nip05-password',
-          },
-          sessionToken: sessionToken,
-        } as any;
-
-        // Token storage is handled below with proper expiry parsing
 
         // FIXED: Use the session token from registration response instead of re-authenticating
         // The registration endpoint already returns a valid JWT token - no need to authenticate again
@@ -1311,6 +1310,22 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               15 * 60 * 1000
             );
             setNsecRetentionSessionId(retentionSessionId);
+
+            // Automatic LNBits wallet provisioning (feature-gated)
+            try {
+              if (LNBITS_ENABLED) {
+                const w = await provisionWallet();
+                if (w?.success && formData.lightningEnabled) {
+                  const body = (externalLightningAddress && extAddrValid && extAddrReachable)
+                    ? { externalLightningAddress }
+                    : undefined as any;
+                  await createLightningAddress(body);
+                }
+              }
+            } catch (e) {
+              console.warn('LNbits auto-provision skipped:', (e instanceof Error ? e.message : String(e)));
+            }
+
           } else {
             console.warn('🔐 No user payload or ephemeral nsec available for session creation');
           }
@@ -1459,6 +1474,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         }
         // CRITICAL SECURITY: Require nsecSecured to be true before proceeding
         // This prevents username storage without nsec confirmation
+
         return formData.pubkey && nsecSecured && !isGenerating;
       case 3:
         // Profile creation step for new users - always can continue once reached
@@ -1487,6 +1503,41 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     };
   }, [onBack]);
 
+
+  // API base for Netlify Functions
+  const API_BASE: string = (import.meta as any)?.env?.VITE_API_BASE_URL || "/api";
+
+  // Optional "Provision Name Tag" flow (Boltcard via LNbits)
+  const handleProvisionNameTag = async () => {
+    if (!LNBITS_ENABLED) return;
+    if (isProvisioningCard) return;
+    try {
+      setIsProvisioningCard(true);
+      const created = await createBoltcard({ label: "Name Tag", spend_limit_sats: 20000 });
+      if (!created?.success) throw new Error(created?.error || "Boltcard creation failed");
+      const cardId: string = String(created.data?.cardId || "");
+      const authQr: string | null | undefined = created.data?.authQr;
+      setBoltcardInfo({ cardId, authQr: authQr || null });
+      try { localStorage.setItem('lnbits_last_card_id', cardId); } catch { }
+      const pin = window.prompt('Set a 6-digit PIN for your Name Tag (do not reuse other PINs):');
+      if (pin && /^[0-9]{6}$/.test(pin.trim())) {
+        const res = await fetchWithAuth(`${API_BASE}/lnbits-set-boltcard-pin`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cardId, pin: pin.trim() })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.success) {
+          console.warn('Failed to set PIN:', json?.error || res.statusText);
+        }
+      }
+      setShowInvitationModal(true);
+    } catch (e) {
+      console.error('Provision Name Tag failed:', e);
+    } finally {
+      setIsProvisioningCard(false);
+    }
+  };
+
   if (isComplete) {
     return (
       <div className="modal-overlay-bitcoin-citadel">
@@ -1497,6 +1548,26 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             </div>
             <h2 className="text-4xl font-bold text-white mb-6">
               Identity Claimed Successfully!
+
+              {LNBITS_ENABLED && (
+                <div className="flex flex-col items-center gap-3 mt-6">
+                  <button
+                    onClick={handleProvisionNameTag}
+                    disabled={isProvisioningCard}
+                    className={`px-6 py-3 rounded-lg font-semibold transition ${isProvisioningCard ? 'bg-white/10 text-purple-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                    aria-label="Provision Name Tag (Boltcard)"
+                  >
+                    {isProvisioningCard ? 'Provisioning Name Tag…' : 'Provision Name Tag (optional)'}
+                  </button>
+                  {boltcardInfo?.authQr && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                      <p className="text-sm text-purple-200 mb-2">Scan this QR in the Boltcard app to program your Name Tag</p>
+                      <img src={boltcardInfo.authQr} alt="Boltcard Auth QR" className="w-48 h-48 object-contain rounded" />
+                    </div>
+                  )}
+                </div>
+              )}
+
             </h2>
             <p className="text-xl text-purple-200 mb-8">
               Welcome to true digital sovereignty,{" "}

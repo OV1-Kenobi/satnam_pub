@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS public.lnbits_boltcards (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Store encrypted auth link and PIN verification data (no plaintext)
+ALTER TABLE public.lnbits_boltcards
+  ADD COLUMN IF NOT EXISTS auth_link_enc TEXT,
+  ADD COLUMN IF NOT EXISTS pin_salt BYTEA,
+  ADD COLUMN IF NOT EXISTS pin_hash_enc TEXT,
+  ADD COLUMN IF NOT EXISTS pin_last_set_at TIMESTAMPTZ;
+
+
 DO $$
 BEGIN
   IF NOT EXISTS (

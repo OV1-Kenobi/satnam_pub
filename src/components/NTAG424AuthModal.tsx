@@ -34,8 +34,19 @@ import { useAuth } from "./auth/AuthProvider";
 
 import { showToast } from "../services/toastService";
 
+import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
+
+import { supabase } from "../lib/supabase";
 import { isLightningAddressReachable, parseLightningAddress, toLnurlpUrl } from "../utils/lightning-address";
 
+
+
+const rawLnBitsFlag =
+  (import.meta as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED ??
+  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED : undefined);
+
+const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 'true';
+const API_BASE: string = (import.meta as any)?.env?.VITE_API_BASE_URL || "/api";
 
 
 interface NTAG424AuthModalProps {
@@ -63,15 +74,44 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
 }) => {
   // Form state
   const [pin, setPin] = useState("");
+  // Boltcard selection state
+  const [cards, setCards] = useState<Array<{ card_id: string; label?: string | null }>>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string>("");
+  const [loadingCards, setLoadingCards] = useState<boolean>(false);
+
   const [userNpub, setUserNpub] = useState("");
   const [familyRole, setFamilyRole] = useState<FederationRole>("offspring");
   const [showPin, setShowPin] = useState(false);
   // Optional custom Lightning Address for NFC programming
   const [useCustomLightningAddress, setUseCustomLightningAddress] = useState(false);
+  // Load user's boltcards when modal opens
+  useEffect(() => {
+    if (!isOpen || !LNBITS_ENABLED) return;
+    (async () => {
+      setLoadingCards(true);
+      try {
+        const { data, error } = await supabase
+          .from("lnbits_boltcards")
+          .select("card_id,label,created_at")
+          .order("created_at", { ascending: false });
+        if (!error && Array.isArray(data)) {
+          setCards(data as any);
+          if (data.length > 0) {
+            setSelectedCardId((data[0] as any).card_id as string);
+          } else {
+            const last = (() => { try { return localStorage.getItem("lnbits_last_card_id") || ""; } catch { return ""; } })();
+            setSelectedCardId(last);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load boltcards:", e);
+      } finally {
+        setLoadingCards(false);
+      }
+    })();
+  }, [isOpen]);
+
   const [customLightningAddress, setCustomLightningAddress] = useState("");
-  const [customAddrValid, setCustomAddrValid] = useState<boolean | null>(null);
-  const [customAddrReachable, setCustomAddrReachable] = useState<boolean | null>(null);
-  const [checkingCustomAddr, setCheckingCustomAddr] = useState(false);
 
   const [currentStep, setCurrentStep] = useState<AuthStep>('input');
 
@@ -191,6 +231,27 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
       return;
     }
 
+    // Server-side PIN validation (feature-gated)
+    if (LNBITS_ENABLED) {
+      try {
+        const chosen = selectedCardId || (() => { try { return localStorage.getItem('lnbits_last_card_id') || ''; } catch { return ''; } })();
+        if (chosen) {
+          const res = await fetchWithAuth(`${API_BASE}/lnbits-validate-boltcard-pin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cardId: chosen, pin: trimmed })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data?.success) {
+            showToast.error(data?.error || 'Invalid PIN', { title: 'NFC' });
+            return;
+          }
+        }
+      } catch (e: any) {
+        console.warn('PIN validation skipped:', e?.message || 'Unknown error');
+      }
+    }
+
     setOperationType('auth');
     setCurrentStep('nfc-scan');
 
@@ -306,6 +367,28 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                 </div>
                 <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
                   <div className="flex items-start space-x-2 text-blue-300 text-sm">
+                    {LNBITS_ENABLED && (
+                      <div className="mb-3">
+                        <label className="block text-sm text-purple-200 mb-1">Select Name Tag</label>
+                        <select
+                          className="w-full bg-purple-800 border border-purple-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                          value={selectedCardId}
+                          onChange={(e) => setSelectedCardId(e.target.value)}
+                          disabled={loadingCards}
+                        >
+                          {cards.length === 0 ? (
+                            <option value="">{loadingCards ? "Loading cards..." : "No cards found"}</option>
+                          ) : (
+                            cards.map((c) => (
+                              <option key={c.card_id} value={c.card_id}>
+                                {c.label || "Boltcard"} — {c.card_id}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                    )}
+
                     <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="font-medium mb-2">Need help Flashing your NFC Physical MFA card?</p>
