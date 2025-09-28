@@ -1082,20 +1082,30 @@ export const roleHierarchyConfig: RoleHierarchyConfig = {
  * Privacy & Security configuration
  */
 export const privacy: PrivacyConfig = {
-  masterKey:
-    getEnvVar("PRIVACY_MASTER_KEY") ||
-    (() => {
-      if (getEnvVar("NODE_ENV") === "production") {
-        throw new Error(
-          "PRIVACY_MASTER_KEY environment variable is required in production"
-        );
-      }
-      return "dev-master-key-change-in-production-please-use-strong-random-key";
-    })(),
+  masterKey: (() => {
+    const envKey = getEnvVar("PRIVACY_MASTER_KEY");
+    if (envKey) return envKey;
+
+    const isBrowser = typeof window !== "undefined";
+    const nodeEnv = (getEnvVar("NODE_ENV") || "").toLowerCase();
+
+    // In browser builds, never require PRIVACY_MASTER_KEY; client runtime retrieves from Supabase Vault
+    if (!isBrowser && nodeEnv === "production") {
+      throw new Error(
+        "PRIVACY_MASTER_KEY environment variable is required in production"
+      );
+    }
+
+    return "dev-master-key-change-in-production-please-use-strong-random-key";
+  })(),
   jwtSecret:
     getEnvVar("JWT_SECRET") ||
     (() => {
-      if (getEnvVar("NODE_ENV") === "production") {
+      const isBrowser = typeof window !== "undefined";
+      if (
+        !isBrowser &&
+        (getEnvVar("NODE_ENV") || "").toLowerCase() === "production"
+      ) {
         throw new Error(
           "JWT_SECRET environment variable is required in production"
         );
