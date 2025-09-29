@@ -4,6 +4,7 @@
  * - createLightningAddress()
  * - createBoltcard({ label, spend_limit_sats })
  * - getPaymentHistory({ page, limit })
+ * - getBoltcardLnurl()
  *
  * Uses fetchWithAuth to include JWT and returns standardized responses.
  */
@@ -68,6 +69,19 @@ export async function getPaymentHistory({ page = 1, limit = 20 } = {}) {
       return { success: true, data };
     }
     return { success: true, ...data };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Network error" };
+  }
+}
+
+
+export async function getBoltcardLnurl() {
+  try {
+    const url = `${apiConfig.baseUrl}/lnbits-get-boltcard-lnurl`;
+    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const data = await jsonOrText(res).catch(() => ({}));
+    if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
+    return { success: true, data };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Network error" };
   }

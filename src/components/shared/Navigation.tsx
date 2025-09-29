@@ -7,7 +7,7 @@ import { usePrivacyFirstMessaging } from "../../hooks/usePrivacyFirstMessaging";
 
 interface NavigationProps {
   currentView: string;
-  setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem" | "communications") => void;
+  setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem" | "communications" | "nfc-provisioning-guide" | "lnurl-display") => void;
   setSignInModalOpen: (open: boolean) => void;
   handleProtectedRoute: (destination: 'dashboard' | 'individual-finances' | 'communications') => void;
   mobileMenuOpen: boolean;
@@ -60,8 +60,8 @@ const Navigation: React.FC<NavigationProps> = ({
     { label: "Recovery Help", action: () => setCurrentView("recovery") },
     {
       label: "NFC Setup Guide",
-      action: () => window.open("/docs/satnam-nfc-provisioning-guide.html", "_blank"),
-      external: true,
+      action: () => setCurrentView("nfc-provisioning-guide"),
+      external: false,
     },
     {
       label: "Citadel Academy",

@@ -25,6 +25,9 @@ import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
 
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
+import LNURLDisplay from "./components/LNURLDisplay";
+import NFCProvisioningGuide from "./components/NFCProvisioningGuide";
+
 
 import { useAuth } from "./components/auth/AuthProvider";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
@@ -73,6 +76,8 @@ function App() {
     | "contacts"
     | "ln-node-management"
     | "lnbits-setup"
+    | "lnurl-display"
+    | "nfc-provisioning-guide"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
@@ -624,6 +629,48 @@ function App() {
   }
 
 
+  if (currentView === "lnurl-display") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <LNURLDisplay onBack={() => setCurrentView("landing")} />
+        </div>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "nfc-provisioning-guide") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <NFCProvisioningGuide onBack={() => setCurrentView("landing")} />
+        </div>
+      </PageWrapper>
+    );
+  }
+
+
+
+
+
   if (currentView === "ln-node-management") {
     return (
       <PageWrapper
@@ -1133,11 +1180,10 @@ function App() {
               <li>
                 <strong>Step 2 — Wallet Creation:</strong> Create your LNbits wallet and (optionally) set up a Lightning Address. You’ll use this wallet info in Step 3 when programming your tag.
                 <button
-                  onClick={() => setCurrentView("lnbits-setup")}
+                  onClick={() => setCurrentView("lnurl-display")}
                   className="ml-2 inline-flex items-center bg-orange-500 hover:bg-orange-600 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
-                  title="Open LNbits setup directly"
-                >Open LNbits Setup</button>
-              </li>
+                  title="Show your LNURL details"
+                >Show LNURL</button>              </li>
               <li>
                 <strong>Step 3 — Tool Acquisition:</strong> Install the Boltcard programming app on your phone (links below). In the app, you’ll enter the wallet details you created in Step 2.
               </li>
@@ -1194,15 +1240,13 @@ function App() {
                 <span>Install for Android (Boltcard Programming)</span>
                 <ExternalLink className="h-4 w-4" />
               </a>
-              <a
-                href="/docs/name-tag-id-credentialing-quest.html"
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => setCurrentView("nfc-provisioning-guide")}
                 className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
-                title="Open the Name Tag ID Credentialing Quest"
+                title="Open the NFC Provisioning Guide"
               >
                 <span>Provisioning Guide</span>
-              </a>
+              </button>
 
             </div>
 
@@ -1419,7 +1463,7 @@ function App() {
                   </button>
                 ) : null}
                 <button
-                  onClick={() => window.open('/docs/satnam-nfc-provisioning-guide.html', '_blank', 'noopener,noreferrer')}
+                  onClick={() => setCurrentView('nfc-provisioning-guide')}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
                   title="Prepare Your Name Tag/s"
                 >

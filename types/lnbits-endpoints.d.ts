@@ -16,6 +16,9 @@ declare namespace LNBitsClient {
     cardId: string;
     authQr?: string | null;
   }
+  interface BoltcardLnurlResult {
+    lnurl: string;
+  }
   interface PaymentHistoryParams {
     page?: number;
     limit?: number;
@@ -36,6 +39,9 @@ declare module "@/api/endpoints/lnbits.js" {
   export function getPaymentHistory(
     params?: LNBitsClient.PaymentHistoryParams
   ): Promise<LNBitsClient.Response<any>>;
+  export function getBoltcardLnurl(): Promise<
+    LNBitsClient.Response<LNBitsClient.BoltcardLnurlResult>
+  >;
 }
 
 // Support relative imports from TSX using ../../api/endpoints/lnbits.js
@@ -50,4 +56,7 @@ declare module "../../api/endpoints/lnbits.js" {
   export function getPaymentHistory(
     params?: LNBitsClient.PaymentHistoryParams
   ): Promise<LNBitsClient.Response<any>>;
+  export function getBoltcardLnurl(): Promise<
+    LNBitsClient.Response<LNBitsClient.BoltcardLnurlResult>
+  >;
 }

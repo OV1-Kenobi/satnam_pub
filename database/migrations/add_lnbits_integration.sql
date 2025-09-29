@@ -35,6 +35,16 @@ BEGIN
   END IF;
 END $$;
 
+-- Additional indexes for wallets
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_lnbits_wallets_wallet_id'
+  ) THEN
+    EXECUTE 'CREATE INDEX idx_lnbits_wallets_wallet_id ON public.lnbits_wallets(wallet_id)';
+  END IF;
+END $$;
+
 -- lnbits_boltcards: one row per card (no secrets stored)
 CREATE TABLE IF NOT EXISTS public.lnbits_boltcards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -54,7 +64,7 @@ ALTER TABLE public.lnbits_boltcards
   ADD COLUMN IF NOT EXISTS pin_hash_enc TEXT,
   ADD COLUMN IF NOT EXISTS pin_last_set_at TIMESTAMPTZ;
 
-
+-- Indexes for boltcards
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -62,7 +72,33 @@ BEGIN
   ) THEN
     EXECUTE 'CREATE INDEX idx_lnbits_boltcards_user_duid ON public.lnbits_boltcards(user_duid)';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_lnbits_boltcards_user_duid_created_at'
+  ) THEN
+    EXECUTE 'CREATE INDEX idx_lnbits_boltcards_user_duid_created_at ON public.lnbits_boltcards(user_duid, created_at DESC)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_lnbits_boltcards_card_id'
+  ) THEN
+    EXECUTE 'CREATE INDEX idx_lnbits_boltcards_card_id ON public.lnbits_boltcards(card_id)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_lnbits_boltcards_wallet_id'
+  ) THEN
+    EXECUTE 'CREATE INDEX idx_lnbits_boltcards_wallet_id ON public.lnbits_boltcards(wallet_id)';
+  END IF;
 END $$;
+
+-- Idempotency: one default "Name Tag" card per user (used for lazy creation lock)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'uniq_boltcards_user_nametag'
+  ) THEN
+    EXECUTE 'CREATE UNIQUE INDEX uniq_boltcards_user_nametag ON public.lnbits_boltcards(user_duid) WHERE label = ''Name Tag''';
+  END IF;
+END $$;
+
 
 -- RLS Policies (example, adapt to your RLS approach). We assume RLS ON and auth.uid() usage
 ALTER TABLE public.lnbits_wallets ENABLE ROW LEVEL SECURITY;
