@@ -70,6 +70,8 @@ export { default as EditContactForm } from "./EditContactForm";
 export { default as EducationPlatform } from "./EducationPlatform";
 export { default as FamilyOnboarding } from "./FamilyOnboarding";
 export { default as IdentityForge } from "./IdentityForge";
+export { default as KeyRotationWizard } from "./KeyRotationWizard";
+export { default as Settings } from "./Settings";
 
 // Crypto & System Components
 export { CryptoPreloader } from "./CryptoPreloader";

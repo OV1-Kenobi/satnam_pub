@@ -1,5 +1,5 @@
 import { ArrowLeft, Copy, QrCode } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getBoltcardLnurl } from "@/api/endpoints/lnbits.js";
 import { generateQRCodeDataURL, getRecommendedErrorCorrection } from "../utils/qr-code-browser";

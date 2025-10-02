@@ -27,6 +27,7 @@ import SignInModal from "./components/SignInModal";
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
 import NFCProvisioningGuide from "./components/NFCProvisioningGuide";
+import Settings from "./components/Settings";
 
 
 import { useAuth } from "./components/auth/AuthProvider";
@@ -78,6 +79,7 @@ function App() {
     | "lnbits-setup"
     | "lnurl-display"
     | "nfc-provisioning-guide"
+    | "settings"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
@@ -662,6 +664,26 @@ function App() {
       >
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <NFCProvisioningGuide onBack={() => setCurrentView("landing")} />
+
+        </div>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "settings") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Settings />
         </div>
       </PageWrapper>
     );
@@ -1441,26 +1463,35 @@ function App() {
                   Automated Payments
                 </button>
                 {auth.authenticated ? (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const npub = (auth.user as any)?.npub as string | undefined;
-                        if (!npub) {
-                          showToast.error("Your npub is not available", { duration: 2500 });
-                          return;
+                  <>
+                    <button
+                      onClick={() => setCurrentView('settings')}
+                      className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                      title="Open Settings"
+                    >
+                      Settings
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const npub = (auth.user as any)?.npub as string | undefined;
+                          if (!npub) {
+                            showToast.error("Your npub is not available", { duration: 2500 });
+                            return;
+                          }
+                          await navigator.clipboard.writeText(npub);
+                          showToast.success("Copied your npub", { duration: 2500 });
+                        } catch (e) {
+                          showToast.error("Failed to copy npub", { duration: 3000 });
                         }
-                        await navigator.clipboard.writeText(npub);
-                        showToast.success("Copied your npub", { duration: 2500 });
-                      } catch (e) {
-                        showToast.error("Failed to copy npub", { duration: 3000 });
-                      }
-                    }}
-                    className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                    aria-label="Copy your npub to clipboard"
-                    title="Copy your npub"
-                  >
-                    Copy Npub
-                  </button>
+                      }}
+                      className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
+                      aria-label="Copy your npub to clipboard"
+                      title="Copy your npub"
+                    >
+                      Copy Npub
+                    </button>
+                  </>
                 ) : null}
                 <button
                   onClick={() => setCurrentView('nfc-provisioning-guide')}
@@ -1663,33 +1694,36 @@ function App() {
         </div>
 
         {/* NTAG424 Physical MFA Modal (lazy-loaded, isolated) */}
-        {nfcModalOpen && (
-          <ErrorBoundary
-            fallback={null}
-            onError={(e) => {
-              console.error('Failed to load NTAG424 modal:', e);
-              // Auto-close to recover UI if load/render fails
-              try { setNfcModalOpen(false); } catch { }
-            }}
-          >
-            <Suspense fallback={null}>
-              <NTAG424AuthModal
-                isOpen={true}
-                onClose={() => setNfcModalOpen(false)}
-                mode="both"
-                title="Program Physical MFA tags"
-                purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
-              />
-            </Suspense>
-          </ErrorBoundary>
-        )}
+        {
+          nfcModalOpen && (
+            <ErrorBoundary
+              fallback={null}
+              onError={(e) => {
+                console.error('Failed to load NTAG424 modal:', e);
+                // Auto-close to recover UI if load/render fails
+                try { setNfcModalOpen(false); } catch { }
+              }}
+            >
+              <Suspense fallback={null}>
+                <NTAG424AuthModal
+                  isOpen={true}
+                  onClose={() => setNfcModalOpen(false)}
+                  mode="both"
+                  title="Program Physical MFA tags"
+                  purpose="Program NTAG424 NFC tags for Client Vault signin and Nostr event signing"
+                />
+              </Suspense>
+            </ErrorBoundary>
+          )
+        }
 
-      </footer>
+      </footer >
 
       {/* Sign In Modal */}
-      <SignInModal
+      < SignInModal
         isOpen={signInModalOpen}
-        onClose={() => setSignInModalOpen(false)}
+        onClose={() => setSignInModalOpen(false)
+        }
         onSignInSuccess={handleAuthSuccess}
         onCreateNew={() => {
           try { (window as any).__identityForgeRegFlow = true; } catch { }
@@ -1713,27 +1747,31 @@ function App() {
       />
 
       {/* Communications Modal */}
-      {showCommunications && (
-        <GiftwrappedMessaging
-          familyMember={{
-            id: "current-user",
-            npub: "npub1placeholder",
-            username: "Current User",
-            role: "adult"
-          }}
-          isModal={true}
-          onClose={() => setShowCommunications(false)}
-        />
-      )}
+      {
+        showCommunications && (
+          <GiftwrappedMessaging
+            familyMember={{
+              id: "current-user",
+              npub: "npub1placeholder",
+              username: "Current User",
+              role: "adult"
+            }}
+            isModal={true}
+            onClose={() => setShowCommunications(false)}
+          />
+        )
+      }
 
       {/* Contacts Manager Modal */}
-      {showContactsModal && (
-        <ContactsManagerModal
-          isOpen={showContactsModal}
-          onClose={() => setShowContactsModal(false)}
-        />
-      )}
-    </div>
+      {
+        showContactsModal && (
+          <ContactsManagerModal
+            isOpen={showContactsModal}
+            onClose={() => setShowContactsModal(false)}
+          />
+        )
+      }
+    </div >
   );
 }
 

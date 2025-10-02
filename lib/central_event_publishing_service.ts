@@ -2483,6 +2483,130 @@ export class CentralEventPublishingService {
     });
   }
 
+  /**
+   * Load and decrypt the current user's encrypted contacts.
+   *
+   * Purpose: Centralize privacy-first contact resolution for features like
+   * notifications, messaging, and contact management. Uses the active messaging
+   * session's session_key to decrypt contact npubs. Applies rate limiting to
+   * avoid abuse and returns a deduplicated list of decrypted contacts.
+   *
+   * Error handling:
+   * - Throws if there is no active CEPS user session
+   * - Throws if a valid session_key cannot be found for the authenticated user
+   * - Returns [] on table query failures, logging a warning
+   * - Logs and skips individual contacts that fail decryption
+   *
+   * Relay hints:
+   * - If the `encrypted_contacts` table contains a `relay_hints` (string[] or
+   *   JSON) column, those hints are surfaced to the caller for downstream relay
+   *   optimization (e.g., targeted publish to known recipient relays).
+   *
+   * Usage example:
+   *   const contacts = await CEPS.loadAndDecryptContacts();
+   *   for (const c of contacts) {
+   *     await CEPS.sendStandardDirectMessage(c.npub, "hello");
+   *   }
+   */
+  public async loadAndDecryptContacts(): Promise<
+    Array<{
+      npub: string;
+      relayHints?: string[];
+      trustLevel?: string;
+      supportsGiftWrap?: boolean;
+    }>
+  > {
+    // Hydrate/verify CEPS user session
+    await (this as any).ensureActiveUserSession?.();
+    if (!this.userSession) throw new Error("No active session");
+
+    // Acquire Supabase client
+    const supabase = await getSupabase();
+
+    // Resolve authenticated user id to derive owner_hash (privacy-first)
+    let authId: string | undefined;
+    try {
+      const { data } = await (supabase as any).auth?.getUser?.();
+      authId = data?.user?.id as string | undefined;
+    } catch {}
+    if (!authId)
+      throw new Error("No authenticated user for contact decryption");
+
+    // Derive owner_hash and find most recent valid messaging session_key
+    const userHash = await PrivacyUtils.hashIdentifier(authId);
+    const nowIso = new Date().toISOString();
+    const { data: sessRows } = await supabase
+      .from("messaging_sessions")
+      .select("session_key, expires_at")
+      .eq("user_hash", userHash)
+      .gt("expires_at", nowIso)
+      .order("expires_at", { ascending: false })
+      .limit(1);
+    const sessionKey: string | undefined = sessRows?.[0]?.session_key;
+    if (!sessionKey)
+      throw new Error("No valid messaging session key available");
+
+    // Query encrypted contacts (rate-limited to 1000)
+    let encRows: any[] | null = null;
+    try {
+      const { data, error } = await supabase
+        .from("encrypted_contacts")
+        .select("encrypted_npub, relay_hints, trust_level, supports_gift_wrap")
+        .eq("owner_hash", userHash)
+        .limit(1000);
+      if (error) {
+        console.warn("encrypted_contacts query failed:", error);
+        return [];
+      }
+      encRows = Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn("encrypted_contacts query threw:", e);
+      return [];
+    }
+
+    // Decrypt npubs, collect metadata, and deduplicate
+    const out: Array<{
+      npub: string;
+      relayHints?: string[];
+      trustLevel?: string;
+      supportsGiftWrap?: boolean;
+    }> = [];
+    const seen = new Set<string>();
+
+    for (const row of encRows) {
+      try {
+        const enc = String(row?.encrypted_npub || "").trim();
+        if (!enc) continue;
+        const npub = (
+          await PrivacyUtils.decryptWithSessionKey(enc, sessionKey)
+        ).trim();
+        if (!npub || seen.has(npub)) continue;
+        seen.add(npub);
+        const relayHints = Array.isArray(row?.relay_hints)
+          ? (row.relay_hints as string[])
+          : typeof row?.relay_hints === "string"
+          ? (() => {
+              try {
+                return JSON.parse(row.relay_hints);
+              } catch {
+                return undefined;
+              }
+            })()
+          : undefined;
+        out.push({
+          npub,
+          relayHints,
+          trustLevel: row?.trust_level,
+          supportsGiftWrap: !!row?.supports_gift_wrap,
+        });
+      } catch (decErr) {
+        console.warn("Contact decrypt failed (skipped):", decErr);
+      }
+    }
+
+    return out;
+  }
+
   private async hashOTP(otp: string): Promise<{ hash: string; salt: string }> {
     const saltBytes = new Uint8Array(16);
     crypto.getRandomValues(saltBytes);

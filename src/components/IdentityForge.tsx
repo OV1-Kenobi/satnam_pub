@@ -1768,6 +1768,50 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 </p>
               </div>
 
+              {/* Quick entry to migration flow */}
+              <div className="flex items-center justify-center">
+                <button
+                  onClick={() => {
+                    try {
+                      // Validate that Step 1 requirements are met before allowing migration
+                      if (!formData.username || !formData.password || !formData.agreedToTerms) {
+                        setErrorMessage('Please complete username, password, and terms agreement before importing an existing identity.');
+                        return;
+                      }
+
+                      if (usernameAvailable !== true) {
+                        setErrorMessage('Please ensure your username is available before proceeding.');
+                        return;
+                      }
+
+                      if (formData.password !== formData.confirmPassword) {
+                        setErrorMessage('Please ensure your passwords match before proceeding.');
+                        return;
+                      }
+
+                      if (formData.password.length < 8) {
+                        setErrorMessage('Password must be at least 8 characters long.');
+                        return;
+                      }
+
+                      setMigrationMode('import');
+                      setCurrentStep(2);
+                    } catch (error) {
+                      console.error('Error switching to migration mode:', error);
+                      setErrorMessage('An error occurred while switching to import mode. Please try again.');
+                    }
+                  }}
+                  disabled={!formData.username || !formData.password || !formData.agreedToTerms || usernameAvailable !== true || formData.password !== formData.confirmPassword || formData.password.length < 8}
+                  className={`inline-flex items-center px-4 py-2 rounded-lg shadow border border-white/20 transition-all duration-200 ${formData.username && formData.password && formData.agreedToTerms && usernameAvailable === true && formData.password === formData.confirmPassword && formData.password.length >= 8
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    }`}
+                >
+                  Already have a Nostr identity? Import it here
+                </button>
+              </div>
+
+
               <div className="space-y-6">
                 {/* Username Section */}
                 <div className="space-y-4">
