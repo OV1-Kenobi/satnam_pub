@@ -1,9 +1,8 @@
-import { ArrowLeft, Copy, Download, ExternalLink, QrCode } from "lucide-react";
+import { ArrowLeft, Copy, Download, ExternalLink, Smartphone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 
-import { getBoltcardLnurl } from "@/api/endpoints/lnbits.js";
-import { generateQRCodeDataURL, getRecommendedErrorCorrection } from "../utils/qr-code-browser";
+import { getBoltcardLnurl, getLNbitsWalletUrl } from "@/api/endpoints/lnbits.js";
 
 
 
@@ -13,25 +12,49 @@ interface Props { onBack: () => void; }
 export default function NFCProvisioningGuide({ onBack }: Props) {
 
   const [lnurl, setLnurl] = useState<string>("");
-  const [qr, setQr] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [walletUrl, setWalletUrl] = useState<string>("");
+  const [currentStep, setCurrentStep] = useState<'wallet-setup' | 'card-scan' | 'auth-url'>('wallet-setup');
 
   // Track mount to avoid setState on unmounted component
   const isMountedRef = useRef(true);
   // Track copy reset timeout to clear on unmount
-  const copyResetTimeout = useRef<number | null>(null);
+  const copyResetTimeout = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
       if (copyResetTimeout.current) {
         window.clearTimeout(copyResetTimeout.current);
-        copyResetTimeout.current = null;
+        copyResetTimeout.current = undefined;
       }
     };
   }, []);
+
+  const fetchWalletUrl = async () => {
+    if (!isMountedRef.current) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await getLNbitsWalletUrl();
+      if (!isMountedRef.current) return;
+      if (resp.success && resp.data && typeof resp.data.walletUrl === "string") {
+        setWalletUrl(resp.data.walletUrl);
+      } else {
+        setError(resp.error || "Unable to retrieve wallet URL");
+      }
+    } catch (e) {
+      if (isMountedRef.current) {
+        setError(e instanceof Error ? e.message : "Network error");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
 
   const fetchBoltcardLnurl = async () => {
     if (!isMountedRef.current) return;
@@ -42,6 +65,7 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
       if (!isMountedRef.current) return;
       if (resp.success && resp.data && typeof resp.data.lnurl === "string") {
         setLnurl(resp.data.lnurl);
+        setCurrentStep('auth-url');
       } else {
         setError(resp.error || "Unable to retrieve Boltcard LNURL");
       }
@@ -56,19 +80,9 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
     }
   };
 
-  useEffect(() => { fetchBoltcardLnurl(); }, []);
+  useEffect(() => { fetchWalletUrl(); }, []);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!lnurl) return setQr("");
-      try {
-        const data = await generateQRCodeDataURL(lnurl, { size: 224, errorCorrectionLevel: getRecommendedErrorCorrection("payment") });
-        if (alive) setQr(data);
-      } catch (e) { if (alive) setQr(""); }
-    })();
-    return () => { alive = false; };
-  }, [lnurl]);
+
 
   const handleCopy = async () => {
     if (!lnurl) return;
@@ -80,12 +94,34 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
       }
       copyResetTimeout.current = window.setTimeout(() => {
         setCopied(false);
-        copyResetTimeout.current = null;
+        copyResetTimeout.current = undefined;
       }, 1500);
     } catch {
       if (copyResetTimeout.current) {
         window.clearTimeout(copyResetTimeout.current);
-        copyResetTimeout.current = null;
+        copyResetTimeout.current = undefined;
+      }
+    }
+  };
+
+  const handleCopyWalletUrl = async () => {
+    if (!walletUrl) return;
+    try {
+      await navigator.clipboard.writeText(walletUrl);
+      setCopied(true);
+      if (copyResetTimeout.current) {
+        window.clearTimeout(copyResetTimeout.current);
+      }
+      copyResetTimeout.current = window.setTimeout(() => {
+        if (isMountedRef.current) {
+          setCopied(false);
+        }
+        copyResetTimeout.current = undefined;
+      }, 2000);
+    } catch {
+      if (copyResetTimeout.current) {
+        window.clearTimeout(copyResetTimeout.current);
+        copyResetTimeout.current = undefined;
       }
     }
   };
@@ -111,55 +147,150 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
           <img src="/SatNam-logo.png" alt="Satnam" className="h-10 w-10 rounded" />
           <h1 className="text-2xl font-bold text-white">Satnam NFC Provisioning Guide</h1>
         </div>
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-yellow-100 mb-6">
-          NFC programming requires an NFC-compatible mobile device. iOS can use the Boltcard app for provisioning; Android has full support.
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-100 mb-6">
+          <p className="mb-2">
+            <strong>⚠️ Important:</strong> This is a single-device workflow. You'll use your phone for both LNbits setup AND NFC programming.
+          </p>
+          <p className="text-sm">
+            You'll alternate between your mobile browser (for LNbits) and the Boltcard Programming app (for NFC operations), using copy/paste to transfer information between them.
+          </p>
         </div>
 
-        {/* Boltcard LNURL */}
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-blue-100 mb-6">
+          <p className="mb-2">
+            <strong>📺 Video Tutorial:</strong> Watch the complete process in action
+          </p>
+          <a
+            href="https://youtu.be/_sW7miqaXJc?si=NRDeBT-NlsNuPheA"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-300 underline hover:text-blue-200"
+          >
+            LNbits Boltcard Setup Tutorial (YouTube)
+          </a>
+          <p className="text-xs mt-1">Note: Follow the single-device variation described below</p>
+        </div>
+
+        {/* Step-by-Step Workflow */}
         <section className="mb-6">
-          <h2 className="text-xl font-semibold text-white mb-2">Your Boltcard LNURL</h2>
-          {loading ? (
-            <p className="text-purple-200">Loading your Boltcard LNURL...</p>
-          ) : error ? (
-            <div className="bg-white/10 border border-red-400 rounded-lg p-4 text-red-200">
-              <div>
-                {error || "Unable to retrieve Boltcard LNURL. Please try again."}{" "}
-                <button onClick={fetchBoltcardLnurl} className="underline text-yellow-300 hover:text-yellow-400">Try again</button>
+          <h2 className="text-xl font-semibold text-white mb-4">Complete NFC Name Tag Setup Process</h2>
+
+          {currentStep === 'wallet-setup' && (
+            <div className="space-y-4">
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-green-200 mb-2">Step 1: Access Your LNbits Wallet</h3>
+                <p className="text-green-100 mb-3">
+                  First, you need to access your LNbits wallet to set up the Boltcard configuration.
+                </p>
+                {loading && <div className="text-green-200">Loading your wallet URL...</div>}
+                {error && <div className="text-red-400 bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-3">{error}</div>}
+                {walletUrl && (
+                  <div className="space-y-3">
+                    <div className="bg-white/10 rounded-lg p-3">
+                      <p className="text-sm text-green-200 mb-2">Your LNbits Wallet URL:</p>
+                      <div className="flex">
+                        <input readOnly value={walletUrl} className="flex-1 bg-green-800 border border-green-600 rounded-l-md px-3 py-2 text-white text-sm" />
+                        <button
+                          onClick={handleCopyWalletUrl}
+                          className="bg-green-500 hover:bg-green-600 text-black px-3 py-2 rounded-r-md font-semibold"
+                        >
+                          {copied ? "Copied!" : <><Copy className="h-4 w-4 inline mr-1" />Copy</>}
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => window.open(walletUrl, '_blank')}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center space-x-2"
+                    >
+                      <Smartphone className="h-5 w-5" />
+                      <span>Open LNbits Wallet (Boltcard Extension)</span>
+                      <ExternalLink className="h-4 w-4" />
+                    </button>
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                      <p className="text-yellow-200 text-sm">
+                        <strong>Next:</strong> In LNbits, go to the Boltcard extension, set your spending limits, then tap the NFC button to scan your card's UID.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setCurrentStep('card-scan')}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg"
+                    >
+                      I've Set Up My Card in LNbits →
+                    </button>
+                  </div>
+                )}
               </div>
-              <button onClick={fetchBoltcardLnurl} className="mt-3 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold px-3 py-2 rounded-md">Retry</button>
             </div>
-          ) : (
-            <div className="grid sm:grid-cols-3 gap-4 items-center">
-              <div className="sm:col-span-1">
-                <div className="bg-white rounded-xl p-3 inline-block">
-                  {qr ? <img src={qr} alt="Boltcard LNURL QR" className="w-44 h-44" /> : <div className="w-44 h-44 bg-gray-100 flex items-center justify-center"><QrCode className="h-8 w-8 text-gray-400" /></div>}
-                </div>
-                <div className="text-xs text-purple-300 mt-2">{lnurl || "—"}</div>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm text-purple-200 mb-1">Boltcard LNURL (text)</label>
-                <div className="flex">
-                  <input readOnly value={lnurl} className="flex-1 bg-purple-800 border border-purple-600 rounded-l-md px-3 py-2 text-white" />
-                  <button onClick={handleCopy} className="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-2 rounded-r-md font-semibold">
-                    <span className="inline-flex items-center"><Copy className="h-4 w-4 mr-1" />{copied ? "Copied" : "Copy"}</span>
+          )}
+
+          {currentStep === 'card-scan' && (
+            <div className="space-y-4">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-blue-200 mb-2">Step 2: Get Your Auth URL</h3>
+                <p className="text-blue-100 mb-3">
+                  After scanning your NFC card's UID in LNbits, it will generate an auth URL for programming.
+                </p>
+                <div className="space-y-3">
+                  <button
+                    onClick={fetchBoltcardLnurl}
+                    disabled={loading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg"
+                  >
+                    {loading ? "Fetching..." : "Get My Auth URL"}
+                  </button>
+                  {error && <div className="text-red-400 bg-red-900/20 border border-red-500/30 rounded-lg p-3">{error}</div>}
+                  <button
+                    onClick={() => setCurrentStep('wallet-setup')}
+                    className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg"
+                  >
+                    ← Back to Wallet Setup
                   </button>
                 </div>
-                <p className="text-purple-200 text-sm mt-2">Paste this Boltcard LNURL into the Boltcard Programming app when prompted for LNURL.</p>
+              </div>
+            </div>
+          )}
+
+          {currentStep === 'auth-url' && lnurl && (
+            <div className="space-y-4">
+              <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-purple-200 mb-2">Step 3: Copy Auth URL to Boltcard App</h3>
+                <p className="text-purple-100 mb-3">
+                  Copy this auth URL and paste it into the Boltcard Programming app.
+                </p>
+                <div className="space-y-3">
+                  <div className="bg-white/10 rounded-lg p-3">
+                    <label className="block text-sm text-purple-200 mb-2">Auth URL (Copy This):</label>
+                    <div className="flex">
+                      <input readOnly value={lnurl} className="flex-1 bg-purple-800 border border-purple-600 rounded-l-md px-3 py-2 text-white text-sm" />
+                      <button onClick={handleCopy} className="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-2 rounded-r-md font-semibold">
+                        {copied ? "Copied!" : <><Copy className="h-4 w-4 inline mr-1" />Copy</>}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                    <p className="text-yellow-200 text-sm">
+                      <strong>Next:</strong> Open the Boltcard Programming app, select "Create Bolt Card" → "PASTE AUTH URL", paste the URL above, then tap your NFC card to program it.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
         </section>
 
-        {/* Steps */}
+        {/* Final Step */}
         <section className="space-y-4">
-          <h2 className="text-xl font-semibold text-white">Step-by-Step Instructions</h2>
-          <ol className="list-decimal list-inside text-purple-100 space-y-2">
-            <li>Install the Boltcard Programming app on your phone.</li>
-            <li>Open the app and select provision/program new card.</li>
-            <li>When prompted, enter or scan your LNURL shown above.</li>
-            <li>Complete the remaining prompts to write the configuration to your NFC tag.</li>
-            <li>Return to Satnam and click "Register Your True Name Tag" to verify and bind your tag.</li>
-          </ol>
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-orange-200 mb-2">Step 4: Return to Satnam</h3>
+            <p className="text-orange-100 mb-3">
+              After successfully programming your NFC card with the Boltcard app, return to Satnam to register your True Name Tag with PIN protection.
+            </p>
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+              <p className="text-yellow-200 text-sm">
+                <strong>Final Step:</strong> Click "Register Your True Name Tag" in Satnam to add PIN protection and bind the card to your account.
+              </p>
+            </div>
+          </div>
         </section>
 
         {/* App Links */}
@@ -186,8 +317,8 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
             <li><a className="underline" href="https://github.com/boltcard/bolt-nfc-android-app/releases" target="_blank" rel="noopener noreferrer">Boltcard Android Releases</a></li>
           </ul>
         </section>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
 

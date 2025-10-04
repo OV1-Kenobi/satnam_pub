@@ -161,11 +161,17 @@ export default function LNURLDisplay({ onBack }: Props) {
       )}
 
       <div className="mt-8 text-purple-200 text-sm">
-        <h2 className="text-white font-semibold mb-2">Next</h2>
+        <h2 className="text-white font-semibold mb-2">Next Steps</h2>
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-3">
+          <p className="text-yellow-200 text-xs">
+            <strong>Single-Device Workflow:</strong> Use the <strong>Copy</strong> button above to copy this auth URL, then paste it into the Boltcard Programming app. QR scanning won't work on the same device.
+          </p>
+        </div>
         <ol className="list-decimal list-inside space-y-1">
           <li>Install the Boltcard Programming app on your NFC-capable phone.</li>
           <li>Open the app and choose to provision a new card.</li>
           <li>When prompted for LNURL, scan the QR above or paste the link.</li>
+          <li>Tap your NFC card to the phone to program it with your wallet configuration.</li>
         </ol>
       </div>
     </div>

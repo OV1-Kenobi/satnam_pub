@@ -42,6 +42,13 @@ declare module "@/api/endpoints/lnbits.js" {
   export function getBoltcardLnurl(): Promise<
     LNBitsClient.Response<LNBitsClient.BoltcardLnurlResult>
   >;
+  export function getLNbitsWalletUrl(): Promise<
+    LNBitsClient.Response<{
+      walletUrl: string;
+      walletId: string;
+      baseUrl: string;
+    }>
+  >;
 }
 
 // Support relative imports from TSX using ../../api/endpoints/lnbits.js
@@ -58,5 +65,12 @@ declare module "../../api/endpoints/lnbits.js" {
   ): Promise<LNBitsClient.Response<any>>;
   export function getBoltcardLnurl(): Promise<
     LNBitsClient.Response<LNBitsClient.BoltcardLnurlResult>
+  >;
+  export function getLNbitsWalletUrl(): Promise<
+    LNBitsClient.Response<{
+      walletUrl: string;
+      walletId: string;
+      baseUrl: string;
+    }>
   >;
 }

@@ -1210,7 +1210,7 @@ function App() {
                 <strong>Step 3 — Tool Acquisition:</strong> Install the Boltcard programming app on your phone (links below). In the app, you’ll enter the wallet details you created in Step 2.
               </li>
               <li>
-                <strong>Step 4 — Stamp Your ID onto Your NFC Name Tag:</strong> Use the programming app to provision your tag with your True Name (identity) and wallet data. Then return here and tap your Name Tag to register/authenticate — establishing secured Networks of Trusted Peers for communications and payments.
+                <strong>Step 4 — Complete NFC Setup Process:</strong> Follow the guided workflow: access your LNbits Boltcard extension → scan your card's UID → get auth URL → copy/paste into Boltcard Programming app → tap to program → return to Satnam to register with PIN protection.
               </li>
               <li>
                 <strong>Step 5 — Register Your True Name Tag:</strong> Once your tag is programmed, register it to your Satnam account to enable physical multi-factor authentication of peers, messages, and payments.
@@ -1500,7 +1500,7 @@ function App() {
                 >
                   <span className="block">Prepare Your Name Tag/s</span>
                   <span className="block text-xs text-purple-300">
-                    Read setup guide • <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" className="underline">Install Boltcard Programming App</a>
+                    Get auth URL & program via tap • <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" className="underline">Install Boltcard Programming App</a>
                   </span>
                 </button>
                 <button

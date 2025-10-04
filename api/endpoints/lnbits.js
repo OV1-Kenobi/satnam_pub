@@ -86,3 +86,15 @@ export async function getBoltcardLnurl() {
     return { success: false, error: e instanceof Error ? e.message : "Network error" };
   }
 }
+
+export async function getLNbitsWalletUrl() {
+  try {
+    const url = `${apiConfig.baseUrl}/lnbits-get-wallet-url`;
+    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const data = await jsonOrText(res).catch(() => ({}));
+    if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
+    return { success: true, data };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Network error" };
+  }
+}
