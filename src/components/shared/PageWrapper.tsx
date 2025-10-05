@@ -46,7 +46,7 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
     <div className="min-h-screen relative overflow-hidden bg-purple-900">
       {/* Background Image - Different images for different page types */}
       <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0"
+        className="absolute inset-0 bg-contain md:bg-cover bg-center bg-no-repeat z-0"
         style={{
           backgroundImage: getBackgroundImage(),
           backgroundColor: '#581c87', // fallback purple color
