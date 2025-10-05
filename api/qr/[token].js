@@ -9,7 +9,7 @@
  */
 
 // Use maintained 'qrcode' lib for server-side QR generation (backward compatible, no util._extend)
-import { config } from '../../config.js';
+import { config } from '../../config/config.js';
 import db from '../../lib/db';
 
 export default async function handler(req, res) {

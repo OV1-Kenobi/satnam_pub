@@ -5,7 +5,7 @@
  * Integrates with the PrivateCommunicationModal for seamless messaging experience.
  */
 
-import { config } from "../../../config.js";
+import { config } from "../../../config/config.js";
 export interface PrivacyConsentResponse {
   consentGiven: boolean;
   warningAcknowledged: boolean;

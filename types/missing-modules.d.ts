@@ -45,7 +45,7 @@ declare module "../config" {
 }
 
 // Also support CommonJS/JS import pattern without extension resolution differences
-declare module "../config.js" {
+declare module "../config/config.js" {
   export const config: any;
   export const authConfig: any;
 }

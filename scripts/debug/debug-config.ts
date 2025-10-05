@@ -53,7 +53,7 @@ try {
 
   // Try importing the root config.ts
   try {
-    const { config } = await import("./config.js");
+    const { config } = await import("../../config/config.js");
     console.log("\n=== Root Config Resolution ===");
     console.log("Database config:", {
       host: config.database.host,
