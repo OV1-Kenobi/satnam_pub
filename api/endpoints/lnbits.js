@@ -5,6 +5,7 @@
  * - createBoltcard({ label, spend_limit_sats })
  * - getPaymentHistory({ page, limit })
  * - getBoltcardLnurl()
+ * - payInvoice(invoice, { walletId?, maxFeeSats? })
  *
  * Uses fetchWithAuth to include JWT and returns standardized responses.
  */
@@ -74,7 +75,6 @@ export async function getPaymentHistory({ page = 1, limit = 20 } = {}) {
   }
 }
 
-
 export async function getBoltcardLnurl() {
   try {
     const url = `${apiConfig.baseUrl}/lnbits-get-boltcard-lnurl`;
@@ -91,6 +91,22 @@ export async function getLNbitsWalletUrl() {
   try {
     const url = `${apiConfig.baseUrl}/lnbits-get-wallet-url`;
     const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const data = await jsonOrText(res).catch(() => ({}));
+    if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
+    return { success: true, data };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Network error" };
+  }
+}
+
+export async function payInvoice(invoice, options = {}) {
+  try {
+    const url = `${apiConfig.baseUrl}/lnbits-pay-invoice`;
+    const res = await fetchWithAuth(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invoice, ...options })
+    });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
     return { success: true, data };

@@ -26,6 +26,17 @@ declare namespace LNBitsClient {
   interface LightningAddressBody {
     externalLightningAddress?: string;
   }
+  interface PayInvoiceOptions {
+    walletId?: string;
+    maxFeeSats?: number;
+  }
+  interface PayInvoiceResult {
+    payment_hash: string;
+    checking_id?: string;
+    amount_sats: number;
+    fee?: number;
+    raw?: any;
+  }
 }
 
 declare module "@/api/endpoints/lnbits.js" {
@@ -49,6 +60,10 @@ declare module "@/api/endpoints/lnbits.js" {
       baseUrl: string;
     }>
   >;
+  export function payInvoice(
+    invoice: string,
+    options?: LNBitsClient.PayInvoiceOptions
+  ): Promise<LNBitsClient.Response<LNBitsClient.PayInvoiceResult>>;
 }
 
 // Support relative imports from TSX using ../../api/endpoints/lnbits.js
@@ -73,4 +88,8 @@ declare module "../../api/endpoints/lnbits.js" {
       baseUrl: string;
     }>
   >;
+  export function payInvoice(
+    invoice: string,
+    options?: LNBitsClient.PayInvoiceOptions
+  ): Promise<LNBitsClient.Response<LNBitsClient.PayInvoiceResult>>;
 }
