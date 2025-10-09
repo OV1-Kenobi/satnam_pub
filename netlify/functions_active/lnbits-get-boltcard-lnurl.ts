@@ -60,6 +60,27 @@ function encryptB64(plain: string): string {
   return Buffer.concat([iv, tag, enc]).toString("base64");
 }
 
+async function getUserSalt(
+  supabase: any,
+  user_duid: string
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("user_identities")
+      .select("user_salt")
+      .eq("id", user_duid)
+      .single();
+    if (error) return null;
+    return data?.user_salt || null;
+  } catch {
+    return null;
+  }
+}
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
 async function lnbitsFetch(
   path: string,
   apiKey: string,
@@ -116,7 +137,7 @@ export const handler: Handler = async (event) => {
     // 1) Try to fetch the most recent boltcard with an auth_link_enc
     const { data: existing, error: exErr } = await supabase
       .from("lnbits_boltcards")
-      .select("card_id, auth_link_enc, created_at")
+      .select("card_id, auth_link_enc, card_uid_hash, created_at")
       .eq("user_duid", user_duid)
       .not("auth_link_enc", "is", null)
       .order("created_at", { ascending: false })
@@ -125,8 +146,74 @@ export const handler: Handler = async (event) => {
       return json(500, { success: false, error: exErr.message || "DB error" });
 
     if (existing && existing.length && existing[0].auth_link_enc) {
+      const row = existing[0];
       try {
-        const lnurl = decrypt(existing[0].auth_link_enc);
+        const lnurl = decrypt(row.auth_link_enc);
+
+        // Opportunistic backfill of card_uid_hash if missing
+        if (!row.card_uid_hash) {
+          try {
+            // Fetch admin key to query card list for UID
+            const { data: walletRow } = await supabase
+              .from("lnbits_wallets")
+              .select("wallet_admin_key_enc")
+              .eq("user_duid", user_duid)
+              .single();
+            const adminKey = walletRow?.wallet_admin_key_enc
+              ? decrypt(walletRow.wallet_admin_key_enc)
+              : undefined;
+            const userSalt = await getUserSalt(supabase, user_duid);
+            if (adminKey && userSalt) {
+              let cardUid: string | null = null;
+              try {
+                const cards = await lnbitsFetch(
+                  "/boltcards/api/v1/cards",
+                  adminKey,
+                  {
+                    method: "GET",
+                  }
+                );
+                if (Array.isArray(cards)) {
+                  const match = cards.find(
+                    (c: any) =>
+                      String(c?.id || c?.uid || c?.card_id) ===
+                      String(row.card_id)
+                  );
+                  if (match?.uid) cardUid = String(match.uid);
+                }
+              } catch (e: any) {
+                console.warn(
+                  "card_uid_hash backfill: list cards failed (non-fatal)",
+                  e?.message || String(e)
+                );
+              }
+              if (cardUid) {
+                const card_uid_hash = sha256Hex(`${cardUid}${userSalt}`);
+                const { error: updHashErr } = await supabase
+                  .from("lnbits_boltcards")
+                  .update({ card_uid_hash })
+                  .eq("user_duid", user_duid)
+                  .eq("card_id", String(row.card_id));
+                if (updHashErr) {
+                  console.warn(
+                    "card_uid_hash backfill failed (non-fatal):",
+                    updHashErr.message
+                  );
+                }
+              } else {
+                console.warn(
+                  "card_uid_hash backfill: UID unavailable (non-fatal)"
+                );
+              }
+            }
+          } catch (e: any) {
+            console.warn(
+              "card_uid_hash backfill error (non-fatal):",
+              e?.message || String(e)
+            );
+          }
+        }
+
         return json(200, { success: true, lnurl });
       } catch (e: any) {
         return json(500, {
@@ -277,6 +364,65 @@ export const handler: Handler = async (event) => {
         success: false,
         error: updErr.message || "DB error (update)",
       });
+
+    // Opportunistically compute and persist card_uid_hash for the newly created card
+    try {
+      const userSalt = await getUserSalt(supabase, user_duid);
+      if (!userSalt) {
+        console.warn(
+          "card_uid_hash: missing user_salt (lazy create); skipping"
+        );
+      } else {
+        let cardUid: string | null = created?.uid || created?.card_uid || null;
+        if (!cardUid) {
+          try {
+            const cards = await lnbitsFetch(
+              "/boltcards/api/v1/cards",
+              adminKey,
+              {
+                method: "GET",
+              }
+            );
+            if (Array.isArray(cards)) {
+              const match = cards.find(
+                (c: any) =>
+                  String(c?.id || c?.uid || c?.card_id) === String(cardId)
+              );
+              if (match?.uid) cardUid = String(match.uid);
+            }
+          } catch (e: any) {
+            console.warn(
+              "card_uid_hash: list cards failed (lazy create, non-fatal)",
+              e?.message || String(e)
+            );
+          }
+        }
+        if (cardUid) {
+          const card_uid_hash = sha256Hex(`${cardUid}${userSalt}`);
+          const { error: hashErr } = await supabase
+            .from("lnbits_boltcards")
+            .update({ card_uid_hash })
+            .eq("user_duid", user_duid)
+            .eq("label", "Name Tag")
+            .eq("card_id", String(cardId));
+          if (hashErr) {
+            console.warn(
+              "card_uid_hash update failed (lazy create, non-fatal):",
+              hashErr.message
+            );
+          }
+        } else {
+          console.warn(
+            "card_uid_hash: UID unavailable (lazy create, non-fatal)"
+          );
+        }
+      }
+    } catch (e: any) {
+      console.warn(
+        "card_uid_hash lazy-create error (non-fatal):",
+        e?.message || String(e)
+      );
+    }
 
     return json(200, { success: true, lnurl: String(authQr) });
   } catch (e: any) {

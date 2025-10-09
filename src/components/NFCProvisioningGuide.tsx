@@ -1,11 +1,9 @@
 import { ArrowLeft, Copy, Download, ExternalLink, Smartphone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-
 import { getBoltcardLnurl, getLNbitsWalletUrl } from "@/api/endpoints/lnbits.js";
 
-
-
+import { useNFCContactVerification } from "../hooks/useNFCContactVerification";
 
 interface Props { onBack: () => void; }
 
@@ -22,6 +20,33 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
   const isMountedRef = useRef(true);
   // Track copy reset timeout to clear on unmount
   const copyResetTimeout = useRef<number | undefined>(undefined);
+  const { verifyAndAddContact } = useNFCContactVerification();
+  const [jwt, setJwt] = useState<string>("");
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [sunVerified, setSunVerified] = useState<boolean | null>(null);
+  const [verifiedNip, setVerifiedNip] = useState<string | null>(null);
+
+  async function handleVerifyTap() {
+    setVerifyError(null);
+    setVerifying(true);
+    setSunVerified(null);
+    setVerifiedNip(null);
+    try {
+      const res = await verifyAndAddContact({ token: jwt });
+      if (!res.success) {
+        setVerifyError(res.error || "Verification failed");
+      } else {
+        setSunVerified(!!res.sunVerified);
+        setVerifiedNip(res.contactNip05 || null);
+      }
+    } catch (e: any) {
+      setVerifyError(e?.message || "Verification failed");
+    } finally {
+      setVerifying(false);
+    }
+  }
+
 
   useEffect(() => {
     return () => {
@@ -285,6 +310,46 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
             <p className="text-orange-100 mb-3">
               After successfully programming your NFC card with the Boltcard app, return to Satnam to register your True Name Tag with PIN protection.
             </p>
+
+            {/* Tap-to-Add Contact (Demo) */}
+            <section className="mt-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Tap-to-Add Contact (Demo)</h3>
+              <div className="bg-white/10 border border-white/20 rounded-lg p-4 text-purple-100 space-y-3">
+                <p className="text-sm">Paste your JWT then tap a contact's card to verify. Android can include SUN parameters when SDM is enabled. iOS reads NDEF Text only.</p>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-purple-900/40 border border-purple-600 rounded px-3 py-2 text-white text-sm"
+                    placeholder="Paste Bearer JWT (optional)"
+                    value={jwt}
+                    onChange={(e) => setJwt(e.target.value)}
+                  />
+                  <button
+                    onClick={handleVerifyTap}
+                    disabled={verifying}
+                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded"
+                  >
+                    {verifying ? 'Verifying…' : 'Tap to Verify'}
+                  </button>
+                </div>
+                {verifyError && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded p-3 text-red-100 text-sm">{verifyError}</div>
+                )}
+                {verifiedNip && (
+                  <div className="text-xs text-purple-200">Verified NIP-05: {verifiedNip}</div>
+                )}
+                {sunVerified === true && (
+                  <div className="bg-green-500/10 border border-green-500/30 rounded p-3 text-green-100 text-sm">
+                    ✓ Contact verified with cryptographic SUN proof (anti-cloning protection active)
+                  </div>
+                )}
+                {sunVerified === false && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3 text-yellow-100 text-sm">
+                    ⚠ Contact verified with UID-hash only (SUN not available)
+                  </div>
+                )}
+              </div>
+            </section>
+
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
               <p className="text-yellow-200 text-sm">
                 <strong>Final Step:</strong> Click "Register Your True Name Tag" in Satnam to add PIN protection and bind the card to your account.
@@ -294,6 +359,26 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
         </section>
 
         {/* App Links */}
+        {/* Multi-Function (Android Only) */}
+        <section className="mt-6">
+          <h3 className="text-lg font-semibold text-white mb-2">Multi-Function Card Setup (Android Only)</h3>
+          <div className="bg-white/10 border border-white/20 rounded-lg p-4 text-purple-100 space-y-2">
+            <p>Android users can program authentication, FROST signing pointer, and Nostr metadata directly in Satnam using Web NFC.</p>
+            <ul className="list-disc list-inside text-sm space-y-1">
+              <li>Step 1: Set your PIN in Satnam (server-side storage only).</li>
+              <li>Step 2: Enable signing capabilities: call <code>/.netlify/functions/nfc-enable-signing</code> with your desired <code>signingType</code> (frost | nostr | both).</li>
+              <li>Step 3: Program via Web NFC: Satnam writes File 04 (custom NIP-05 layout) and mirrors NIP-05 as an NDEF Text record for iOS compatibility. Payment (File 01) remains via Boltcard app.</li>
+              <li>Step 4: Verify: A read-back check confirms programming success.</li>
+            </ul>
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3 text-yellow-100">
+              <strong>Compatibility:</strong> Web NFC is available in Chrome/Edge on Android. iOS cannot program additional files via web, but can read NDEF Text (NIP-05) for tap-to-add contact flow. Use the Boltcard app for payment setup.
+            </div>
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 text-blue-100 mt-2">
+              <strong>iOS Tap-to-Add:</strong> iOS devices can read the NDEF Text record (NIP-05) and Satnam will verify ownership server-side. Optional SUN verification provides cryptographic proof against card cloning when SDM parameters are available.
+            </div>
+          </div>
+        </section>
+
         <section className="mt-6">
           <h3 className="text-lg font-semibold text-white mb-2">Boltcard Programming App</h3>
           <div className="grid sm:grid-cols-2 gap-3">

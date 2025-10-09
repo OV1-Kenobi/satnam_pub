@@ -69,6 +69,27 @@ function encryptB64(plain: string): string {
   return Buffer.concat([iv, tag, enc]).toString("base64");
 }
 
+async function getUserSalt(
+  supabase: any,
+  user_duid: string
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("user_identities")
+      .select("user_salt")
+      .eq("id", user_duid)
+      .single();
+    if (error) return null;
+    return data?.user_salt || null;
+  } catch {
+    return null;
+  }
+}
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
 async function lnbitsFetch(
   path: string,
   apiKey: string,
@@ -175,6 +196,64 @@ export const handler: Handler = async (event) => {
     });
     if (insErr)
       return json(500, { success: false, error: insErr.message || "DB error" });
+
+    // Attempt to compute and persist privacy-preserving card_uid_hash
+    try {
+      // 1) Get per-user salt
+      const userSalt = await getUserSalt(supabase, user_duid);
+      if (!userSalt) {
+        console.warn("card_uid_hash: missing user_salt; skipping hash persist");
+      } else {
+        // 2) Extract UID from creation response or fetch card list as fallback
+        let cardUid: string | null = created?.uid || created?.card_uid || null;
+        if (!cardUid) {
+          try {
+            const cards = await lnbitsFetch(
+              "/boltcards/api/v1/cards",
+              adminKey,
+              {
+                method: "GET",
+              }
+            );
+            if (Array.isArray(cards)) {
+              const match = cards.find(
+                (c: any) =>
+                  String(c?.id || c?.uid || c?.card_id) === String(cardId)
+              );
+              if (match?.uid) cardUid = String(match.uid);
+            }
+          } catch (e: any) {
+            console.warn(
+              "card_uid_hash: unable to list cards from LNbits (non-fatal)",
+              e?.message || String(e)
+            );
+          }
+        }
+        if (cardUid) {
+          const card_uid_hash = sha256Hex(`${cardUid}${userSalt}`);
+          const { error: hashErr } = await supabase
+            .from("lnbits_boltcards")
+            .update({ card_uid_hash })
+            .eq("user_duid", user_duid)
+            .eq("card_id", String(cardId));
+          if (hashErr) {
+            console.warn(
+              "card_uid_hash update failed (non-fatal):",
+              hashErr.message
+            );
+          }
+        } else {
+          console.warn(
+            "card_uid_hash: LNbits did not return UID; hash not persisted (non-fatal)"
+          );
+        }
+      }
+    } catch (e: any) {
+      console.warn(
+        "card_uid_hash: computation/persist error (non-fatal):",
+        e?.message || String(e)
+      );
+    }
 
     // Return QR or programming payload if provided (depends on LNbits version)
     const authQr = created?.auth_link || created?.lnurlw || created?.qr || null;

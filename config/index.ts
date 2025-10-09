@@ -155,6 +155,7 @@ interface RoleHierarchyConfig {
 
 interface Nip05Config {
   domain: string;
+  allowedDomains?: string[];
 }
 
 interface FamilyConfig {
@@ -590,6 +591,10 @@ export const lightningConfig: LightningConfig = {
  */
 export const nip05Config: Nip05Config = {
   domain: getEnvVar("NIP05_DOMAIN") || "yourdomain.com",
+  allowedDomains: (getEnvVar("NIP05_ALLOWED_DOMAINS") || "satnam.pub")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 };
 
 /**
