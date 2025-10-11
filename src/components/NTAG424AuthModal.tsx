@@ -236,10 +236,10 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
       try {
         const chosen = selectedCardId || (() => { try { return localStorage.getItem('lnbits_last_card_id') || ''; } catch { return ''; } })();
         if (chosen) {
-          const res = await fetchWithAuth(`${API_BASE}/lnbits-validate-boltcard-pin`, {
+          const res = await fetchWithAuth(`${API_BASE}/lnbits-proxy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cardId: chosen, pin: trimmed })
+            body: JSON.stringify({ action: 'validateBoltcardPin', cardId: chosen, pin: trimmed })
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data?.success) {

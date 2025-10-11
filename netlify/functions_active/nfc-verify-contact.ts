@@ -77,6 +77,8 @@ async function verifySunWithProvider(
     return { supported: false, ok: false, error: "Missing LNBITS_ADMIN_KEY" };
   }
   const url = `${base}/boltcards/api/v1/scan/${encodeURIComponent(cardId)}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -85,7 +87,9 @@ async function verifySunWithProvider(
         "X-Api-Key": apiKey,
       },
       body: JSON.stringify({ p: piccDataHex, c: cmacHex }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     if (!resp.ok) {
       const text = await resp.text();
       return {
@@ -101,7 +105,10 @@ async function verifySunWithProvider(
     return {
       supported: true,
       ok: false,
-      error: e?.message || "LNbits verification error",
+      error:
+        e?.name === "AbortError"
+          ? "LNbits verification timeout"
+          : e?.message || "LNbits verification error",
     };
   }
 }

@@ -28,6 +28,11 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
   const [verifiedNip, setVerifiedNip] = useState<string | null>(null);
 
   async function handleVerifyTap() {
+
+
+
+
+
     setVerifyError(null);
     setVerifying(true);
     setSunVerified(null);
@@ -317,10 +322,14 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
               <div className="bg-white/10 border border-white/20 rounded-lg p-4 text-purple-100 space-y-3">
                 <p className="text-sm">Paste your JWT then tap a contact's card to verify. Android can include SUN parameters when SDM is enabled. iOS reads NDEF Text only.</p>
                 <div className="flex gap-2">
+                  {/* JWT input field - do not move this into handleVerifyTap function body */}
+
                   <input
                     className="flex-1 bg-purple-900/40 border border-purple-600 rounded px-3 py-2 text-white text-sm"
                     placeholder="Paste Bearer JWT (optional)"
                     value={jwt}
+
+
                     onChange={(e) => setJwt(e.target.value)}
                   />
                   <button

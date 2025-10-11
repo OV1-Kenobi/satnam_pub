@@ -8,6 +8,8 @@ import { useCallback, useState } from "react";
 import { makeSunBinding } from "../lib/nip42/challenge-binding";
 import { authenticateWithRelays } from "../lib/nip42/relay-auth";
 
+import { toBase64Utf8 } from "../lib/utils/encoding";
+
 export interface ProductionNTAG424AuthState {
   isAuthenticated: boolean;
   sessionToken: string | null;
@@ -63,12 +65,22 @@ export const useProductionNTAG424 = () => {
         throw new Error("Invalid PIN format. Use 6 digits.");
       }
       const ndef = new (window as any).NDEFReader();
-      await ndef.scan();
       return await new Promise<any>((resolve, reject) => {
-        ndef.addEventListener("reading", async (event: any) => {
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let listenerAdded = false;
+
+        const cleanup = () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (listenerAdded) {
+            try {
+              ndef.removeEventListener("reading", readingHandler);
+            } catch {}
+          }
+        };
+
+        const readingHandler = async (event: any) => {
           try {
             const uid = event.serialNumber;
-            // Optional: extract SUN message from event.message.records if available (not exposed by Web NFC)
             const headers = await getAuthHeaders();
             const hasAuth = !!headers.Authorization;
             if (hasAuth) {
@@ -81,6 +93,7 @@ export const useProductionNTAG424 = () => {
               if (!res.ok || !json?.success) {
                 throw new Error(json?.error || `HTTP ${res.status}`);
               }
+              cleanup();
               setAuthState((prev) => ({
                 ...prev,
                 isAuthenticated: true,
@@ -88,7 +101,6 @@ export const useProductionNTAG424 = () => {
               }));
               resolve({ success: true, data: json?.data });
             } else {
-              // Logged-out NFC login: require tagId mapping from local storage (set on registration)
               const mapRaw = localStorage.getItem("nfc_tag_map");
               const map = mapRaw
                 ? (JSON.parse(mapRaw) as Record<string, string>)
@@ -118,9 +130,8 @@ export const useProductionNTAG424 = () => {
                   ? payload.exp * 1000
                   : Date.now() + 15 * 60 * 1000;
                 SecureTokenManager.setAccessToken(token, expMs);
-              } catch {
-                // Non-fatal: session may still be established via other flows
-              }
+              } catch {}
+              cleanup();
               setAuthState((prev) => ({
                 ...prev,
                 isAuthenticated: true,
@@ -130,6 +141,7 @@ export const useProductionNTAG424 = () => {
               resolve({ success: true, data: json?.data });
             }
           } catch (err: any) {
+            cleanup();
             setAuthState((prev) => ({
               ...prev,
               error: err?.message || "NFC authentication error",
@@ -138,8 +150,21 @@ export const useProductionNTAG424 = () => {
           } finally {
             setIsProcessing(false);
           }
-        });
-        setTimeout(() => {
+        };
+
+        ndef
+          .scan()
+          .then(() => {
+            listenerAdded = true;
+            ndef.addEventListener("reading", readingHandler);
+          })
+          .catch((err: unknown) => {
+            cleanup();
+            reject(err instanceof Error ? err : new Error("NFC scan failed"));
+          });
+
+        timeoutId = setTimeout(() => {
+          cleanup();
           setIsProcessing(false);
           setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
           reject(new Error("NFC read timeout"));
@@ -171,12 +196,22 @@ export const useProductionNTAG424 = () => {
           throw new Error("NFC not supported on this device/browser");
         }
         const ndef = new (window as any).NDEFReader();
-        await ndef.scan();
         return await new Promise<boolean>((resolve, reject) => {
-          ndef.addEventListener("reading", async (event: any) => {
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          let listenerAdded = false;
+
+          const cleanup = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (listenerAdded) {
+              try {
+                ndef.removeEventListener("reading", readingHandler);
+              } catch {}
+            }
+          };
+
+          const readingHandler = async (event: any) => {
             try {
               const uid = event.serialNumber;
-              // Check initialization status via server (hardware bridge or heuristic)
               const headers = await getAuthHeaders();
               try {
                 const statusRes = await fetch(
@@ -200,19 +235,16 @@ export const useProductionNTAG424 = () => {
                   }
                 }
               } catch (e) {
-                // Non-fatal: continue to attempt registration; underlying NDEF read may still fail if protected
+                // Non-fatal: continue to attempt registration
               }
 
-              // Minimal client-side encrypted metadata (zero-knowledge; server stores as opaque)
               const payload = {
                 uid,
                 userNpub,
                 pinProtected: !!pin,
                 createdAt: Date.now(),
               };
-              const encryptedMetadata = btoa(
-                unescape(encodeURIComponent(JSON.stringify(payload)))
-              );
+              const encryptedMetadata = toBase64Utf8(JSON.stringify(payload));
               const res = await fetch(`${API_BASE}/nfc-unified/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...headers },
@@ -238,8 +270,10 @@ export const useProductionNTAG424 = () => {
                   localStorage.setItem("nfc_tag_map", JSON.stringify(map));
                 }
               } catch {}
+              cleanup();
               resolve(true);
             } catch (err: any) {
+              cleanup();
               setAuthState((prev) => ({
                 ...prev,
                 error: err?.message || "NFC registration error",
@@ -248,8 +282,21 @@ export const useProductionNTAG424 = () => {
             } finally {
               setIsProcessing(false);
             }
-          });
-          setTimeout(() => {
+          };
+
+          ndef
+            .scan()
+            .then(() => {
+              listenerAdded = true;
+              ndef.addEventListener("reading", readingHandler);
+            })
+            .catch((err: unknown) => {
+              cleanup();
+              reject(err instanceof Error ? err : new Error("NFC scan failed"));
+            });
+
+          timeoutId = setTimeout(() => {
+            cleanup();
             setIsProcessing(false);
             setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
             reject(new Error("NFC read timeout"));
@@ -279,9 +326,20 @@ export const useProductionNTAG424 = () => {
         throw new Error("NFC not supported on this device/browser");
       }
       const ndef = new (window as any).NDEFReader();
-      await ndef.scan();
       return await new Promise<boolean>((resolve, reject) => {
-        ndef.addEventListener("reading", async (event: any) => {
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let listenerAdded = false;
+
+        const cleanup = () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (listenerAdded) {
+            try {
+              ndef.removeEventListener("reading", readingHandler);
+            } catch {}
+          }
+        };
+
+        const readingHandler = async (event: any) => {
           try {
             const uid = event.serialNumber;
             const headers = await getAuthHeaders();
@@ -302,8 +360,10 @@ export const useProductionNTAG424 = () => {
             if (!res.ok || !json?.success) {
               throw new Error(json?.error || `HTTP ${res.status}`);
             }
+            cleanup();
             resolve(true);
           } catch (err: any) {
+            cleanup();
             setAuthState((prev) => ({
               ...prev,
               error: err?.message || "NFC initialization error",
@@ -312,8 +372,21 @@ export const useProductionNTAG424 = () => {
           } finally {
             setIsProcessing(false);
           }
-        });
-        setTimeout(() => {
+        };
+
+        ndef
+          .scan()
+          .then(() => {
+            listenerAdded = true;
+            ndef.addEventListener("reading", readingHandler);
+          })
+          .catch((err: unknown) => {
+            cleanup();
+            reject(err instanceof Error ? err : new Error("NFC scan failed"));
+          });
+
+        timeoutId = setTimeout(() => {
+          cleanup();
           setIsProcessing(false);
           setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
           reject(new Error("NFC read timeout"));
@@ -387,9 +460,20 @@ export const useProductionNTAG424 = () => {
       throw new Error("NFC not supported on this device/browser");
     }
     const ndef = new (window as any).NDEFReader();
-    await ndef.scan();
     return await new Promise((resolve, reject) => {
-      ndef.addEventListener("reading", async (event: any) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let listenerAdded = false;
+
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (listenerAdded) {
+          try {
+            ndef.removeEventListener("reading", readingHandler);
+          } catch {}
+        }
+      };
+
+      const readingHandler = async (event: any) => {
         try {
           const uid = event.serialNumber;
           let serverAugment: any = {};
@@ -402,16 +486,33 @@ export const useProductionNTAG424 = () => {
             });
             serverAugment = await res.json().catch(() => ({}));
           } catch {}
+          cleanup();
           resolve({
             uid,
             ndefRecords: undefined,
             sdmState: serverAugment?.data?.sdm,
           });
         } catch (e: any) {
+          cleanup();
           reject(new Error(e?.message || "readTagInfo error"));
         }
-      });
-      setTimeout(() => reject(new Error("NFC read timeout")), 15000);
+      };
+
+      ndef
+        .scan()
+        .then(() => {
+          listenerAdded = true;
+          ndef.addEventListener("reading", readingHandler);
+        })
+        .catch((err: unknown) => {
+          cleanup();
+          reject(err instanceof Error ? err : new Error("NFC scan failed"));
+        });
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("NFC read timeout"));
+      }, 15000);
     });
   }, []);
 

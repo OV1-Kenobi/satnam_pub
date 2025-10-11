@@ -330,6 +330,9 @@ export async function writeAuthData(
 function buildSharePointer(frostShareId: string): string {
   // 16 bytes UUID + 16 bytes nonce
   const uuidHex = frostShareId.replace(/-/g, "").toLowerCase();
+  if (uuidHex.length !== 32 || !/^[0-9a-f]{32}$/.test(uuidHex)) {
+    throw new Error(`Invalid UUID format: ${frostShareId}`);
+  }
   const uuidBuf = Buffer.from(uuidHex, "hex");
   const nonce = crypto.randomBytes(16);
   const out = Buffer.concat([toFixedSize(uuidBuf, 16), nonce]);
@@ -338,11 +341,11 @@ function buildSharePointer(frostShareId: string): string {
 
 export async function writeSigningData(
   cardUid: string,
-  encryptedSharePointer: string,
+  sharePointer: string,
   adapter?: NFCAdapter
 ): Promise<WriteResult> {
   try {
-    const payload = toFixedSize(Buffer.from(encryptedSharePointer, "hex"), 32);
+    const payload = toFixedSize(Buffer.from(sharePointer, "hex"), 32);
 
     // Write to File 03 via adapter (PIN should be authenticated by caller)
     if (adapter) {

@@ -267,11 +267,11 @@ END$$;
 --   Encode: hex (preferred) or base64
 --   Store: lnbits_boltcards.card_uid_hash only; never store plaintext UID
 --   Netlify function integration:
---     - lnbits-create-boltcard.ts: after creating/fetching card metadata, fetch the
---       card UID (via GET /boltcards/api/v1/cards or equivalent), compute hash on
---       server, and upsert card_uid_hash.
---     - lnbits-get-boltcard-lnurl.ts (or a new nfc-register-card.ts): when a card is
---       first bound to a user, compute and persist card_uid_hash immediately.
+--     - netlify/functions/lnbits-proxy.ts action "createBoltcard": after creating/fetching
+--       card metadata, fetch the UID (via GET /boltcards/api/v1/cards or equivalent),
+--       compute hash server-side, and upsert card_uid_hash.
+--     - netlify/functions/lnbits-proxy.ts action "getBoltcardLnurl": when a card is first
+--       bound to a user, compute and persist card_uid_hash immediately.
 --   Security: perform hashing server-side to avoid leaking UIDs through client logs.
 -- ============================================================================
 

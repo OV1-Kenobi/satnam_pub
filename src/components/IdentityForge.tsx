@@ -1521,9 +1521,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       try { localStorage.setItem('lnbits_last_card_id', cardId); } catch { }
       const pin = window.prompt('Set a 6-digit PIN for your Name Tag (do not reuse other PINs):');
       if (pin && /^[0-9]{6}$/.test(pin.trim())) {
-        const res = await fetchWithAuth(`${API_BASE}/lnbits-set-boltcard-pin`, {
+        const res = await fetchWithAuth(`${API_BASE}/lnbits-proxy`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cardId, pin: pin.trim() })
+          body: JSON.stringify({ action: 'setBoltcardPin', cardId, pin: pin.trim() })
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.success) {
@@ -1803,8 +1803,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   }}
                   disabled={!formData.username || !formData.password || !formData.agreedToTerms || usernameAvailable !== true || formData.password !== formData.confirmPassword || formData.password.length < 8}
                   className={`inline-flex items-center px-4 py-2 rounded-lg shadow border border-white/20 transition-all duration-200 ${formData.username && formData.password && formData.agreedToTerms && usernameAvailable === true && formData.password === formData.confirmPassword && formData.password.length >= 8
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                     }`}
                 >
                   Already have a Nostr identity? Import it here

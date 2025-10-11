@@ -816,8 +816,13 @@ export class NFCAuthService {
     if (window.NDEFReader) {
       try {
         const reader = new window.NDEFReader();
-        await reader.scan();
-        await new Promise<void>((resolve, reject) => {
+        await new Promise<void>(async (resolve, reject) => {
+          try {
+            await reader.scan();
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error("NFC scan failed"));
+            return;
+          }
           reader.onreading = (event: NDEFReadingEvent) => {
             tagUID = event.serialNumber || null;
             resolve();

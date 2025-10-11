@@ -41,17 +41,31 @@ export function useNFCContactVerification() {
       throw new Error("Web NFC not supported on this device/browser");
     }
     const reader = new (window as any).NDEFReader();
-    await reader.scan();
+    return new Promise(async (resolve, reject) => {
+      try {
+        await reader.scan();
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("NFC scan failed"));
+        return;
+      }
+      // Add a timeout to avoid hanging indefinitely
+      const timeoutId = setTimeout(() => {
+        reader.onreading = null;
+        reader.onreadingerror = null;
+        reject(new Error("NFC read timeout"));
+      }, 30000); // 30 second timeout
 
-    return new Promise((resolve, reject) => {
       const onError = (err: any) => {
+        clearTimeout(timeoutId);
         reader.onreading = null;
         reader.onreadingerror = null;
         reject(err instanceof Error ? err : new Error("NFC read error"));
       };
       reader.onreadingerror = onError;
+
       reader.onreading = (event: any) => {
         try {
+          clearTimeout(timeoutId);
           const cardUid: string = String(event.serialNumber || "");
           let nip05: string | undefined;
           let sunParams: SunParams | undefined;
@@ -118,12 +132,24 @@ export function useNFCContactVerification() {
           "[NFC] Using standard UID-hash verification (no SUN params)"
         );
       }
+      // add timeout support
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
       const resp = await fetch("/.netlify/functions/nfc-verify-contact", {
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
-      const json = await resp.json();
+      clearTimeout(timeoutId);
+
+      let json: any;
+      try {
+        json = await resp.json();
+      } catch {
+        return { success: false, error: "Invalid server response" };
+      }
       if (!resp.ok || !json?.success) {
         return { success: false, error: json?.error || "Verification failed" };
       }

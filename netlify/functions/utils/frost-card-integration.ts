@@ -56,7 +56,11 @@ export async function enableCardSigning(
       .eq("card_id", cardId)
       .single();
     if (cardErr || !card) {
-      return { success: false, shareId: null, error: "Card not found for user" };
+      return {
+        success: false,
+        shareId: null,
+        error: "Card not found for user",
+      };
     }
     if (!card.card_uid_hash) {
       // Hash should be backfilled by on-demand processes; fail safe for now
@@ -68,19 +72,62 @@ export async function enableCardSigning(
       ? card.functions.includes("signing")
       : false;
     if (!hasSigning) {
-      const next = Array.isArray(card.functions) ? [...card.functions, "signing"] : ["signing"];
+      const next = Array.isArray(card.functions)
+        ? [...card.functions, "signing"]
+        : ["signing"];
       const { error: funcErr } = await supabase
         .from("lnbits_boltcards")
         .update({ functions: next })
         .eq("user_duid", userDuid)
         .eq("card_id", cardId);
       if (funcErr) {
-        return { success: false, shareId: null, error: funcErr.message || "Failed to update card functions" };
+        return {
+          success: false,
+          shareId: null,
+          error: funcErr.message || "Failed to update card functions",
+        };
       }
     }
 
-    // c) Insert new secure_guardian_shards row (RLS: owner insert via nfc_card_uid_hash)
-    const insertPayload: any = {
+    // c) Validate encrypted shard fields and insert secure_guardian_shards row (RLS: owner insert via nfc_card_uid_hash)
+    // Validate required encryption fields
+    const requiredFields = [
+      "encrypted_shard_data",
+      "shard_salt",
+      "shard_iv",
+      "shard_tag",
+      "double_encrypted_shard",
+      "double_salt",
+      "double_iv",
+      "double_tag",
+    ] as const;
+
+    for (const field of requiredFields) {
+      const v = (encryptedShard as any)[field];
+      if (!v || (typeof v === "string" && v.trim() === "")) {
+        return {
+          success: false,
+          shareId: null,
+          error: `Invalid encrypted shard: ${field} is required`,
+        };
+      }
+    }
+
+    const insertPayload: {
+      nfc_card_uid_hash: string;
+      share_type: ShareType;
+      encrypted_shard_data: string;
+      shard_salt: string;
+      shard_iv: string;
+      shard_tag: string;
+      double_encrypted_shard: string;
+      double_salt: string;
+      double_iv: string;
+      double_tag: string;
+      shard_index?: number;
+      threshold_required?: number;
+      expires_at?: string;
+    } = {
       nfc_card_uid_hash: card.card_uid_hash,
       share_type: shareType,
       encrypted_shard_data: encryptedShard.encrypted_shard_data,
@@ -105,12 +152,18 @@ export async function enableCardSigning(
       .select("id")
       .single();
     if (insErr || !newShare?.id) {
-      return { success: false, shareId: null, error: insErr?.message || "Failed to create shard" };
+      return {
+        success: false,
+        shareId: null,
+        error: insErr?.message || "Failed to create shard",
+      };
     }
 
     // d) Optionally append to frost_share_ids on the card
     try {
-      const current: string[] = Array.isArray(card.frost_share_ids) ? card.frost_share_ids : [];
+      const current: string[] = Array.isArray(card.frost_share_ids)
+        ? card.frost_share_ids
+        : [];
       const nextIds = [...current, String(newShare.id)];
       const { error: updErr } = await supabase
         .from("lnbits_boltcards")
@@ -127,7 +180,10 @@ export async function enableCardSigning(
 
     return { success: true, shareId: String(newShare.id) };
   } catch (e: any) {
-    return { success: false, shareId: null, error: e?.message || "Unknown error" };
+    return {
+      success: false,
+      shareId: null,
+      error: e?.message || "Unknown error",
+    };
   }
 }
-

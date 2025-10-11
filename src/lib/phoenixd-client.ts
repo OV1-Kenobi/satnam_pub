@@ -135,6 +135,10 @@ interface PhoenixdClientConfig {
   familyEnabled: boolean;
 }
 
+/**
+ * @deprecated This browser Phoenixd client is deprecated. Use Netlify function `/phoenixd-proxy` instead.
+ * Deprecation timeline: migrate UI to proxy now; remove this file once migration is complete.
+ */
 export class PhoenixdClient {
   private config: any = null;
   private baseUrl: string;
@@ -148,7 +152,12 @@ export class PhoenixdClient {
         "PhoenixdClient is browser-only and cannot run in server environment"
       );
     }
-
+    if (typeof import.meta !== "undefined" && (import.meta as any)?.env?.DEV) {
+      // Development-only deprecation warning
+      console.warn(
+        "⚠️  [DEPRECATED] PhoenixdClient is deprecated; use Netlify function /phoenixd-proxy instead."
+      );
+    }
     console.log("🔐 Creating PhoenixD client (lazy initialization)");
     this.baseUrl = "";
     // Don't initialize immediately - wait for first use

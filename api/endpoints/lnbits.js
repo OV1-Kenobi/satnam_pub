@@ -18,10 +18,10 @@ function jsonOrText(res) {
   return c.includes("application/json") ? res.json() : res.text();
 }
 
-export async function provisionWallet() {
+export async function provisionWallet(payload = {}) {
   try {
-    const url = `${apiConfig.baseUrl}/lnbits-provision-wallet`;
-    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
+    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "provisionWallet", payload }) });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
     return { success: true, data };
@@ -32,8 +32,8 @@ export async function provisionWallet() {
 
 export async function createLightningAddress(body = undefined) {
   try {
-    const url = `${apiConfig.baseUrl}/lnbits-create-lnaddress`;
-    const init = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { method: "POST", headers: { "Content-Type": "application/json" } };
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
+    const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "createLightningAddress", payload: body || {} }) };
     const res = await fetchWithAuth(url, init);
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
@@ -45,11 +45,11 @@ export async function createLightningAddress(body = undefined) {
 
 export async function createBoltcard({ label, spend_limit_sats }) {
   try {
-    const url = `${apiConfig.baseUrl}/lnbits-create-boltcard`;
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
     const res = await fetchWithAuth(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label, spend_limit_sats })
+      body: JSON.stringify({ action: "createBoltcard", payload: { label, spend_limit_sats } })
     });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
@@ -61,9 +61,18 @@ export async function createBoltcard({ label, spend_limit_sats }) {
 
 export async function getPaymentHistory({ page = 1, limit = 20 } = {}) {
   try {
-    const qp = new URLSearchParams({ page: String(page), limit: String(limit) }).toString();
-    const url = `${apiConfig.baseUrl}/lnbits-payment-history?${qp}`;
-    const res = await fetchWithAuth(url, { method: "GET" });
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
+    const numPage = Number(page);
+    const numLimit = Number(limit);
+    if (isNaN(numPage) || isNaN(numLimit) || numPage < 1 || numLimit < 1) {
+      return { success: false, error: "Invalid page or limit parameters" };
+    }
+    const offset = Math.max(0, (numPage - 1) * numLimit);
+    const res = await fetchWithAuth(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getPaymentHistory", payload: { limit: Number(limit), offset } })
+    });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
     if (Array.isArray(data) || typeof data !== "object" || data === null) {
@@ -77,8 +86,8 @@ export async function getPaymentHistory({ page = 1, limit = 20 } = {}) {
 
 export async function getBoltcardLnurl() {
   try {
-    const url = `${apiConfig.baseUrl}/lnbits-get-boltcard-lnurl`;
-    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
+    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "getBoltcardLnurl", payload: {} }) });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
     return { success: true, data };
@@ -89,8 +98,12 @@ export async function getBoltcardLnurl() {
 
 export async function getLNbitsWalletUrl() {
   try {
-    const url = `${apiConfig.baseUrl}/lnbits-get-wallet-url`;
-    const res = await fetchWithAuth(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
+    const res = await fetchWithAuth(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getWalletUrl", payload: {} })
+    });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };
     return { success: true, data };
@@ -101,11 +114,11 @@ export async function getLNbitsWalletUrl() {
 
 export async function payInvoice(invoice, options = {}) {
   try {
-    const url = `${apiConfig.baseUrl}/lnbits-pay-invoice`;
+    const url = `${apiConfig.baseUrl}/lnbits-proxy`;
     const res = await fetchWithAuth(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ invoice, ...options })
+      body: JSON.stringify({ action: "payInvoice", payload: { invoice, ...options } })
     });
     const data = await jsonOrText(res).catch(() => ({}));
     if (!res.ok) return { success: false, error: (data && data.error) || `HTTP ${res.status}` };

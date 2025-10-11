@@ -5,7 +5,7 @@
 This document outlines the Android Web NFC-based approach for programming multi-function NTAG424 DNA cards in Satnam. Payment and SDM are still provisioned via the Boltcard Programming app. Satnam programs additional functions (Auth, FROST signing pointer, Nostr metadata) via Web NFC on Android and validates server-side using JWT and RLS.
 
 - Web NFC: Chrome/Edge on Android only
-- PIN: Stored server-side (PBKDF2/SHA-512 + AES-256-GCM), not written to tag
+- PIN: Stored server-side as hashed+encrypted (PBKDF2/SHA-512 + AES-256-GCM). Not written to the tag. For client-side operations that require tag authentication, the PIN must be provided transiently to the client (user input or short-lived secure delivery). See "PIN Handling (Server vs Client)" below.
 - Identity & Security: Zero-knowledge; no plaintext secrets on card or logs
 
 ### File Allocation Summary
@@ -19,13 +19,13 @@ This document outlines the Android Web NFC-based approach for programming multi-
 
 ```ts
 // Step 1: User sets PIN (server-side storage)
-await fetch("/.netlify/functions/lnbits-set-boltcard-pin", {
+await fetch("/.netlify/functions/lnbits-proxy", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   },
-  body: JSON.stringify({ cardId, pin: "123456" }),
+  body: JSON.stringify({ action: "setBoltcardPin", cardId, pin: "123456" }),
 });
 
 // Step 2: Enable signing (server-side DB updates)
@@ -56,10 +56,17 @@ const result = await programMultiFunctionCard(
     authKeyHash: derivedAuthHash,
     frostShareId: shareUuid,
     nip05: "alice@satnam.pub",
-    pin: "123456",
   }
 );
 ```
+
+### PIN Handling (Server vs Client)
+
+- Server: The PIN is stored as a PBKDF2/SHA-512 hash and encrypted at rest (AES-256-GCM). The raw PIN is never written to the tag.
+- Client:
+  - Android Web NFC programming path typically does not require the PIN for NDEF and other unprotected writes; do not send the PIN to the browser for this path.
+  - When using a hardware bridge (desktop) or performing protected file writes, the PIN must be provided to the client transiently to authenticate to the tag (e.g., user enters the PIN locally) or via a short-lived, in-memory delivery after user authentication. Do not persist it in storage or logs.
+- Implication: If the PIN is transmitted to the client for tag authentication, this is an intentional, time-bounded exposure. Ensure TLS, avoid persistence, and clear references immediately after use.
 
 ### Tap-to-Add Contact Flow
 
@@ -89,6 +96,16 @@ if (res.success) {
 
 ### Platform Compatibility Matrix
 
+- Android (Chrome/Edge):
+  - Write: Web NFC supports NDEF; low-level NTAG file ops require a bridge (planned)
+  - Read: Web NFC reads NDEF reliably; reading custom files is limited in-browser
+- iOS (Safari / Core NFC):
+  - Write: Not supported from web; use Boltcard app for payment (File 01) provisioning
+  - Read: Core NFC can read NDEF Text records; if NIP-05 is also mirrored as an NDEF Text record, tap-to-add verification works by sending nip05 + cardUid to the server
+- Desktop (Future hardware bridge):
+  - Write: Planned via PC/SC (nfc-pcsc) to program Files 02/03/04 consistently
+  - Read: Planned; tags programmed on desktop remain readable by Android and, for NDEF, by iOS
+
 ### SUN Verification Flow (Optional Enhanced Security)
 
 ```ts
@@ -108,16 +125,6 @@ Security comparison:
 
 - Without SUN: Vulnerable to UID cloning (attacker could clone card UID and write fake NIP-05)
 - With SUN: LNbits validates NTAG424 SDM CMAC using per-card secrets; cryptographic proof of authenticity
-
-- Android (Chrome/Edge):
-  - Write: Web NFC supports NDEF; low-level NTAG file ops require a bridge (planned)
-  - Read: Web NFC reads NDEF reliably; reading custom files is limited in-browser
-- iOS (Safari / Core NFC):
-  - Write: Not supported from web; use Boltcard app for payment (File 01) provisioning
-  - Read: Core NFC can read NDEF Text records; if NIP-05 is also mirrored as an NDEF Text record, tap-to-add verification works by sending nip05 + cardUid to the server
-- Desktop (Future hardware bridge):
-  - Write: Planned via PC/SC (nfc-pcsc) to program Files 02/03/04 consistently
-  - Read: Planned; tags programmed on desktop remain readable by Android and, for NDEF, by iOS
 
 Notes:
 
