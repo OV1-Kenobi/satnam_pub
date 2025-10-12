@@ -540,12 +540,12 @@ export function useKeyRotation() {
                   preferredEncryption:
                     (row.preferred_encryption as any) || "auto",
                 };
-                const id = await CEPS2.sendGiftWrappedDirectMessage(contact, {
+                const res = await CEPS2.sendGiftWrappedDirectMessage(contact, {
                   plaintext,
                   meta: metadata,
                 });
-                if (id) {
-                  eventIds.push(id);
+                if (res && res.success && res.messageId) {
+                  eventIds.push(res.messageId);
                   sent += 1;
                 } else {
                   failed += 1;

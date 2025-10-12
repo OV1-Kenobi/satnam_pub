@@ -192,6 +192,19 @@
   status = 200
   force = true
 
+# LNURL direct/platform callbacks (must precede generic /api/* redirect)
+[[redirects]]
+  from = "/api/lnurlp/direct/:username"
+  to = "/.netlify/functions/lnbits-proxy?action=lnurlpDirect&username=:username"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/lnurlp/platform/:username"
+  to = "/.netlify/functions/lnbits-proxy?action=lnurlpPlatform&username=:username"
+  status = 200
+  force = true
+
 # Generic mapping for other API endpoints (excluding auth which is handled above)
 [[redirects]]
   from = "/api/*"
@@ -212,6 +225,15 @@
   to = "/@vite/:splat"
   status = 200
   force = false  # Let Vite handle these completely
+
+
+
+# LNURL well-known and callbacks (place before generic .well-known handler)
+[[redirects]]
+  from = "/.well-known/lnurlp/:username"
+  to = "/.netlify/functions/lnbits-proxy?action=lnurlpWellKnown&username=:username"
+  status = 200
+  force = true
 
 
 
@@ -317,6 +339,13 @@
     Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With"
     Access-Control-Allow-Credentials = "true"
     Access-Control-Max-Age = "86400"
+
+# LNURL well-known headers
+[[headers]]
+  for = "/.well-known/lnurlp/*"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "no-store"
 
 # Ensure index.html is always fresh (prevents stale chunk references)
 [[headers]]

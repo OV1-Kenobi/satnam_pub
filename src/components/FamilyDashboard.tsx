@@ -12,8 +12,8 @@ import {
   XCircle
 } from "lucide-react";
 import React, { useState } from "react";
-import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 import { FederationRole } from "../types/auth";
+import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
 import FamilyWalletCard from "./FamilyWalletCard";
 import PhoenixDNodeStatus from "./PhoenixDNodeStatus";
@@ -25,7 +25,9 @@ import { FamilyMember } from "../types/shared";
 import { Transaction } from "../types/shared";
 
 const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const { user, userRole, familyId } = useAuth();
+  const { user } = useAuth();
+  const federationRole: FederationRole = (user?.federationRole as FederationRole) || 'private';
+  const familyId = user?.familyId;
   const [familyName] = useState("Johnson");
   const [relayStatus] = useState<"connected" | "disconnected" | "syncing">(
     "connected",
@@ -35,7 +37,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     {
       id: "1",
       username: "David",
-      lightningAddress: "david@satnam.pub",
+      lightningAddress: "david@my.satnam.pub",
       role: "adult",
       balance: 125000,
       nip05Verified: true,
@@ -43,7 +45,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     {
       id: "2",
       username: "Sarah",
-      lightningAddress: "sarah@satnam.pub",
+      lightningAddress: "sarah@my.satnam.pub",
       role: "adult",
       balance: 87500,
       nip05Verified: true,
@@ -51,7 +53,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     {
       id: "3",
       username: "Emma",
-      lightningAddress: "emma@satnam.pub",
+      lightningAddress: "emma@my.satnam.pub",
       role: "offspring",
       balance: 25000,
       nip05Verified: false,
@@ -64,7 +66,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     {
       id: "4",
       username: "Luke",
-      lightningAddress: "luke@satnam.pub",
+      lightningAddress: "luke@my.satnam.pub",
       role: "offspring",
       balance: 0,
       nip05Verified: false,
@@ -82,7 +84,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       type: "received",
       amount: 50000,
       from: "alice@getalby.com",
-      to: "david@satnam.pub",
+      to: "david@my.satnam.pub",
       timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
       privacyRouted: true,
       status: "completed",
@@ -91,8 +93,8 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       id: "2",
       type: "sent",
       amount: 25000,
-      from: "sarah@satnam.pub",
-      to: "emma@satnam.pub",
+      from: "sarah@my.satnam.pub",
+      to: "emma@my.satnam.pub",
       timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
       privacyRouted: true,
       status: "completed",
@@ -102,7 +104,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       type: "received",
       amount: 100000,
       from: "bob@strike.me",
-      to: "sarah@satnam.pub",
+      to: "sarah@my.satnam.pub",
       timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
       privacyRouted: true,
       status: "completed",
@@ -350,9 +352,9 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <EmergencyRecoveryModal
           isOpen={showRecoveryModal}
           onClose={handleCloseRecoveryModal}
-          userRole={userRole as FederationRole}
+          userRole={federationRole}
           userId={user?.id || 'unknown'}
-          userNpub={user?.npub || ''}
+          userNpub={user?.hashed_npub || ''}
           familyId={familyId || undefined}
         />
       )}

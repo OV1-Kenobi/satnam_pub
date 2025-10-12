@@ -157,7 +157,7 @@ export const handler: Handler = async (event) => {
       }
 
       const result = await enableCardSigning(
-        supabase as any,
+        supabase,
         user_duid,
         cardId,
         shareTypeInput,
@@ -179,7 +179,7 @@ export const handler: Handler = async (event) => {
       // After FROST linking, sync DB for this card (owner-scoped)
       if (shareId) {
         const syncResult = await syncBoltcardDbAfterProgramming(
-          supabase as any,
+          supabase,
           user_duid,
           cardId,
           [],
@@ -200,7 +200,7 @@ export const handler: Handler = async (event) => {
         });
 
       // Validate the authenticated user's NIP-05
-      const { data: ident, error: identErr } = await (supabase as any)
+      const { data: ident, error: identErr } = await supabase
         .from("user_identities")
         .select("nip05_identifier")
         .eq("id", user_duid)
@@ -218,7 +218,7 @@ export const handler: Handler = async (event) => {
       }
 
       // Ensure the card belongs to the authenticated user
-      const { data: card, error: cardErr } = await (supabase as any)
+      const { data: card, error: cardErr } = await supabase
         .from("lnbits_boltcards")
         .select("id, functions")
         .eq("user_duid", user_duid)

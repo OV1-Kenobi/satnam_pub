@@ -705,11 +705,11 @@ export function SecurePeerInvitationModal({
                           type="text"
                           value={userNip05}
                           onChange={(e) => setUserNip05(e.target.value)}
-                          placeholder="user@satnam.pub"
+                          placeholder="user@my.satnam.pub"
                           className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                         <p className="text-purple-300 text-xs mt-1">
-                          Your NIP-05 identifier (e.g., user@satnam.pub)
+                          Your NIP-05 identifier for Nostr identity verification (e.g., user@my.satnam.pub)
                         </p>
                       </div>
 

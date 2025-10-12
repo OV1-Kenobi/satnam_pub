@@ -45,6 +45,7 @@
     "@types/pg": "^8.15.4",
     "@types/redis": "^4.0.10",
     "autoprefixer": "^10.4.21",
+    "bolt11": "^1.4.1",
     "clsx": "^2.1.1",
     "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",

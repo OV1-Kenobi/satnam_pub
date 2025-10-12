@@ -68,7 +68,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
       return "Unlimited";
     }
     if (member.spendingLimits) {
-      return `${formatSats(member.spendingLimits.daily)} sats/day`;
+      return `${formatSats(member.spendingLimits.daily ?? 0)} sats/day`;
     }
     return "Not set";
   };
@@ -160,7 +160,7 @@ const FamilyWalletCard: React.FC<FamilyWalletCardProps> = ({
             <>
               <div className="flex items-center justify-between">
                 <span className="text-amber-200">Daily Limit</span>
-                <span className="text-white">{formatSats(member.spendingLimits.daily)} sats</span>
+                <span className="text-white">{formatSats(member.spendingLimits.daily ?? 0)} sats</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-amber-200">Weekly Limit</span>
@@ -212,7 +212,7 @@ export const mockFamilyMembers: FamilyMember[] = [
   {
     id: "1",
     username: "satnam_dad",
-    lightningAddress: "satnam_dad@satnam.pub",
+    lightningAddress: "satnam_dad@my.satnam.pub",
     role: "adult",
     nip05Verified: true,
     balance: 5000000,
@@ -220,7 +220,7 @@ export const mockFamilyMembers: FamilyMember[] = [
   {
     id: "2",
     username: "satnam_mom",
-    lightningAddress: "satnam_mom@satnam.pub",
+    lightningAddress: "satnam_mom@my.satnam.pub",
     role: "adult",
     nip05Verified: true,
     balance: 3500000,
@@ -228,7 +228,7 @@ export const mockFamilyMembers: FamilyMember[] = [
   {
     id: "3",
     username: "arjun_teen",
-    lightningAddress: "arjun_teen@satnam.pub",
+    lightningAddress: "arjun_teen@my.satnam.pub",
     role: "offspring",
     spendingLimits: {
       daily: 100000,
@@ -240,7 +240,7 @@ export const mockFamilyMembers: FamilyMember[] = [
   {
     id: "4",
     username: "priya_kid",
-    lightningAddress: "priya_kid@satnam.pub",
+    lightningAddress: "priya_kid@my.satnam.pub",
     role: "offspring",
     spendingLimits: {
       daily: 50000,

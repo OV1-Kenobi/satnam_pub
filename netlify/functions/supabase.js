@@ -39,6 +39,15 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
     persistSession: false,
   },
 });
+// Service-role admin client (server-only). Required for RPCs that bypass RLS (e.g., private schema functions)
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const supabaseAdmin = serviceRoleKey
+  ? createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  : null;
+
+
 
 // Create a per-request client with Authorization header for RLS
 function getRequestClient(accessToken) {
@@ -47,6 +56,7 @@ function getRequestClient(accessToken) {
       autoRefreshToken: false,
       persistSession: false,
     },
+
     global: {
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     },
@@ -54,7 +64,9 @@ function getRequestClient(accessToken) {
 }
 
 // Always returns false in anon-key-only architecture
+// Returns false for the per-request client (which uses anon key)
+// Note: supabaseAdmin uses service-role key when available
 const isServiceRoleKey = () => false;
 
-export { getRequestClient, isServiceRoleKey, supabase, supabaseKeyType };
+export { getRequestClient, isServiceRoleKey, supabase, supabaseAdmin, supabaseKeyType };
 

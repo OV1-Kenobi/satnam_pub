@@ -80,7 +80,7 @@ const AuthPrompt: React.FC<AuthPromptProps> = ({ area, onAuthSuccess, onCancel }
       };
 
       const signedEvent = await window.nostr.signEvent(event);
-      const success = await auth.authenticateNIP07(challenge, signedEvent.sig, pubkey, password);
+      const success = await auth.authenticateNIP07(challenge, signedEvent.sig, pubkey);
 
       if (success) {
         onAuthSuccess();
@@ -146,7 +146,7 @@ const AuthPrompt: React.FC<AuthPromptProps> = ({ area, onAuthSuccess, onCancel }
                 type="text"
                 value={nip05}
                 onChange={(e) => setNip05(e.target.value)}
-                placeholder="username@satnam.pub"
+                placeholder="username@my.satnam.pub"
                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>

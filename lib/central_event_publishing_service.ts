@@ -38,6 +38,8 @@ const utf8 = (s: string) => te.encode(s);
 // Import session manager at top-level (TS/ESM) - recovery bridge imported lazily to avoid circular deps
 import { secureNsecManager } from "../src/lib/secure-nsec-manager";
 
+import type { MessageSendResult } from "../src/lib/messaging/types";
+
 // Privacy utilities (Web Crypto)
 export class PrivacyUtils {
   static async hashIdentifier(input: string): Promise<string> {
@@ -2383,7 +2385,7 @@ export class CentralEventPublishingService {
   async sendGiftWrappedDirectMessage(
     contact: PrivacyContact,
     messageContent: Record<string, unknown>
-  ): Promise<string> {
+  ): Promise<MessageSendResult> {
     if (!this.userSession) throw new Error("No active session");
     // Rate limit per user
     this.checkRateLimit(
@@ -2431,10 +2433,17 @@ export class CentralEventPublishingService {
           );
           if (wrapped) {
             await this.sleep(delayMs);
-            return await this.publishOptimized(wrapped as Event, {
+            const msgId = await this.publishOptimized(wrapped as Event, {
               recipientPubHex: recipientHex,
               senderPubHex: (wrapped as any).pubkey as string,
             });
+            return {
+              success: true,
+              messageId: msgId,
+              signingMethod: "giftwrapped",
+              securityLevel: "maximum",
+              deliveryTime: new Date().toISOString(),
+            };
           }
         }
       } catch {}
@@ -2447,10 +2456,17 @@ export class CentralEventPublishingService {
       enc
     );
     await this.sleep(delayMs);
-    return await this.publishOptimized(ev, {
+    const msgId = await this.publishOptimized(ev, {
       recipientPubHex: recipientHex,
       senderPubHex: (ev as any).pubkey as string,
     });
+    return {
+      success: true,
+      messageId: msgId,
+      signingMethod: "nip04",
+      securityLevel: "standard",
+      deliveryTime: new Date().toISOString(),
+    };
   }
 
   // Send standard NIP-04/44 direct message using active session (no gift-wrap)
@@ -2772,7 +2788,7 @@ export class CentralEventPublishingService {
     _adminNsec: string,
     groupId: string,
     announcement: string
-  ): Promise<string> {
+  ): Promise<MessageSendResult> {
     // Rate limit announcements lightly under SEND_MESSAGE_PER_HOUR for simplicity
     const adminPub = await this.getUserPubkeyHexForVerification();
     const adminKey = await PrivacyUtils.hashIdentifier(adminPub);
@@ -2809,11 +2825,26 @@ export class CentralEventPublishingService {
         const ok = results.find((r) => r.status === "fulfilled") as
           | PromiseFulfilledResult<string>
           | undefined;
-        if (ok) return ok.value;
+        if (ok) {
+          return {
+            success: true,
+            messageId: ok.value,
+            signingMethod: "signed",
+            securityLevel: "standard",
+            deliveryTime: new Date().toISOString(),
+          };
+        }
       }
     } catch {}
 
-    return await this.publishOptimized(ev, { senderPubHex: adminPubHex2 });
+    const id = await this.publishOptimized(ev, { senderPubHex: adminPubHex2 });
+    return {
+      success: true,
+      messageId: id,
+      signingMethod: "signed",
+      securityLevel: "standard",
+      deliveryTime: new Date().toISOString(),
+    };
   }
   async verifyOTP(
     recipientNpub: string,

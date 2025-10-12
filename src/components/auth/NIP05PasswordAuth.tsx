@@ -8,6 +8,7 @@
  * - Rate limiting and account lockout protection
  */
 
+
 import {
   AlertTriangle,
   CheckCircle,
@@ -25,6 +26,8 @@ import type { UserIdentity } from '../../lib/auth/user-identities-auth';
 import { useAuth } from './AuthProvider';
 
 import { config } from "../../../config";
+import { resolvePlatformLightningDomain } from '../../config/domain.client';
+
 
 
 
@@ -110,9 +113,9 @@ export function NIP05PasswordAuth({
     }
 
     const [, domain] = nip05.split('@');
-    const whitelistedDomains = config.nip05.allowedDomains;
+    const whitelistedDomains = config.nip05?.allowedDomains;
 
-    if (!whitelistedDomains.includes(domain)) {
+    if (!whitelistedDomains?.includes(domain)) {
       return { valid: false, error: 'Domain not whitelisted. Use satnam.pub or citadel.academy' };
     }
 
@@ -301,13 +304,13 @@ export function NIP05PasswordAuth({
                     value={nip05}
                     onChange={(e) => setNip05(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="user@satnam.pub"
+                    placeholder={`user@${resolvePlatformLightningDomain()}`}
                     disabled={isLoading}
                     className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
                   />
                 </div>
                 <p className="text-purple-300 text-xs mt-1">
-                  Only satnam.pub and citadel.academy domains are supported
+                  Only my.satnam.pub and whitelisted domains are supported
                 </p>
               </div>
 

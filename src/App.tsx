@@ -376,7 +376,7 @@ function App() {
             id: "current-user",
             username: "Current User",
             auth_hash: "mock-auth-hash",
-            lightningAddress: "user@satnam.pub",
+            lightningAddress: "user@my.satnam.pub",
             role: "adult",
             is_discoverable: false,
             created_at: Date.now()
@@ -559,14 +559,14 @@ function App() {
               name: "Guardian",
               role: "guardian",
               avatar: "👑",
-              lightningAddress: "guardian@satnam.pub"
+              lightningAddress: "guardian@my.satnam.pub"
             },
             {
               id: "member-2",
               name: "Steward",
               role: "steward",
               avatar: "🛡️",
-              lightningAddress: "steward@satnam.pub"
+              lightningAddress: "steward@my.satnam.pub"
             }
           ]}
           currentUserRole="adult"

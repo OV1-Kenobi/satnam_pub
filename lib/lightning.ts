@@ -1,5 +1,5 @@
 import * as bolt11 from "bolt11";
-import { config } from "../config";
+import { resolvePlatformLightningDomain } from "../src/config/domain.client";
 
 // Parse a Lightning invoice
 const parseInvoice = (invoice: string) => {
@@ -32,13 +32,19 @@ const generateLightningAddress = (username: string): string => {
   if (!username || typeof username !== "string") {
     throw new Error("Username parameter is required and must be a string");
   }
+  const platformDomain = resolvePlatformLightningDomain();
   if (
-    !config?.nip05?.allowedDomains ||
-    config.nip05.allowedDomains.length === 0
+    !platformDomain ||
+    typeof platformDomain !== "string" ||
+    !platformDomain.trim()
   ) {
-    throw new Error("NIP-05 domain configuration is missing");
+    throw new Error("Failed to resolve platform Lightning domain");
   }
-  return `${username}@${config.nip05.allowedDomains[0]}`;
+  const address = `${username}@${platformDomain}`;
+  if (!validateLightningAddress(address)) {
+    throw new Error("Generated Lightning address is invalid");
+  }
+  return address;
 };
 
 export { generateLightningAddress, parseInvoice, validateLightningAddress };

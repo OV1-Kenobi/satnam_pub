@@ -2,12 +2,14 @@ import { ExternalLink, LogOut, Menu, Network, User, X } from "lucide-react";
 import { showToast } from "../../services/toastService";
 import { useAuth } from "../auth/AuthProvider";
 
-
 import { usePrivacyFirstMessaging } from "../../hooks/usePrivacyFirstMessaging";
+
+import { resolvePlatformLightningDomain } from '../../config/domain.client';
 
 interface NavigationProps {
   currentView: string;
   setCurrentView: (view: "landing" | "forge" | "dashboard" | "individual-finances" | "onboarding" | "education" | "coordination" | "recovery" | "nostr-ecosystem" | "communications" | "nfc-provisioning-guide" | "lnurl-display") => void;
+
   setSignInModalOpen: (open: boolean) => void;
   handleProtectedRoute: (destination: 'dashboard' | 'individual-finances' | 'communications') => void;
   mobileMenuOpen: boolean;
@@ -30,16 +32,23 @@ const Navigation: React.FC<NavigationProps> = ({
   const incomingCount = (messaging?.incomingMessages || []).length;
 
   const auth = useAuth();
-  const rawNpub = (auth.user as any)?.npub as string | undefined;
-  const rawUsername = (auth.user as any)?.username as string | undefined;
-  const rawNip05 = (auth.user as any)?.nip05 as string | undefined;
-  const displayId =
-    rawNip05 ||
-    (rawUsername
-      ? `${rawUsername}@satnam.pub`
-      : rawNpub
-        ? `${rawNpub.slice(0, 8)}...${rawNpub.slice(-4)}`
-        : "Signed in");
+  const platformDomain = resolvePlatformLightningDomain();
+  const userAny = (auth.user || {}) as any;
+  const rawNpub = userAny?.npub as string | undefined;
+  const rawUsername = userAny?.username as string | undefined;
+  const rawNip05 = userAny?.nip05 as string | undefined;
+
+  // Display NIP-05 identifier in platform (or selected) domain; Lightning Address is shown elsewhere when relevant
+  let displayId: string;
+  if (rawUsername) {
+    displayId = `${rawUsername}@${platformDomain}`;
+  } else if (rawNip05 && typeof rawNip05 === "string") {
+    displayId = rawNip05;
+  } else if (rawNpub) {
+    displayId = `${rawNpub.slice(0, 8)}...${rawNpub.slice(-4)}`;
+  } else {
+    displayId = "Signed in";
+  }
 
   const handleLogout = async () => {
     try {

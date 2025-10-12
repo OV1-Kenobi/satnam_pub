@@ -10,6 +10,7 @@ import {
   Key,
   RefreshCw,
   Shield,
+  Smartphone,
   User,
   X
 } from 'lucide-react';
@@ -667,7 +668,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
                     <div className="flex-1">
                       <h4 className="text-white font-bold text-lg mb-2">NIP-05 + Password</h4>
                       <p className="text-purple-200 text-sm">
-                        Sign in with your username@satnam.pub and password
+                        Sign in with your username@my.satnam.pub and password
                       </p>
                     </div>
                     <ArrowRight className="h-5 w-5 text-purple-400" />

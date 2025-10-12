@@ -239,8 +239,10 @@ declare module "../../lib/api/paymentsClient.js" {
 
   export const paymentsClient: {
     sendPayment(request: any): Promise<any>;
+    sendP2PPayment(request: any): Promise<any>;
     getBalance(): Promise<any>;
     getTransactionHistory(): Promise<any>;
+    getNodeHealthStatus(): Promise<any>;
   };
 }
 
@@ -270,4 +272,97 @@ declare module "ws" {
     readyState: number;
     static OPEN: number;
   }
+}
+
+// Additional ambient module declarations for relative JS imports used across the repo
+// These provide minimal, safe typings to satisfy strict TS without changing runtime behavior.
+
+declare module "../../src/lib/nostr-browser" {
+  export const nip19: {
+    npubEncode: (pubkey: string) => string;
+    decode: (s: string) => { type: string; data: any };
+  };
+  export function getPublicKey(privateKey: string | Uint8Array): string;
+  export function generateSecretKey(): Uint8Array | string;
+}
+
+declare module "../../../src/lib/nostr-browser" {
+  export const nip19: {
+    npubEncode: (pubkey: string) => string;
+    decode: (s: string) => { type: string; data: any };
+  };
+  export function getPublicKey(privateKey: string | Uint8Array): string;
+  export function generateSecretKey(): Uint8Array | string;
+}
+
+declare module "../src/lib/nostr-browser" {
+  export const nip19: {
+    npubEncode: (pubkey: string) => string;
+    decode: (s: string) => { type: string; data: any };
+  };
+  export function getPublicKey(privateKey: string | Uint8Array): string;
+  export function generateSecretKey(): Uint8Array | string;
+}
+
+declare module "../lib/nostr-browser.js" {
+  export const nip19: {
+    npubEncode: (pubkey: string) => string;
+    decode: (s: string) => { type: string; data: any };
+  };
+  export function getPublicKey(privateKey: string | Uint8Array): string;
+  export function generateSecretKey(): Uint8Array | string;
+}
+
+declare module "../netlify/functions/crypto-profile-installer.js" {
+  export function installCryptoProfile(userId: string): Promise<boolean>;
+}
+
+declare module "./supabase" {
+  import type { SupabaseClient } from "@supabase/supabase-js";
+  export const supabase: SupabaseClient;
+}
+
+declare module "../lib/supabase.js" {
+  import type { SupabaseClient } from "@supabase/supabase-js";
+  export const supabase: SupabaseClient;
+}
+
+declare module "../lib/supabase" {
+  import type { SupabaseClient } from "@supabase/supabase-js";
+  export const supabase: SupabaseClient;
+}
+
+declare module "../../lib/supabase.js" {
+  import type { SupabaseClient } from "@supabase/supabase-js";
+  export const supabase: SupabaseClient;
+}
+
+declare module "./config/index.js" {
+  export const config: any;
+}
+
+declare module "../../config/config.js" {
+  export const config: any;
+  export const authConfig: any;
+}
+
+declare module "../lib/api/register-identity.js" {
+  export interface IdentityRegistration {
+    register: (args: any) => Promise<any>;
+  }
+  export function generateNostrKeyPair(): { pubkey: string; nsec: string };
+}
+
+declare module "../lib/api/fedimint-api" {
+  export const fedimintAPI: any;
+}
+
+declare module "../api/auth/check-username-availability.js" {
+  export function checkUsernameAvailability(
+    username: string
+  ): Promise<{ available: boolean; reason?: string }>;
+}
+
+declare module "@noble/secp256k1" {
+  export function generateSecretKey(): Uint8Array;
 }

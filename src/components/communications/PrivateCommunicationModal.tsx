@@ -29,6 +29,16 @@ import { ContactsManagerModal } from '../ContactsManagerModal'
 import SignInModal from '../SignInModal'
 import { PrivacyLevelSelector } from './PrivacyLevelSelector'
 
+import { resolvePlatformLightningDomain } from '../../config/domain.client'
+
+import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service'
+import type { MessageSendResult } from '../../lib/messaging/client-message-service'
+import { getPrivacyMethodLabel } from '../../lib/messaging/utils'
+import { PeerInvitationModal } from './PeerInvitationModal'
+
+
+
+
 interface PrivateCommunicationModalProps {
   isOpen: boolean
   onClose: () => void
@@ -504,7 +514,7 @@ export function PrivateCommunicationModal({
    */
   const selectLightningProvider = (recipient: Contact): 'phoenixd' | 'nwc' | 'voltage' => {
     // Priority 1: Internal Satnam ecosystem payments
-    if (recipient.nip05?.endsWith('@satnam.pub') || recipient.nip05?.endsWith('@citadel.academy')) {
+    if (recipient.nip05?.endsWith(`@${resolvePlatformLightningDomain()}`) || recipient.nip05?.endsWith('@citadel.academy')) {
       return 'phoenixd'
     }
 
@@ -574,7 +584,7 @@ export function PrivateCommunicationModal({
 
       if (messageType === 'individual') {
         // Send individual message using CEPS gift-wrapped pathway (with nip04 fallback inside CEPS)
-        const sendResultId = await CEPS.sendGiftWrappedDirectMessage(
+        const sendRes = await CEPS.sendGiftWrappedDirectMessage(
           {
             sessionId: 'client-ui', // UI-scoped; CEPS uses internal userSession
             displayNameHash: recipientDisplay || 'recipient',
@@ -591,7 +601,7 @@ export function PrivateCommunicationModal({
             meta: { privacyLevel, messageType: 'message' }
           }
         );
-        result = { success: true, messageId: sendResultId, method: 'giftwrapped' as any };
+        result = sendRes;
 
         if (result.success) {
           // Save to history
@@ -606,9 +616,7 @@ export function PrivateCommunicationModal({
           });
 
           setMessage('');
-          const privacyMethod = result.method === 'giftwrapped' ? 'Sealed (Maximum Privacy)' :
-            result.method === 'encrypted' ? 'Encrypted DM (Selective Privacy)' :
-              'Public Note (Minimal Privacy)';
+          const privacyMethod = getPrivacyMethodLabel(result.signingMethod);
           setSuccess(`Individual message sent successfully!\nMethod: ${privacyMethod}`);
         } else {
           setError(`Failed to send message: ${result.error}`);
@@ -617,8 +625,7 @@ export function PrivateCommunicationModal({
         // Send group message via CEPS group announcement (or group messaging service)
         const group = groups.find(g => g.id === selectedGroup);
         if (!group) throw new Error('Group not found');
-        const eventId = await CEPS.sendGroupAnnouncement(selectedGroup, message);
-        result = { success: true, messageId: eventId, method: 'giftwrapped' as any }
+        result = await CEPS.publishGroupAnnouncement('', selectedGroup, message);
 
         if (result.success) {
           // Save to history
@@ -635,9 +642,7 @@ export function PrivateCommunicationModal({
           });
 
           setMessage('');
-          const privacyMethod = result.method === 'giftwrapped' ? 'Sealed (Maximum Privacy)' :
-            result.method === 'encrypted' ? 'Encrypted (Selective Privacy)' :
-              'Standard (Minimal Privacy)';
+          const privacyMethod = getPrivacyMethodLabel(result.signingMethod);
           setSuccess(`Group message sent successfully!\nMethod: ${privacyMethod}`);
         } else {
           setError(`Failed to send group message: ${result.error}`);
@@ -904,7 +909,7 @@ export function PrivateCommunicationModal({
                           setRecipientDisplay(value)
                         }
                       }}
-                      placeholder="npub1... or username@satnam.pub"
+                      placeholder="npub1... or username@my.satnam.pub"
                       className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
                     <button

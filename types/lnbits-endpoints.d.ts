@@ -93,3 +93,19 @@ declare module "../../api/endpoints/lnbits.js" {
     options?: LNBitsClient.PayInvoiceOptions
   ): Promise<LNBitsClient.Response<LNBitsClient.PayInvoiceResult>>;
 }
+
+// Payments client declarations for relative imports in TSX
+declare module "../../lib/api/paymentsClient.js" {
+  export class ApiError extends Error {
+    constructor(message: string, statusCode?: number);
+    getUserFriendlyMessage(): string;
+  }
+
+  export const paymentsClient: {
+    sendPayment(request: unknown): Promise<unknown>;
+    sendP2PPayment(request: unknown): Promise<unknown>;
+    getBalance(): Promise<unknown>;
+    getTransactionHistory(): Promise<unknown>;
+    getNodeHealthStatus(): Promise<unknown>;
+  };
+}

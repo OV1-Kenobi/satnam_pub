@@ -20,6 +20,9 @@ import type {
 import { nip05VerificationService } from "./nip05-verification";
 
 // Browser-compatible crypto utilities
+
+import { resolvePlatformLightningDomain } from "../config/domain.client";
+
 class BrowserCryptoUtils implements WoTVerificationUtils {
   async hashPubkey(pubkey: string): Promise<string> {
     const encoder = new TextEncoder();
@@ -467,7 +470,9 @@ export class CredentializationService {
         badge_id: request.badgeId,
         student_pubkey_hash: studentPubkeyHash,
         mentor_pubkey: request.mentorPubkey,
-        mentor_nip05: `${request.mentorPubkey}@satnam.pub`, // Mock NIP-05
+        mentor_nip05: `${
+          request.mentorPubkey
+        }@${resolvePlatformLightningDomain()}`, // Mock NIP-05
         mentor_signature: await this.generateMentorSignature(verificationData),
         verification_timestamp: Math.floor(Date.now() / 1000),
         verification_notes: request.verificationNotes,
@@ -563,7 +568,7 @@ export class CredentializationService {
     try {
       const mentorVerification: MentorVerification = {
         mentor_pubkey: this.userPubkey,
-        mentor_nip05: `${this.userPubkey}@satnam.pub`,
+        mentor_nip05: `${this.userPubkey}@${resolvePlatformLightningDomain()}`,
         verification_timestamp: Math.floor(Date.now() / 1000),
         verification_notes: verification.verificationNotes,
         verification_level: "basic",

@@ -10,6 +10,8 @@ import {
   type PrivacyWrappedInvoice,
 } from "./privacy/lnproxy-privacy.js";
 
+import { resolvePlatformLightningDomain } from "../src/config/domain.client";
+
 /**
  * CRITICAL SECURITY: Master Context environment variable access pattern
  * Ensures browser compatibility with import.meta.env while maintaining serverless support
@@ -334,8 +336,8 @@ export class LightningClient {
     purpose?: string
   ): Promise<CreateInvoiceResponse & { privacy: PrivacyWrappedInvoice }> {
     const description = purpose
-      ? `Payment to ${familyMember}@satnam.pub: ${purpose}`
-      : `Payment to ${familyMember}@satnam.pub`;
+      ? `Payment to ${familyMember}@my.satnam.pub: ${purpose}`
+      : `Payment to ${familyMember}@my.satnam.pub`;
 
     const invoice = await this.createInvoice(
       { amount, description },
@@ -597,7 +599,7 @@ export class LightningClient {
         {
           amount,
           description:
-            memo || `P2P payment from ${fromUser} to ${toUser}@satnam.pub`,
+            memo || `P2P payment from ${fromUser} to ${toUser}@my.satnam.pub`,
         },
         true // Always enable privacy for internal payments
       );
@@ -623,7 +625,8 @@ export class LightningClient {
             {
               amount,
               description:
-                memo || `P2P payment from ${fromUser} to ${toUser}@satnam.pub`,
+                memo ||
+                `P2P payment from ${fromUser} to ${toUser}@my.satnam.pub`,
             },
             true
           );
@@ -738,13 +741,13 @@ export class LightningClient {
             amount,
             description:
               memo ||
-              `P2P external payment from ${fromUser}@satnam.pub to ${toLightningAddress}`,
+              `P2P external payment from ${fromUser}@my.satnam.pub to ${toLightningAddress}`,
           });
 
           privacyWrapped = await this.privacyLayer.wrapInvoiceForPrivacy(
             invoice.invoice,
             memo ||
-              `P2P external payment from ${fromUser}@satnam.pub to ${toLightningAddress}`
+              `P2P external payment from ${fromUser}@my.satnam.pub to ${toLightningAddress}`
           );
 
           if (!privacyWrapped.isPrivacyEnabled) {
@@ -764,7 +767,7 @@ export class LightningClient {
         toLightningAddress,
         amount,
         memo ||
-          `P2P external payment from ${fromUser}@satnam.pub to ${toLightningAddress}`
+          `P2P external payment from ${fromUser}@my.satnam.pub to ${toLightningAddress}`
       );
 
       return {
@@ -1856,7 +1859,9 @@ export class LightningClient {
     privacyLevel: "high" | "medium" | "low";
   } {
     // Determine if destination is internal Satnam user
-    const isInternalUser = toDestination.includes("@satnam.pub");
+    const isInternalUser = toDestination.includes(
+      `@${resolvePlatformLightningDomain()}`
+    );
 
     // Determine if destination is eCash token
     const isECashToken =

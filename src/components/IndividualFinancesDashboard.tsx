@@ -23,6 +23,7 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { resolvePlatformLightningDomain } from '../config/domain.client';
 
 // Transaction type defined locally below
 
@@ -623,6 +624,7 @@ const LightningTab: React.FC<{
   wallet: EnhancedIndividualWallet;
   onShowNWCSetup: () => void;
 }> = ({ wallet, onShowNWCSetup }) => {
+  const { user } = useAuth();
   const [zapAmount, setZapAmount] = useState('');
   const [zapRecipient, setZapRecipient] = useState('');
   const [zapMemo, setZapMemo] = useState('');
@@ -739,22 +741,53 @@ const LightningTab: React.FC<{
         </div>
       )}
 
-      {/* Lightning Address Display */}
-      <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
-        <h3 className="text-lg font-semibold text-orange-900 mb-4">
-          Your Lightning Address
-        </h3>
-        <div className="flex items-center space-x-3">
-          <code className="flex-1 bg-white px-4 py-3 rounded-lg border border-orange-300 font-mono text-orange-800">
-            {wallet.lightningAddress}
-          </code>
-          <button
-            onClick={() => navigator.clipboard.writeText(wallet.lightningAddress)}
-            className="bg-orange-500 text-white px-4 py-3 rounded-lg hover:bg-orange-600 transition-colors flex items-center space-x-2"
-          >
-            <Copy className="h-4 w-4" />
-            <span>Copy</span>
-          </button>
+      {/* Identity Identifiers */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* NIP-05 Display */}
+        <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+          <h3 className="text-lg font-semibold text-blue-900 mb-4">Your NIP-05</h3>
+          <div className="flex items-center space-x-3">
+            <code className="flex-1 bg-white px-4 py-3 rounded-lg border border-blue-300 font-mono text-blue-800">
+              {(() => {
+                const authUser = user as unknown as { nip05?: string; username?: string } | null;
+                const nip05 = authUser?.nip05;
+                const uname = wallet.username || authUser?.username;
+                const platformDomain = resolvePlatformLightningDomain();
+                return nip05 || (uname ? `${uname}@${platformDomain}` : '');
+              })()}
+            </code>
+            <button
+              onClick={() => {
+                const authUser = user as unknown as { nip05?: string; username?: string } | null;
+                const nip05 = authUser?.nip05;
+                const uname = wallet.username || authUser?.username;
+                const platformDomain = resolvePlatformLightningDomain();
+                const toCopy = nip05 || (uname ? `${uname}@${platformDomain}` : '');
+                if (toCopy) navigator.clipboard.writeText(toCopy);
+              }}
+              className="bg-blue-500 text-white px-4 py-3 rounded-lg hover:bg-blue-600 transition-colors flex items-center space-x-2"
+            >
+              <Copy className="h-4 w-4" />
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Lightning Address Display */}
+        <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
+          <h3 className="text-lg font-semibold text-orange-900 mb-4">Your Lightning Address</h3>
+          <div className="flex items-center space-x-3">
+            <code className="flex-1 bg-white px-4 py-3 rounded-lg border border-orange-300 font-mono text-orange-800">
+              {wallet.lightningAddress}
+            </code>
+            <button
+              onClick={() => navigator.clipboard.writeText(wallet.lightningAddress)}
+              className="bg-orange-500 text-white px-4 py-3 rounded-lg hover:bg-orange-600 transition-colors flex items-center space-x-2"
+            >
+              <Copy className="h-4 w-4" />
+              <span>Copy</span>
+            </button>
+          </div>
         </div>
       </div>
 

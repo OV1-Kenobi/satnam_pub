@@ -8,19 +8,19 @@ const mockFamilyMembers: FamilyMember[] = [
   {
     id: "1",
     username: "satnam_dad",
-    lightningAddress: "satnam_dad@satnam.pub",
+    lightningAddress: "satnam_dad@my.satnam.pub",
     role: "adult",
   },
   {
     id: "2",
     username: "satnam_mom",
-    lightningAddress: "satnam_mom@satnam.pub",
+    lightningAddress: "satnam_mom@my.satnam.pub",
     role: "adult",
   },
   {
     id: "3",
     username: "satnam_teen",
-    lightningAddress: "satnam_teen@satnam.pub",
+    lightningAddress: "satnam_teen@my.satnam.pub",
     role: "offspring",
     spendingLimits: {
       daily: 100000,
@@ -30,7 +30,7 @@ const mockFamilyMembers: FamilyMember[] = [
   {
     id: "4",
     username: "satnam_kid",
-    lightningAddress: "satnam_kid@satnam.pub",
+    lightningAddress: "satnam_kid@my.satnam.pub",
     role: "offspring",
     spendingLimits: {
       daily: 50000,
@@ -120,8 +120,8 @@ const SmartPaymentModalDemo: React.FC = () => {
             >
               <div className="flex items-center space-x-3 mb-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${(member.role === "adult" || member.role === "guardian")
-                    ? "bg-gradient-to-br from-orange-500 to-amber-500"
-                    : "bg-gradient-to-br from-amber-400 to-orange-400"
+                  ? "bg-gradient-to-br from-orange-500 to-amber-500"
+                  : "bg-gradient-to-br from-amber-400 to-orange-400"
                   }`}>
                   {member.username?.charAt(0)?.toUpperCase() || 'U'}
                 </div>
@@ -143,7 +143,7 @@ const SmartPaymentModalDemo: React.FC = () => {
                 {member.spendingLimits && (
                   <div className="flex justify-between text-sm">
                     <span className="text-white/70">Daily Limit:</span>
-                    <span className="text-amber-400">{formatSats(member.spendingLimits.daily)} sats</span>
+                    <span className="text-amber-400">{formatSats(member.spendingLimits.daily ?? 0)} sats</span>
                   </div>
                 )}
               </div>

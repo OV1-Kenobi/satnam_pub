@@ -3,6 +3,7 @@
  * Centralizes all privacy-aware API calls with standardized privacy levels
  */
 
+import { resolvePlatformLightningDomain } from "../config/domain.client";
 import { PrivacyLevel, getDefaultPrivacyLevel } from "../types/privacy";
 
 import {
@@ -448,7 +449,10 @@ export class PrivacyEnhancedApiService {
     }
 
     // External recipients should use GIFTWRAPPED
-    if (recipient && !recipient.includes("@satnam.pub")) {
+    if (
+      recipient &&
+      !recipient.includes(`@${resolvePlatformLightningDomain()}`)
+    ) {
       return PrivacyLevel.GIFTWRAPPED;
     }
 

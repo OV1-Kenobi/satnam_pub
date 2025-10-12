@@ -8,9 +8,9 @@ import React, { useState } from 'react';
 import { PrivacyLevel } from '../../types/privacy';
 import { FamilyMember } from '../../types/shared';
 import { PrivacyControls } from '../PrivacyControls';
-import PrivacyDashboardIndicators from './PrivacyDashboardIndicators.tsx';
-import PrivacyEnhancedPaymentModal from './PrivacyEnhancedPaymentModal.tsx';
-import PrivacyPreferencesModal from './PrivacyPreferencesModal.tsx';
+import PrivacyDashboardIndicators from './PrivacyDashboardIndicators';
+import PrivacyEnhancedPaymentModal from './PrivacyEnhancedPaymentModal';
+import PrivacyPreferencesModal from './PrivacyPreferencesModal';
 
 const PrivacyIntegrationDemo: React.FC = () => {
   const [currentPrivacyLevel, setCurrentPrivacyLevel] = useState<PrivacyLevel>(PrivacyLevel.GIFTWRAPPED);
@@ -26,8 +26,8 @@ const PrivacyIntegrationDemo: React.FC = () => {
       role: 'adult',
       balance: 500000,
       nip05Verified: true,
-      lightningAddress: 'alice@satnam.pub',
-      totalBalance: 500000
+      lightningAddress: 'alice@my.satnam.pub',
+
     },
     {
       id: 'child1',
@@ -35,8 +35,8 @@ const PrivacyIntegrationDemo: React.FC = () => {
       role: 'offspring',
       balance: 50000,
       nip05Verified: true,
-      lightningAddress: 'bob@satnam.pub',
-      totalBalance: 50000
+      lightningAddress: 'bob@my.satnam.pub',
+
     },
     {
       id: 'guardian1',
@@ -44,8 +44,8 @@ const PrivacyIntegrationDemo: React.FC = () => {
       role: 'guardian',
       balance: 1000000,
       nip05Verified: true,
-      lightningAddress: 'charlie@satnam.pub',
-      totalBalance: 1000000
+      lightningAddress: 'charlie@my.satnam.pub',
+
     }
   ];
 
@@ -53,8 +53,8 @@ const PrivacyIntegrationDemo: React.FC = () => {
   const mockPrivacyMetrics = {
     transactionsRouted: 127,
     privacyScore: 85,
-    lnproxyUsage: 78,
-    cashuPrivacy: 92
+    lnproxyUsage: '78%',
+    cashuPrivacy: '92%'
   };
 
   return (
@@ -252,9 +252,8 @@ const PrivacyIntegrationDemo: React.FC = () => {
       <PrivacyPreferencesModal
         isOpen={preferencesModalOpen}
         onClose={() => setPreferencesModalOpen(false)}
-        userId="demo_user"
         userRole="adult"
-        onPreferencesUpdated={(preferences) => {
+        onPreferencesUpdate={(preferences) => {
           console.log('Demo preferences updated:', preferences);
         }}
       />

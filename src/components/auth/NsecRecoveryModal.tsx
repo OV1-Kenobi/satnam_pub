@@ -5,10 +5,10 @@
  * and Private Individual users when they are logged out.
  */
 
+import { AlertTriangle, Copy, Download, Eye, EyeOff, Key, RefreshCw, Shield, X } from 'lucide-react';
 import React, { useState } from 'react';
-import { AlertTriangle, Key, Shield, Copy, Download, Eye, EyeOff, X, RefreshCw } from 'lucide-react';
-import { FederationRole } from '../../types/auth';
 import { nostrKeyRecovery, RecoveryMethod } from '../../lib/auth/nostr-key-recovery';
+import { FederationRole } from '../../types/auth';
 
 interface NsecRecoveryModalProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ export const NsecRecoveryModal: React.FC<NsecRecoveryModalProps> = ({
   const [npub, setNpub] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  
+
   // Recovery state
   const [isProcessing, setIsProcessing] = useState(false);
   const [recoveryStep, setRecoveryStep] = useState<'credentials' | 'processing' | 'result'>('credentials');
@@ -60,7 +60,7 @@ export const NsecRecoveryModal: React.FC<NsecRecoveryModalProps> = ({
       }
 
       // Initiate recovery
-      const credentials = recoveryMethod === 'nip05-password' 
+      const credentials = recoveryMethod === 'nip05-password'
         ? { nip05: nip05.trim(), password }
         : { npub: npub.trim(), password };
 
@@ -208,10 +208,10 @@ export const NsecRecoveryModal: React.FC<NsecRecoveryModalProps> = ({
                     />
                     <div>
                       <span className="text-sm font-medium text-gray-900">NIP-05 + Password</span>
-                      <p className="text-xs text-gray-500">Use your username@satnam.pub and password</p>
+                      <p className="text-xs text-gray-500">Use your NIP-05 identifier (username@my.satnam.pub) and password</p>
                     </div>
                   </label>
-                  
+
                   <label className="flex items-center space-x-3">
                     <input
                       type="radio"
@@ -240,7 +240,7 @@ export const NsecRecoveryModal: React.FC<NsecRecoveryModalProps> = ({
                       type="text"
                       value={nip05}
                       onChange={(e) => setNip05(e.target.value)}
-                      placeholder="username@satnam.pub"
+                      placeholder="username@my.satnam.pub"
                       className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -295,7 +295,7 @@ export const NsecRecoveryModal: React.FC<NsecRecoveryModalProps> = ({
               {/* Submit Button */}
               <button
                 onClick={handleRecoverySubmit}
-                disabled={isProcessing || !password.trim() || 
+                disabled={isProcessing || !password.trim() ||
                   (recoveryMethod === 'nip05-password' && !nip05.trim()) ||
                   (recoveryMethod === 'nip07-password' && !npub.trim())}
                 className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
@@ -354,9 +354,8 @@ export const NsecRecoveryModal: React.FC<NsecRecoveryModalProps> = ({
                     value={recoveredNsec}
                     readOnly
                     rows={3}
-                    className={`w-full p-3 pr-20 border border-gray-300 rounded-md bg-gray-50 font-mono text-sm ${
-                      showNsec ? 'text-gray-900' : 'text-transparent bg-gray-200'
-                    }`}
+                    className={`w-full p-3 pr-20 border border-gray-300 rounded-md bg-gray-50 font-mono text-sm ${showNsec ? 'text-gray-900' : 'text-transparent bg-gray-200'
+                      }`}
                     style={showNsec ? {} : { textShadow: '0 0 8px rgba(0,0,0,0.5)' }}
                   />
                   <div className="absolute right-2 top-2 flex flex-col space-y-1">

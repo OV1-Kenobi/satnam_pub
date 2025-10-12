@@ -72,7 +72,7 @@ const FamilyFederationSignIn: React.FC = () => {
           <div className="text-4xl mb-2">🏰</div>
           <h1 className="text-2xl font-bold text-gray-900">Family Federation Access</h1>
           <p className="text-gray-600 mt-2">
-            Secure authentication via <span className="font-semibold">RebuildingCamelot@satnam.pub</span>
+            Secure authentication via <span className="font-semibold">RebuildingCamelot@my.satnam.pub</span>
           </p>
         </div>
 
@@ -86,7 +86,7 @@ const FamilyFederationSignIn: React.FC = () => {
                 type="email"
                 value={nip05}
                 onChange={(e) => setNip05(e.target.value)}
-                placeholder="username@satnam.pub"
+                placeholder="username@my.satnam.pub"
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500"
                 required
               />

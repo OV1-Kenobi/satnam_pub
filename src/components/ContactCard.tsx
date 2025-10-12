@@ -491,6 +491,11 @@ export const ContactCard: React.FC<ContactCardProps> = ({
           </div>
         )}
 
+        {((contact as { external_ln_address?: string; lud16?: string }).external_ln_address || (contact as { external_ln_address?: string; lud16?: string }).lud16) && (
+          <p className="text-orange-400 text-sm truncate">⚡ {(contact as { external_ln_address?: string; lud16?: string }).external_ln_address || (contact as { external_ln_address?: string; lud16?: string }).lud16}</p>
+        )}
+
+
         {/* NPub */}
         <p className="text-purple-300 text-xs font-mono mb-2 break-all">
           {formatNpub(contact.npub, showPrivateData)}

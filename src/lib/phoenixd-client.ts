@@ -390,8 +390,8 @@ export class PhoenixdClient {
     options?: { enablePrivacy?: boolean }
   ): Promise<PhoenixdInvoice & { privacy?: PrivacyWrappedInvoice }> {
     const description = purpose
-      ? `Payment to ${familyMember}@satnam.pub: ${purpose}`
-      : `Payment to ${familyMember}@satnam.pub`;
+      ? `Payment to ${familyMember}@my.satnam.pub: ${purpose}`
+      : `Payment to ${familyMember}@my.satnam.pub`;
 
     const enablePrivacy = options?.enablePrivacy !== false; // Default to true for family invoices
     const invoice = await this.createInvoice(

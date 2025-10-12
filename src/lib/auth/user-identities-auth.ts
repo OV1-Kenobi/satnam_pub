@@ -4,9 +4,11 @@
  * Maintains all security features while using the correct database schema
  */
 
+import { resolvePlatformLightningDomain } from "../../config/domain.client";
 import { supabase } from "../supabase";
 
 /**
+
  * Web Crypto API utilities for browser-only serverless architecture
  */
 class CryptoUtils {
@@ -348,7 +350,8 @@ export class UserIdentitiesAuth {
           continue;
         }
         if (npub === npubToFind) {
-          return `${username}@satnam.pub`;
+          const domain = resolvePlatformLightningDomain();
+          return `${username}@${domain}`;
         }
       }
 

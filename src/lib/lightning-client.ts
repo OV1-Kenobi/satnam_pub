@@ -32,7 +32,7 @@ interface PrivacyWrappedInvoice {
   wrappedInvoice: string;
   isPrivacyEnabled: boolean;
   routingBudget: number;
-  privacyLevel: 'standard' | 'enhanced' | 'maximum';
+  privacyLevel: "standard" | "enhanced" | "maximum";
 }
 
 export class LightningClient {
@@ -51,7 +51,10 @@ export class LightningClient {
       return { connected: false, error: "Failed to get status" };
     } catch (error) {
       console.error("Failed to get node status:", error);
-      return { connected: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        connected: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
@@ -129,16 +132,19 @@ export class LightningClient {
         throw new Error("Invalid amount: must be positive number");
       }
 
-      const response = await fetch(`${this.apiBaseUrl}/lightning/create-invoice`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...request,
-          enablePrivacy,
-        }),
-      });
+      const response = await fetch(
+        `${this.apiBaseUrl}/lightning/create-invoice`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...request,
+            enablePrivacy,
+          }),
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to create invoice");
@@ -165,8 +171,8 @@ export class LightningClient {
     purpose?: string
   ): Promise<CreateInvoiceResponse & { privacy: PrivacyWrappedInvoice }> {
     const description = purpose
-      ? `Payment to ${familyMember}@satnam.pub: ${purpose}`
-      : `Payment to ${familyMember}@satnam.pub`;
+      ? `Payment to ${familyMember}@my.satnam.pub: ${purpose}`
+      : `Payment to ${familyMember}@my.satnam.pub`;
 
     const invoice = await this.createInvoice(
       { amount, description },
@@ -189,13 +195,18 @@ export class LightningClient {
    */
   async checkPrivacyHealth() {
     try {
-      const response = await fetch(`${this.apiBaseUrl}/lightning/privacy-health`);
+      const response = await fetch(
+        `${this.apiBaseUrl}/lightning/privacy-health`
+      );
       if (response.ok) {
         return await response.json();
       }
       return { healthy: false, error: "Privacy service unavailable" };
     } catch (error) {
-      return { healthy: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        healthy: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
@@ -210,4 +221,4 @@ export class LightningClient {
       defaultRoutingBudget: 1000, // Default routing budget in sats
     };
   }
-} 
+}

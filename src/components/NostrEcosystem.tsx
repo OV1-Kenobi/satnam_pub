@@ -44,8 +44,8 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
   const { user } = useAuth();
   const [copiedIdentity, setCopiedIdentity] = useState(false);
 
-  // Use actual user NIP-05 from authentication state, fallback to prop, then default
-  const actualUserIdentity = user?.nip05 || userIdentity || "yourname@satnam.pub";
+  // Use actual user NIP-05 from authentication state (hashed_nip05 per privacy model), fallback to prop, then default
+  const actualUserIdentity = user?.hashed_nip05 || userIdentity || "yourname@my.satnam.pub";
 
   const copyIdentity = () => {
     navigator.clipboard.writeText(actualUserIdentity);

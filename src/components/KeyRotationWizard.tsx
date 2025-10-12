@@ -17,7 +17,7 @@ export const KeyRotationWizard: React.FC<Props> = ({ onClose }) => {
   const [cepsMeta, setCepsMeta] = useState<{ delegationEventId?: string; kind0EventIds?: string[]; noticeEventIds?: string[]; profileUpdateEventId?: string } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const nip05Allowed = useMemo(() => (whitelist || []).length ? whitelist : ["satnam.pub"], [whitelist]);
+  const nip05Allowed = useMemo(() => (whitelist || []).length ? whitelist : ["my.satnam.pub"], [whitelist]);
 
   const onBegin = async () => {
     try {

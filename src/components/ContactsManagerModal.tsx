@@ -672,6 +672,16 @@ export const ContactsManagerModal: React.FC<ContactsManagerModalProps> = ({
                   </div>
                 )}
 
+                {(selectedContact as { external_ln_address?: string; lud16?: string }).external_ln_address || (selectedContact as { external_ln_address?: string; lud16?: string }).lud16 ? (
+                  <div>
+                    <label className="block text-sm font-medium text-purple-200 mb-1">Lightning Address</label>
+                    <p className="text-orange-400 bg-white/5 p-3 rounded-lg font-mono text-sm">
+                      {(selectedContact as { external_ln_address?: string; lud16?: string }).external_ln_address || (selectedContact as { external_ln_address?: string; lud16?: string }).lud16}
+                    </p>
+                  </div>
+                ) : null}
+
+
                 <div>
                   <label className="block text-sm font-medium text-purple-200 mb-1">NPub</label>
                   <p className="text-white bg-white/5 p-3 rounded-lg font-mono text-xs break-all">

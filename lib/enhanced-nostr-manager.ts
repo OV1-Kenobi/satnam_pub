@@ -7,8 +7,15 @@
  * @fileoverview Enhanced Nostr dual-mode management system
  */
 
+import {
+  SimplePool,
+  finalizeEvent,
+  generatePrivateKey,
+  getPublicKey,
+  nip19,
+} from "nostr-tools";
 import { config } from "../config";
-import { SimplePool } from "../src/lib/nostr-browser";
+import { resolvePlatformLightningDomain } from "../src/config/domain.client";
 
 // Operation Context Types (matching PhoenixD manager)
 type OperationMode = "individual" | "family";
@@ -17,6 +24,7 @@ interface NostrOperationContext {
   mode: OperationMode;
   userId: string;
   familyId?: string;
+
   parentUserId?: string;
 }
 
@@ -186,7 +194,7 @@ export class EnhancedNostrManager {
       relays: Array.from(this.relayConnections.keys()),
       profile: {
         name: username,
-        nip05: `${username}@satnam.pub`,
+        nip05: `${username}@${resolvePlatformLightningDomain()}`,
       },
       preferences: {
         autoPublishProfile: true,

@@ -80,7 +80,7 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
           'Guardian-approved spending for safety',
           'Private family communications',
           'Fedimint eCash for privacy',
-          'Family Lightning Address @satnam.pub'
+          'Family Lightning Address @my.satnam.pub'
         ],
         message: invitationMessage || `You're invited to join the ${familyData.familyName} Family Federation on Satnam.pub`,
         acceptanceInstructions: {
@@ -312,7 +312,7 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
               <li>• Guardian-approved spending for safety</li>
               <li>• Private family communications</li>
               <li>• Fedimint eCash for privacy</li>
-              <li>• Family Lightning Address @satnam.pub</li>
+              <li>• Family Lightning Address @my.satnam.pub</li>
             </ul>
           </div>
         </div>

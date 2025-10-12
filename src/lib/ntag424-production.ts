@@ -9,6 +9,8 @@ import CryptoJS from "crypto-js";
 import { LightningClient } from "./lightning-client";
 import { PhoenixdClient } from "./phoenixd-client";
 
+import { resolvePlatformLightningDomain } from "../config/domain.client";
+
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
 const getSupabaseClient = async () => {
@@ -520,7 +522,7 @@ export class NTAG424ProductionManager {
           walletAccess.lightning = {
             nodeId: config.voltageNodeId,
             balance: 0, // Get actual balance from Voltage API
-            address: `${config.userNpub}@satnam.pub`,
+            address: `${config.userNpub}@${resolvePlatformLightningDomain()}`,
           };
         }
       }

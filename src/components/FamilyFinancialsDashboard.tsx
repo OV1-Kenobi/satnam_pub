@@ -15,8 +15,10 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { resolvePlatformLightningDomain } from '../config/domain.client';
 import { useNWCWallet } from '../hooks/useNWCWallet';
 import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
+
 import NWCWalletSetupModal from './NWCWalletSetupModal';
 import SovereigntyEducationFlow from './SovereigntyEducationFlow';
 
@@ -34,6 +36,9 @@ import { PaymentModal } from './shared';
 import UnifiedFamilyPayments from './UnifiedFamilyPayments';
 
 import LNBitsIntegrationPanel from './LNBitsIntegrationPanel';
+
+
+
 
 // Import Credits Balance
 import { CreditsBalance } from './CreditsBalance';
@@ -58,6 +63,8 @@ import {
 } from '../services/familyWalletApi';
 
 // Import FROST API Client (connects to existing backend)
+// Platform domain config
+
 import { frostApi, handleFrostApiError } from '../services/frostApiClient';
 
 // Import Unified Toast Notification System
@@ -421,7 +428,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
 
           // Create Lightning address only if valid user identifier exists
           const lightningAddress = (member.user_duid?.trim() || member.id?.trim())
-            ? `${member.user_duid?.trim() || member.id?.trim()}@satnam.pub`
+            ? `${member.user_duid?.trim() || member.id?.trim()}@${resolvePlatformLightningDomain()}`
             : null;
 
           return {
@@ -830,7 +837,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           </div>
           <div className="bg-orange-100 rounded-lg p-3">
             <div className="text-xs text-orange-700 font-medium">Family Lightning Address</div>
-            <div className="text-sm text-orange-800 font-mono">family@satnam.pub</div>
+            <div className="text-sm text-orange-800 font-mono">family@my.satnam.pub</div>
           </div>
         </div>
 
@@ -998,7 +1005,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleShowQR(member.id, member.lightningAddress || `${member.username}@satnam.pub`)}
+                    onClick={() => handleShowQR(member.id, member.lightningAddress || `${member.username}@${resolvePlatformLightningDomain()}`)}
                     className="p-1 text-gray-400 hover:text-orange-600 transition-colors"
                     title="Show Lightning Address QR Code"
                   >

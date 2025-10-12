@@ -18,11 +18,13 @@ import {
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+
 import { useCryptoOperations } from "../hooks/useCrypto";
 import { NostrProfileService } from "../lib/nostr-profile-service";
 import { IdentityRegistrationResult } from "../types/auth";
 import { apiClient } from '../utils/api-client';
 import { SessionInfo } from '../utils/secureSession';
+
 import { useAuth, useIdentityForge } from "./auth/AuthProvider";
 
 import { recoverySessionBridge } from "../lib/auth/recovery-session-bridge";
@@ -31,6 +33,8 @@ import type { UserIdentity } from "../lib/auth/user-identities-auth";
 
 import { central_event_publishing_service, central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 
+
+import { resolvePlatformLightningDomain } from '../config/domain.client';
 
 import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 
@@ -54,6 +58,7 @@ const rawLnBitsFlag =
   (typeof process !== 'undefined' ? (process as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED : undefined);
 
 const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 'true';
+
 
 
 
@@ -2828,15 +2833,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           <span className="text-green-100 font-mono">{registrationResult.user.username}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-green-300">NIP-05:</span>
-                          <span className="text-green-100 font-mono">{registrationResult.user.nip05}</span>
+                          <span className="text-green-300">NIP-05 (Nostr Identity):</span>
+                          <span className="text-green-100 font-mono">{registrationResult.user.nip05 || `${registrationResult.user.username}@${selectedDomain}`}</span>
                         </div>
-                        {formData.lightningEnabled && (
-                          <div className="flex justify-between">
-                            <span className="text-green-300">Lightning:</span>
-                            <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress}</span>
-                          </div>
-                        )}
+                        <div className="flex justify-between">
+                          <span className="text-green-300">Lightning Address (Bitcoin Payments):</span>
+                          <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress || `${registrationResult.user.username}@${resolvePlatformLightningDomain()}`}</span>
+                        </div>
                       </div>
                     </div>
 

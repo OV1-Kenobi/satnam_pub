@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
+import { resolvePlatformLightningDomain } from '../../config/domain.client';
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
 import fetchWithAuth from '../../lib/auth/fetch-with-auth';
 import type { MessageSendResult } from '../../lib/messaging/client-message-service';
 import { nip05Utils } from '../../lib/nip05-verification';
 import { showToast } from '../../services/toastService';
 import { PrivacyLevel } from '../../types/privacy';
+
+
+
 
 import ContactsSelector from '../shared/ContactsSelector';
 
@@ -144,7 +148,7 @@ export function PeerInvitationModal({
   const sendMessage = async (content: string, recipient: string): Promise<MessageSendResult> => {
     try {
       const eventId = await CEPS.sendStandardDirectMessage(recipient, content);
-      const result: MessageSendResult = { success: true, messageId: eventId, signingMethod: 'nip04', securityLevel: 'standard' } as any;
+      const result: MessageSendResult = { success: true, messageId: eventId, signingMethod: 'nip04', securityLevel: 'standard' };
       return result;
     } catch (error) {
       console.error('Message sending failed:', error);
@@ -229,7 +233,7 @@ export function PeerInvitationModal({
         }
 
         // 2) Compose message
-        const senderNip05 = senderProfile?.username ? `${senderProfile.username}@satnam.pub` : undefined;
+        const senderNip05 = senderProfile?.username ? `${senderProfile.username}@${resolvePlatformLightningDomain()}` : undefined;
         const senderLine = senderNip05 ? `Sender: ${senderNip05}` : (senderProfile?.npub ? `Sender: ${senderProfile.npub}` : '');
         const intro = personalMessage && personalMessage.trim().length > 0
           ? personalMessage.trim()
@@ -502,7 +506,7 @@ export function PeerInvitationModal({
             </div>
             <div className="text-xs text-purple-200 space-y-1">
               <div>Username: {senderProfile?.username || 'Unknown User'}</div>
-              <div>Lightning Address: {senderProfile?.username || 'user'}@satnam.pub</div>
+              <div>Lightning Address: {senderProfile?.lightningAddress || `${senderProfile?.username || 'user'}@${resolvePlatformLightningDomain()}`}</div>
               <div>Secure Communications: Encrypted Nostr DMs</div>
             </div>
           </div>

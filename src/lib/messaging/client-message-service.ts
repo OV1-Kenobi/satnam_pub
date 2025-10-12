@@ -40,15 +40,8 @@ export interface MessageData {
   communicationType: string;
 }
 
-export interface MessageSendResult {
-  success: boolean;
-  messageId?: string;
-  signingMethod?: string;
-  securityLevel?: string;
-  userMessage?: string;
-  error?: string;
-  deliveryTime?: string;
-}
+import type { MessageSendResult } from "./types";
+export type { MessageSendResult } from "./types";
 
 export class ClientMessageService {
   private baseUrl: string;

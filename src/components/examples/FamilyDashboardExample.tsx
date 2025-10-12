@@ -2,8 +2,36 @@
 // File: src/components/examples/FamilyDashboardExample.tsx
 
 import React from 'react';
-import { useAuth } from '../auth/AuthProvider'; // FIXED: Use unified auth system
 import ProtectedFamilyRoute from '../auth/ProtectedFamilyRoute';
+
+import { useAuth } from '../auth/AuthProvider';
+
+// Local adapter to replace deprecated useFamilyFederationAuth
+interface DemoFamilyAuth {
+  nip05?: string;
+  federationRole?: string;
+  votingPower?: number;
+  npub?: string;
+  isWhitelisted?: boolean;
+  guardianApproved?: boolean;
+}
+
+function useFamilyFederationAuth(): { userAuth: DemoFamilyAuth | null; logout: () => Promise<void> } {
+  const auth = useAuth();
+  const toDemo = (u: unknown): DemoFamilyAuth | null => {
+    if (!u || typeof u !== 'object') return null;
+    const obj = u as Record<string, unknown>;
+    return {
+      nip05: typeof obj['nip05'] === 'string' ? (obj['nip05'] as string) : undefined,
+      federationRole: typeof obj['federationRole'] === 'string' ? (obj['federationRole'] as string) : undefined,
+      votingPower: typeof obj['votingPower'] === 'number' ? (obj['votingPower'] as number) : undefined,
+      npub: typeof obj['npub'] === 'string' ? (obj['npub'] as string) : undefined,
+      isWhitelisted: typeof obj['isWhitelisted'] === 'boolean' ? (obj['isWhitelisted'] as boolean) : undefined,
+      guardianApproved: typeof obj['guardianApproved'] === 'boolean' ? (obj['guardianApproved'] as boolean) : undefined,
+    };
+  };
+  return { userAuth: toDemo(auth.user), logout: auth.logout };
+}
 
 const FamilyFinancialsDashboard: React.FC = () => {
   const { userAuth, logout } = useFamilyFederationAuth();
@@ -21,7 +49,7 @@ const FamilyFinancialsDashboard: React.FC = () => {
                 <p className="text-sm text-gray-500">Sovereign Family Banking</p>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">
@@ -45,7 +73,7 @@ const FamilyFinancialsDashboard: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          
+
           {/* Welcome Card */}
           <div className="bg-white rounded-lg shadow p-6 md:col-span-2 lg:col-span-3">
             <div className="flex items-center space-x-3 mb-4">
@@ -55,11 +83,11 @@ const FamilyFinancialsDashboard: React.FC = () => {
                   Welcome to Family Financials!
                 </h2>
                 <p className="text-gray-600">
-                  Authenticated via RebuildingCamelot@satnam.pub
+                  Authenticated via RebuildingCamelot@my.satnam.pub
                 </p>
               </div>
             </div>
-            
+
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h3 className="font-medium text-green-800 mb-2">Authentication Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -80,7 +108,7 @@ const FamilyFinancialsDashboard: React.FC = () => {
                 <div>
                   <span className="text-green-700 font-medium">Status:</span>
                   <p className="text-green-600">
-                    {userAuth?.isWhitelisted ? '✅ Whitelisted' : '❌ Not Whitelisted'} • 
+                    {userAuth?.isWhitelisted ? '✅ Whitelisted' : '❌ Not Whitelisted'} •
                     {userAuth?.guardianApproved ? ' ✅ Guardian Approved' : ' ⏳ Pending Approval'}
                   </p>
                 </div>
@@ -188,7 +216,7 @@ const FamilyFinancialsDashboard: React.FC = () => {
 // Example of how to use the protected route
 const FamilyDashboardExample: React.FC = () => {
   return (
-    <ProtectedFamilyRoute 
+    <ProtectedFamilyRoute
       requireWhitelist={true}
       requireGuardianApproval={false}
     >

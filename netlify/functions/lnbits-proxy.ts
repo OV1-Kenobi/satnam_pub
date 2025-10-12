@@ -12,17 +12,37 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   pbkdf2Sync,
   randomBytes,
+  randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { supabase as adminSupabase, getRequestClient } from "./supabase.js";
+import {
+  supabase as adminSupabase,
+  getRequestClient,
+  supabaseAdmin,
+} from "./supabase.js";
 import { allowRequest } from "./utils/rate-limiter.js";
+import {
+  getInvoiceKeyWithSafety,
+  logDecryptAudit,
+  newRequestId,
+} from "./utils/secure-decrypt-logger.js";
+
+import { resolvePlatformLightningDomainServer } from "./utils/domain.server.js";
 
 const json = (statusCode: number, body: any) => ({
   statusCode,
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
+});
+
+// LNURL raw JSON response helper (no { success, data } envelope)
+const lnurlJson = (statusCode: number, lnurlData: any) => ({
+  statusCode,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(lnurlData),
 });
 
 const requireEnv = (key: string) => {
@@ -33,6 +53,18 @@ const requireEnv = (key: string) => {
 
 const FEATURE_ENABLED =
   (process.env.VITE_LNBITS_INTEGRATION_ENABLED || "").toLowerCase() === "true";
+const WEBHOOK_SECRET = process.env.LNBITS_WEBHOOK_SECRET || "";
+
+async function notifyRecipient(npub: string, message: string) {
+  try {
+    const { central_event_publishing_service: CEPS } = await import(
+      "../../lib/central_event_publishing_service.js"
+    );
+    await CEPS.sendServerDM(npub, message);
+  } catch (err) {
+    console.warn("CEPS notify failed:", err);
+  }
+}
 
 const LNBITS_BASE = requireEnv("LNBITS_BASE_URL");
 const ADMIN_KEY =
@@ -164,10 +196,15 @@ function parseInvoiceAmountSats(invoice: string): number | null {
 const ACTIONS = {
   // Admin-scoped operation: create LNbits user/wallet
   provisionWallet: { scope: "admin" as const },
+  // Public-scoped operations (no auth required; rate-limited; GET allowed where noted)
+  lnurlpWellKnown: { scope: "public" as const },
+  lnurlpDirect: { scope: "public" as const },
+  lnurlpPlatform: { scope: "public" as const },
   // Wallet-scoped operations
   payInvoice: { scope: "wallet" as const },
   getPaymentHistory: { scope: "wallet" as const },
   getWalletUrl: { scope: "wallet" as const },
+  provisionWalletHybrid: { scope: "wallet" as const },
   // Future actions kept for parity with existing endpoints; implement incrementally
   createLightningAddress: { scope: "wallet" as const },
   createBoltcard: { scope: "wallet" as const },
@@ -175,6 +212,8 @@ const ACTIONS = {
   setBoltcardPin: { scope: "wallet" as const },
   validateBoltcardPin: { scope: "wallet" as const },
   syncBoltcards: { scope: "wallet" as const },
+  // Webhooks from external LNbits server
+  webhookPayment: { scope: "public" as const },
 } as const;
 
 type ActionName = keyof typeof ACTIONS;
@@ -235,10 +274,7 @@ async function resolvePerUserWalletKey(
 
 export const handler = async (event: any) => {
   try {
-    // Basic method and rate limit
-    if (event.httpMethod !== "POST") {
-      return json(405, { success: false, error: "Method Not Allowed" });
-    }
+    // Rate limit baseline
     const xfwd =
       event.headers?.["x-forwarded-for"] ||
       event.headers?.["X-Forwarded-For"] ||
@@ -257,18 +293,399 @@ export const handler = async (event: any) => {
       });
     }
 
-    // Authn (required for wallet-scoped ops)
-    const ctx = await getUserContext(event);
+    // Support GET for public LNURL actions and POST for others
+    const isGet = event.httpMethod === "GET";
+    const qs = event.queryStringParameters || {};
+    const rawPath = String(event.path || "");
 
-    const body = event.body ? JSON.parse(event.body) : {};
-    const action: ActionName = body?.action;
-    const payload = body?.payload || {};
+    let action: ActionName | undefined = undefined;
+    if (isGet) {
+      action = qs.action as ActionName as any;
+      if (!action) {
+        if (rawPath.includes("/.well-known/lnurlp/"))
+          action = "lnurlpWellKnown" as ActionName;
+        else if (rawPath.includes("/lnurlp/direct/"))
+          action = "lnurlpDirect" as ActionName;
+        else if (rawPath.includes("/lnurlp/platform/"))
+          action = "lnurlpPlatform" as ActionName;
+      }
+    } else {
+      const body = event.body ? JSON.parse(event.body) : {};
+      action = body?.action as ActionName;
+      if (!action) action = qs.action as ActionName;
+    }
+
+    // Method gate
+    if (!isGet && event.httpMethod !== "POST") {
+      return json(405, { success: false, error: "Method Not Allowed" });
+    }
 
     if (!action || !(action in ACTIONS)) {
       return json(400, { success: false, error: "Invalid or missing action" });
     }
 
     const scope = ACTIONS[action].scope;
+
+    if (isGet && scope !== "public") {
+      return json(405, { success: false, error: "Method Not Allowed" });
+    }
+
+    // Build payload
+    let payload: any = {};
+    if (isGet) {
+      const usernameFromPath = rawPath.split("/").pop() || "";
+      const username =
+        typeof qs.username === "string" ? qs.username : usernameFromPath;
+      const amount = qs.amount != null ? Number(qs.amount) : undefined;
+      const comment = typeof qs.comment === "string" ? qs.comment : undefined;
+      payload = { username, amount, comment };
+    } else {
+      const body = event.body ? JSON.parse(event.body) : {};
+      payload = body?.payload || {};
+    }
+
+    // Handle public-scoped actions (no auth required)
+    if (scope === "public") {
+      switch (action) {
+        case "lnurlpWellKnown": {
+          const usernameRaw =
+            typeof payload?.username === "string" ? payload.username : "";
+          const username = usernameRaw.trim().toLowerCase();
+          if (!username || !/^[a-z0-9._-]+$/i.test(username)) {
+            return json(400, { success: false, error: "Invalid username" });
+          }
+          try {
+            const { data, error } = await adminSupabase.rpc(
+              "public.get_ln_proxy_data",
+              { p_username: username }
+            );
+            if (error)
+              return json(500, {
+                success: false,
+                error: error.message || "RPC error",
+              });
+            if (!data)
+              return json(404, { success: false, error: "User not found" });
+
+            const domain = resolvePlatformLightningDomainServer();
+            const origin =
+              process.env.PRODUCTION_ORIGIN || "https://www.satnam.pub";
+            const baseUrl = (origin || "").replace(/\/$/, "");
+            const directCb = `${baseUrl}/api/lnurlp/direct/${encodeURIComponent(
+              username
+            )}`;
+            const platformCb = `${baseUrl}/api/lnurlp/platform/${encodeURIComponent(
+              username
+            )}`;
+            const callback = data?.external_ln_address ? directCb : platformCb; // Option B
+            const description = `Satnam tips for ${username}@${domain}`;
+            const metadata = JSON.stringify([["text/plain", description]]);
+
+            const lnurl = {
+              status: "OK",
+              tag: "payRequest",
+              minSendable: 1000,
+              maxSendable: 10_000_000_000,
+              commentAllowed: 255,
+              metadata,
+              callback,
+            };
+            if (isGet) return lnurlJson(200, lnurl);
+            return json(200, { success: true, data: lnurl });
+          } catch (e: any) {
+            return json(500, {
+              success: false,
+              error: e?.message || "Unexpected error",
+            });
+          }
+        }
+
+        case "lnurlpDirect": {
+          const usernameRaw =
+            typeof payload?.username === "string" ? payload.username : "";
+          const username = usernameRaw.trim().toLowerCase();
+          const amount = Number(payload?.amount);
+          const comment =
+            typeof payload?.comment === "string" ? payload.comment : undefined;
+          if (!username || !/^[a-z0-9._-]+$/i.test(username))
+            return json(400, { success: false, error: "Invalid username" });
+          if (!Number.isFinite(amount) || amount <= 0)
+            return json(400, { success: false, error: "Invalid amount" });
+
+          // Load external LN address for this username
+          const { data, error } = await adminSupabase.rpc(
+            "public.get_ln_proxy_data",
+            { p_username: username }
+          );
+          if (error)
+            return json(500, {
+              success: false,
+              error: error.message || "RPC error",
+            });
+          if (!data || !data.external_ln_address)
+            return json(404, {
+              success: false,
+              error: "No external address configured",
+            });
+
+          const addr = String(data.external_ln_address);
+          const [name, domain] = addr.split("@");
+          if (!name || !domain)
+            return json(500, {
+              success: false,
+              error: "Malformed external address",
+            });
+
+          try {
+            // Fetch well-known from external provider
+            const wellKnownUrl = `https://${domain}/.well-known/lnurlp/${encodeURIComponent(
+              name
+            )}`;
+            const metaRes = await fetch(wellKnownUrl, { method: "GET" });
+            if (!metaRes.ok)
+              return json(502, {
+                success: false,
+                error: `Provider meta ${metaRes.status}`,
+              });
+            const meta = await metaRes.json();
+            const callback = meta?.callback || meta?.paymentLink || meta?.url;
+            if (!callback || typeof callback !== "string")
+              return json(502, {
+                success: false,
+                error: "Provider missing callback",
+              });
+
+            const u = new URL(callback);
+            u.searchParams.set("amount", String(Math.floor(amount)));
+            if (comment) u.searchParams.set("comment", String(comment));
+            const invRes = await fetch(u.toString(), { method: "GET" });
+            if (!invRes.ok)
+              return json(502, {
+                success: false,
+
+                error: `Provider invoice ${invRes.status}`,
+              });
+            const inv = await invRes.json();
+            return json(200, { success: true, data: inv });
+          } catch (e: any) {
+            return json(500, {
+              success: false,
+              error: e?.message || "Upstream error",
+            });
+          }
+        }
+
+        case "lnurlpPlatform": {
+          const usernameRaw =
+            typeof payload?.username === "string" ? payload.username : "";
+          const username = usernameRaw.trim().toLowerCase();
+          const amountMsats = Number(payload?.amount);
+          const comment =
+            typeof payload?.comment === "string" ? payload.comment : undefined;
+          if (!username || !/^[a-z0-9._-]+$/i.test(username))
+            return json(400, { success: false, error: "Invalid username" });
+          if (!Number.isFinite(amountMsats) || amountMsats <= 0)
+            return json(400, { success: false, error: "Invalid amount" });
+          // Reject fractional millisat amounts to remain LNURL-compliant
+          if (!Number.isInteger(amountMsats) || amountMsats % 1000 !== 0)
+            return json(400, {
+              success: false,
+              error: "Amount must be a multiple of 1000 millisats",
+            });
+
+          const { data, error } = await adminSupabase.rpc(
+            "public.get_ln_proxy_data",
+            { p_username: username }
+          );
+          if (error)
+            return json(500, {
+              success: false,
+              error: error.message || "RPC error",
+            });
+          if (!data)
+            return json(404, { success: false, error: "User not found" });
+
+          const walletId: string = String(
+            data.lnbits_wallet_id || data.wallet_id || ""
+          );
+          const userId: string | undefined = (data.user_id ||
+            data.user_duid) as string | undefined;
+          if (!walletId)
+            return json(404, {
+              success: false,
+              error: "Wallet not configured",
+            });
+
+          const requestId = newRequestId();
+          // Log start of custody event (audit + rpc)
+          try {
+            await logDecryptAudit({
+              request_id: requestId,
+              user_id: userId,
+              wallet_id: walletId,
+              caller: "lnurlpPlatform",
+              operation: "lnurlp_invoice",
+              source_ip: ip,
+            });
+          } catch {}
+          try {
+            await adminSupabase.rpc("public.log_custody_event", {
+              p_username: username,
+              p_amount_msats: Math.floor(amountMsats),
+              p_status: "pending",
+              p_wallet_id: walletId,
+            });
+          } catch {}
+
+          // Decrypt invoice key with memory safety
+          let release: (() => Promise<void>) | undefined;
+          let invoiceKey: string = "";
+          try {
+            const res = await getInvoiceKeyWithSafety(
+              walletId,
+              "lnurlpPlatform",
+              requestId,
+              userId,
+              ip
+            );
+            invoiceKey = res.key;
+            release = res.release;
+
+            const amountSats = Math.floor(amountMsats / 1000);
+            const body = { out: false, amount: amountSats, memo: comment };
+            const inv = await lnbitsFetch("/api/v1/payments", invoiceKey, {
+              method: "POST",
+              body: JSON.stringify(body),
+            });
+            const pr =
+              inv?.payment_request ||
+              inv?.bolt11 ||
+              inv?.data?.payment_request ||
+              inv?.data?.bolt11;
+            if (!pr)
+              return json(502, {
+                success: false,
+                error: "Failed to create invoice",
+              });
+
+            const out = { pr, routes: [] as any[] };
+            if (isGet) return lnurlJson(200, out);
+            return json(200, { success: true, data: out });
+          } catch (e: any) {
+            return json(500, {
+              success: false,
+              error: e?.message || "Invoice error",
+            });
+          } finally {
+            // memory cleanup
+            invoiceKey = undefined as unknown as string;
+            if (release) await release();
+          }
+        }
+        case "webhookPayment": {
+          if (event.httpMethod !== "POST")
+            return json(405, { success: false, error: "Method not allowed" });
+
+          const raw = event.body || "";
+          let payload: any;
+          try {
+            payload = JSON.parse(raw);
+          } catch {
+            return json(400, { success: false, error: "Invalid JSON" });
+          }
+
+          // Optional HMAC verification (depends on LNbits config)
+          if (WEBHOOK_SECRET) {
+            const sig =
+              event.headers?.["x-lnbits-signature"] ||
+              event.headers?.["X-LNBits-Signature"] ||
+              "";
+            const mac = createHmac("sha256", WEBHOOK_SECRET)
+              .update(raw)
+              .digest("hex");
+            if (!sig || sig !== mac)
+              return json(401, { success: false, error: "Invalid signature" });
+          }
+
+          const paymentHash =
+            payload?.payment_hash || payload?.payment_hashid || payload?.hash;
+          const amountMsat = Number(
+            payload?.amount || payload?.amount_msat || 0
+          );
+          const linkId =
+            payload?.lnurlp ||
+            payload?.link ||
+            payload?.link_id ||
+            payload?.payment?.lnurlp;
+
+          if (!paymentHash || !amountMsat || !linkId)
+            return json(400, { success: false, error: "Missing fields" });
+
+          // Map linkId -> recipient user
+          const { data: row, error: walletError } = await adminSupabase
+            .from("lnbits_wallets")
+            .select("user_duid, lightning_address")
+            .eq("lnurlp_link_id", String(linkId))
+            .maybeSingle();
+          if (walletError) {
+            console.error("lnbits wallet lookup failed", walletError);
+            return json(500, { success: false, error: "Wallet lookup failed" });
+          }
+
+          if (row?.user_duid) {
+            const { data: ident, error: identityError } = await adminSupabase
+              .from("user_identities")
+              .select("npub")
+              .eq("id", row.user_duid)
+              .maybeSingle();
+            if (identityError) {
+              console.error("identity lookup failed", identityError);
+              return json(500, {
+                success: false,
+                error: "Identity lookup failed",
+              });
+            }
+            const npub: string | undefined = (ident as any)?.npub || undefined;
+            const amountSat = Math.round(amountMsat / 1000);
+            const la = (row as any).lightning_address || "(address unknown)";
+
+            if (npub) {
+              await notifyRecipient(
+                npub,
+                `\u2705 Payment received: ${amountSat} sats to ${la}. Hash: ${paymentHash}`
+              );
+            }
+
+            const memo = (payload?.comment || payload?.memo || "").toString();
+            const { error: upsertError } = await adminSupabase
+              .from("lnbits_payment_events")
+              .upsert(
+                {
+                  user_duid: row.user_duid,
+                  payment_hash: String(paymentHash),
+                  amount_sats: amountSat,
+                  lightning_address: (row as any).lightning_address || null,
+                  memo,
+                  lnurlp_link_id: String(linkId),
+                },
+                { onConflict: "payment_hash" }
+              );
+            if (upsertError) {
+              console.error("payment event upsert failed", upsertError);
+              return json(500, {
+                success: false,
+                error: "Failed to record payment event",
+              });
+            }
+          }
+
+          return json(200, { success: true });
+        }
+      }
+    }
+
+    // Authn (required for wallet/admin-scoped ops)
+    const ctx = scope !== "public" ? await getUserContext(event) : null;
 
     if (scope === "admin") {
       if (!ctx?.user) {
@@ -357,6 +774,7 @@ export const handler = async (event: any) => {
               success: false,
               error: "Daily limit exceeded for offspring (50,000 sats)",
             });
+
           if (amountSats > 25_000)
             return json(403, {
               success: false,
@@ -410,6 +828,184 @@ export const handler = async (event: any) => {
           data: { walletUrl: url, walletId, baseUrl: base },
         });
       }
+      case "provisionWalletHybrid": {
+        if (!ADMIN_KEY)
+          return json(500, {
+            success: false,
+            error: "Server not configured for admin operations",
+          });
+        const external_ln_address =
+          typeof payload?.external_ln_address === "string"
+            ? String(payload.external_ln_address).trim()
+            : undefined;
+        const wallet_name =
+          typeof payload?.wallet_name === "string" && payload.wallet_name.trim()
+            ? String(payload.wallet_name).trim()
+            : "Satnam Wallet";
+
+        // Load nip05_username
+        const { data: ident, error: identErr } = await supa
+          .from("user_identities")
+          .select("nip05_username")
+          .eq("id", user.id)
+          .single();
+        if (identErr || !ident?.nip05_username) {
+          return json(400, {
+            success: false,
+            error: "User missing nip05_username; complete profile first",
+          });
+        }
+        const nip05_username = String(ident.nip05_username).toLowerCase();
+
+        // Create LNbits user + wallet via User Manager
+        const lnUser = await lnbitsFetch(
+          "/usermanager/api/v1/users",
+          ADMIN_KEY as string,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              username: `satnam_${nip05_username}`,
+              password: randomUUID(),
+            }),
+          }
+        );
+        const userId = lnUser?.id || lnUser?.data?.id;
+        const lnWallet = await lnbitsFetch(
+          "/usermanager/api/v1/wallets",
+          ADMIN_KEY as string,
+          {
+            method: "POST",
+            body: JSON.stringify({ user_id: userId, wallet_name }),
+          }
+        );
+
+        const wallet_id: string = String(
+          lnWallet?.id ||
+            lnWallet?.wallet_id ||
+            lnWallet?.data?.id ||
+            lnWallet?.data?.wallet_id
+        );
+        const admin_key: string | undefined =
+          lnWallet?.adminkey ||
+          lnWallet?.admin_key ||
+          lnWallet?.data?.adminkey ||
+          lnWallet?.data?.admin_key;
+        const invoice_key: string | undefined =
+          lnWallet?.inkey ||
+          lnWallet?.invoice_key ||
+          lnWallet?.data?.inkey ||
+          lnWallet?.data?.invoice_key;
+        if (!wallet_id || !admin_key || !invoice_key) {
+          return json(502, {
+            success: false,
+            error: "LNbits did not return wallet keys",
+          });
+        }
+
+        // Encrypt keys server-side using DB function private.enc
+        if (!supabaseAdmin)
+          return json(500, {
+            success: false,
+            error: "Service-role Supabase client unavailable",
+          });
+        const { data: encAdmin, error: encAdminErr } = await (
+          supabaseAdmin as any
+        ).rpc("private.enc", { p_text: String(admin_key) });
+        if (encAdminErr)
+          return json(500, {
+            success: false,
+            error: encAdminErr.message || "Encrypt admin key failed",
+          });
+        const { data: encInvoice, error: encInvErr } = await (
+          supabaseAdmin as any
+        ).rpc("private.enc", { p_text: String(invoice_key) });
+        if (encInvErr)
+          return json(500, {
+            success: false,
+            error: encInvErr.message || "Encrypt invoice key failed",
+          });
+
+        const scrubPercent = Number.isFinite(
+          Number(process.env.LNBITS_DEFAULT_SCRUB_PERCENT)
+        )
+          ? Math.max(
+              0,
+              Math.min(100, Number(process.env.LNBITS_DEFAULT_SCRUB_PERCENT))
+            )
+          : 100;
+
+        const row: any = {
+          user_id: user.id,
+          nip05_username,
+          external_ln_address: external_ln_address || null,
+          lnbits_wallet_id: wallet_id,
+          lnbits_admin_key_enc: encAdmin as string,
+          lnbits_invoice_key_enc: encInvoice as string,
+          scrub_enabled: Boolean(external_ln_address) && scrubPercent > 0,
+          scrub_percent: scrubPercent,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existing } = await (supabaseAdmin as any)
+          .from("user_lightning_config")
+          .select("user_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (existing) {
+          const { error: updErr } = await (supabaseAdmin as any)
+            .from("user_lightning_config")
+            .update(row)
+            .eq("user_id", user.id);
+          if (updErr)
+            return json(500, {
+              success: false,
+              error: updErr.message || "DB update failed",
+            });
+        } else {
+          const { error: insErr } = await (supabaseAdmin as any)
+            .from("user_lightning_config")
+            .insert({ ...row, created_at: new Date().toISOString() });
+          if (insErr)
+            return json(500, {
+              success: false,
+              error: insErr.message || "DB insert failed",
+            });
+        }
+
+        // Attempt Scrub configuration (non-fatal)
+        let scrubConfigured = false;
+        if (external_ln_address) {
+          try {
+            await lnbitsFetch("/scrub/api/v1/forward", String(admin_key), {
+              method: "POST",
+              body: JSON.stringify({
+                wallet_id,
+                percent: scrubPercent,
+                address: external_ln_address,
+              }),
+            });
+            scrubConfigured = true;
+          } catch (e) {
+            console.warn("Scrub config attempt failed (non-fatal)", e);
+          }
+        }
+
+        const domain = resolvePlatformLightningDomainServer();
+        const platform_ln_address = `${nip05_username}@${domain}`;
+        return json(200, {
+          success: true,
+          data: {
+            wallet_id,
+            platform_ln_address,
+            scrub_enabled:
+              Boolean(external_ln_address) &&
+              scrubPercent > 0 &&
+              scrubConfigured,
+            scrub_percent: scrubPercent,
+          },
+        });
+      }
+
       case "createLightningAddress": {
         // Create Lightning Address via LNbits LNURLp extension using per-user wallet admin key
         const username = String(payload?.username || "")
@@ -871,6 +1467,7 @@ export const handler = async (event: any) => {
         const cardId =
           typeof payload?.cardId === "string" ? payload.cardId : undefined;
         const pin = typeof payload?.pin === "string" ? payload.pin : undefined;
+
         if (!cardId || !pin || !isSixDigitPin(pin))
           return json(400, { success: false, error: "Invalid parameters" });
 

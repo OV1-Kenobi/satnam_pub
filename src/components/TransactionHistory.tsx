@@ -1,13 +1,13 @@
 import {
-    ArrowLeft,
-    ArrowRight,
-    CheckCircle,
-    Clock,
-    Download,
-    RefreshCw,
-    Search,
-    Shield,
-    XCircle
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle,
+  Clock,
+  Download,
+  RefreshCw,
+  Search,
+  Shield,
+  XCircle
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
@@ -58,7 +58,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
         // In a real implementation, this would be an API call
         // const response = await fetch(`/api/payments/history?familyId=${familyId}&limit=${limit}`);
         // const data = await response.json();
-        
+
         // Mock data for demonstration
         const mockTransactions: Transaction[] = [
           {
@@ -66,7 +66,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             type: "received",
             amount: 50000,
             from: "alice@getalby.com",
-            to: "david@satnam.pub",
+            to: "david@my.satnam.pub",
             memo: "Payment for services",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
             privacyRouted: true,
@@ -76,8 +76,8 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             id: "tx2",
             type: "sent",
             amount: 25000,
-            from: "david@satnam.pub",
-            to: "emma@satnam.pub",
+            from: "david@my.satnam.pub",
+            to: "emma@my.satnam.pub",
             memo: "Weekly allowance",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4),
             privacyRouted: true,
@@ -87,7 +87,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             id: "tx3",
             type: "sent",
             amount: 15000,
-            from: "sarah@satnam.pub",
+            from: "sarah@my.satnam.pub",
             to: "bob@walletofsatoshi.com",
             memo: "Dinner payment",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
@@ -99,7 +99,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             type: "received",
             amount: 10000,
             from: "john@strike.me",
-            to: "bob@satnam.pub",
+            to: "bob@my.satnam.pub",
             memo: "Birthday gift",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48),
             privacyRouted: true,
@@ -109,7 +109,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             id: "tx5",
             type: "sent",
             amount: 5000,
-            from: "emma@satnam.pub",
+            from: "emma@my.satnam.pub",
             to: "friend@ln.tips",
             memo: "Game purchase",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72),
@@ -121,7 +121,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             type: "received",
             amount: 75000,
             from: "client@btcpay.com",
-            to: "sarah@satnam.pub",
+            to: "sarah@my.satnam.pub",
             memo: "Consulting fee",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 96),
             privacyRouted: true,
@@ -131,7 +131,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             id: "tx7",
             type: "sent",
             amount: 30000,
-            from: "david@satnam.pub",
+            from: "david@my.satnam.pub",
             to: "store@ln.store",
             memo: "Online purchase",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 120),
@@ -142,7 +142,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             id: "tx8",
             type: "sent",
             amount: 12000,
-            from: "bob@satnam.pub",
+            from: "bob@my.satnam.pub",
             to: "game@zebedee.io",
             memo: "Game credits",
             timestamp: new Date(Date.now() - 1000 * 60 * 60 * 144),
@@ -150,7 +150,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             status: "pending",
           },
         ];
-        
+
         setTransactions(mockTransactions);
         setIsLoading(false);
       } catch (err) {
@@ -169,10 +169,10 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
       // In a real implementation, this would be an API call
       // const response = await fetch(`/api/payments/history?familyId=${familyId}&limit=${limit}`);
       // const data = await response.json();
-      
+
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // For demo, we'll just use the same mock data
       setIsRefreshing(false);
     } catch (err) {
@@ -217,31 +217,31 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
 
   const formatTimeAgo = (date: Date): string => {
     const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-    
+
     if (seconds < 60) return `${seconds} seconds ago`;
-    
+
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-    
+
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-    
+
     const days = Math.floor(hours / 24);
     return `${days} day${days !== 1 ? 's' : ''} ago`;
   };
 
   // Filter transactions based on search term and filter type
   const filteredTransactions = transactions.filter(tx => {
-    const matchesSearch = 
-      searchTerm === "" || 
+    const matchesSearch =
+      searchTerm === "" ||
       tx.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.to.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (tx.memo && tx.memo.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesType = 
-      filterType === "all" || 
+
+    const matchesType =
+      filterType === "all" ||
       tx.type === filterType;
-    
+
     return matchesSearch && matchesType;
   });
 
@@ -260,7 +260,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
         <XCircle className="h-8 w-8 text-red-400 mx-auto mb-4" />
         <p className="text-white font-bold mb-2">Failed to load transactions</p>
         <p className="text-red-200">{error}</p>
-        <button 
+        <button
           className="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center space-x-2 mx-auto"
           onClick={() => window.location.reload()}
         >
@@ -275,7 +275,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-white">Transaction History</h2>
-        
+
         <div className="flex items-center space-x-3">
           {showFilters && (
             <>
@@ -289,7 +289,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
                 />
                 <Search className="h-4 w-4 text-purple-200 absolute left-3 top-1/2 transform -translate-y-1/2" />
               </div>
-              
+
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as "all" | "sent" | "received")}
@@ -301,21 +301,21 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
               </select>
             </>
           )}
-          
-          <button 
+
+          <button
             onClick={refreshTransactions}
             disabled={isRefreshing}
             className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300 disabled:opacity-50"
           >
             <RefreshCw className={`h-5 w-5 text-white ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
-          
+
           <button className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300">
             <Download className="h-5 w-5 text-white" />
           </button>
         </div>
       </div>
-      
+
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
@@ -378,13 +378,13 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
           </tbody>
         </table>
       </div>
-      
+
       {filteredTransactions.length === 0 && (
         <div className="text-center py-8">
           <p className="text-purple-200">No transactions found</p>
         </div>
       )}
-      
+
       {transactions.length > limit && (
         <div className="mt-4 text-center">
           <button className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300">

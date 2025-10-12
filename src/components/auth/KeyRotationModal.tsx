@@ -207,7 +207,7 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
                       type="text"
                       value={nip05}
                       onChange={(e) => setNip05(e.target.value)}
-                      placeholder="username@satnam.pub"
+                      placeholder="username@my.satnam.pub (Nostr identity)"
                       className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                     />
                   </div>
@@ -221,7 +221,7 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
                     type="text"
                     value={lightningAddress}
                     onChange={(e) => setLightningAddress(e.target.value)}
-                    placeholder="username@satnam.pub"
+                    placeholder="username@my.satnam.pub (Bitcoin payments)"
                     className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>

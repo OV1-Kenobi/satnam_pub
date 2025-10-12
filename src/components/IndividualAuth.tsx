@@ -72,7 +72,7 @@ const AuthContent = React.memo<AuthContentProps>(({
             </div>
             <div className="flex-1">
               <h4 className="text-white font-bold text-lg mb-2">Lightning Wallet</h4>
-              <p className="text-purple-200 text-sm mb-4">username@satnam.pub</p>
+              <p className="text-purple-200 text-sm mb-4">username@my.satnam.pub</p>
             </div>
           </div>
           <button
@@ -154,7 +154,7 @@ const AuthContent = React.memo<AuthContentProps>(({
               type="email"
               value={lightningAddress}
               onChange={(e) => setLightningAddress(e.target.value)}
-              placeholder="username@satnam.pub"
+              placeholder="username@my.satnam.pub"
               className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               disabled={loading}
             />
@@ -389,7 +389,7 @@ const IndividualAuth: React.FC<IndividualAuthProps> = ({
       // Mock successful authentication
       const mockUser: IndividualUser = {
         npub: 'npub1mock...',
-        lightningAddress: 'cashu-user@satnam.pub',
+        lightningAddress: 'cashu-user@my.satnam.pub',
         authMethod: 'cashu',
         walletType: 'personal',
         sessionToken: 'mock-cashu-session-token',

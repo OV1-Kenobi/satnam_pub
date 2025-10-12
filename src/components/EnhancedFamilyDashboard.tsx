@@ -29,7 +29,7 @@ import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
 
 // Import consolidated types
 import { EnhancedFamilyTreasury } from '../../types/family';
-import { FamilyMember } from '../../types/shared';
+import { FamilyMember } from '../types/shared';
 
 interface EnhancedFamilyDashboardProps {
   onBack: () => void;
@@ -57,7 +57,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   // Enhanced family treasury data
   const [enhancedTreasury, setEnhancedTreasury] = useState<EnhancedFamilyTreasury>({
     lightningBalance: 5435000,
-    lightningAddress: "family@satnam.pub",
+    lightningAddress: "family@my.satnam.pub",
     phoenixdStatus: {
       connected: true,
       automatedLiquidity: true,
@@ -82,12 +82,28 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   });
 
   // Family members with consolidated interface
-  const [familyMembers] = useState<FamilyMember[]>([
+  interface EnhancedFamilyMember extends FamilyMember {
+    npub?: string;
+    lightningBalance?: number;
+    fedimintBalance?: number;
+    totalBalance?: number;
+    preferredProtocol?: 'auto' | 'fedimint' | 'lightning';
+    privacySettings?: {
+      enableLNProxy?: boolean;
+      enableFedimintPrivacy?: boolean;
+    };
+    recentActivity?: {
+      lastTransaction?: string;
+      transactionCount24h?: number;
+    };
+  }
+
+  const [familyMembers] = useState<EnhancedFamilyMember[]>([
     {
       id: "1",
       npub: "npub1satoshi...",
       username: "satoshi",
-      lightningAddress: "satoshi@satnam.pub",
+      lightningAddress: "satoshi@my.satnam.pub",
       role: "adult",
       nip05Verified: true,
       balance: 5000000,
@@ -113,7 +129,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       id: "2",
       npub: "npub1hal...",
       username: "hal",
-      lightningAddress: "hal@satnam.pub",
+      lightningAddress: "hal@my.satnam.pub",
       role: "adult",
       nip05Verified: true,
       balance: 3500000,
@@ -139,7 +155,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       id: "3",
       npub: "npub1alice...",
       username: "alice",
-      lightningAddress: "alice@satnam.pub",
+      lightningAddress: "alice@my.satnam.pub",
       role: "offspring",
       nip05Verified: true,
       balance: 150000,
@@ -165,7 +181,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
       id: "4",
       npub: "npub1bob...",
       username: "bob",
-      lightningAddress: "bob@satnam.pub",
+      lightningAddress: "bob@my.satnam.pub",
       role: "offspring",
       nip05Verified: false,
       balance: 75000,
@@ -220,7 +236,7 @@ const EnhancedFamilyDashboard: React.FC<EnhancedFamilyDashboardProps> = ({ onBac
   const totalBalance = enhancedTreasury.lightningBalance + enhancedTreasury.fedimintEcashBalance;
   const totalMembers = familyMembers.length;
   const verifiedMembers = familyMembers.filter(m => m.nip05Verified).length;
-  const activeGuardians = enhancedTreasury.guardiansOnline;
+
 
   // Navigation items
   const navigationItems = [

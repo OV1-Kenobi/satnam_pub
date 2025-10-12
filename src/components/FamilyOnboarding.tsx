@@ -546,7 +546,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                         </h3>
                         <ul className="text-blue-200 space-y-1 text-sm">
                           <li>• Generate your unique cryptographic keys</li>
-                          <li>• Create your @satnam.pub identity</li>
+                          <li>• Create your @my.satnam.pub identity</li>
                           <li>
                             • Set up your Lightning address for Bitcoin payments
                           </li>
@@ -617,7 +617,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                         Your sovereign identity:
                       </p>
                       <p className="text-yellow-400 font-mono text-lg">
-                        member@satnam.pub
+                        member@my.satnam.pub
                       </p>
                     </div>
                   </div>
@@ -679,7 +679,7 @@ const FamilyOnboarding: React.FC<OnboardingProps> = ({
                         Ready to receive Bitcoin at:
                       </p>
                       <p className="text-yellow-400 font-mono text-xl">
-                        member@satnam.pub
+                        member@my.satnam.pub
                       </p>
                     </div>
 

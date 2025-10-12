@@ -403,7 +403,7 @@ async function notifyFamilyMembersForFedimintSigning(familyId, transaction) {
           };
 
           // Send gift-wrapped direct message using NIP-59
-          const messageId = await eventPublisher.sendGiftWrappedDirectMessage(
+          const delivery = await eventPublisher.sendGiftWrappedDirectMessage(
             memberContact,
             messageContent
           );
@@ -412,7 +412,7 @@ async function notifyFamilyMembersForFedimintSigning(familyId, transaction) {
             member_hash: member.member_hash,
             member_role: member.member_role,
             success: true,
-            message_id: messageId,
+            message_id: delivery && delivery.messageId ? delivery.messageId : undefined,
             delivery_method: 'gift-wrap',
             wallet_type: 'fedimint',
             timestamp: new Date().toISOString()
