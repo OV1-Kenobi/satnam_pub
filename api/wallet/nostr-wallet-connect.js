@@ -30,12 +30,7 @@
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key) {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
+  // Server-side/API context: use process.env exclusively
   return process.env[key];
 }
 

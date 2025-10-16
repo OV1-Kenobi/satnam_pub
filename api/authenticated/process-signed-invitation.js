@@ -18,7 +18,8 @@
 
 import * as qr from "qr-image";
 import { z } from "zod";
-import { RATE_LIMITS } from "../../lib/config/rate-limits.js";
+import { RATE_LIMITS, formatTimeWindow } from "../../lib/config/rate-limits.js";
+import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 import { supabase } from "../../netlify/functions/supabase.js";
 
 /**
@@ -199,9 +200,9 @@ async function validateSignedEvent(signedEvent) {
   try {
     // Import nostr-tools for validation
     const { verifyEvent } = await import('nostr-tools');
-    
+
     // Basic structure validation
-    if (!signedEvent.kind || !signedEvent.created_at || !signedEvent.content || 
+    if (!signedEvent.kind || !signedEvent.created_at || !signedEvent.content ||
         !signedEvent.pubkey || !signedEvent.sig) {
       return false;
     }
@@ -226,21 +227,18 @@ async function publishSignedEventToRelays(signedEvent) {
 
     // Configure relays using environment variables
     const envRelays = getEnvVar("NOSTR_RELAYS");
-    const relays = envRelays
-      ? envRelays.split(",").map(r => r.trim()).filter(r => r.startsWith('wss://'))
-      : [
-          'wss://relay.damus.io',
-          'wss://nos.lol',
-          'wss://relay.nostr.band'
-        ];
+    const relays = (envRelays || "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter((r) => r.startsWith("wss://"));
 
     if (relays.length === 0) {
-      console.warn('No valid Nostr relays configured, using fallback relays');
-      relays.push('wss://relay.damus.io', 'wss://nos.lol');
+      console.warn("No valid NOSTR_RELAYS configured");
+      return { success: false, method: "failed", error: "No relays configured" };
     }
 
     const pool = new SimplePool();
-    
+
     // Publish to relays
     const publishPromises = relays.map(async (relay) => {
       try {
@@ -528,6 +526,7 @@ export default async function handler(req, res) {
     const qrCodeImage = await generateQRCode(inviteUrl);
 
     // Publish signed event to Nostr relays for gift-wrapped delivery
+    /** @type {{ success: boolean; method: string; error?: string }} */
     let relayPublishResult = { success: false, method: 'none', error: 'Not attempted' };
     if (inviteConfig.sendAsGiftWrappedDM && inviteConfig.recipientNostrPubkey) {
       relayPublishResult = await publishSignedEventToRelays(signedEvent);

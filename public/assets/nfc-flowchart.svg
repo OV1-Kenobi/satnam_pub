@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+  <title id="title">NFC Name Tag Provisioning Flowchart</title>
+  <desc id="desc">Flow of NFC Name Tag provisioning: Step 1 to lay claim to your name (new vs known users), install Boltcard app, scan tag UID via LNbits, get auth URL, program tag, create/verify PIN, and finish.</desc>
+  <defs>
+    <style>
+      .box{fill:#ffffff;fill-opacity:0.9;stroke:#4c1d95;stroke-width:2;rx:12;}
+      .step{font: 16px sans-serif; fill:#1f2937;}
+      .stepSmall{font: 14px sans-serif; fill:#374151;}
+      .title{font: bold 18px sans-serif; fill:#111827;}
+      .ellipse{fill:#ffffff;fill-opacity:0.95;stroke:#4c1d95;stroke-width:2;}
+      .arrow{stroke:#4c1d95;stroke-width:2;fill:none;}
+      /* Tints */
+      .tintPurple{fill:#a78bfa;fill-opacity:0.18;}
+      .tintBlue{fill:#93c5fd;fill-opacity:0.16;}
+      .tintGreen{fill:#86efac;fill-opacity:0.16;}
+      .tintOrange{fill:#fdba74;fill-opacity:0.16;}
+      .tintYellow{fill:#fde68a;fill-opacity:0.18;}
+      /* Badges */
+      .badge{fill:#4c1d95;}
+      .badgeText{fill:#ffffff;font:bold 12px sans-serif;}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4c1d95"/>
+    </marker>
+  </defs>
+
+  <!-- Start -->
+  <ellipse class="ellipse" cx="600" cy="40" rx="60" ry="22" fill="#000000"/>
+  <text x="600" y="46" text-anchor="middle" class="step" fill="#ffffff">Start</text>
+
+  <!-- Step 1 container (replaces diamond) -->
+  <rect class="box tintPurple" x="350" y="80" width="500" height="60"/>
+  <circle class="badge" cx="365" cy="93" r="11"/>
+  <text x="365" y="97" text-anchor="middle" class="badgeText">1</text>
+  <text x="600" y="115" text-anchor="middle" class="title">Step 1: LAY CLAIM TO YOUR NAME</text>
+
+  <!-- Branch boxes: user type selection -->
+  <rect class="box tintPurple" x="250" y="150" width="300" height="60"/>
+  <text x="400" y="175" text-anchor="middle" class="title">New User</text>
+  <text x="400" y="195" text-anchor="middle" class="stepSmall">Sign Up (Claim Name)</text>
+
+  <rect class="box tintPurple" x="650" y="150" width="300" height="60"/>
+  <text x="800" y="175" text-anchor="middle" class="title">Known User</text>
+  <text x="800" y="195" text-anchor="middle" class="stepSmall">Sign In (Verify Me!)</text>
+
+  <!-- Merge point -->
+  <circle cx="600" cy="210" r="5" fill="#4c1d95"/>
+  <text x="600" y="228" text-anchor="middle" class="stepSmall">Validated User</text>
+
+  <!-- Step 2 -->
+  <rect class="box tintBlue" x="350" y="235" width="500" height="60"/>
+  <circle class="badge" cx="365" cy="248" r="11"/>
+  <text x="365" y="252" text-anchor="middle" class="badgeText">2</text>
+  <text x="600" y="260" text-anchor="middle" class="title">Step 2: INSTALL BOLTCARD PROGRAMMING APP</text>
+  <text x="600" y="280" text-anchor="middle" class="stepSmall">Install the tool used to write your True Name on your Name Tag</text>
+
+  <!-- Step 3 -->
+  <rect class="box tintGreen" x="350" y="305" width="500" height="60"/>
+  <circle class="badge" cx="365" cy="318" r="11"/>
+  <text x="365" y="322" text-anchor="middle" class="badgeText">3</text>
+  <text x="600" y="330" text-anchor="middle" class="title">Step 3: SCAN TAG's ID</text>
+  <text x="600" y="350" text-anchor="middle" class="stepSmall">Use LNbits Boltcard extension to access tag functions</text>
+
+  <!-- Scan UID -->
+  <rect class="box tintGreen" x="350" y="370" width="500" height="50"/>
+  <text x="600" y="400" text-anchor="middle" class="step">Scan card's UID</text>
+
+  <!-- Get auth URL -->
+  <rect class="box tintGreen" x="350" y="425" width="500" height="50"/>
+  <text x="600" y="455" text-anchor="middle" class="step">Get auth URL</text>
+
+  <!-- Step 4 -->
+  <rect class="box tintOrange" x="300" y="480" width="600" height="70"/>
+  <circle class="badge" cx="315" cy="493" r="11"/>
+  <text x="315" y="497" text-anchor="middle" class="badgeText">4</text>
+  <text x="600" y="505" text-anchor="middle" class="title">Step 4: WRITE YOUR NAME ONTO YOUR NAME TAG</text>
+  <text x="600" y="525" text-anchor="middle" class="stepSmall">Copy/paste credentials into Boltcard Programming App</text>
+
+  <!-- Tap to program -->
+  <rect class="box tintOrange" x="350" y="555" width="500" height="50"/>
+  <text x="600" y="585" text-anchor="middle" class="step">Tap card to phone to program</text>
+
+  <!-- Step 5 -->
+  <rect class="box tintYellow" x="310" y="610" width="580" height="60"/>
+  <circle class="badge" cx="325" cy="623" r="11"/>
+  <text x="325" y="627" text-anchor="middle" class="badgeText">5</text>
+  <text x="600" y="635" text-anchor="middle" class="title">Step 5: PIN CREATION/VERIFICATION</text>
+  <text x="600" y="655" text-anchor="middle" class="stepSmall">Return to Satnam to register with PIN protection</text>
+
+  <!-- Done -->
+  <ellipse class="ellipse" cx="600" cy="700" rx="60" ry="22"/>
+  <text x="600" y="706" text-anchor="middle" class="step">Done</text>
+
+  <!-- Connectors -->
+  <line class="arrow" x1="600" y1="62" x2="600" y2="80" marker-end="url(#arrow)"/>
+  <!-- Branch from Step 1 container to user types -->
+  <line class="arrow" x1="600" y1="140" x2="400" y2="150" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="140" x2="800" y2="150" marker-end="url(#arrow)"/>
+  <!-- User types merge -->
+  <line class="arrow" x1="400" y1="210" x2="600" y2="210" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="800" y1="210" x2="600" y2="210" marker-end="url(#arrow)"/>
+  <!-- Downstream flow -->
+  <line class="arrow" x1="600" y1="216" x2="600" y2="235" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="295" x2="600" y2="305" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="365" x2="600" y2="370" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="420" x2="600" y2="425" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="475" x2="600" y2="480" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="550" x2="600" y2="555" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="605" x2="600" y2="610" marker-end="url(#arrow)"/>
+  <line class="arrow" x1="600" y1="670" x2="600" y2="678" marker-end="url(#arrow)"/>
+</svg>
+

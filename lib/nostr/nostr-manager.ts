@@ -3,6 +3,7 @@
 
 import { central_event_publishing_service as CEPS } from "../central_event_publishing_service";
 
+import { config } from "../../config";
 import { logPrivacyOperation } from "../privacy/encryption";
 
 // Nostr event interface
@@ -50,12 +51,7 @@ export class NostrManager {
    * Initialize default relays
    */
   private initializeDefaultRelays(): void {
-    const defaultRelays = [
-      "wss://relay.damus.io",
-      "wss://nos.lol",
-      "wss://relay.snort.social",
-      "wss://offchain.pub",
-    ];
+    const defaultRelays = config.nostr.relays;
 
     defaultRelays.forEach((url) => {
       this.relays.set(url, {

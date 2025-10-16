@@ -6,6 +6,8 @@
  * Ready for production Nostr integration while providing development fallbacks.
  */
 
+import { config as appConfig } from "../config";
+
 export interface CommunicationMessage {
   recipient: string; // npub or nip05
   content: string;
@@ -268,11 +270,7 @@ export class CommunicationServiceFactory {
       case "nostr": {
         const nostrConfig: CommunicationServiceConfig = {
           serviceType: "nostr",
-          relayUrls: config.relayUrls || [
-            process.env.VITE_NOSTR_RELAY_1 || "wss://relay.satnam.pub",
-            process.env.VITE_NOSTR_RELAY_2 || "wss://relay.damus.io",
-            process.env.VITE_NOSTR_RELAY_3 || "wss://nos.lol",
-          ],
+          relayUrls: config.relayUrls || appConfig.nostr.relays || [],
           senderIdentity: config.senderIdentity || {
             npub:
               process.env.VITE_NOSTR_SENDER_NPUB ||
@@ -301,11 +299,7 @@ export class CommunicationServiceFactory {
       case "nostr-giftwrap": {
         const giftwrapConfig: CommunicationServiceConfig = {
           serviceType: "nostr-giftwrap",
-          relayUrls: config.relayUrls || [
-            process.env.VITE_NOSTR_RELAY_1 || "wss://relay.satnam.pub",
-            process.env.VITE_NOSTR_RELAY_2 || "wss://relay.damus.io",
-            process.env.VITE_NOSTR_RELAY_3 || "wss://nos.lol",
-          ],
+          relayUrls: config.relayUrls || appConfig.nostr.relays || [],
           senderIdentity: config.senderIdentity || {
             npub:
               process.env.VITE_NOSTR_SENDER_NPUB ||

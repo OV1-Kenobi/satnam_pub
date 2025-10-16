@@ -1186,34 +1186,34 @@ function App() {
             </p>
             <ol className="text-left max-w-3xl mx-auto text-purple-100 list-decimal list-inside space-y-2">
               <li>
-                <strong>Step 1 — Claim Your True Name:</strong> Choose one:
+                <strong>Step 1 -- CLAIM YOUR TRUE NAME:</strong> Choose one:
                 <button
                   onClick={() => setCurrentView("forge")}
                   className="ml-2 inline-flex items-center bg-purple-700 hover:bg-purple-800 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
-                  title="I'm new: Create a sovereign identity (npub/NIP-05)"
-                >I'm New: Open Identity Forge</button>
+                  title="I'm New: Claim My Name"
+                >I'm New: Claim My Name</button>
                 <button
                   onClick={() => setSignInModalOpen(true)}
                   className="ml-2 inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
-                  title="I'm returning: Sign in to your Satnam account"
-                >I'm Returning: Sign In</button>
-                <div className="mt-1 text-purple-200/90 text-xs">Identity created in this step will label your wallet and Name Tag in later steps.</div>
+                  title="I'm Returning: Verify Me!"
+                >I'm Returning: Verify Me!</button>
+                <div className="mt-1 text-purple-200/90 text-xs">First Create Your Identity and Your Payments Address</div>
               </li>
               <li>
-                <strong>Step 2 — Wallet Creation:</strong> Create your LNbits wallet and (optionally) set up a Lightning Address. You’ll use this wallet info in Step 3 when programming your tag.
+                <strong>Step 2 -- INSTALL BOLTCARD PROGRAMMING APP:</strong> This will be the Name Tag Programming tool used to write your True Name on your Name Tag
                 <button
                   onClick={() => setCurrentView("lnurl-display")}
                   className="ml-2 inline-flex items-center bg-orange-500 hover:bg-orange-600 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
                   title="Show your LNURL details"
                 >Show LNURL</button>              </li>
               <li>
-                <strong>Step 3 — Tool Acquisition:</strong> Install the Boltcard programming app on your phone (links below). In the app, you’ll enter the wallet details you created in Step 2.
+                <strong>Step 3 -- SCAN TAG's ID:</strong> Use the LNbits Boltcard extension to read the card's Unique ID #, the key data necessary for the Boltcard Programming App will be created
               </li>
               <li>
-                <strong>Step 4 — Complete NFC Setup Process:</strong> Follow the guided workflow: access your LNbits Boltcard extension → scan your card's UID → get auth URL → copy/paste into Boltcard Programming app → tap to program → return to Satnam to register with PIN protection.
+                <strong>Step 4 WRITE YOUR NAME ONTO YOUR NAME TAG:</strong> Complete NFC Setup Process: Paste key credentials into the Boltcard Programming App then tap the card to you phone to program the card
               </li>
               <li>
-                <strong>Step 5 — Register Your True Name Tag:</strong> Once your tag is programmed, register it to your Satnam account to enable physical multi-factor authentication of peers, messages, and payments.
+                <strong>Step 5 PIN CREATION/VERIFICATION —</strong> Once Your True Name Tag has been identified and programmed, the final step is to choose and confirm your PIN # for your Satnam account, this will add both remote and physical attack protection as physical and knowledge-based multi-factor authentication to verify yourself for all engagements with your peers through messaging and payments.
                 <div className="mt-2">
                   <button
                     onClick={async () => {
@@ -1241,6 +1241,18 @@ function App() {
               </li>
 
             </ol>
+            <div className="mt-6 bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20 shadow-lg">
+              <h4 className="text-lg font-semibold text-white mb-2">NFC Name Tag Provisioning Flowchart</h4>
+              <picture>
+                <source srcSet="/assets/nfc-flowchart.svg" type="image/svg+xml" />
+                <img
+                  src="/assets/nfc-flowchart.png"
+                  alt="NFC Name Tag Provisioning Flowchart"
+                  className="w-full h-auto rounded border border-white/10"
+                  loading="lazy"
+                />
+              </picture>
+            </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-4">
               <a
                 href="https://apps.apple.com/us/app/boltcard-nfc-programmer/id6450968873"
@@ -1256,7 +1268,7 @@ function App() {
                 href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
+                className="bg-[#F7931A] hover:bg-[#FF9F2E] text-black font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 shadow-lg"
                 title="Install Boltcard Programming (Android)"
               >
                 <span>Install for Android (Boltcard Programming)</span>
@@ -1273,8 +1285,8 @@ function App() {
             </div>
 
             {/* Additional resources (footnote) */}
-            <div className="text-left max-w-3xl mx-auto mt-4 text-purple-200/80 text-xs">
-              <div className="opacity-90">Additional resources:</div>
+            <div className="text-left max-w-3xl mx-auto mt-4 text-purple-50 text-xs">
+              <div className="text-white font-semibold">Additional resources:</div>
               <ul className="list-disc list-inside space-y-1 mt-1">
                 <li>
                   <a href="https://github.com/boltcard/bolt-nfc-android-app/releases" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-100">
@@ -1296,7 +1308,7 @@ function App() {
 
 
             {/* Friendly notes */}
-            <div className="text-left max-w-3xl mx-auto mt-6 text-purple-200/90 text-sm">
+            <div className="text-left max-w-3xl mx-auto mt-6 text-purple-50 text-sm">
               <ul className="list-disc list-inside space-y-1">
                 <li>Your Name Tag is private: programming happens on your device; secrets never leave your phone.</li>
                 <li>Supported tag: NTAG424 DNA (keeps on-tag data small for fast taps).</li>
@@ -1304,7 +1316,7 @@ function App() {
               </ul>
             </div>
 
-            <p className="text-purple-200 text-sm mt-4">
+            <p className="text-purple-50 text-sm mt-4">
               Your journey to digital sovereignty begins here, by adding physical authentication of your identity. Take it step by step, you've got this.
             </p>
           </div>

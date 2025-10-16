@@ -3,6 +3,8 @@
 // Routes: /api/individual/lightning/wallet, /api/individual/cashu/wallet, /api/individual/wallet, /api/user/nwc-connections, /api/wallet/nostr-wallet-connect
 
 import { SecureSessionManager } from '../functions/security/session-manager.js';
+import { performNwcOperationOverNostr } from '../functions/utils/nwc-client.js';
+
 
 export const handler = async (event, context) => {
   const cors = buildCorsHeaders(event);
@@ -265,31 +267,107 @@ async function handleNwcConnectionsInline(event, corsHeaders) {
     return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication required' }) };
   }
 
+  // Lazy import Supabase per request (singleton factory)
+  const { getRequestClient } = await import('./supabase.js');
+  const supabase = getRequestClient(String((authHeader || '').replace(/^Bearer\s+/i, '')));
+
+  // Set RLS context for this request (binds RLS to authenticated user)
+  try {
+    await supabase.rpc('set_app_current_user_hash', { val: session.hashedId });
+  } catch {
+    try {
+      await supabase.rpc('set_app_config', { setting_name: 'app.current_user_hash', setting_value: session.hashedId, is_local: true });
+    } catch {
+      try { await supabase.rpc('app_set_config', { setting_name: 'app.current_user_hash', setting_value: session.hashedId, is_local: true }); } catch {}
+    }
+  }
+
   if (method === 'GET') {
-    // Return an empty list by default; UI handles empty state
-    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, connections: [] }) };
+    // Query user's NWC connections (privacy-first: RLS ensures scoping)
+    const { data, error } = await supabase
+      .from('nwc_wallet_connections')
+      .select('connection_id,wallet_name,wallet_provider,pubkey_preview,relay_domain,user_role,spending_limit,requires_approval,is_active,is_primary,connection_status,supported_methods,created_at,last_used_at')
+      .eq('user_hash', session.hashedId)
+      .order('is_primary', { ascending: false });
+
+    if (error) {
+      console.error('Failed to fetch NWC connections:', error);
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Failed to fetch connections' }) };
+    }
+
+    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, connections: data || [] }) };
   }
 
   if (method === 'POST') {
-    // Accept new connection (mock persistence)
+    // Add new NWC connection (store encrypted connection string)
     let payload = {};
-    try { payload = JSON.parse(event.body || '{}'); } catch {}
-    const { connectionString = '', walletName = 'NWC Wallet', provider = 'other', userRole = 'adult' } = payload || {};
+    try { payload = JSON.parse(event.body || '{}'); } catch {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Invalid JSON body' }) };
+    }
 
-    const connection = {
-      connection_id: `nwc_${Date.now()}`,
-      wallet_name: String(walletName),
-      wallet_provider: String(provider),
-      pubkey_preview: 'npub1...',
-      relay_domain: 'relay.satnam.pub',
-      user_role: /** @type {'private'|'offspring'|'adult'|'steward'|'guardian'} */ (userRole),
-      is_primary: true,
-      connection_status: 'connected',
-      created_at: new Date().toISOString(),
-      last_used_at: new Date().toISOString()
-    };
+    const { connectionString = '', walletName = 'NWC Wallet', provider = 'other', userRole = 'adult', setPrimary = true } = payload || {};
 
-    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, connection }) };
+    // Basic validation of NWC connection string
+    if (typeof connectionString !== 'string' || !connectionString.startsWith('nostr+walletconnect://')) {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Invalid NWC connection string' }) };
+    }
+
+    // Parse pubkey, relay
+    let pubkey = '', relay = '';
+    try {
+      const u = new URL(connectionString);
+      pubkey = u.hostname;
+      relay = String(u.searchParams.get('relay') || '');
+    } catch {}
+    if (!pubkey || pubkey.length !== 64 || !relay.startsWith('ws')) {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Malformed NWC URL' }) };
+    }
+
+    // Generate connection_id (privacy-preserving)
+    const encoder = new TextEncoder();
+    const hashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(`nwc_${pubkey}_${Date.now()}`));
+    const idHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    const connectionId = `nwc_${idHex}`;
+
+    // Encrypt connection string using AES-GCM with per-user key derivation (PBKDF2)
+    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(session.hashedId || 'user'), { name: 'PBKDF2' }, false, ['deriveKey']);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const aesKey = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoder.encode(connectionString));
+    const saltB64 = btoa(String.fromCharCode(...salt));
+    const ivB64 = btoa(String.fromCharCode(...iv));
+    const encB64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
+
+    const pubkeyPreview = `${pubkey.slice(0, 8)}...${pubkey.slice(-8)}`;
+    const relayDomain = (() => { try { return new URL(relay).hostname; } catch { return relay; } })();
+
+    // Persist using RPC helper (sets spending limits by role)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('create_nwc_wallet_connection', {
+      p_user_hash: session.hashedId,
+      p_connection_id: connectionId,
+      p_encrypted_connection_string: encB64,
+      p_connection_encryption_salt: saltB64,
+      p_connection_encryption_iv: ivB64,
+      p_wallet_name: String(walletName),
+      p_wallet_provider: String(provider),
+      p_pubkey_preview: pubkeyPreview,
+      p_relay_domain: relayDomain,
+      p_user_role: String(userRole)
+    });
+
+    if (rpcError) {
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Failed to save connection' }) };
+    }
+
+    // Optionally set as primary
+    if (setPrimary) {
+      try {
+        await supabase.from('nwc_wallet_connections').update({ is_primary: true }).eq('user_hash', session.hashedId).eq('connection_id', connectionId);
+      } catch {}
+    }
+
+    return { statusCode: 201, headers: corsHeaders, body: JSON.stringify({ success: true, data: { connection_id: connectionId, wallet_name: walletName, wallet_provider: provider, pubkey_preview: pubkeyPreview, relay_domain: relayDomain } }) };
   }
 
   return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET, POST' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
@@ -319,52 +397,61 @@ async function handleNwcOperationsInline(event, corsHeaders) {
   const params = (payload && payload.params) || {};
   const connectionId = payload && payload.connectionId ? String(payload.connectionId) : undefined;
 
+  // Load connection-specific relay from DB (if connectionId provided)
+  let connectionInfo = { relay: '', pubkey: '', secret: '' };
+  if (connectionId) {
+    try {
+      const { getRequestClient } = await import('./supabase.js');
+      const supabase = getRequestClient(String((authHeader || '').replace(/^Bearer\s+/i, '')));
+      try { await supabase.rpc('set_app_current_user_hash', { val: session.hashedId }); } catch {}
+      const { data: row } = await supabase
+        .from('nwc_wallet_connections')
+        .select('encrypted_connection_string, connection_encryption_salt, connection_encryption_iv')
+        .eq('user_hash', session.hashedId)
+        .eq('connection_id', connectionId)
+        .maybeSingle();
+      if (row && row.encrypted_connection_string && row.connection_encryption_salt && row.connection_encryption_iv) {
+        const enc = Uint8Array.from(atob(row.encrypted_connection_string), c => c.charCodeAt(0));
+        const salt = Uint8Array.from(atob(row.connection_encryption_salt), c => c.charCodeAt(0));
+        const iv = Uint8Array.from(atob(row.connection_encryption_iv), c => c.charCodeAt(0));
+        const encoder = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(session.hashedId || 'user'), { name: 'PBKDF2' }, false, ['deriveKey']);
+        const aesKey = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+        const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, enc);
+        const connStr = new TextDecoder().decode(plainBuf);
+        try {
+          const u = new URL(connStr);
+          connectionInfo.pubkey = u.hostname;
+          connectionInfo.relay = String(u.searchParams.get('relay') || '');
+          connectionInfo.secret = String(u.searchParams.get('secret') || '');
+        } catch {}
+      }
+    } catch {}
+  }
+
   try {
-    switch (op) {
-      case 'get_balance': {
-        const result = { balance: 125000, max_amount: 500000, budget_renewal: 86400 };
-        return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
-      }
-      case 'make_invoice': {
-        const amount = Number(params.amount) || 1000;
-        const description = typeof params.description === 'string' ? params.description : 'NWC Invoice';
-        const payment_hash = `ph_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-        const payment_request = `lnbc${amount}n1${payment_hash.slice(-8)}...`;
-        const expires_at = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        const result = { payment_request, payment_hash, amount, description, expires_at };
-        return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
-      }
-      case 'pay_invoice': {
-        const invoice = typeof params.invoice === 'string' ? params.invoice : '';
-        const payment_hash = `ph_${Date.now().toString(36)}`;
-        const result = { payment_hash, status: 'completed', fee: 5, invoice: Boolean(invoice) };
-        return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
-      }
-      case 'lookup_invoice': {
-        const payment_hash = typeof params.payment_hash === 'string' ? params.payment_hash : `ph_${Date.now().toString(36)}`;
-        const result = { payment_hash, status: 'completed', amount: 1000, settled_at: new Date().toISOString() };
-        return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
-      }
-      case 'list_transactions': {
-        const limit = Math.max(1, Math.min(50, Number(params.limit) || 10));
-        const now = Date.now();
-        const items = Array.from({ length: limit }).map((_, i) => ({
-          id: `nwc_tx_${i + 1}`,
-          type: i % 3 === 0 ? 'payment' : (i % 3 === 1 ? 'invoice' : 'zap'),
-          amount: 1000 + i * 100,
-          fee: i % 2 === 0 ? 1 : 0,
-          memo: i % 3 === 0 ? 'Payment' : (i % 3 === 1 ? 'Invoice' : 'Zap'),
-          timestamp: new Date(now - (i + 1) * 600000),
-          status: 'completed',
-          payment_hash: `ph_${(now - i).toString(36)}`,
-        }));
-        return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result: items } }) };
-      }
-      default:
-        return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Unsupported NWC method' }) };
+    if (!op) {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'NWC method is required' }) };
     }
+
+    // Ensure we have connection details
+    if (!connectionInfo.pubkey || !connectionInfo.relay || !connectionInfo.secret) {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Missing NWC connection details' }) };
+    }
+
+    const resultRaw = await performNwcOperationOverNostr({
+      method: op,
+      params,
+      connection: { pubkey: connectionInfo.pubkey, relay: connectionInfo.relay, secret: connectionInfo.secret },
+      timeoutMs: 30000,
+    });
+
+    const result = (resultRaw && typeof resultRaw === 'object') ? { ...resultRaw, relay: connectionInfo.relay } : resultRaw;
+
+    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
   } catch (err) {
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'NWC operation failed' }) };
+    const message = err instanceof Error ? err.message : 'NWC operation failed';
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: message }) };
   }
 }
 

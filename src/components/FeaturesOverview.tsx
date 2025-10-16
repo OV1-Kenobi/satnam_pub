@@ -36,6 +36,7 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
     color: string;
     action: () => void;
     ctaLabel?: string;
+    tooltip?: string;
   };
 
   const featureCategories: { title: string; description: string; features: Feature[] }[] = [
@@ -49,7 +50,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Key,
           color: "purple",
           action: () => navigate('forge'),
-          ctaLabel: "Claim Your Name"
+          ctaLabel: "Claim Your Name",
+          tooltip: "Create a new Nostr identity and reserve your Satnam name. Keys are generated securely so you can message and pay immediately."
         },
         {
           name: "NIP-07 Sign-in",
@@ -57,7 +59,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Shield,
           color: "blue",
           action: () => openSignIn(),
-          ctaLabel: "Open Sign-in"
+          ctaLabel: "Open Sign-in",
+          tooltip: "Connect your Nostr browser extension to sign in password‑free using your existing keys."
         },
         {
           name: "Family Foundry",
@@ -65,7 +68,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Crown,
           color: "gold",
           action: () => navigate('onboarding'),
-          ctaLabel: "Start Foundry"
+          ctaLabel: "Start Foundry",
+          tooltip: "Set up a family federation with roles and shared governance. Invite members and configure recovery and permissions."
         },
         {
           name: "Emergency Recovery",
@@ -73,7 +77,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: RefreshCw,
           color: "red",
           action: () => navigate('recovery'),
-          ctaLabel: "Open Recovery"
+          ctaLabel: "Open Recovery",
+          tooltip: "Regain access using privacy‑first OTP and federation safeguards—no secrets exposed."
         }
       ]
     },
@@ -87,7 +92,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: BarChart3,
           color: "green",
           action: () => navigate('dashboard'),
-          ctaLabel: "Open Family Financials"
+          ctaLabel: "Open Family Financials",
+          tooltip: "Monitor your shared treasury, balances, and flows at a glance. Export insights for planning and audits."
         },
         {
           name: "Individual Finances",
@@ -95,7 +101,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Wallet,
           color: "blue",
           action: () => navigate('individual-finances'),
-          ctaLabel: "Open Individual Finances"
+          ctaLabel: "Open Individual Finances",
+          tooltip: "Track your personal wallet activity, invoices, and payments with clear summaries."
         },
         {
           name: "Payment Automation (Family)",
@@ -103,7 +110,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Settings,
           color: "indigo",
           action: () => navigate('family-payment-automation'),
-          ctaLabel: "Configure Family Automation"
+          ctaLabel: "Configure Family Automation",
+          tooltip: "Schedule recurring family distributions and bills with rules and approvals."
         },
         {
           name: "Payment Automation (Individual)",
@@ -111,7 +119,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Settings,
           color: "indigo",
           action: () => navigate('individual-payment-automation'),
-          ctaLabel: "Configure Personal Automation"
+          ctaLabel: "Configure Personal Automation",
+          tooltip: "Automate personal allowances and subscriptions—set once, run reliably."
         },
         {
           name: "Liquidity Management",
@@ -119,7 +128,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Zap,
           color: "orange",
           action: () => navigate('ln-node-management'),
-          ctaLabel: "Open Liquidity Manager"
+          ctaLabel: "Open Liquidity Manager",
+          tooltip: "Open/close channels, rebalance, and monitor routing health to keep payments reliable."
         },
         {
           name: "Payment QR Code",
@@ -127,7 +137,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Globe,
           color: "teal",
           action: () => navigate('lnurl-display'),
-          ctaLabel: "Show Payment QR Code"
+          ctaLabel: "Show Payment QR Code",
+          tooltip: "Display your LNURL and wallet details for receiving and NFC provisioning."
         }
       ]
     },
@@ -141,7 +152,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: MessageCircle,
           color: "teal",
           action: () => navigate('communications'),
-          ctaLabel: "Open Private Messaging"
+          ctaLabel: "Open Private Messaging",
+          tooltip: "Send private, gift‑wrapped messages and group chats with attachments and voice notes."
         }
       ]
     },
@@ -155,7 +167,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Users,
           color: "purple",
           action: () => navigate('dashboard'),
-          ctaLabel: "Open Family Dashboard"
+          ctaLabel: "Open Family Dashboard",
+          tooltip: "See family activity, balances, and coordination tools in one place—act quickly on what matters."
         }
       ]
     },
@@ -169,7 +182,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Key,
           color: "purple",
           action: () => navigate('nfc-provisioning-guide'),
-          ctaLabel: "Write Name Tag"
+          ctaLabel: "Write Name Tag",
+          tooltip: "Program and register your NFC Name Tag for secure physical MFA with PIN."
         }
       ]
     },
@@ -183,7 +197,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: BookOpen,
           color: "blue",
           action: () => navigate('education'),
-          ctaLabel: "Open Education"
+          ctaLabel: "Open Education",
+          tooltip: "Learn Bitcoin and Lightning step‑by‑step and track your progress."
         },
         {
           name: "Nostr Ecosystem",
@@ -191,7 +206,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Globe,
           color: "indigo",
           action: () => navigate('nostr-ecosystem'),
-          ctaLabel: "Explore Nostr"
+          ctaLabel: "Explore Nostr",
+          tooltip: "Discover apps and services that work with your identity—connect and explore."
         },
         {
           name: "Settings",
@@ -199,7 +215,8 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
           icon: Settings,
           color: "green",
           action: () => navigate('settings'),
-          ctaLabel: "Open Settings"
+          ctaLabel: "Open Settings",
+          tooltip: "Manage preferences, privacy, and integrations to tailor Satnam to your needs."
         }
       ]
     }
@@ -251,7 +268,9 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
                     return (
                       <div
                         key={featureIndex}
-                        className={`border-2 rounded-xl p-6 transition-all duration-300 hover:scale-105 ${getColorClasses(feature.color)}`}
+                        tabIndex={0}
+                        aria-describedby={`tip-${categoryIndex}-${featureIndex}`}
+                        className={`group relative border-2 rounded-xl p-6 transition-all duration-300 hover:scale-105 ${getColorClasses(feature.color)}`}
                       >
                         <div className="flex items-center space-x-3 mb-4">
                           <div className={`p-2 rounded-lg ${getColorClasses(feature.color).replace('hover:scale-105', '')}`}>
@@ -267,6 +286,13 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
                           >
                             {feature.ctaLabel || 'Open'}
                           </button>
+                        </div>
+                        <div
+                          id={`tip-${categoryIndex}-${featureIndex}`}
+                          role="tooltip"
+                          className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full z-20 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 group-focus-within:opacity-100 group-focus-within:scale-100 transition duration-200 bg-white/90 text-black rounded-lg shadow-lg max-w-xs px-3 py-2 border border-white/30"
+                        >
+                          <p className="text-xs leading-snug">{feature.tooltip ?? feature.description}</p>
                         </div>
                       </div>
                     );

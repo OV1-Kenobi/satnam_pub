@@ -21,55 +21,19 @@ function getEnvVar(key) {
 }
 
 /**
- * @typedef {Object} P2PPaymentRequest
- * @property {string} toUser - User UUID or Lightning address
- * @property {number} amount - Amount in satoshis
- * @property {string} [memo] - Optional payment memo
- * @property {'P2P_INTERNAL_LIGHTNING'|'P2P_EXTERNAL_LIGHTNING'} paymentType - Payment type
- * @property {boolean} [enablePrivacy] - Optional privacy protection for external payments
+ * @typedef {import('../../../types/payments').P2PPaymentRequest} P2PPaymentRequest
  */
 
 /**
- * @typedef {Object} P2PPaymentResponse
- * @property {boolean} success - Whether the payment was successful
- * @property {string} [paymentId] - Database payment record ID
- * @property {string} [paymentHash] - Lightning payment hash
- * @property {Object} [routing] - Node routing information
- * @property {string} routing.preferredNode - Selected Lightning node
- * @property {string} routing.reason - Reason for node selection
- * @property {Object} [privacy] - Privacy protection information
- * @property {boolean} privacy.enabled - Whether privacy was enabled
- * @property {string} [privacy.serviceUrl] - Privacy service URL
- * @property {Object} [security] - Security validation information
- * @property {boolean} security.validated - Whether security validation passed
- * @property {string} security.environment - Environment (development/production)
- * @property {string} [error] - Error message if payment failed
+ * @typedef {import('../../../types/payments').P2PPaymentResponse} P2PPaymentResponse
  */
 
 /**
- * @typedef {Object} ECashBridgeRequest
- * @property {string} sourceToken - Source eCash token (Fedimint or Cashu)
- * @property {string} targetDestination - Target mint URL or federation
- * @property {'ECASH_FEDIMINT_TO_CASHU'|'ECASH_CASHU_TO_FEDIMINT'|'ECASH_FEDIMINT_TO_FEDIMINT'|'ECASH_CASHU_EXTERNAL_SWAP'} operationType - Operation type
- * @property {boolean} [isMultiNut] - For external Cashu swaps
- * @property {boolean} [enablePrivacy] - Optional privacy protection
+ * @typedef {import('../../../types/payments').ECashBridgeRequest} ECashBridgeRequest
  */
 
 /**
- * @typedef {Object} ECashBridgeResponse
- * @property {boolean} success - Whether the operation was successful
- * @property {string} [operationId] - Database operation record ID
- * @property {string} [conversionId] - Conversion/swap ID
- * @property {string} [resultToken] - Hashed result token for privacy
- * @property {number} [conversionFee] - Conversion fee in satoshis
- * @property {Object} [routing] - Node routing information
- * @property {string} routing.preferredNode - Selected Lightning node
- * @property {string} routing.reason - Reason for node selection
- * @property {Object} [privacy] - Privacy protection information
- * @property {boolean} privacy.enabled - Whether privacy was enabled
- * @property {string} [privacy.serviceUrl] - Privacy service URL
- * @property {string} [expiresAt] - Operation expiration timestamp
- * @property {string} [error] - Error message if operation failed
+ * @typedef {import('../../../types/payments').ECashBridgeResponse} ECashBridgeResponse
  */
 
 /**
@@ -347,5 +311,5 @@ class ApiError extends Error {
 // Create singleton instance
 const paymentsClient = new PaymentsClient();
 
-export { PaymentsClient, ApiError, paymentsClient };
+export { ApiError, PaymentsClient, paymentsClient };
 export default paymentsClient;

@@ -1,7 +1,9 @@
 import { createBoltcard, createLightningAddress, getPaymentHistory, provisionWallet } from "@/api/endpoints/lnbits.js";
 import { useEffect, useMemo, useState } from "react";
+import { useNWCWallet } from "../hooks/useNWCWallet";
 import { isLightningAddressReachable, parseLightningAddress } from "../utils/lightning-address";
 import NWCWalletSetupModal from "./NWCWalletSetupModal";
+
 
 
 /**
@@ -36,6 +38,20 @@ export default function LNBitsIntegrationPanel() {
   const nwcFeatureEnabled = ((import.meta.env as any)?.VITE_ENABLE_NWC_PROVIDER || '').toString().toLowerCase() === 'true';
   const [provider, setProvider] = useState<'lnbits' | 'nwc'>('lnbits');
   const [nwcModalOpen, setNwcModalOpen] = useState(false);
+
+  const { isConnected: nwcConnected, balance: nwcBalance, getBalance: nwcGetBalance, primaryConnection: nwcPrimary } = useNWCWallet();
+
+  const [refreshingBalance, setRefreshingBalance] = useState(false);
+  async function handleRefreshBalance() {
+    setRefreshingBalance(true);
+    try {
+      await nwcGetBalance();
+    } catch (e) {
+      setError('Failed to refresh NWC balance');
+    } finally {
+      setRefreshingBalance(false);
+    }
+  }
 
   // Payment history state
   const [history, setHistory] = useState<PaymentEvent[]>([]);
@@ -217,11 +233,20 @@ export default function LNBitsIntegrationPanel() {
             </label>
           </div>
           {provider === 'nwc' && (
-            <div className="flex items-center gap-3">
-              <button onClick={() => setNwcModalOpen(true)} className="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm">
-                Connect NWC Wallet
-              </button>
-              <span className="text-xs text-gray-400">LNbits actions below are disabled while NWC is selected.</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setNwcModalOpen(true)} className="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm">
+                  {nwcConnected ? "Manage NWC Wallet" : "Connect NWC Wallet"}
+                </button>
+                <button onClick={handleRefreshBalance} disabled={!nwcConnected || refreshingBalance} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm">
+                  {refreshingBalance ? "Refreshing..." : "Refresh NWC Balance"}
+                </button>
+              </div>
+              <div className="text-xs text-gray-400">
+                {nwcConnected
+                  ? <>Connected to <span className="text-gray-200">{nwcPrimary?.wallet_name || "NWC Wallet"}</span>{nwcBalance ? <> — Balance: <span className="text-gray-200">{nwcBalance.balance.toLocaleString()} {nwcBalance.currency}</span></> : null}</>
+                  : <>No NWC wallet connected. LNbits actions below are disabled while NWC is selected.</>}
+              </div>
             </div>
           )}
         </section>

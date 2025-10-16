@@ -156,8 +156,7 @@ export class EnhancedNostrManager {
    * Initialize default relay connections
    */
   private initializeDefaultRelays(): void {
-    const defaultRelays = (config as any).nostr?.relays ||
-      config.nostr?.relays || ["wss://relay.damus.io", "wss://nos.lol"];
+    const defaultRelays = config.nostr.relays;
 
     defaultRelays.forEach((url: string) => {
       this.relayConnections.set(url, {

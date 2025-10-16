@@ -1,5 +1,6 @@
 // lib/citadel/relay.ts
 import type { Event as NostrEvent } from "nostr-tools"; // Type-only
+import { config } from "../../config";
 import { supabase } from "../../src/lib/supabase";
 import { CentralEventPublishingService } from "../central_event_publishing_service";
 const CEPS = new CentralEventPublishingService();
@@ -47,12 +48,20 @@ export class CitadelRelay {
         }
       }
 
-      // Fallback to default relay
-      return "wss://relay.citadel.academy";
+      }
+  
+      // Fallback to centralized relay configuration (first configured relay)
+      if (!config.nostr?.relays?.length) {
+        throw new Error("No relay URLs configured in config.nostr.relays");
+      }
+      return config.nostr.relays[0];
     } catch (error) {
       console.warn("Error fetching relay URL from database:", error);
-      return "wss://relay.citadel.academy";
-    }
+      if (!config.nostr?.relays?.length) {
+        throw new Error("No relay URLs configured in config.nostr.relays");
+      }
+      return config.nostr.relays[0];
+    }    }
   }
 
   /**

@@ -11,6 +11,8 @@ import { UserIdentity } from "./user-identities-auth";
 
 import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 
+import { config } from "../../../config";
+
 // NIP-41 Key Migration Types
 export interface NIP41WhitelistEvent {
   kind: 1776;
@@ -293,7 +295,7 @@ export class NostrKeyRecoveryService {
       request.userId = authResult.user.id;
 
       // Retrieve encrypted nsec
-      const encryptedNsec = authResult.user.hashed_encrypted_nsec;
+      const encryptedNsec = authResult.user.encrypted_nsec;
       if (!encryptedNsec) {
         return {
           success: false,
@@ -695,14 +697,10 @@ export class NostrKeyRecoveryService {
     try {
       // Use default relays if none provided
       const targetRelays =
-        relays.length > 0
-          ? relays
-          : [
-              "wss://relay.damus.io",
-              "wss://nos.lol",
-              "wss://relay.snort.social",
-              "wss://relay.nostr.band",
-            ];
+        relays.length > 0 ? relays : config.nostr?.relays || [];
+      if (!targetRelays.length) {
+        return { success: false, error: "No relays configured for publishing" };
+      }
 
       const relayResults: {
         relay: string;
@@ -766,14 +764,13 @@ export class NostrKeyRecoveryService {
       const { SimplePool } = await import("nostr-tools");
 
       const targetRelays =
-        relays.length > 0
-          ? relays
-          : [
-              "wss://relay.damus.io",
-              "wss://nos.lol",
-              "wss://relay.snort.social",
-              "wss://relay.nostr.band",
-            ];
+        relays.length > 0 ? relays : config.nostr?.relays || [];
+      if (!targetRelays.length) {
+        return {
+          isWhitelisted: false,
+          error: "No relays configured for publishing",
+        };
+      }
 
       const pool = new SimplePool();
       const events: any[] = [];
@@ -1247,9 +1244,9 @@ export class NostrKeyRecoveryService {
       // Derive old private key (hex) for signing delegation and old metadata
       let oldNsecHex = "";
       try {
-        if (user.hashed_encrypted_nsec) {
+        if (user.encrypted_nsec) {
           const oldBuf = await decryptNsecBytes(
-            user.hashed_encrypted_nsec,
+            user.encrypted_nsec,
             user.user_salt
           );
           oldNsecHex = CryptoUtils.bytesToHex(oldBuf);
@@ -1312,7 +1309,7 @@ export class NostrKeyRecoveryService {
         .from("user_identities")
         .update({
           npub: effectiveNewNpub || rotationData.newNpub,
-          hashed_encrypted_nsec: encryptedNewNsec,
+          encrypted_nsec: encryptedNewNsec,
           updated_at: new Date().toISOString(),
         })
         .eq("id", userId);

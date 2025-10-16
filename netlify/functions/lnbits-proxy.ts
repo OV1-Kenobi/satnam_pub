@@ -30,6 +30,7 @@ import {
   newRequestId,
 } from "./utils/secure-decrypt-logger.js";
 
+import { SecureSessionManager } from "./security/session-manager.js";
 import { resolvePlatformLightningDomainServer } from "./utils/domain.server.js";
 
 const json = (statusCode: number, body: any) => ({
@@ -205,6 +206,13 @@ const ACTIONS = {
   getPaymentHistory: { scope: "wallet" as const },
   getWalletUrl: { scope: "wallet" as const },
   provisionWalletHybrid: { scope: "wallet" as const },
+  // NWC provider management (LNbits NWC extension)
+  nwcPermissions: { scope: "wallet" as const },
+  nwcListConnections: { scope: "wallet" as const },
+  nwcGetConnection: { scope: "wallet" as const },
+  nwcCreateConnection: { scope: "wallet" as const },
+  nwcRevokeConnection: { scope: "wallet" as const },
+  nwcUpdateConnection: { scope: "wallet" as const },
   // Future actions kept for parity with existing endpoints; implement incrementally
   createLightningAddress: { scope: "wallet" as const },
   createBoltcard: { scope: "wallet" as const },
@@ -1418,6 +1426,383 @@ export const handler = async (event: any) => {
           success: true,
           cardId: String(cardId),
           authQr: authQr ? String(authQr) : undefined,
+        });
+      }
+
+      case "nwcPermissions": {
+        if (!apiKey)
+          return json(400, { success: false, error: "No wallet found" });
+        try {
+          const data = await lnbitsFetch(
+            `/nwcprovider/api/v1/permissions`,
+            apiKey,
+            { method: "GET" }
+          );
+          return json(200, { success: true, data });
+        } catch (e: any) {
+          return json(502, {
+            success: false,
+            error: e?.message || "LNbits error",
+          });
+        }
+      }
+
+      case "nwcListConnections": {
+        if (!apiKey)
+          return json(400, { success: false, error: "No wallet found" });
+        const include_expired = Boolean(payload?.include_expired ?? true);
+        const calculate_spent_budget = Boolean(
+          payload?.calculate_spent_budget ?? true
+        );
+        try {
+          const qs = `?include_expired=${include_expired}&calculate_spent_budget=${calculate_spent_budget}`;
+          const data = await lnbitsFetch(
+            `/nwcprovider/api/v1/nwc${qs}`,
+            apiKey,
+            { method: "GET" }
+          );
+          return json(200, { success: true, data });
+        } catch (e: any) {
+          return json(502, {
+            success: false,
+            error: e?.message || "LNbits error",
+          });
+        }
+      }
+
+      case "nwcGetConnection": {
+        if (!apiKey)
+          return json(400, { success: false, error: "No wallet found" });
+        const pubkey = String(payload?.pubkey || "").trim();
+        if (!pubkey)
+          return json(400, { success: false, error: "Missing pubkey" });
+        const include_expired = Boolean(payload?.include_expired ?? true);
+        try {
+          const data = await lnbitsFetch(
+            `/nwcprovider/api/v1/nwc/${encodeURIComponent(
+              pubkey
+            )}?include_expired=${include_expired}`,
+            apiKey,
+            { method: "GET" }
+          );
+          return json(200, { success: true, data });
+        } catch (e: any) {
+          return json(502, {
+            success: false,
+            error: e?.message || "LNbits error",
+          });
+        }
+      }
+
+      case "nwcCreateConnection": {
+        if (!apiKey)
+          return json(400, { success: false, error: "No wallet found" });
+        // Validate inputs
+        const client_pubkey = String(payload?.client_pubkey || "").trim();
+        const client_secret = String(payload?.client_secret || "").trim();
+        const description = String(payload?.description || "Satnam NWC").trim();
+        if (!client_pubkey || !client_secret)
+          return json(400, {
+            success: false,
+            error: "Missing client pubkey/secret",
+          });
+        const permissions =
+          Array.isArray(payload?.permissions) && payload.permissions.length
+            ? payload.permissions.map((p: any) => String(p))
+            : [
+                "get_balance",
+                "make_invoice",
+                "pay_invoice",
+                "lookup_invoice",
+                "list_transactions",
+              ];
+        const expires_at = Number.isFinite(Number(payload?.expires_at))
+          ? Number(payload.expires_at)
+          : 0;
+        // Budget: accept msats or sats; default 100k sats daily if offspring, else unlimited
+        let budget_msats = undefined as number | undefined;
+        let refresh_window = Number(payload?.refresh_window) || 86400;
+        const budgetSats = Number(payload?.budget_sats);
+        if (Number.isFinite(budgetSats) && budgetSats > 0)
+          budget_msats = Math.round(budgetSats * 1000);
+        const budgets = budget_msats
+          ? [
+              {
+                budget_msats,
+                refresh_window,
+                created_at: Math.floor(Date.now() / 1000),
+              },
+            ]
+          : [];
+
+        // Create on LNbits provider
+        try {
+          await lnbitsFetch(
+            `/nwcprovider/api/v1/nwc/${encodeURIComponent(client_pubkey)}`,
+            apiKey,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                permissions,
+                description,
+                expires_at,
+                budgets,
+              }),
+            }
+          );
+        } catch (e: any) {
+          const msg = e?.message || "Failed to register NWC connection";
+          // Common errors to surface clearly
+          if (/already exists/i.test(msg))
+            return json(409, {
+              success: false,
+              error: "Connection already exists for pubkey",
+            });
+          return json(502, { success: false, error: msg });
+        }
+
+        // Retrieve pairing URL (full NWC URI)
+        let fullUri: string;
+        try {
+          const pairing = await lnbitsFetch(
+            `/nwcprovider/api/v1/pairing/${encodeURIComponent(client_secret)}`,
+            apiKey,
+            { method: "GET" }
+          );
+          fullUri = typeof pairing === "string" ? pairing : pairing?.uri || "";
+          if (!fullUri || !/^nostr\+walletconnect:\/\//.test(fullUri))
+            throw new Error("Invalid pairing response");
+        } catch (e: any) {
+          return json(502, {
+            success: false,
+            error: e?.message || "Failed to fetch pairing URL",
+          });
+        }
+
+        // Parse for previews
+        let providerPubkey = "";
+        let relayDomain = "";
+        let relay = "";
+        try {
+          const u = new URL(
+            fullUri.replace(/^nostr\+walletconnect:\/\//, "https://")
+          );
+          providerPubkey = u.hostname || "";
+          relay = u.searchParams.get("relay") || "";
+          try {
+            relayDomain = relay ? new URL(relay).hostname : "";
+          } catch {
+            relayDomain = relay;
+          }
+        } catch {}
+
+        // Prepare storage: encrypt once server-side using per-user key (PBKDF2 -> AES-GCM)
+        const authHeader = String(
+          event.headers?.authorization || event.headers?.Authorization || ""
+        );
+        const session = await SecureSessionManager.validateSessionFromHeader(
+          authHeader
+        );
+        if (!session?.hashedId)
+          return json(401, { success: false, error: "Unauthorized" });
+
+        // Set RLS context
+        const reqClient = getRequestClient(
+          authHeader.replace(/^Bearer\s+/i, "")
+        );
+        try {
+          await reqClient.rpc("set_app_current_user_hash", {
+            val: session.hashedId,
+          });
+        } catch {}
+
+        async function encryptForUser(userHash: string, plaintext: string) {
+          const enc = new TextEncoder();
+          const keyMaterial = await (
+            globalThis.crypto as Crypto
+          ).subtle.importKey(
+            "raw",
+            enc.encode(userHash || "user"),
+            { name: "PBKDF2" },
+            false,
+            ["deriveKey"]
+          );
+          const salt = (globalThis.crypto as Crypto).getRandomValues(
+            new Uint8Array(16)
+          );
+          const key = await (globalThis.crypto as Crypto).subtle.deriveKey(
+            { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+            keyMaterial,
+            { name: "AES-GCM", length: 256 },
+            false,
+            ["encrypt"]
+          );
+          const iv = (globalThis.crypto as Crypto).getRandomValues(
+            new Uint8Array(12)
+          );
+          const ct = await (globalThis.crypto as Crypto).subtle.encrypt(
+            { name: "AES-GCM", iv },
+            key,
+            enc.encode(plaintext)
+          );
+          const saltB64 = Buffer.from(salt).toString("base64");
+          const ivB64 = Buffer.from(iv).toString("base64");
+          const encB64 = Buffer.from(new Uint8Array(ct)).toString("base64");
+          return { encB64, saltB64, ivB64 };
+        }
+
+        const { encB64, saltB64, ivB64 } = await encryptForUser(
+          session.hashedId,
+          fullUri
+        );
+
+        // Generate connection_id compatible with existing flows
+        const seed = `nwc_${providerPubkey || client_pubkey}_${Date.now()}`;
+        const seedBuf = await (globalThis.crypto as Crypto).subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(seed)
+        );
+        const idHex = Array.from(new Uint8Array(seedBuf))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+          .slice(0, 16);
+        const connectionId = `nwc_${idHex}`;
+
+        // Persist via RPC to apply sovereignty limits
+        const walletName = String(payload?.wallet_name || "Satnam Wallet");
+        const provider = "lnbits-nwc";
+        const pubkeyPreview = providerPubkey
+          ? `${providerPubkey.slice(0, 8)}...${providerPubkey.slice(-8)}`
+          : `${client_pubkey.slice(0, 8)}...${client_pubkey.slice(-8)}`;
+        const userRoleRow = await supa
+          .from("user_identities")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        const userRole = (userRoleRow?.data?.role as string) || "private";
+
+        const { error: rpcErr } = await reqClient.rpc(
+          "create_nwc_wallet_connection",
+          {
+            p_user_hash: session.hashedId,
+            p_connection_id: connectionId,
+            p_encrypted_connection_string: encB64,
+            p_connection_encryption_salt: saltB64,
+            p_connection_encryption_iv: ivB64,
+            p_wallet_name: walletName,
+            p_wallet_provider: provider,
+            p_pubkey_preview: pubkeyPreview,
+            p_relay_domain:
+              relayDomain || resolvePlatformLightningDomainServer(),
+            p_user_role: userRole,
+          }
+        );
+        if (rpcErr)
+          return json(500, {
+            success: false,
+            error: "Failed to save connection",
+          });
+
+        // Return masked preview + one-time URI for immediate display
+        const secretTail = (() => {
+          try {
+            const u = new URL(
+              fullUri.replace(/^nostr\+walletconnect:\/\//, "https://")
+            );
+            const s = String(u.searchParams.get("secret") || "");
+            return s ? s.slice(-6) : "";
+          } catch {
+            return "";
+          }
+        })();
+        return json(201, {
+          success: true,
+          data: {
+            connection_id: connectionId,
+            wallet_name: walletName,
+            wallet_provider: provider,
+            pubkey_preview: pubkeyPreview,
+            relay_domain: relayDomain,
+            one_time_uri: fullUri,
+            secret_tail: secretTail,
+          },
+        });
+      }
+
+      case "nwcRevokeConnection": {
+        if (!apiKey)
+          return json(400, { success: false, error: "No wallet found" });
+        const pubkey = String(payload?.pubkey || "").trim();
+        const connectionId = String(payload?.connection_id || "").trim();
+        if (!pubkey)
+          return json(400, { success: false, error: "Missing pubkey" });
+        try {
+          await lnbitsFetch(
+            `/nwcprovider/api/v1/nwc/${encodeURIComponent(pubkey)}`,
+            apiKey,
+            { method: "DELETE" }
+          );
+        } catch (e: any) {
+          return json(502, {
+            success: false,
+            error: e?.message || "LNbits error",
+          });
+        }
+        // Soft-delete local record if provided
+        if (connectionId) {
+          const authHeader = String(
+            event.headers?.authorization || event.headers?.Authorization || ""
+          );
+          const session = await SecureSessionManager.validateSessionFromHeader(
+            authHeader
+          );
+          if (session?.hashedId) {
+            const reqClient = getRequestClient(
+              authHeader.replace(/^Bearer\s+/i, "")
+            );
+            try {
+              await reqClient.rpc("set_app_current_user_hash", {
+                val: session.hashedId,
+              });
+            } catch {}
+            await reqClient
+              .from("nwc_wallet_connections")
+              .update({
+                is_active: false,
+                connection_status: "revoked",
+                last_used_at: new Date().toISOString(),
+              })
+              .eq("user_hash", session.hashedId)
+              .eq("connection_id", connectionId);
+          }
+        }
+        return json(200, { success: true });
+      }
+
+      case "nwcUpdateConnection": {
+        if (!apiKey)
+          return json(400, { success: false, error: "No wallet found" });
+        // Implement as delete + create; client must provide new client_pubkey/secret
+        const oldPubkey = String(payload?.old_pubkey || "").trim();
+        const connectionId = String(payload?.connection_id || "").trim();
+        if (!oldPubkey)
+          return json(400, { success: false, error: "Missing old pubkey" });
+        try {
+          await lnbitsFetch(
+            `/nwcprovider/api/v1/nwc/${encodeURIComponent(oldPubkey)}`,
+            apiKey,
+            { method: "DELETE" }
+          );
+        } catch (e: any) {
+          return json(502, {
+            success: false,
+            error: e?.message || "Failed to revoke old connection",
+          });
+        }
+        return json(200, {
+          success: true,
+          note: "Old connection revoked. Call nwcCreateConnection to create a new one.",
+          connection_id: connectionId || undefined,
         });
       }
 

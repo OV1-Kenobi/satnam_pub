@@ -10,6 +10,8 @@ import { useAuth } from '../auth/AuthProvider';
 
 import { resolvePlatformLightningDomain } from '../../config/domain.client';
 
+import type { P2PPaymentResponse } from '../../../types/payments';
+
 
 
 
@@ -78,6 +80,8 @@ interface P2PPaymentModalProps {
   onSuccess?: (paymentResult: any) => void;
 }
 
+type PaymentType = 'P2P_INTERNAL_LIGHTNING' | 'P2P_EXTERNAL_LIGHTNING';
+
 interface PaymentFormData {
   toUser: string;
   amount: string;
@@ -92,6 +96,12 @@ interface FeeEstimate {
   routingFee: number;
   total: number;
   estimatedTime: string;
+}
+
+function isP2PPaymentResponse(v: unknown): v is P2PPaymentResponse {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as { success?: unknown };
+  return typeof o.success === 'boolean';
 }
 
 export function P2PPaymentModal({ isOpen, onClose, onSuccess }: P2PPaymentModalProps) {
@@ -183,7 +193,7 @@ export function P2PPaymentModal({ isOpen, onClose, onSuccess }: P2PPaymentModalP
     } else if (formData.paymentType === 'P2P_INTERNAL_LIGHTNING') {
       // Validate Satnam user format
       if (!formData.toUser.includes(`@${resolvePlatformLightningDomain()}`) && !formData.toUser.match(/^[0-9a-f-]{36}$/i)) {
-        errors.toUser = 'Enter a Satnam username (user@my.satnam.pub) or user ID';
+        errors.toUser = `Enter a Satnam username (user@${resolvePlatformLightningDomain()}) or user ID`;
       }
     } else {
       // Validate Lightning address format
@@ -228,7 +238,8 @@ export function P2PPaymentModal({ isOpen, onClose, onSuccess }: P2PPaymentModalP
         enablePrivacy: formData.paymentType === 'P2P_EXTERNAL_LIGHTNING' ? formData.enablePrivacy : undefined,
       };
 
-      const result = await paymentsClient.sendP2PPayment(paymentRequest);
+      const rawResult = await paymentsClient.sendP2PPayment(paymentRequest);
+      const result: P2PPaymentResponse = isP2PPaymentResponse(rawResult) ? rawResult : { success: false, error: 'Invalid response' };
 
       if (result.success) {
         toast({
@@ -303,20 +314,20 @@ export function P2PPaymentModal({ isOpen, onClose, onSuccess }: P2PPaymentModalP
                 <label className="block text-sm font-medium text-gray-700">Payment Type</label>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
-                    ? `user@${resolvePlatformLightningDomain()} or user ID`
-                    type="radio"
-                    id="internal"
-                    name="paymentType"
-                    value="P2P_INTERNAL_LIGHTNING"
-                    checked={formData.paymentType === 'P2P_INTERNAL_LIGHTNING'}
-                    onChange={(e) =>
-                      setFormData(prev => ({
-                        ...prev,
-                        paymentType: e.target.value as 'P2P_INTERNAL_LIGHTNING' | 'P2P_EXTERNAL_LIGHTNING',
-                        enablePrivacy: e.target.value === 'P2P_INTERNAL_LIGHTNING' ? true : prev.enablePrivacy
-                      }))
-                    }
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    <input
+                      type="radio"
+                      id="internal"
+                      name="paymentType"
+                      value="P2P_INTERNAL_LIGHTNING"
+                      checked={formData.paymentType === 'P2P_INTERNAL_LIGHTNING'}
+                      onChange={(e) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          paymentType: e.target.value as PaymentType,
+                          enablePrivacy: e.target.value === 'P2P_INTERNAL_LIGHTNING' ? true : prev.enablePrivacy
+                        }))
+                      }
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                     />
                     <label htmlFor="internal" className="flex items-center gap-2 text-sm text-gray-700">
                       <Shield className="h-4 w-4 text-green-500" />
@@ -333,7 +344,7 @@ export function P2PPaymentModal({ isOpen, onClose, onSuccess }: P2PPaymentModalP
                       onChange={(e) =>
                         setFormData(prev => ({
                           ...prev,
-                          paymentType: e.target.value as 'P2P_INTERNAL_LIGHTNING' | 'P2P_EXTERNAL_LIGHTNING',
+                          paymentType: e.target.value as PaymentType,
                           enablePrivacy: e.target.value === 'P2P_INTERNAL_LIGHTNING' ? true : prev.enablePrivacy
                         }))
                       }

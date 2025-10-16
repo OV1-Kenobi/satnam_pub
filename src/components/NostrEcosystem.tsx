@@ -4,7 +4,6 @@ import {
   Camera,
   CheckCircle,
   Copy,
-  Download,
   ExternalLink,
   FileText,
   Globe,
@@ -35,6 +34,7 @@ interface NostrApp {
   icon: ReactNode;
   category: "mobile" | "web" | "media" | "publishing" | "social" | "tools";
   platform?: string;
+  tooltip?: string;
 }
 
 const NostrEcosystem: FC<NostrEcosystemProps> = ({
@@ -62,6 +62,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       icon: <Smartphone className="h-6 w-6" />,
       category: "mobile",
       platform: "Android",
+      tooltip: "Use Amethyst on Android to chat, post, and manage your Nostr identity with fast, native performance and Lightning-friendly features."
     },
     {
       id: "damus",
@@ -71,6 +72,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       icon: <Smartphone className="h-6 w-6" />,
       category: "mobile",
       platform: "iOS",
+      tooltip: "iPhone/iPad client to post, chat, and zap with your Nostr identity—privacy-focused and widely supported."
     },
     {
       id: "iris",
@@ -79,6 +81,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://iris.to",
       icon: <Globe className="h-6 w-6" />,
       category: "web",
+      tooltip: "A fast, privacy-focused web client—browse, publish, and message from any browser without installing an app."
     },
     {
       id: "coracle",
@@ -87,6 +90,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://coracle.social",
       icon: <Globe className="h-6 w-6" />,
       category: "web",
+      tooltip: "Feature-rich web interface for power users—filters, lists, and relay controls to tailor your Nostr experience."
     },
     {
       id: "primal",
@@ -95,6 +99,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://primal.net",
       icon: <Users className="h-6 w-6" />,
       category: "social",
+      tooltip: "A polished social network on Nostr—discover people, trends, and zap content with built-in discovery tools."
     },
     {
       id: "snort",
@@ -103,6 +108,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://snort.social",
       icon: <MessageCircle className="h-6 w-6" />,
       category: "social",
+      tooltip: "Power-user web client with advanced feeds, relay options, and quick publishing tools for everyday use."
     },
     {
       id: "nostr-build",
@@ -111,6 +117,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://nostr.build",
       icon: <Image className="h-6 w-6" />,
       category: "media",
+      tooltip: "Upload and share images/files on Nostr with easy links and viewer-friendly embeds."
     },
     {
       id: "yakihonne",
@@ -119,6 +126,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://yakihonne.com",
       icon: <FileText className="h-6 w-6" />,
       category: "publishing",
+      tooltip: "Publish long-form posts and blogs—own your writing and syndicate across Nostr."
     },
     {
       id: "zap-stream",
@@ -127,6 +135,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://zap.stream",
       icon: <Video className="h-6 w-6" />,
       category: "media",
+      tooltip: "Go live and interact with your audience—receive Lightning zaps and chat in real time."
     },
     {
       id: "wavlake",
@@ -135,6 +144,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://wavlake.com",
       icon: <Music className="h-6 w-6" />,
       category: "media",
+      tooltip: "Publish music and get paid in sats—fans can stream, zap, and support your work directly."
     },
     {
       id: "tunestr",
@@ -143,6 +153,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://tunestr.io",
       icon: <Headphones className="h-6 w-6" />,
       category: "media",
+      tooltip: "Share, discover, and discuss music on Nostr—connect with artists and fans."
     },
     {
       id: "highlighter",
@@ -151,6 +162,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://highlighter.com",
       icon: <BookOpen className="h-6 w-6" />,
       category: "publishing",
+      tooltip: "Highlight, annotate, and publish articles or research—share insights across Nostr."
     },
     {
       id: "habla",
@@ -159,7 +171,38 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       url: "https://habla.news",
       icon: <Newspaper className="h-6 w-6" />,
       category: "publishing",
+      tooltip: "Follow and publish news on Nostr—curated feeds, discussion, and zaps for great reporting."
     },
+    {
+      id: "nos2x",
+      name: "nos2x",
+      description: "Nostr signer browser extension",
+      url: "https://chrome.google.com/webstore/detail/nos2x/npjnlnbmhklpajfaoolpmpicclnpoiah",
+      icon: <Key className="h-6 w-6" />,
+      category: "tools",
+      platform: "Chrome/Firefox",
+      tooltip: "Securely manage your Nostr private key (nsec) in your browser. Sign Nostr events via NIP-07 without exposing your key to websites."
+    },
+    {
+      id: "alby",
+      name: "Alby",
+      description: "Lightning and Nostr browser wallet",
+      url: "https://chrome.google.com/webstore/detail/alby-bitcoin-wallet-for-l/iokeahhehimjnekafflcihljlcjccdbe",
+      icon: <Zap className="h-6 w-6" />,
+      category: "tools",
+      platform: "Chrome/Firefox",
+      tooltip: "All-in-one Lightning and Nostr browser wallet. Enable NIP-07 signing and zaps across web apps with granular permissions."
+    },
+    {
+      id: "amber",
+      name: "Amber",
+      description: "Android Nostr event signer",
+      url: "https://github.com/greenart7c3/Amber",
+      icon: <Smartphone className="h-6 w-6" />,
+      category: "tools",
+      platform: "Android",
+      tooltip: "Android event signer that keeps your nsec secure on your phone. Sign Nostr events via Nostr Connect (NIP-46) and Android Signer (NIP-55) without exposing your private key."
+    }
   ];
 
   const categoryColors = {
@@ -202,7 +245,7 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
       name: "Publishing",
       description: "Write and share articles",
     },
-    { id: "tools", name: "Tools", description: "Essential utilities" },
+    { id: "tools", name: "Nsec Signers", description: "Browser and mobile signers that let apps request signatures without exposing your secret key." },
   ];
 
   return (
@@ -295,44 +338,6 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
         </div>
       </div>
 
-      {/* Essential Tool - nos2x Extension */}
-      <div className="bg-gradient-to-r from-purple-600/20 to-purple-800/20 rounded-2xl p-8 mb-8 border border-purple-400/50">
-        <div className="flex items-start space-x-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center flex-shrink-0">
-            <Key className="h-8 w-8 text-white" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center space-x-2 mb-3">
-              <h3 className="text-purple-300 font-bold text-xl">
-                Essential: Browser Key Management
-              </h3>
-              <div className="bg-purple-800 text-purple-200 px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1">
-                <span>🆔</span>
-                <span>Identity</span>
-              </div>
-            </div>
-            <h4 className="text-white font-bold text-lg mb-2">
-              nos2x (Browser Extension)
-            </h4>
-            <p className="text-purple-100 mb-4">
-              Securely manage your Nostr private key (nsec) in your browser.
-              Lets you sign events and log in to Nostr web apps without
-              exposing your private key, supporting NIP-07 and recommended by
-              the Nostr creator.
-            </p>
-            <a
-              href="https://chrome.google.com/webstore/detail/nos2x/npjnlnbmhklpajfaoolpmpicclnpoiah"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 inline-flex items-center space-x-2"
-            >
-              <Download className="h-5 w-5" />
-              <span>Install nos2x Extension</span>
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </div>
-        </div>
-      </div>
 
       {/* Apps Grid by Category */}
       <div className="space-y-8">
@@ -365,7 +370,9 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
                 {categoryApps.map((app) => (
                   <div
                     key={app.id}
-                    className="bg-white/10 rounded-xl p-6 hover:bg-white/15 transition-all duration-300 border border-white/20"
+                    tabIndex={0}
+                    aria-describedby={`tip-${category.id}-${app.id}`}
+                    className="group relative bg-white/10 rounded-xl p-6 hover:bg-white/15 transition-all duration-300 border border-white/20"
                   >
                     <div className="flex items-start space-x-4 mb-4">
                       <div
@@ -399,6 +406,14 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
                       <span>Open {app.name}</span>
                       <ExternalLink className="h-4 w-4" />
                     </a>
+                    <div
+                      id={`tip-${category.id}-${app.id}`}
+                      role="tooltip"
+                      className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full z-20 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 group-focus-within:opacity-100 group-focus-within:scale-100 transition duration-200 bg-white/90 text-black rounded-lg shadow-lg max-w-xs px-3 py-2 border border-white/30"
+                    >
+                      <p className="text-xs leading-snug">{app.tooltip ?? app.description}</p>
+                    </div>
+
                   </div>
                 ))}
               </div>
