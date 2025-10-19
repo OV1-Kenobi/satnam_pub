@@ -222,12 +222,7 @@ interface PrivacyConfig {
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = import.meta as { env?: Record<string, string> };
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
+  // Server/runtime only: prefer process.env for Netlify Functions and Node
   return process.env[key];
 }
 

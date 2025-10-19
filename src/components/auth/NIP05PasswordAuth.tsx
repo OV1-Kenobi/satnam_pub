@@ -27,6 +27,10 @@ import { useAuth } from './AuthProvider';
 
 import { config } from "../../../config";
 import { resolvePlatformLightningDomain } from '../../config/domain.client';
+import { clientConfig } from '../../config/env.client';
+import { HybridNIP05Verifier } from '../../lib/nip05-verification';
+import { VerificationMethodSelector, type VerificationMethod } from '../identity/VerificationMethodSelector';
+import { VerificationStatusDisplay, type VerificationStatus } from '../identity/VerificationStatusDisplay';
 
 
 
@@ -65,6 +69,27 @@ export function NIP05PasswordAuth({
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [isChanging, setIsChanging] = useState(false);
+
+  // Hybrid verification states (Phase 1 Week 3)
+  const [showVerificationStatus, setShowVerificationStatus] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus | null>(null);
+  const [selectedVerificationMethod, setSelectedVerificationMethod] = useState<VerificationMethod>("auto");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [trustScore, setTrustScore] = useState<number | null>(null);
+  const [trustLevel, setTrustLevel] = useState<"high" | "medium" | "low" | "none" | null>(null);
+
+  // Phase 1 Week 4: Multi-method verification
+  const [hybridVerifierRef] = useState(() => new HybridNIP05Verifier({
+    enableKind0Resolution: true,
+    enablePkarrResolution: true,
+    enableDnsResolution: true,
+    kind0Timeout: 3000,
+    pkarrTimeout: 3000,
+    default_timeout_ms: 5000,
+    cache_duration_ms: 300000,
+    enableMultiMethodVerification: clientConfig.flags.multiMethodVerificationEnabled,
+    requireMinimumTrustLevel: "none", // No minimum by default
+  }));
 
   const mountedRef = useRef(true);
   const closeTimerRef = useRef<number | null>(null);
@@ -122,6 +147,82 @@ export function NIP05PasswordAuth({
     return { valid: true };
   };
 
+  // Perform hybrid identity verification (Phase 1 Week 3 & Week 4)
+  const performHybridVerification = async (identifier: string): Promise<boolean> => {
+    if (!identifier.trim()) {
+      return false;
+    }
+
+    setIsVerifying(true);
+    try {
+      // Check if hybrid verification is enabled via feature flag
+      const hybridEnabled = typeof process !== 'undefined' &&
+        process.env.VITE_HYBRID_IDENTITY_ENABLED === 'true';
+
+      if (!hybridEnabled) {
+        console.log('Hybrid verification disabled via feature flag');
+        return true; // Allow signin even if hybrid verification is disabled
+      }
+
+      // Configure verifier based on selected method
+      // If user selected a specific method (not "auto"), enable only that method
+      if (selectedVerificationMethod !== "auto") {
+        const enableKind0 = selectedVerificationMethod === "kind:0";
+        const enablePkarr = selectedVerificationMethod === "pkarr";
+        const enableDns = selectedVerificationMethod === "dns";
+
+        // Update verifier config to use only the selected method
+        hybridVerifierRef['config'] = {
+          ...hybridVerifierRef['config'],
+          enableKind0Resolution: enableKind0,
+          enablePkarrResolution: enablePkarr,
+          enableDnsResolution: enableDns,
+        };
+
+        console.log(`🔍 Using verification method: ${selectedVerificationMethod}`);
+      }
+
+      // Perform hybrid verification
+      const result = await hybridVerifierRef.verifyHybrid(identifier);
+
+      if (!mountedRef.current) return false;
+
+      setVerificationStatus(result);
+      setShowVerificationStatus(true);
+
+      // Phase 1 Week 4: Capture trust score and level if multi-method verification is enabled
+      if (result.trustScore !== undefined) {
+        setTrustScore(result.trustScore);
+        setTrustLevel(result.trustLevel || "none");
+        console.log(`📊 Trust Score: ${result.trustScore}/100 (${result.trustLevel})`);
+
+        if (result.multiMethodResults) {
+          console.log(`✅ Multi-method verification results:`, {
+            kind0: result.methodAgreement?.kind0 ? '✓' : '✗',
+            pkarr: result.methodAgreement?.pkarr ? '✓' : '✗',
+            dns: result.methodAgreement?.dns ? '✓' : '✗',
+            agreement: result.methodAgreement?.agreementCount,
+          });
+        }
+      } else {
+        // Fallback chain mode
+        console.log(`✅ Verification via ${result.verificationMethod}: ${result.verified ? 'success' : 'failed'}`);
+      }
+
+      return result.verified;
+    } catch (err) {
+      console.error('Hybrid verification error:', err);
+      if (mountedRef.current) {
+        setError('Identity verification failed. Please try again.');
+      }
+      return false;
+    } finally {
+      if (mountedRef.current) {
+        setIsVerifying(false);
+      }
+    }
+  };
+
   // Handle NIP-05/Password Authentication
   const handleNIP05PasswordAuth = async () => {
     if (!nip05.trim() || !password.trim()) {
@@ -146,6 +247,19 @@ export function NIP05PasswordAuth({
     setError(null);
 
     try {
+      // Phase 1 Week 3: Perform hybrid identity verification before authentication
+      const verificationPassed = await performHybridVerification(nip05.trim());
+
+      if (!mountedRef.current) return;
+
+      // If hybrid verification is enabled and failed, don't proceed with authentication
+      if (typeof process !== 'undefined' &&
+        process.env.VITE_HYBRID_IDENTITY_ENABLED === 'true' &&
+        !verificationPassed) {
+        setError('Identity verification failed. Please ensure your identity is properly configured.');
+        return;
+      }
+
       // Use the unified authentication system
       const success = await auth.authenticateNIP05Password(nip05.trim(), password);
 
@@ -285,6 +399,29 @@ export function NIP05PasswordAuth({
             <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center space-x-3">
               <AlertTriangle className="h-5 w-5 text-red-400" />
               <p className="text-red-300 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* Verification Status Display (Phase 1 Week 3) */}
+          {showVerificationStatus && verificationStatus && (
+            <div className="mb-4 bg-purple-900/50 border border-purple-500/30 rounded-lg p-4">
+              <VerificationStatusDisplay
+                status={verificationStatus}
+                showDetails={true}
+                compact={false}
+              />
+            </div>
+          )}
+
+          {/* Verification Method Selector (Phase 1 Week 3) */}
+          {clientConfig.flags.hybridIdentityEnabled && (
+            <div className="mb-4 bg-purple-900/50 border border-purple-500/30 rounded-lg p-4">
+              <VerificationMethodSelector
+                selectedMethod={selectedVerificationMethod}
+                onMethodChange={setSelectedVerificationMethod}
+                enabledMethods={["auto", "kind:0", "pkarr", "dns"]}
+                disabled={isLoading || isVerifying}
+              />
             </div>
           )}
 

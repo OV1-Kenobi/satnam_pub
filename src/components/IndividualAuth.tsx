@@ -5,6 +5,9 @@
 import { AlertTriangle, ArrowRight, Clock, RefreshCw, Shield, Wallet, X, Zap } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 import { IndividualUser } from '../types/auth';
+import AmberConnectButton from "./auth/AmberConnectButton";
+
+
 
 interface IndividualAuthProps {
   mode?: 'modal' | 'page';
@@ -110,6 +113,10 @@ const AuthContent = React.memo<AuthContentProps>(({
             <ArrowRight className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Android Amber signer quick connect (feature-flagged) */}
+        <AmberConnectButton />
+
       </div>
     </div>
   );

@@ -29,6 +29,8 @@ import LNURLDisplay from "./components/LNURLDisplay";
 import NFCProvisioningGuide from "./components/NFCProvisioningGuide";
 import Settings from "./components/Settings";
 
+import AmberIntentCallback from "./components/auth/AmberIntentCallback";
+
 
 import { useAuth } from "./components/auth/AuthProvider";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
@@ -38,10 +40,14 @@ import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 
-import SecureTokenManager from "./lib/auth/secure-token-manager";
 import { validateInvitation } from "./lib/invitation-validator";
 
 import { showToast } from "./services/toastService";
+
+
+import { mountNfcAuthOrchestrator } from "./components/auth/NfcAuthOrchestrator";
+import "./lib/signers/register-signers";
+
 
 
 
@@ -80,6 +86,7 @@ function App() {
     | "lnurl-display"
     | "nfc-provisioning-guide"
     | "settings"
+    | "amber-intent-callback"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
@@ -174,19 +181,29 @@ function App() {
     window.addEventListener('satnam:open-signin', handler as EventListener);
     return () => window.removeEventListener('satnam:open-signin', handler as EventListener);
   }, []);
-
-
-  // Auto-close transient modals when navigating to new views
+  // Mount global NFC auth orchestrator once
   useEffect(() => {
-    // Close communications overlay if navigating elsewhere
-    if (showCommunications && currentView !== 'communications') {
-      setShowCommunications(false);
+    try {
+      mountNfcAuthOrchestrator();
+    } catch (e) {
+      console.warn("NFC orchestrator mount failed", e);
     }
-    // Close contacts modal when leaving landing
-    if (showContactsModal && currentView !== 'landing' && currentView !== 'contacts') {
-      setShowContactsModal(false);
-    }
-  }, [currentView, showCommunications, showContactsModal]);
+
+  }, []);
+
+  // Detect Amber intent callback path and route to handler view
+  useEffect(() => {
+    try {
+      if (
+        typeof window !== "undefined" &&
+        window.location?.pathname === "/amber-intent-callback"
+      ) {
+        setCurrentView("amber-intent-callback");
+      }
+    } catch { }
+  }, []);
+
+
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
@@ -196,24 +213,6 @@ function App() {
       return;
     }
 
-    // Defensive route protection: allow proceed if a valid token exists even if flag lags
-    if (!authenticated) {
-      const token = SecureTokenManager.getAccessToken();
-      const payload = token ? SecureTokenManager.parseTokenPayload(token) : null;
-      const tokenValid = !!payload && payload.exp * 1000 > Date.now();
-
-      console.log('🧭 Route guard state:', { authenticated, hasToken: !!token, tokenValid });
-
-      if (tokenValid) {
-        console.log('🔐 Valid token detected, proceeding despite auth flag lag:', destination);
-        // fall through to navigation below
-      } else {
-        console.log('🚫 User not authenticated, showing SignInModal for destination:', destination);
-        setSignInModalOpen(true);
-        setPendingDestination(destination);
-        return;
-      }
-    }
 
     console.log('✅ User authenticated (or token valid), proceeding to destination:', destination);
 
@@ -984,7 +983,7 @@ function App() {
             id: "current-user",
             npub: "npub1placeholder",
             username: "Current User",
-            role: "adult"
+            role: "adult",
           }}
         />
       </PageWrapper>
@@ -992,6 +991,10 @@ function App() {
   }
 
 
+
+  if (currentView === "amber-intent-callback") {
+    return <AmberIntentCallback />;
+  }
 
   return (
     <div className="min-h-screen relative overflow-hidden">

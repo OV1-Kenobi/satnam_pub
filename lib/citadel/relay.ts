@@ -48,20 +48,12 @@ export class CitadelRelay {
         }
       }
 
-      }
-  
       // Fallback to centralized relay configuration (first configured relay)
-      if (!config.nostr?.relays?.length) {
-        throw new Error("No relay URLs configured in config.nostr.relays");
-      }
       return config.nostr.relays[0];
     } catch (error) {
       console.warn("Error fetching relay URL from database:", error);
-      if (!config.nostr?.relays?.length) {
-        throw new Error("No relay URLs configured in config.nostr.relays");
-      }
       return config.nostr.relays[0];
-    }    }
+    }
   }
 
   /**

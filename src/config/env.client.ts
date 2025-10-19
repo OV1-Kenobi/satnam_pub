@@ -18,11 +18,39 @@ export type ClientConfig = {
   };
   flags: {
     lnbitsEnabled: boolean;
+    amberSigningEnabled: boolean;
+    hybridIdentityEnabled: boolean; // Phase 1: Hybrid NIP-05 verification (kind:0 → PKARR → DNS)
+    pkarrEnabled: boolean; // Phase 1: BitTorrent DHT PKARR integration
+    multiMethodVerificationEnabled: boolean; // Phase 1 Week 4: Parallel multi-method verification with trust scoring
   };
 };
 
 const LNBITS_ENABLED =
   ((process.env.VITE_LNBITS_INTEGRATION_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Amber Android signer integration (NIP-46/NIP-55) feature flag; default: false (opt-in)
+const AMBER_SIGNING_ENABLED =
+  ((process.env.VITE_ENABLE_AMBER_SIGNING as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: Hybrid identity verification (kind:0 → PKARR → DNS); default: false
+const HYBRID_IDENTITY_ENABLED =
+  ((process.env.VITE_HYBRID_IDENTITY_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: BitTorrent DHT PKARR integration; default: false
+const PKARR_ENABLED =
+  ((process.env.VITE_PKARR_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1 Week 4: Parallel multi-method verification with trust scoring; default: false
+const MULTI_METHOD_VERIFICATION_ENABLED =
+  ((process.env.VITE_MULTI_METHOD_VERIFICATION_ENABLED as string) || "false")
     .toString()
     .toLowerCase() === "true";
 
@@ -42,6 +70,10 @@ export const clientConfig: ClientConfig = {
   },
   flags: {
     lnbitsEnabled: LNBITS_ENABLED,
+    amberSigningEnabled: AMBER_SIGNING_ENABLED,
+    hybridIdentityEnabled: HYBRID_IDENTITY_ENABLED,
+    pkarrEnabled: PKARR_ENABLED,
+    multiMethodVerificationEnabled: MULTI_METHOD_VERIFICATION_ENABLED,
   },
 } as const;
 

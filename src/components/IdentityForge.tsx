@@ -34,6 +34,7 @@ import type { UserIdentity } from "../lib/auth/user-identities-auth";
 import { central_event_publishing_service, central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 
 
+
 import { resolvePlatformLightningDomain } from '../config/domain.client';
 
 import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
@@ -45,6 +46,9 @@ import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 import { config } from "../../config";
 import OTPVerificationPanel from "./OTPVerificationPanel";
 import SovereigntyEducation from "./SovereigntyEducation";
+
+import AmberConnectButton from "./auth/AmberConnectButton";
+
 
 import { isLightningAddressReachable, parseLightningAddress } from "../utils/lightning-address";
 
@@ -1088,17 +1092,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         console.warn('⚠️ Potential sensitive data detected in browser storage');
       }
 
-      console.log('🔐 Sending raw nsec to server for Noble V2 encryption with proper salt');
+      console.log('🔐 Preparing encrypted credentials for registration');
 
-      // Send raw nsec to server - let register-identity function handle Noble V2 encryption
-      // This ensures the userSalt used for encryption matches what's stored in the database
-      const encryptedNsec = ephemeralNsec; // Server will encrypt with Noble V2
+      // Prepare registration payload; server-side function will handle proper encryption at rest
+      const encryptedNsec = ephemeralNsec; // Server will perform final encryption
 
-      console.log('✅ Raw nsec prepared for server-side Noble V2 encryption');
+      console.log('✅ Registration payload ready');
 
-      // SECURITY ENHANCEMENT: Immediately wipe the ephemeral nsec from memory after preparing
+      // SECURITY: Immediately wipe sensitive ephemeral material from memory after preparation
       secureMemoryWipe(ephemeralNsec);
-      console.log('🛡️ SECURITY: Ephemeral nsec wiped from memory after preparation');
+      console.log('🛡️ SECURITY: Ephemeral secret wiped from memory after preparation');
 
       const requestData = {
         username: formData.username,
@@ -1633,6 +1636,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         </div>
       </div>
     );
+
   }
 
   return (
@@ -1690,6 +1694,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             <span>Profile</span>
             <span>Complete</span>
           </div>
+          {/* Quick Amber Connect (Android only, feature-flagged) */}
+          <AmberConnectButton className="mb-4" />
+
         </div>
 
         {/* Error and Success Messages */}

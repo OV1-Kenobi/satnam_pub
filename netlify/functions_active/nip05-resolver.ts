@@ -1,15 +1,17 @@
 /*
- * NIP-05 → DID resolver service
- * GET /.netlify/functions/nip05-resolver?nip05=username@domain
+ * NIP-05 → DID resolver service with Hybrid Verification Support
+ * GET /.netlify/functions/nip05-resolver?nip05=username@domain&hybrid=true&pubkey=...
  *
  * - Resolves did:scid from the DID document hosted at the nip05 domain
  * - Returns did.json mirror URLs discovered via alsoKnownAs (?src=)
  * - Returns issuer_registry verification status if available
+ * - Phase 1: Supports hybrid verification (kind:0 → PKARR → DNS) when hybrid=true
  * - Pure ESM, uses process.env, rate limited, CORS, cache headers
  */
 
 import type { Handler } from "@netlify/functions";
 import { getRequestClient } from "./supabase.js";
+import { getEnvVar } from "./utils/env.js";
 import { allowRequest } from "./utils/rate-limiter.js";
 
 const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
@@ -72,6 +74,13 @@ export const handler: Handler = async (event) => {
   const nip05 = (event.queryStringParameters?.nip05 || "").trim();
   if (!nip05)
     return badRequest({ error: "Missing nip05 query parameter" }, 422);
+
+  // Phase 1: Check for hybrid verification request
+  const hybridEnabled = getEnvVar("VITE_HYBRID_IDENTITY_ENABLED") === "true";
+  const useHybrid =
+    hybridEnabled &&
+    (event.queryStringParameters?.hybrid || "").toLowerCase() === "true";
+  const pubkey = (event.queryStringParameters?.pubkey || "").trim();
 
   // Rate limit per IP
   const xfwd =
@@ -147,16 +156,28 @@ export const handler: Handler = async (event) => {
       "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
     };
 
+    // Phase 1: Add hybrid verification metadata if requested
+    const responseData: any = {
+      nip05,
+      didScid: didScidCore,
+      mirrors: mirrorSrcs.length > 0 ? mirrorSrcs : [didJsonUrl],
+      issuerRegistryStatus,
+    };
+
+    if (useHybrid && pubkey) {
+      responseData.hybridVerification = {
+        enabled: true,
+        pubkey,
+        verificationMethods: ["kind:0", "pkarr", "dns"],
+        status: "pending", // Will be resolved client-side
+      };
+    }
+
     return json(
       200,
       {
         success: true,
-        data: {
-          nip05,
-          didScid: didScidCore,
-          mirrors: mirrorSrcs.length > 0 ? mirrorSrcs : [didJsonUrl],
-          issuerRegistryStatus,
-        },
+        data: responseData,
       },
       cacheHeaders
     );

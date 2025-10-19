@@ -6,6 +6,10 @@
 
 // Removed invalid import of non-existent module "./nostr-browser"
 
+// Phase 1: Import CEPS for kind:0 resolution
+import { CentralEventPublishingService } from "../../lib/central_event_publishing_service";
+// Note: PubkyDHTClient is imported dynamically in tryPkarrResolution() to avoid bundling server-side code
+
 export interface NIP05VerificationResult {
   verified: boolean;
   pubkey?: string;
@@ -590,3 +594,870 @@ export const nip05Utils = {
     return match ? match[1] : null;
   },
 };
+
+/**
+ * Single method verification result
+ * Phase 1 Week 4: Multi-method verification with progressive trust
+ */
+export interface MethodVerificationResult {
+  method: "kind:0" | "pkarr" | "dns";
+  verified: boolean;
+  pubkey?: string;
+  nip05?: string;
+  name?: string;
+  picture?: string;
+  about?: string;
+  error?: string;
+  response_time_ms: number;
+  timestamp: number;
+}
+
+/**
+ * Hybrid NIP-05 Verifier Result
+ * Phase 1 Week 4: Includes multi-method results and trust score
+ */
+export interface HybridVerificationResult {
+  verified: boolean;
+  pubkey?: string;
+  nip05?: string;
+  name?: string;
+  picture?: string;
+  about?: string;
+  verificationMethod: "kind:0" | "pkarr" | "dns" | "none";
+  error?: string;
+  verification_timestamp: number;
+  response_time_ms: number;
+  // Phase 1 Week 4: Multi-method verification fields
+  multiMethodResults?: MethodVerificationResult[];
+  trustScore?: number; // 0-100: 100 = all methods agree, 0 = all failed
+  trustLevel?: "high" | "medium" | "low" | "none"; // Based on method agreement
+  methodAgreement?: {
+    kind0?: boolean;
+    pkarr?: boolean;
+    dns?: boolean;
+    agreementCount?: number; // How many methods agree
+  };
+}
+
+export interface HybridVerificationConfig extends NIP05VerificationConfig {
+  enableKind0Resolution?: boolean;
+  enablePkarrResolution?: boolean;
+  enableDnsResolution?: boolean;
+  kind0Timeout?: number;
+  pkarrTimeout?: number;
+  // Phase 1 Week 4: Multi-method verification config
+  enableMultiMethodVerification?: boolean;
+  requireMinimumTrustLevel?: "high" | "medium" | "low" | "none";
+}
+
+export class HybridNIP05Verifier {
+  private config: HybridVerificationConfig;
+  private verificationCache: Map<string, HybridVerificationResult> = new Map();
+  private dnsVerifier: NIP05VerificationService;
+
+  constructor(config?: Partial<HybridVerificationConfig>) {
+    this.config = {
+      default_timeout_ms: 5000,
+      max_retries: 3,
+      retry_delay_ms: 1000,
+      cache_duration_ms: 300000, // 5 minutes
+      enableKind0Resolution: true,
+      enablePkarrResolution: true,
+      enableDnsResolution: true,
+      kind0Timeout: 3000,
+      pkarrTimeout: 3000,
+      // Phase 1 Week 4: Multi-method verification
+      enableMultiMethodVerification: false, // Disabled by default, enable via feature flag
+      requireMinimumTrustLevel: "none", // No minimum trust level by default
+      ...config,
+    };
+    this.dnsVerifier = new NIP05VerificationService(config);
+  }
+
+  /**
+   * Verify identity using hybrid method
+   * Phase 1 Week 4: Supports both fallback chain and parallel multi-method verification
+   *
+   * If enableMultiMethodVerification is true:
+   *   - Executes all methods in parallel
+   *   - Calculates trust score based on method agreement
+   *   - Returns results from all methods
+   *
+   * If enableMultiMethodVerification is false (default):
+   *   - Uses original fallback chain: kind:0 → PKARR → DNS
+   *   - Stops at first successful method
+   */
+  async verifyHybrid(
+    identifier: string,
+    expectedPubkey?: string
+  ): Promise<HybridVerificationResult> {
+    const startTime = Date.now();
+
+    try {
+      // Check cache first
+      const cached = this.getCachedVerification(identifier);
+      if (cached) {
+        return {
+          ...cached,
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+
+      // Phase 1 Week 4: Use multi-method verification if enabled
+      if (this.config.enableMultiMethodVerification) {
+        return await this.verifyHybridMultiMethod(
+          identifier,
+          expectedPubkey,
+          startTime
+        );
+      }
+
+      // Original fallback chain behavior
+      return await this.verifyHybridFallbackChain(
+        identifier,
+        expectedPubkey,
+        startTime
+      );
+    } catch (error) {
+      return {
+        verified: false,
+        verificationMethod: "none",
+        error: error instanceof Error ? error.message : "Verification failed",
+        verification_timestamp: Math.floor(Date.now() / 1000),
+        response_time_ms: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Phase 1 Week 4: Parallel multi-method verification with trust scoring
+   */
+  private async verifyHybridMultiMethod(
+    identifier: string,
+    expectedPubkey: string | undefined,
+    startTime: number
+  ): Promise<HybridVerificationResult> {
+    const methodResults: MethodVerificationResult[] = [];
+
+    // Execute all methods in parallel
+    const promises: Promise<MethodVerificationResult | null>[] = [];
+
+    if (this.config.enableKind0Resolution && expectedPubkey) {
+      promises.push(
+        this.tryKind0ResolutionMultiMethod(expectedPubkey, identifier)
+      );
+    }
+
+    if (this.config.enablePkarrResolution && expectedPubkey) {
+      promises.push(
+        this.tryPkarrResolutionMultiMethod(expectedPubkey, identifier)
+      );
+    }
+
+    if (this.config.enableDnsResolution) {
+      promises.push(this.tryDnsResolutionMultiMethod(identifier));
+    }
+
+    // Wait for all methods to complete
+    const results = await Promise.allSettled(promises);
+
+    // Collect results
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        methodResults.push(result.value);
+      }
+    }
+
+    // Calculate trust score and agreement
+    const { trustScore, trustLevel, methodAgreement, primaryResult } =
+      this.calculateTrustScore(methodResults, identifier);
+
+    // Determine overall verification status
+    const verified =
+      trustLevel !== "none" &&
+      (this.config.requireMinimumTrustLevel === "none" ||
+        this.meetsMinimumTrustLevel(trustLevel));
+
+    // Cache the result
+    const result: HybridVerificationResult = {
+      verified,
+      pubkey: primaryResult?.pubkey,
+      nip05: primaryResult?.nip05,
+      name: primaryResult?.name,
+      picture: primaryResult?.picture,
+      about: primaryResult?.about,
+      verificationMethod: primaryResult?.method || "none",
+      error: verified
+        ? undefined
+        : "Verification failed or trust level too low",
+      verification_timestamp: Math.floor(Date.now() / 1000),
+      response_time_ms: Date.now() - startTime,
+      multiMethodResults: methodResults,
+      trustScore,
+      trustLevel,
+      methodAgreement,
+    };
+
+    this.cacheVerification(identifier, result);
+    return result;
+  }
+
+  /**
+   * Original fallback chain verification (backward compatible)
+   */
+  private async verifyHybridFallbackChain(
+    identifier: string,
+    expectedPubkey: string | undefined,
+    startTime: number
+  ): Promise<HybridVerificationResult> {
+    // Try kind:0 resolution first (if enabled)
+    if (this.config.enableKind0Resolution && expectedPubkey) {
+      const kind0Result = await this.tryKind0Resolution(
+        expectedPubkey,
+        identifier
+      );
+      if (kind0Result.verified) {
+        this.cacheVerification(identifier, kind0Result);
+        return {
+          ...kind0Result,
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+    }
+
+    // Try PKARR resolution (if enabled)
+    if (this.config.enablePkarrResolution && expectedPubkey) {
+      const pkarrResult = await this.tryPkarrResolution(
+        expectedPubkey,
+        identifier
+      );
+      if (pkarrResult.verified) {
+        this.cacheVerification(identifier, pkarrResult);
+        return {
+          ...pkarrResult,
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+    }
+
+    // Fall back to DNS resolution (if enabled)
+    if (this.config.enableDnsResolution) {
+      const dnsResult = await this.tryDnsResolution(identifier);
+      if (dnsResult.verified) {
+        this.cacheVerification(identifier, dnsResult);
+        return {
+          ...dnsResult,
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+    }
+
+    // All methods failed
+    return {
+      verified: false,
+      verificationMethod: "none",
+      error: "All verification methods failed",
+      verification_timestamp: Math.floor(Date.now() / 1000),
+      response_time_ms: Date.now() - startTime,
+    };
+  }
+
+  /**
+   * Try kind:0 metadata resolution
+   * Phase 1: Resolve identity from Nostr kind:0 metadata events
+   */
+  private async tryKind0Resolution(
+    pubkey: string,
+    identifier: string
+  ): Promise<HybridVerificationResult> {
+    const startTime = Date.now();
+    try {
+      // Create CEPS instance for kind:0 resolution
+      const ceps = new CentralEventPublishingService();
+
+      // Create timeout promise
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), this.config.kind0Timeout || 3000);
+      });
+
+      // Race between resolution and timeout
+      const kind0Result = await Promise.race([
+        ceps.resolveIdentityFromKind0(pubkey),
+        timeoutPromise,
+      ]);
+
+      // Handle timeout
+      if (!kind0Result) {
+        return {
+          verified: false,
+          verificationMethod: "kind:0",
+          error: "kind:0 resolution timeout",
+          verification_timestamp: Math.floor(Date.now() / 1000),
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+
+      // Handle resolution failure
+      if (!kind0Result.success) {
+        return {
+          verified: false,
+          verificationMethod: "kind:0",
+          error: kind0Result.error || "kind:0 resolution failed",
+          verification_timestamp: Math.floor(Date.now() / 1000),
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+
+      // Verify NIP-05 matches identifier if provided
+      if (kind0Result.nip05 && identifier) {
+        const identifierMatch =
+          kind0Result.nip05.toLowerCase() === identifier.toLowerCase();
+        if (!identifierMatch) {
+          return {
+            verified: false,
+            verificationMethod: "kind:0",
+            error: "NIP-05 mismatch: kind:0 metadata does not match identifier",
+            verification_timestamp: Math.floor(Date.now() / 1000),
+            response_time_ms: Date.now() - startTime,
+          };
+        }
+      }
+
+      // Successful verification
+      return {
+        verified: true,
+        pubkey,
+        nip05: kind0Result.nip05,
+        name: kind0Result.name,
+        picture: kind0Result.picture,
+        about: kind0Result.about,
+        verificationMethod: "kind:0",
+        verification_timestamp: Math.floor(Date.now() / 1000),
+        response_time_ms: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        verified: false,
+        verificationMethod: "kind:0",
+        error:
+          error instanceof Error ? error.message : "kind:0 resolution failed",
+        verification_timestamp: Math.floor(Date.now() / 1000),
+        response_time_ms: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Try PKARR resolution
+   * Phase 1: Resolve identity from BitTorrent DHT PKARR records
+   */
+  private async tryPkarrResolution(
+    pubkey: string,
+    identifier: string
+  ): Promise<HybridVerificationResult> {
+    const startTime = Date.now();
+    try {
+      // Dynamically import PubkyDHTClient to avoid bundling server-side code
+      const { PubkyDHTClient } = await import(
+        "../../lib/pubky-enhanced-client"
+      );
+
+      // Create PubkyDHTClient instance for PKARR resolution
+      const dhtClient = new PubkyDHTClient(
+        ["https://pkarr.relay.pubky.tech", "https://pkarr.relay.synonym.to"],
+        3600000, // 1 hour cache TTL
+        this.config.pkarrTimeout || 3000, // timeout
+        false // debug
+      );
+
+      // Create timeout promise
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), this.config.pkarrTimeout || 3000);
+      });
+
+      // Race between resolution and timeout
+      const pkarrRecord = await Promise.race([
+        dhtClient.resolveRecord(pubkey),
+        timeoutPromise,
+      ]);
+
+      // Handle timeout
+      if (!pkarrRecord) {
+        return {
+          verified: false,
+          verificationMethod: "pkarr",
+          error: "PKARR resolution timeout",
+          verification_timestamp: Math.floor(Date.now() / 1000),
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+
+      // Parse PKARR records to find NIP-05 or identity information
+      let nip05: string | undefined;
+      let resolvedPubkey: string | undefined;
+
+      for (const record of pkarrRecord.records) {
+        // Look for TXT records containing NIP-05 or identity info
+        if (record.type === "TXT") {
+          try {
+            const parsed = JSON.parse(record.value);
+            if (parsed.nip05) nip05 = parsed.nip05;
+            if (parsed.pubkey) resolvedPubkey = parsed.pubkey;
+          } catch {
+            // Not JSON, try direct NIP-05 format
+            if (record.value.includes("@")) {
+              nip05 = record.value;
+            }
+          }
+        }
+      }
+
+      // Verify NIP-05 matches identifier if found
+      if (nip05 && identifier) {
+        const identifierMatch =
+          nip05.toLowerCase() === identifier.toLowerCase();
+        if (!identifierMatch) {
+          return {
+            verified: false,
+            verificationMethod: "pkarr",
+            error: "NIP-05 mismatch: PKARR record does not match identifier",
+            verification_timestamp: Math.floor(Date.now() / 1000),
+            response_time_ms: Date.now() - startTime,
+          };
+        }
+      }
+
+      // Verify pubkey matches if found
+      if (resolvedPubkey && resolvedPubkey !== pubkey) {
+        return {
+          verified: false,
+          verificationMethod: "pkarr",
+          error: "Pubkey mismatch: PKARR record pubkey does not match",
+          verification_timestamp: Math.floor(Date.now() / 1000),
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+
+      // Successful verification
+      return {
+        verified: true,
+        pubkey,
+        nip05,
+        verificationMethod: "pkarr",
+        verification_timestamp: Math.floor(Date.now() / 1000),
+        response_time_ms: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        verified: false,
+        verificationMethod: "pkarr",
+        error:
+          error instanceof Error ? error.message : "PKARR resolution failed",
+        verification_timestamp: Math.floor(Date.now() / 1000),
+        response_time_ms: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Try DNS resolution (fallback)
+   * Phase 1: Fallback to traditional DNS-based NIP-05 verification
+   */
+  private async tryDnsResolution(
+    identifier: string
+  ): Promise<HybridVerificationResult> {
+    const startTime = Date.now();
+    try {
+      // Create timeout promise for DNS resolution
+      const timeoutPromise = new Promise<NIP05VerificationResult>((resolve) => {
+        setTimeout(() => {
+          resolve({
+            verified: false,
+            error: "DNS resolution timeout",
+            verification_timestamp: Math.floor(Date.now() / 1000),
+            response_time_ms: Date.now() - startTime,
+          });
+        }, this.config.default_timeout_ms || 5000);
+      });
+
+      // Race between DNS verification and timeout
+      const dnsResult = await Promise.race([
+        this.dnsVerifier.verifyNIP05({
+          identifier,
+          timeout_ms: this.config.default_timeout_ms,
+        }),
+        timeoutPromise,
+      ]);
+
+      // Map DNS verification result to hybrid result
+      return {
+        verified: dnsResult.verified,
+        pubkey: dnsResult.pubkey,
+        nip05: identifier,
+        verificationMethod: "dns",
+        error: dnsResult.error,
+        verification_timestamp: dnsResult.verification_timestamp,
+        response_time_ms: dnsResult.response_time_ms,
+      };
+    } catch (error) {
+      return {
+        verified: false,
+        verificationMethod: "dns",
+        error: error instanceof Error ? error.message : "DNS resolution failed",
+        verification_timestamp: Math.floor(Date.now() / 1000),
+        response_time_ms: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Phase 1 Week 4: Multi-method version of kind:0 resolution
+   * Returns MethodVerificationResult instead of HybridVerificationResult
+   */
+  private async tryKind0ResolutionMultiMethod(
+    pubkey: string,
+    identifier: string
+  ): Promise<MethodVerificationResult | null> {
+    const startTime = Date.now();
+    try {
+      const ceps = new CentralEventPublishingService();
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), this.config.kind0Timeout || 3000);
+      });
+
+      const kind0Result = await Promise.race([
+        ceps.resolveIdentityFromKind0(pubkey),
+        timeoutPromise,
+      ]);
+
+      if (!kind0Result) {
+        return {
+          method: "kind:0",
+          verified: false,
+          error: "kind:0 resolution timeout",
+          response_time_ms: Date.now() - startTime,
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+      }
+
+      if (!kind0Result.success) {
+        return {
+          method: "kind:0",
+          verified: false,
+          error: kind0Result.error || "kind:0 resolution failed",
+          response_time_ms: Date.now() - startTime,
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+      }
+
+      if (kind0Result.nip05 && identifier) {
+        const identifierMatch =
+          kind0Result.nip05.toLowerCase() === identifier.toLowerCase();
+        if (!identifierMatch) {
+          return {
+            method: "kind:0",
+            verified: false,
+            error: "NIP-05 mismatch",
+            response_time_ms: Date.now() - startTime,
+            timestamp: Math.floor(Date.now() / 1000),
+          };
+        }
+      }
+
+      return {
+        method: "kind:0",
+        verified: true,
+        pubkey,
+        nip05: kind0Result.nip05,
+        name: kind0Result.name,
+        picture: kind0Result.picture,
+        about: kind0Result.about,
+        response_time_ms: Date.now() - startTime,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+    } catch (error) {
+      return {
+        method: "kind:0",
+        verified: false,
+        error:
+          error instanceof Error ? error.message : "kind:0 resolution failed",
+        response_time_ms: Date.now() - startTime,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+    }
+  }
+
+  /**
+   * Phase 1 Week 4: Multi-method version of PKARR resolution
+   */
+  private async tryPkarrResolutionMultiMethod(
+    pubkey: string,
+    identifier: string
+  ): Promise<MethodVerificationResult | null> {
+    const startTime = Date.now();
+    try {
+      // Dynamically import PubkyDHTClient to avoid bundling server-side code
+      const { PubkyDHTClient } = await import(
+        "../../lib/pubky-enhanced-client"
+      );
+
+      const dhtClient = new PubkyDHTClient(
+        ["https://pkarr.relay.pubky.tech", "https://pkarr.relay.synonym.to"],
+        3600000,
+        this.config.pkarrTimeout || 3000,
+        false
+      );
+
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), this.config.pkarrTimeout || 3000);
+      });
+
+      const pkarrRecord = await Promise.race([
+        dhtClient.resolveRecord(pubkey),
+        timeoutPromise,
+      ]);
+
+      if (!pkarrRecord) {
+        return {
+          method: "pkarr",
+          verified: false,
+          error: "PKARR resolution timeout",
+          response_time_ms: Date.now() - startTime,
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+      }
+
+      let nip05: string | undefined;
+      let resolvedPubkey: string | undefined;
+
+      for (const record of pkarrRecord.records) {
+        if (record.type === "TXT") {
+          try {
+            const parsed = JSON.parse(record.value);
+            if (parsed.nip05) nip05 = parsed.nip05;
+            if (parsed.pubkey) resolvedPubkey = parsed.pubkey;
+          } catch {
+            if (record.value.includes("@")) {
+              nip05 = record.value;
+            }
+          }
+        }
+      }
+
+      if (nip05 && identifier) {
+        const identifierMatch =
+          nip05.toLowerCase() === identifier.toLowerCase();
+        if (!identifierMatch) {
+          return {
+            method: "pkarr",
+            verified: false,
+            error: "NIP-05 mismatch",
+            response_time_ms: Date.now() - startTime,
+            timestamp: Math.floor(Date.now() / 1000),
+          };
+        }
+      }
+
+      if (resolvedPubkey && resolvedPubkey !== pubkey) {
+        return {
+          method: "pkarr",
+          verified: false,
+          error: "Pubkey mismatch",
+          response_time_ms: Date.now() - startTime,
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+      }
+
+      return {
+        method: "pkarr",
+        verified: true,
+        pubkey,
+        nip05,
+        response_time_ms: Date.now() - startTime,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+    } catch (error) {
+      return {
+        method: "pkarr",
+        verified: false,
+        error:
+          error instanceof Error ? error.message : "PKARR resolution failed",
+        response_time_ms: Date.now() - startTime,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+    }
+  }
+
+  /**
+   * Phase 1 Week 4: Multi-method version of DNS resolution
+   */
+  private async tryDnsResolutionMultiMethod(
+    identifier: string
+  ): Promise<MethodVerificationResult | null> {
+    const startTime = Date.now();
+    try {
+      const dnsResult = await this.tryDnsResolution(identifier);
+
+      return {
+        method: "dns",
+        verified: dnsResult.verified,
+        pubkey: dnsResult.pubkey,
+        nip05: identifier,
+        error: dnsResult.error,
+        response_time_ms: Date.now() - startTime,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+    } catch (error) {
+      return {
+        method: "dns",
+        verified: false,
+        error: error instanceof Error ? error.message : "DNS resolution failed",
+        response_time_ms: Date.now() - startTime,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+    }
+  }
+
+  /**
+   * Phase 1 Week 4: Calculate trust score based on method agreement
+   * Returns trust score (0-100), trust level, and method agreement details
+   */
+  private calculateTrustScore(
+    methodResults: MethodVerificationResult[],
+    identifier: string
+  ): {
+    trustScore: number;
+    trustLevel: "high" | "medium" | "low" | "none";
+    methodAgreement: {
+      kind0?: boolean;
+      pkarr?: boolean;
+      dns?: boolean;
+      agreementCount?: number;
+    };
+    primaryResult?: MethodVerificationResult;
+  } {
+    if (methodResults.length === 0) {
+      return {
+        trustScore: 0,
+        trustLevel: "none",
+        methodAgreement: { agreementCount: 0 },
+      };
+    }
+
+    // Count verified methods
+    const verifiedMethods = methodResults.filter((r) => r.verified);
+    const agreementCount = verifiedMethods.length;
+
+    // Check if all verified methods agree on NIP-05
+    let allAgree = true;
+    if (verifiedMethods.length > 1) {
+      const firstNip05 = verifiedMethods[0].nip05?.toLowerCase();
+      allAgree = verifiedMethods.every(
+        (r) => r.nip05?.toLowerCase() === firstNip05
+      );
+    }
+
+    // Calculate trust score
+    let trustScore = 0;
+    let trustLevel: "high" | "medium" | "low" | "none" = "none";
+
+    if (agreementCount === 3 && allAgree) {
+      // All three methods agree - highest trust
+      trustScore = 100;
+      trustLevel = "high";
+    } else if (agreementCount === 2 && allAgree) {
+      // Two methods agree - medium trust
+      trustScore = 75;
+      trustLevel = "medium";
+    } else if (agreementCount === 1) {
+      // Only one method succeeded - low trust
+      trustScore = 50;
+      trustLevel = "low";
+    } else if (agreementCount > 0 && !allAgree) {
+      // Methods disagree - low trust
+      trustScore = 25;
+      trustLevel = "low";
+    }
+
+    // Build method agreement object
+    const methodAgreement: {
+      kind0?: boolean;
+      pkarr?: boolean;
+      dns?: boolean;
+      agreementCount?: number;
+    } = { agreementCount };
+
+    for (const result of methodResults) {
+      if (result.method === "kind:0") methodAgreement.kind0 = result.verified;
+      if (result.method === "pkarr") methodAgreement.pkarr = result.verified;
+      if (result.method === "dns") methodAgreement.dns = result.verified;
+    }
+
+    // Select primary result (prefer higher trust methods)
+    let primaryResult = verifiedMethods[0];
+    if (verifiedMethods.length > 1) {
+      // Prefer kind:0 > pkarr > dns
+      primaryResult =
+        verifiedMethods.find((r) => r.method === "kind:0") ||
+        verifiedMethods.find((r) => r.method === "pkarr") ||
+        verifiedMethods[0];
+    }
+
+    return {
+      trustScore,
+      trustLevel,
+      methodAgreement,
+      primaryResult,
+    };
+  }
+
+  /**
+   * Phase 1 Week 4: Check if trust level meets minimum requirement
+   */
+  private meetsMinimumTrustLevel(
+    trustLevel: "high" | "medium" | "low" | "none"
+  ): boolean {
+    const minimumRequired = this.config.requireMinimumTrustLevel || "none";
+
+    const trustLevelOrder = { none: 0, low: 1, medium: 2, high: 3 };
+    const currentLevel = trustLevelOrder[trustLevel];
+    const minimumLevel = trustLevelOrder[minimumRequired];
+
+    return currentLevel >= minimumLevel;
+  }
+
+  /**
+   * Get cached verification result
+   */
+  private getCachedVerification(
+    identifier: string
+  ): HybridVerificationResult | null {
+    const cached = this.verificationCache.get(identifier);
+    if (
+      cached &&
+      cached.verification_timestamp * 1000 + this.config.cache_duration_ms >
+        Date.now()
+    ) {
+      return cached;
+    }
+    this.verificationCache.delete(identifier);
+    return null;
+  }
+
+  /**
+   * Cache verification result
+   */
+  private cacheVerification(
+    identifier: string,
+    result: HybridVerificationResult
+  ): void {
+    this.verificationCache.set(identifier, result);
+  }
+
+  /**
+   * Clear cache
+   */
+  clearCache(): void {
+    this.verificationCache.clear();
+  }
+}

@@ -40,6 +40,32 @@ import { secureNsecManager } from "../src/lib/secure-nsec-manager";
 
 import type { MessageSendResult } from "../src/lib/messaging/types";
 
+import type {
+  SignAction,
+  SignerAdapter,
+  TSignerCapability as SignerCapability,
+  SignerStatus,
+  SigningMethodId,
+} from "../src/lib/signers/signer-adapter";
+
+// Read boolean feature flags from environment (Vite injects VITE_* into process.env for browser builds)
+function getEnvFlag(key: string, defaultVal: boolean): boolean {
+  try {
+    const im: any =
+      typeof import.meta !== "undefined" ? (import.meta as any) : null;
+    const v =
+      (im && im.env ? im.env[key] : undefined) ??
+      (typeof process !== "undefined"
+        ? (process as any)?.env?.[key]
+        : undefined);
+    if (v == null) return defaultVal;
+    const s = String(v).toLowerCase();
+    return s === "1" || s === "true" || s === "yes";
+  } catch {
+    return defaultVal;
+  }
+}
+
 // Privacy utilities (Web Crypto)
 export class PrivacyUtils {
   static async hashIdentifier(input: string): Promise<string> {
@@ -389,6 +415,7 @@ export type OTPDeliveryResult = {
   messageId?: string;
   expiresAt?: Date;
   messageType?: "gift-wrap" | "nip04";
+
   error?: string;
 };
 
@@ -407,6 +434,22 @@ export class CentralEventPublishingService {
   // Relay discovery cache (kind:10050 inbox relays), TTL 10 minutes
   private relayCache: Map<string, { relays: string[]; expiresAt: number }> =
     new Map();
+
+  // Registered external signer adapters (NIP-07, Amber, NTAG424, etc.)
+  private externalSigners: SignerAdapter[] = [];
+
+  // ---- NIP-46 (Nostr Connect) ephemeral pairing state ----
+  private nip46ClientPrivHex: string | null = null;
+  private nip46ClientPubHex: string | null = null;
+  private nip46SignerPubHex: string | null = null;
+  private nip46SecretHex: string | null = null;
+  private nip46Relays: string[] = [];
+  private nip46Encryption: "nip04" | "nip44" = "nip04";
+  private nip46Pending: Map<
+    string,
+    { resolve: (v: any) => void; reject: (e: any) => void; timer: any }
+  > = new Map();
+  private nip46Unsubscribe: (() => void) | null = null;
 
   constructor() {
     this.relays = defaultRelays();
@@ -1077,6 +1120,98 @@ export class CentralEventPublishingService {
     throw lastError || new Error("Max retries exceeded");
   }
 
+  /**
+   * Resolve identity from Nostr kind:0 metadata event
+   * Phase 1: Decentralized identity verification via Nostr events
+   */
+  async resolveIdentityFromKind0(pubkey: string): Promise<{
+    success: boolean;
+    nip05?: string;
+    name?: string;
+    picture?: string;
+    about?: string;
+    error?: string;
+  }> {
+    try {
+      // Query relays for kind:0 metadata event using subscription
+      const pool = this.getPool();
+      const events: Event[] = [];
+
+      // Use subscription-based querying (correct SimplePool API)
+      const sub = (pool as any).sub(
+        this.relays,
+        [
+          {
+            kinds: [0],
+            authors: [pubkey],
+            limit: 1,
+          },
+        ],
+        { eoseTimeout: 3000 }
+      );
+
+      sub.on("event", (ev: Event) => {
+        events.push(ev);
+      });
+
+      // Wait for EOSE or timeout
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          try {
+            sub.unsub();
+          } catch {}
+          resolve();
+        }, 3000);
+        sub.on("eose", () => {
+          clearTimeout(timeout);
+          try {
+            sub.unsub();
+          } catch {}
+          resolve();
+        });
+      });
+
+      if (!events || events.length === 0) {
+        return {
+          success: false,
+          error: "No kind:0 metadata event found for this pubkey",
+        };
+      }
+
+      const event = events[0];
+
+      // Verify event signature
+      if (!verifyEvent(event)) {
+        return {
+          success: false,
+          error: "Invalid event signature",
+        };
+      }
+
+      // Parse metadata
+      try {
+        const metadata = JSON.parse(event.content);
+        return {
+          success: true,
+          nip05: metadata.nip05,
+          name: metadata.name,
+          picture: metadata.picture,
+          about: metadata.about,
+        };
+      } catch (parseError) {
+        return {
+          success: false,
+          error: "Failed to parse metadata content",
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Resolution failed",
+      };
+    }
+  }
+
   private async verifyNip05(
     nip05: string,
     expectedPubkey: string
@@ -1743,8 +1878,93 @@ export class CentralEventPublishingService {
 
   /**
    * Finalize an unsigned event using the active secure session without exposing nsec
+   * Overloads:
+   * - signEventWithActiveSession(unsignedEvent)
+   * - signEventWithActiveSession(action, payload, options)
    */
-  async signEventWithActiveSession(unsignedEvent: any): Promise<Event> {
+  async signEventWithActiveSession(unsignedEvent: any): Promise<Event>;
+  async signEventWithActiveSession(
+    action: SignAction,
+    payload: any,
+    options?: any
+  ): Promise<any>;
+  async signEventWithActiveSession(a: any, b?: any, c?: any): Promise<any> {
+    // New multi-method route when first arg is an action string
+    if (
+      typeof a === "string" &&
+      (a === "event" || a === "payment" || a === "threshold")
+    ) {
+      const action = a as SignAction;
+      const payload = b;
+      const options = c || {};
+      const signer = await this.selectSigner(action);
+
+      if (!signer) {
+        if (action === "event") {
+          // Fallback to legacy secure-session signing for backward compatibility
+          return await this.signEventWithActiveSession(payload);
+        }
+        throw new Error("No eligible signer available for action " + action);
+      }
+
+      if (action === "event") {
+        const signed = await signer.signEvent(payload, options);
+        try {
+          // Best-effort validation for adapters that return a Nostr event
+          if ((signed as any) && typeof (signed as any) === "object") {
+            const ok = this.verifyEvent(signed as any);
+            if (!ok)
+              throw new Error("Adapter returned invalid event signature");
+          }
+        } catch (e) {
+          throw new Error(
+            e instanceof Error ? e.message : "Signature verification failed"
+          );
+        }
+        return signed;
+      }
+
+      if (action === "payment") {
+        return await signer.authorizePayment(payload);
+      }
+
+      // threshold
+      const sessionId = options?.sessionId ?? payload?.sessionId ?? "";
+      return await signer.signThreshold(payload, sessionId);
+    }
+
+    // Legacy behavior: a is the unsigned event
+    const unsignedEvent = a;
+
+    // Prefer a registered external signer for standard event signing when available
+    try {
+      const preferred = await this.selectSigner("event");
+      if (preferred) {
+        console.log(
+          "[CEPS] Using external signer adapter for event:",
+          preferred.id
+        );
+        const signedViaAdapter = await preferred.signEvent(unsignedEvent);
+        try {
+          if (signedViaAdapter && typeof signedViaAdapter === "object") {
+            const ok = this.verifyEvent(signedViaAdapter as any);
+            if (!ok)
+              throw new Error("External signer returned invalid signature");
+          }
+        } catch (e) {
+          throw new Error(
+            e instanceof Error ? e.message : "Signature verification failed"
+          );
+        }
+        return signedViaAdapter;
+      }
+    } catch (e) {
+      console.warn(
+        "[CEPS] External signer not available; falling back to secure session:",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) throw new Error("No active signing session");
 
@@ -1777,6 +1997,173 @@ export class CentralEventPublishingService {
     } catch {}
 
     return ev;
+  }
+
+  /** Register an external signer adapter (idempotent by id). */
+  public registerExternalSigner(signer: SignerAdapter): void {
+    try {
+      const exists = this.externalSigners.some((s) => s.id === signer.id);
+      if (!exists) {
+        this.externalSigners.push(signer);
+        // Initialize in background; errors are non-fatal at registration time
+        signer.initialize?.().catch((e) => {
+          console.warn(
+            `[CEPS] Signer ${signer.id} initialization failed:`,
+            e instanceof Error ? e.message : String(e)
+          );
+        });
+      }
+    } catch {}
+  }
+
+  /** Return a copy of registered signers for UI/status. */
+  public getRegisteredSigners(): SignerAdapter[] {
+    return this.externalSigners.slice();
+  }
+
+  /** Clear all registered external signers. */
+  public clearExternalSigner(): void {
+    try {
+      this.externalSigners = [];
+    } catch {}
+  }
+
+  /** Return the first registered external signer (for simple UI/status checks). */
+  public getExternalSigner(): SignerAdapter | undefined {
+    try {
+      return this.externalSigners.length ? this.externalSigners[0] : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Read preferred external signer id from localStorage (if available).
+   * Returns null when not set or inaccessible.
+   */
+  private getPreferredExternalSignerId(): string | null {
+    try {
+      if (typeof window === "undefined" || !window.localStorage) return null;
+      const v = window.localStorage.getItem("satnam.signing.preferred");
+      return v && v.trim() ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Sign an event using the preferred external signer when connected and capable.
+   * Falls back to the active SecureNsecManager session if preference is not available.
+   * Note: This preserves zero-knowledge posture and will not auto-prompt extensions.
+   */
+  public async signEventWithPreferredOrSession(
+    unsigned: any,
+    opts?: Record<string, unknown>
+  ): Promise<any> {
+    try {
+      const preferredId = this.getPreferredExternalSignerId();
+      if (preferredId) {
+        const list = this.getRegisteredSigners();
+        const s = list.find((x) => x.id === preferredId);
+        if (s && s.capabilities?.event && typeof s.signEvent === "function") {
+          try {
+            const st = await s.getStatus();
+            if (st === "connected") {
+              return await s.signEvent(unsigned, opts as any);
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+    // Fallback to existing active session path
+    return await this.signEventWithActiveSession(unsigned);
+  }
+
+  /** Feature flag gate per method */
+  private isMethodEnabled(id: SigningMethodId): boolean {
+    switch (id) {
+      case "nip07":
+        return getEnvFlag("VITE_ENABLE_NIP07_SIGNING", true);
+      case "amber":
+        return getEnvFlag("VITE_ENABLE_AMBER_SIGNING", false);
+      case "ntag424":
+        return getEnvFlag("VITE_ENABLE_NFC_SIGNING", false);
+      case "nip05_password":
+      default:
+        return true;
+    }
+  }
+
+  /** Basic platform detection to avoid prompting unsupported methods. */
+  private platformSupports(id: SigningMethodId): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+      switch (id) {
+        case "nip07":
+          return !!(window as any).nostr;
+        case "amber":
+          return /Android/i.test(navigator.userAgent || "");
+        case "ntag424":
+          return typeof (window as any).NDEFReader !== "undefined";
+        case "nip05_password":
+        default:
+          return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Internal helper to choose a signer for an action.
+   * TODO: Add user preference ordering and per-action policies.
+   */
+  private async selectSigner(
+    action: SignAction
+  ): Promise<SignerAdapter | null> {
+    // Capability filter
+    const capKey: keyof SignerCapability =
+      action === "event"
+        ? "event"
+        : action === "payment"
+        ? "payment"
+        : "threshold";
+
+    const eligible = this.externalSigners.filter((s) => {
+      try {
+        return (
+          !!s.capabilities?.[capKey] &&
+          this.isMethodEnabled(s.id) &&
+          this.platformSupports(s.id)
+        );
+      } catch {
+        return false;
+      }
+    });
+
+    if (!eligible.length) return null;
+
+    // Prefer connected > available > locked > error/unavailable
+    const statuses: Array<{ signer: SignerAdapter; status: SignerStatus }> =
+      await Promise.all(
+        eligible.map(async (s) => ({ signer: s, status: await s.getStatus() }))
+      );
+
+    const order = (st: SignerStatus): number => {
+      if (st === "connected") return 0;
+      if (st === "available") return 1;
+      if (st === "locked") return 2;
+      return 3; // error/unavailable
+    };
+
+    statuses.sort((a, b) => order(a.status) - order(b.status));
+
+    const chosen =
+      statuses.find((x) => x.status === "connected") ||
+      statuses.find((x) => x.status === "available") ||
+      statuses.find((x) => x.status === "locked");
+
+    return chosen ? chosen.signer : null;
   }
 
   async list(
@@ -2236,7 +2623,7 @@ export class CentralEventPublishingService {
     recipientPubHex: string,
     content: string
   ): Promise<Event> {
-    const ev = await this.signEventWithActiveSession({
+    const ev = await this.signEventWithPreferredOrSession({
       kind: 4,
       created_at: Math.floor(Date.now() / 1000),
       tags: [["p", recipientPubHex]],
@@ -2980,7 +3367,7 @@ export class CentralEventPublishingService {
     }
 
     const profilePub = await this.getUserPubkeyHexForVerification();
-    const ev: Event = await this.signEventWithActiveSession({
+    const ev: Event = await this.signEventWithPreferredOrSession({
       kind: 0,
       created_at: Math.floor(Date.now() / 1000),
       tags: [],
@@ -3053,6 +3440,300 @@ export class CentralEventPublishingService {
         error: e instanceof Error ? e.message : "NIP-41 notice failed",
       };
     }
+  }
+
+  // ---- NIP-46 (Nostr Connect) implementation ----
+  public getNip46PairingState(): null | {
+    clientPubHex: string;
+    signerPubHex?: string;
+    relays: string[];
+    encryption: "nip04" | "nip44";
+  } {
+    if (!this.nip46ClientPubHex) return null;
+    return {
+      clientPubHex: this.nip46ClientPubHex,
+      signerPubHex: this.nip46SignerPubHex || undefined,
+      relays: this.nip46Relays.slice(),
+      encryption: this.nip46Encryption,
+    };
+  }
+
+  public clearNip46Pairing(): void {
+    try {
+      if (this.nip46Unsubscribe) {
+        try {
+          this.nip46Unsubscribe();
+        } catch {}
+      }
+      this.nip46Unsubscribe = null;
+      // Reject all pending
+      for (const [id, pr] of this.nip46Pending.entries()) {
+        try {
+          pr.reject(new Error("nip46_cleared"));
+        } catch {}
+        clearTimeout(pr.timer);
+      }
+      this.nip46Pending.clear();
+    } finally {
+      this.nip46ClientPrivHex = null;
+      this.nip46ClientPubHex = null;
+      this.nip46SignerPubHex = null;
+      this.nip46SecretHex = null;
+      this.nip46Relays = [];
+      this.nip46Encryption = "nip04";
+    }
+  }
+
+  private nip46GenerateId(): string {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    return Array.from(b)
+      .map((x) => x.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  private async nipEncrypt(
+    plaintext: string,
+    toPubHex: string
+  ): Promise<string> {
+    if (!this.nip46ClientPrivHex) throw new Error("nip46_no_client_key");
+    if (this.nip46Encryption === "nip44") {
+      const anyNip44: any = nip44 as any;
+      if (anyNip44?.v2?.getConversationKey && anyNip44?.v2?.encrypt) {
+        const convKey = await anyNip44.v2.getConversationKey(
+          this.nip46ClientPrivHex,
+          toPubHex
+        );
+        return await anyNip44.v2.encrypt(convKey, plaintext);
+      }
+      if (anyNip44?.encrypt) {
+        return await anyNip44.encrypt(
+          this.nip46ClientPrivHex,
+          toPubHex,
+          plaintext
+        );
+      }
+      // Fallback to nip04 if nip44 not available
+    }
+    return await nip04.encrypt(this.nip46ClientPrivHex, toPubHex, plaintext);
+  }
+
+  private async nipDecrypt(
+    ciphertext: string,
+    fromPubHex: string
+  ): Promise<string> {
+    if (!this.nip46ClientPrivHex) throw new Error("nip46_no_client_key");
+    if (this.nip46Encryption === "nip44") {
+      const anyNip44: any = nip44 as any;
+      if (anyNip44?.v2?.getConversationKey && anyNip44?.v2?.decrypt) {
+        const convKey = await anyNip44.v2.getConversationKey(
+          this.nip46ClientPrivHex,
+          fromPubHex
+        );
+        return await anyNip44.v2.decrypt(convKey, ciphertext);
+      }
+      if (anyNip44?.decrypt) {
+        return await anyNip44.decrypt(
+          this.nip46ClientPrivHex,
+          fromPubHex,
+          ciphertext
+        );
+      }
+      // Fallback to nip04 if nip44 not available
+    }
+    return await nip04.decrypt(this.nip46ClientPrivHex, fromPubHex, ciphertext);
+  }
+
+  private nip46Subscribe(relays: string[]): () => void {
+    if (!this.nip46ClientPubHex) throw new Error("nip46_no_client_pub");
+    // Tear down any existing
+    if (this.nip46Unsubscribe) {
+      try {
+        this.nip46Unsubscribe();
+      } catch {}
+    }
+    const filters = [{ kinds: [24133], "#p": [this.nip46ClientPubHex] }];
+    const unsub = this.subscribeMany(relays, filters, {
+      onevent: async (e: Event) => {
+        try {
+          if (e.kind !== 24133) return;
+          const pTags = (e.tags || [])
+            .filter((t) => t && t[0] === "p")
+            .map((t) => t[1]);
+          if (!pTags.includes(this.nip46ClientPubHex!)) return;
+          // Decrypt
+          const plaintext = await this.nipDecrypt(
+            e.content as any,
+            (e as any).pubkey as string
+          );
+          const obj = JSON.parse(plaintext) as any;
+          // Response path
+          if (
+            obj &&
+            typeof obj.id === "string" &&
+            ("result" in obj || "error" in obj)
+          ) {
+            const pending = this.nip46Pending.get(obj.id);
+            if (pending) {
+              this.nip46Pending.delete(obj.id);
+              clearTimeout(pending.timer);
+              if (obj.error)
+                pending.reject(new Error(obj.error?.message || "nip46_error"));
+              else pending.resolve(obj);
+            }
+            return;
+          }
+          // Request path (handshake)
+          if (obj && obj.method === "connect" && Array.isArray(obj.params)) {
+            const secret = String(obj.params[1] ?? "");
+            if (!this.nip46SecretHex || secret !== this.nip46SecretHex) return;
+            // Record signer from author pubkey
+            this.nip46SignerPubHex = (e as any).pubkey as string;
+            // Respond OK with signer pubkey for client visibility
+            const resp = {
+              id: String(obj.id || this.nip46GenerateId()),
+              result: { ok: true, signerPubHex: this.nip46SignerPubHex },
+            };
+            const enc = await this.nipEncrypt(
+              JSON.stringify(resp),
+              this.nip46SignerPubHex
+            );
+            const unsigned: any = {
+              kind: 24133,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: [["p", this.nip46SignerPubHex]],
+              content: enc,
+              pubkey: this.nip46ClientPubHex,
+            };
+            const ev = this.signEvent(unsigned, this.nip46ClientPrivHex!);
+            await this.publishEvent(ev, this.nip46Relays);
+          }
+        } catch (err) {
+          // Log for debugging but don't surface to UI
+          console.warn(
+            "[CEPS] NIP-46 subscription handler error:",
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+      },
+      oneose: () => {},
+    });
+    this.nip46Unsubscribe = unsub;
+    return unsub;
+  }
+
+  private async nip46SendRequest(
+    req: { id: string; method: string; params: any[] },
+    toPubHex: string,
+    timeoutMs = 45000
+  ): Promise<{
+    id: string;
+    result?: any;
+    error?: { code: number; message: string };
+  }> {
+    if (!this.nip46ClientPrivHex || !this.nip46ClientPubHex)
+      throw new Error("nip46_not_initialized");
+    const enc = await this.nipEncrypt(JSON.stringify(req), toPubHex);
+    const unsigned: any = {
+      kind: 24133,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [["p", toPubHex]],
+      content: enc,
+      pubkey: this.nip46ClientPubHex,
+    };
+    const ev = this.signEvent(unsigned, this.nip46ClientPrivHex);
+    const timer = setTimeout(() => {
+      const p = this.nip46Pending.get(req.id);
+      if (p) {
+        this.nip46Pending.delete(req.id);
+        try {
+          p.reject(new Error("nip46_request_timeout"));
+        } catch {}
+      }
+    }, timeoutMs);
+    const promise = new Promise<{
+      id: string;
+      result?: any;
+      error?: { code: number; message: string };
+    }>((resolve, reject) => {
+      this.nip46Pending.set(req.id, { resolve, reject, timer });
+    });
+    await this.publishEvent(ev, this.nip46Relays);
+    return await promise;
+  }
+
+  public async establishNip46Connection(args: {
+    clientPrivHex: string;
+    clientPubHex: string;
+    secretHex: string;
+    relay: string;
+    encryption?: "nip04" | "nip44";
+    timeoutMs?: number;
+  }): Promise<{ signerPubHex: string }> {
+    // Initialize state
+    this.clearNip46Pairing();
+    this.nip46ClientPrivHex = args.clientPrivHex;
+    this.nip46ClientPubHex = args.clientPubHex;
+    this.nip46SecretHex = args.secretHex;
+    this.nip46Encryption = args.encryption || "nip04";
+    // Merge relays: pairing relay + configured CEPS relays (dedup)
+    const set = new Set<string>([args.relay, ...this.relays]);
+    this.nip46Relays = Array.from(set);
+    // Subscribe for handshake
+    this.nip46Subscribe(this.nip46Relays);
+
+    // Wait for signer to initiate connect with matching secret
+    const timeout = args.timeoutMs ?? 45000;
+    const result = await new Promise<{ signerPubHex: string }>(
+      (resolve, reject) => {
+        let intervalHandle: any = null;
+        const t = setTimeout(() => {
+          if (intervalHandle) clearInterval(intervalHandle);
+          reject(new Error("nip46_connect_timeout"));
+        }, timeout);
+        const check = () => {
+          if (this.nip46SignerPubHex) {
+            clearTimeout(t);
+            if (intervalHandle) clearInterval(intervalHandle);
+            resolve({ signerPubHex: this.nip46SignerPubHex });
+            return true;
+          }
+          return false;
+        };
+        // Quick poll loop in case connect arrives immediately
+        intervalHandle = setInterval(() => {
+          if (check()) clearInterval(intervalHandle);
+        }, 250);
+        // If already present (race), resolve
+        if (check() && intervalHandle) clearInterval(intervalHandle);
+      }
+    );
+    return result;
+  }
+
+  public async nip46SignEvent<T extends object>(
+    unsigned: T,
+    opts?: { timeoutMs?: number }
+  ): Promise<{ event: T & { id: string; sig: string } }> {
+    if (!this.nip46SignerPubHex) throw new Error("nip46_not_paired");
+    const id = this.nip46GenerateId();
+    const req = { id, method: "sign_event", params: [unsigned] };
+    const res = await this.nip46SendRequest(
+      req,
+      this.nip46SignerPubHex,
+      opts?.timeoutMs ?? 45000
+    );
+    if (res.error) throw new Error(res.error.message || "nip46_sign_error");
+    const ev = res.result?.event || res.result;
+    if (
+      !ev ||
+      typeof ev !== "object" ||
+      typeof (ev as any).id !== "string" ||
+      typeof (ev as any).sig !== "string"
+    ) {
+      throw new Error("nip46_invalid_response");
+    }
+    return { event: ev as any };
   }
 }
 

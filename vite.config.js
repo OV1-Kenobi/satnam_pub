@@ -92,6 +92,13 @@ export default defineConfig({
     format: "es",
 
     rollupOptions: {
+      external: [
+        // Server-side only modules that should not be bundled in browser
+        'crypto',
+        'shamirs-secret-sharing',
+        'z32',
+        'db'
+      ],
       output: {
         manualChunks: (id) => {
 

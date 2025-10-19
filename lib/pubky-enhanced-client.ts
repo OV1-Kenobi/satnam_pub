@@ -4,12 +4,7 @@
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key: string): string | undefined {
-  if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ import.meta;
-    if (metaWithEnv.env) {
-      return metaWithEnv.env[key];
-    }
-  }
+  // Server/runtime only: Netlify Functions and server libs must use process.env
   return process.env[key];
 }
 
@@ -23,12 +18,6 @@ function getEnvVar(key: string): string | undefined {
 
 import { ed25519 } from "@noble/curves/ed25519";
 import axios from "axios";
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from "crypto";
 import * as sss from "shamirs-secret-sharing";
 import { v4 as uuidv4 } from "uuid";
 import * as z32 from "z32";
@@ -110,11 +99,97 @@ export interface PkarrSignedRecord {
 // Import config at the top level
 import { config } from "../config";
 
+// Utility: hex encode/decode (top-level)
+function toHex(buf: ArrayBuffer | Uint8Array): string {
+  const arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return Array.from(arr)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+function fromHex(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) throw new Error("Invalid hex");
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return out;
+}
+
+// Utility: SHA-256 hex using Web Crypto API (top-level)
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder();
+  const data = enc.encode(input);
+  const digest = await (globalThis.crypto as Crypto).subtle.digest(
+    "SHA-256",
+    data
+  );
+  return toHex(digest);
+}
+
+// AES-GCM helpers using Web Crypto API (256-bit key) (top-level)
+async function importAesKeyFromHex(keyHex: string): Promise<CryptoKey> {
+  const keyBytes = fromHex(keyHex);
+  return (globalThis.crypto as Crypto).subtle.importKey(
+    "raw",
+    keyBytes as unknown as BufferSource,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+async function encryptAesGcmToHex(
+  plaintext: string,
+  keyHex: string
+): Promise<{ iv: string; encrypted: string; authTag: string }> {
+  const iv = new Uint8Array(12);
+  (globalThis.crypto as Crypto).getRandomValues(iv);
+  const key = await importAesKeyFromHex(keyHex);
+  const pt = new TextEncoder().encode(plaintext);
+  const ctBuf = await (globalThis.crypto as Crypto).subtle.encrypt(
+    { name: "AES-GCM", iv, tagLength: 128 },
+    key,
+    pt
+  );
+  const ct = new Uint8Array(ctBuf);
+  const tagLen = 16; // 128-bit tag
+  const body = ct.slice(0, ct.length - tagLen);
+  const tag = ct.slice(ct.length - tagLen);
+  return { iv: toHex(iv), encrypted: toHex(body), authTag: toHex(tag) };
+}
+async function decryptAesGcmFromHex(
+  encrypted: string,
+  authTag: string,
+  ivHex: string,
+  keyHex: string
+): Promise<string> {
+  const iv = fromHex(ivHex);
+  const key = await importAesKeyFromHex(keyHex);
+  const body = fromHex(encrypted);
+  const tag = fromHex(authTag);
+  const ct = new Uint8Array(body.length + tag.length);
+  ct.set(body, 0);
+  ct.set(tag, body.length);
+  const ptBuf = await (globalThis.crypto as Crypto).subtle.decrypt(
+    { name: "AES-GCM", iv, tagLength: 128 },
+    key,
+    ct as unknown as BufferSource
+  );
+  return new TextDecoder().decode(ptBuf);
+}
+
+// Utility: cryptographically secure random hex string
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  (globalThis.crypto as Crypto).getRandomValues(bytes);
+  return toHex(bytes);
+}
+
 /**
  * Create a new EnhancedPubkyClient with the configuration from the config file
  */
 export function createPubkyClient(): EnhancedPubkyClient {
   // Create the client with the configuration
+
   return new EnhancedPubkyClient({
     homeserver_url: config.pubky.homeserverUrl,
     pkarr_relays: config.pubky.pkarrRelays,
@@ -140,6 +215,175 @@ export function createPubkyClient(): EnhancedPubkyClient {
   });
 }
 
+/**
+ * PubkyDHTClient - BitTorrent DHT operations for PKARR
+ * Handles publishing and resolving records via DHT relays
+ */
+export interface PubkyDHTRecord {
+  public_key: string;
+  records: Array<{
+    name: string;
+    type: string;
+    value: string;
+    ttl: number;
+  }>;
+  timestamp: number;
+  sequence: number;
+  signature: string;
+}
+
+export interface PubkyDHTCacheEntry {
+  record: PubkyDHTRecord;
+  expiresAt: number;
+}
+
+export class PubkyDHTClient {
+  private relays: string[];
+  private cache: Map<string, PubkyDHTCacheEntry> = new Map();
+  private cacheTtl: number;
+  private timeout: number;
+  private debug: boolean;
+
+  constructor(
+    relays: string[] = [
+      "https://pkarr.relay.pubky.tech",
+      "https://pkarr.relay.synonym.to",
+    ],
+    cacheTtl: number = 3600000, // 1 hour
+    timeout: number = 5000,
+    debug: boolean = false
+  ) {
+    this.relays = relays;
+    this.cacheTtl = cacheTtl;
+    this.timeout = timeout;
+    this.debug = debug;
+  }
+
+  /**
+   * Publish a record to DHT relays
+   */
+  async publishRecord(record: PubkyDHTRecord): Promise<boolean> {
+    const results = await Promise.allSettled(
+      this.relays.map((relay) => this.publishToRelay(relay, record))
+    );
+
+    const successCount = results.filter(
+      (r) => r.status === "fulfilled" && r.value
+    ).length;
+    const success = successCount > 0;
+
+    if (this.debug) {
+      console.log(
+        `[PubkyDHT] Published to ${successCount}/${this.relays.length} relays`
+      );
+    }
+
+    return success;
+  }
+
+  /**
+   * Resolve a record from DHT relays
+   */
+  async resolveRecord(publicKey: string): Promise<PubkyDHTRecord | null> {
+    // Check cache first
+    const cached = this.cache.get(publicKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      if (this.debug) console.log(`[PubkyDHT] Cache hit for ${publicKey}`);
+      return cached.record;
+    }
+
+    // Try each relay
+    for (const relay of this.relays) {
+      try {
+        const record = await this.resolveFromRelay(relay, publicKey);
+        if (record) {
+          // Cache the result
+          this.cache.set(publicKey, {
+            record,
+            expiresAt: Date.now() + this.cacheTtl,
+          });
+          if (this.debug)
+            console.log(`[PubkyDHT] Resolved from ${relay}: ${publicKey}`);
+          return record;
+        }
+      } catch (e) {
+        if (this.debug)
+          console.log(`[PubkyDHT] Failed to resolve from ${relay}:`, e);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Publish to a single relay
+   */
+  private async publishToRelay(
+    relay: string,
+    record: PubkyDHTRecord
+  ): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeout);
+
+      const response = await fetch(`${relay}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(record),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+      return response.ok;
+    } catch (error) {
+      if (this.debug)
+        console.log(`[PubkyDHT] Publish to ${relay} failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Resolve from a single relay
+   */
+  private async resolveFromRelay(
+    relay: string,
+    publicKey: string
+  ): Promise<PubkyDHTRecord | null> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeout);
+
+      const response = await fetch(`${relay}/resolve/${publicKey}`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+
+      if (!response.ok) return null;
+      return (await response.json()) as PubkyDHTRecord;
+    } catch (error) {
+      if (this.debug)
+        console.log(`[PubkyDHT] Resolve from ${relay} failed:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear cache
+   */
+  clearCache(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { size: number; ttl: number } {
+    return { size: this.cache.size, ttl: this.cacheTtl };
+  }
+}
+
 export class EnhancedPubkyClient {
   private homeserverUrl: string;
   private pkarrRelays: string[];
@@ -151,6 +395,7 @@ export class EnhancedPubkyClient {
   private recordTtl: number;
   private backupRelays: number;
   private publishRetries: number;
+  private dhtClient: PubkyDHTClient;
 
   constructor(config: PubkyConfig) {
     this.homeserverUrl = config.homeserver_url;
@@ -166,6 +411,12 @@ export class EnhancedPubkyClient {
     this.recordTtl = config.record_ttl || 3600;
     this.backupRelays = config.backup_relays || 3;
     this.publishRetries = config.publish_retries || 3;
+    this.dhtClient = new PubkyDHTClient(
+      this.pkarrRelays,
+      this.recordTtl * 1000,
+      this.relayTimeout,
+      this.debug
+    );
   }
 
   /**
@@ -238,7 +489,7 @@ export class EnhancedPubkyClient {
   }
 
   /**
-   * Register a Pubky domain with PKARR
+   * Register a Pubky domain with PKARR using DHT client
    */
   async registerPubkyDomain(
     keypair: PubkyKeypair,
@@ -270,12 +521,15 @@ export class EnhancedPubkyClient {
         signature: Buffer.from(signature).toString("hex"),
       };
 
-      // Publish to PKARR relays
-      const publishResults = await Promise.all(
-        this.pkarrRelays.map((relay) =>
-          this.publishToPkarrRelay(relay, signedRecord)
-        )
-      );
+      // Publish using DHT client with retries
+      let published = false;
+      for (let attempt = 0; attempt < this.publishRetries; attempt++) {
+        published = await this.dhtClient.publishRecord(signedRecord as any);
+        if (published) break;
+        if (attempt < this.publishRetries - 1) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
 
       // Store registration metadata
       await this.storeRegistrationMetadata({
@@ -288,7 +542,7 @@ export class EnhancedPubkyClient {
 
       return {
         pubky_url: keypair.pubky_url,
-        pkarr_published: publishResults.every((r) => r.success),
+        pkarr_published: published,
         domain_records: domainRecords,
         sovereignty_score: 100,
       };
@@ -315,10 +569,8 @@ export class EnhancedPubkyClient {
       // Normalize the path
       const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
-      // Calculate content hash
-      const contentHash = createHash("sha256")
-        .update(JSON.stringify(content))
-        .digest("hex");
+      // Calculate content hash (Web Crypto)
+      const contentHash = await sha256Hex(JSON.stringify(content));
 
       // Create timestamp
       const timestamp = Date.now();
@@ -371,7 +623,7 @@ export class EnhancedPubkyClient {
   }
 
   /**
-   * Resolve pubky:// URLs
+   * Resolve pubky:// URLs using DHT client
    */
   async resolvePubkyUrl(pubkyUrl: string): Promise<PubkyContent | null> {
     try {
@@ -390,15 +642,75 @@ export class EnhancedPubkyClient {
         }
       } catch (homeserverError) {
         this.logDebug(
-          "Homeserver resolution failed, falling back to PKARR:",
+          "Homeserver resolution failed, falling back to DHT:",
           homeserverError
         );
       }
 
-      // Fallback to PKARR resolution
-      return await this.resolveThroughPkarr(pubkyUrl);
+      // Fallback to DHT resolution
+      return await this.resolveThroughDHT(pubkyUrl);
     } catch (error) {
       this.logError("Error resolving Pubky URL:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve a Pubky URL through DHT relays
+   */
+  private async resolveThroughDHT(
+    pubkyUrl: string
+  ): Promise<PubkyContent | null> {
+    try {
+      // Extract public key from URL
+      const urlParts = pubkyUrl.replace("pubky://", "").split("/");
+      const publicKey = urlParts[0];
+      const path = urlParts.slice(1).join("/");
+
+      // Resolve from DHT
+      const record = await this.dhtClient.resolveRecord(publicKey);
+      if (!record) return null;
+
+      // Find the record that matches the path
+      const records = record.records || [];
+      const matchingRecord = records.find(
+        (r: { name: string; type: string; value: string }) => {
+          // For root path
+          if (!path && r.name === "@") {
+            return true;
+          }
+
+          // For specific paths
+          return r.name === path || r.name === `/${path}`;
+        }
+      );
+
+      if (matchingRecord) {
+        // Parse content based on type
+        let content: Record<string, unknown>;
+        try {
+          content =
+            matchingRecord.type === "TXT"
+              ? { text: matchingRecord.value }
+              : JSON.parse(matchingRecord.value);
+        } catch {
+          content = { raw: matchingRecord.value };
+        }
+
+        return {
+          content,
+          content_type:
+            matchingRecord.type === "TXT" ? "text/plain" : "application/json",
+          content_hash: await sha256Hex(matchingRecord.value),
+          signature: record.signature,
+          timestamp: record.timestamp,
+          public_key: record.public_key,
+        };
+      }
+
+      return null;
+    } catch (error) {
+      this.logError("Error resolving through DHT:", error);
       return null;
     }
   }
@@ -606,8 +918,8 @@ export class EnhancedPubkyClient {
   ): Promise<string[]> {
     try {
       // Encrypt domain data with a random key
-      const encryptionKey = randomBytes(32).toString("hex");
-      const encryptedData = this.encryptData(
+      const encryptionKey = randomHex(32);
+      const encryptedData = await this.encryptData(
         JSON.stringify(domainData),
         encryptionKey
       );
@@ -732,7 +1044,7 @@ export class EnhancedPubkyClient {
       }
 
       // Decrypt the domain data
-      const decryptedData = this.decryptData(
+      const decryptedData = await this.decryptData(
         encryptedDataResponse.content.encrypted_data as string,
         encryptionKey
       );
@@ -868,9 +1180,7 @@ export class EnhancedPubkyClient {
                   matchingRecord.type === "TXT"
                     ? "text/plain"
                     : "application/json",
-                content_hash: createHash("sha256")
-                  .update(matchingRecord.value)
-                  .digest("hex"),
+                content_hash: await sha256Hex(matchingRecord.value),
                 signature: response.data.signature,
                 timestamp: response.data.timestamp,
                 public_key: response.data.public_key,
@@ -1006,42 +1316,25 @@ export class EnhancedPubkyClient {
   /**
    * Encrypt data with a key
    */
-  private encryptData(data: string, key: string): string {
-    // This is a simplified version - in production, use a proper encryption library
-    // with authenticated encryption
-    const algorithm = "aes-256-gcm";
-    const iv = randomBytes(16);
-    const cipher = createCipheriv(algorithm, Buffer.from(key, "hex"), iv);
-
-    let encrypted = cipher.update(data, "utf8", "hex");
-    encrypted += cipher.final("hex");
-
-    const authTag = cipher.getAuthTag().toString("hex");
-
-    return JSON.stringify({
-      iv: iv.toString("hex"),
-      encrypted,
-      authTag,
-    });
+  private async encryptData(data: string, key: string): Promise<string> {
+    const { iv, encrypted, authTag } = await encryptAesGcmToHex(data, key);
+    return JSON.stringify({ iv, encrypted, authTag });
   }
 
   /**
    * Decrypt data with a key
    */
-  private decryptData(encryptedData: string, key: string): string {
-    // This is a simplified version - in production, use a proper encryption library
-    const algorithm = "aes-256-gcm";
-
+  private async decryptData(
+    encryptedData: string,
+    key: string
+  ): Promise<string> {
     const data = JSON.parse(encryptedData);
-    const iv = Buffer.from(data.iv, "hex");
-    const decipher = createDecipheriv(algorithm, Buffer.from(key, "hex"), iv);
-
-    decipher.setAuthTag(Buffer.from(data.authTag, "hex"));
-
-    let decrypted = decipher.update(data.encrypted, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-
-    return decrypted;
+    return await decryptAesGcmFromHex(
+      data.encrypted,
+      data.authTag,
+      data.iv,
+      key
+    );
   }
 
   /**

@@ -24,12 +24,9 @@ async function initializeSupabaseClient(): Promise<SupabaseClient<Database>> {
     return supabaseClient;
   }
 
-  // Get credentials from environment (browser-compatible following Master Context)
-  const supabaseUrl =
-    import.meta.env?.VITE_SUPABASE_URL || process.env?.VITE_SUPABASE_URL;
-  const supabaseAnonKey =
-    import.meta.env?.VITE_SUPABASE_ANON_KEY ||
-    process.env?.VITE_SUPABASE_ANON_KEY;
+  // Get credentials from environment (server-side: Netlify Functions must use process.env)
+  const supabaseUrl = process.env?.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env?.VITE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Supabase credentials not found in environment variables");
