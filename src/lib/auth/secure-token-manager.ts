@@ -7,11 +7,21 @@
  * - Token rotation on each refresh
  * - AES-256-GCM with envelope encryption
  * - HMAC-SHA256 identifier protection
+ * - Device fingerprint-based token binding
+ * - Automatic token rotation on device change
  */
+
+import {
+  createBoundToken,
+  validateBoundToken,
+  type BoundToken,
+} from "../../../lib/auth/token-binding";
+import { ClientSessionVault } from "./client-session-vault";
 
 // Access token stored in memory only (vulnerable to page reload but secure from XSS)
 let currentAccessToken: string | null = null;
 let accessTokenExpiry: number | null = null;
+let currentBoundToken: BoundToken | null = null;
 
 // Token configuration
 const TOKEN_CONFIG = {
@@ -132,7 +142,6 @@ export class EnvelopeEncryptionService {
   private static readonly ALGORITHM = "AES-GCM";
   private static readonly KEY_LENGTH = 256;
   private static readonly IV_LENGTH = 12; // 96 bits for GCM
-  private static readonly TAG_LENGTH = 16; // 128 bits for GCM
 
   /**
    * Generate a new encryption key
@@ -186,6 +195,7 @@ export class EnvelopeEncryptionService {
       encryptedData: this.bufferToHex(encryptedDataBuffer),
       encryptedKey: this.bufferToHex(
         new Uint8Array([...masterIv, ...new Uint8Array(encryptedKeyBuffer)])
+          .buffer
       ),
       iv: this.bufferToHex(iv),
     };
@@ -223,16 +233,18 @@ export class EnvelopeEncryptionService {
 
     // Decrypt data with DEK
     const decryptedBuffer = await crypto.subtle.decrypt(
-      { name: this.ALGORITHM, iv: this.hexToBuffer(iv) },
+      { name: this.ALGORITHM, iv: this.hexToBuffer(iv) as BufferSource },
       dataKey,
-      this.hexToBuffer(encryptedData)
+      this.hexToBuffer(encryptedData) as BufferSource
     );
 
     return new TextDecoder().decode(decryptedBuffer);
   }
 
-  private static bufferToHex(buffer: ArrayBuffer): string {
-    return Array.from(new Uint8Array(buffer))
+  private static bufferToHex(buffer: ArrayBuffer | Uint8Array): string {
+    const bytes =
+      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    return Array.from(bytes)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
@@ -240,7 +252,7 @@ export class EnvelopeEncryptionService {
   private static hexToBuffer(hex: string): Uint8Array {
     const bytes = [];
     for (let i = 0; i < hex.length; i += 2) {
-      bytes.push(parseInt(hex.substr(i, 2), 16));
+      bytes.push(parseInt(hex.substring(i, i + 2), 16));
     }
     return new Uint8Array(bytes);
   }
@@ -434,6 +446,66 @@ export class SecureTokenManager {
     } catch (error) {
       return false;
     }
+  }
+
+  /**
+   * Create bound token with device fingerprint
+   */
+  static async createBoundAccessToken(
+    token: string,
+    expiryMs: number
+  ): Promise<BoundToken> {
+    const boundToken = await createBoundToken(token, expiryMs);
+    currentBoundToken = boundToken;
+    return boundToken;
+  }
+
+  /**
+   * Get current bound token
+   */
+  static getCurrentBoundToken(): BoundToken | null {
+    return currentBoundToken;
+  }
+
+  /**
+   * Validate bound token and check for device change
+   */
+  static async validateBoundAccessToken(): Promise<boolean> {
+    if (!currentBoundToken) {
+      return false;
+    }
+
+    try {
+      const isValid = await validateBoundToken(currentBoundToken);
+      if (!isValid) {
+        console.warn("🔐 Bound token validation failed");
+        currentBoundToken = null;
+        return false;
+      }
+
+      // Check if device has changed in vault
+      const deviceChanged = await (
+        ClientSessionVault as any
+      ).hasDeviceChanged?.();
+      if (deviceChanged) {
+        console.warn("🔐 Device change detected - token rotation required");
+        currentBoundToken = null;
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Token binding validation error:", error);
+      currentBoundToken = null;
+      return false;
+    }
+  }
+
+  /**
+   * Clear bound token
+   */
+  static clearBoundToken(): void {
+    currentBoundToken = null;
   }
 }
 

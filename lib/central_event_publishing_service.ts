@@ -38,6 +38,12 @@ const utf8 = (s: string) => te.encode(s);
 // Import session manager at top-level (TS/ESM) - recovery bridge imported lazily to avoid circular deps
 import { secureNsecManager } from "../src/lib/secure-nsec-manager";
 
+// Import relay privacy layer for metadata protection
+import {
+  initializeDefaultRelayConfigs,
+  relayPrivacyLayer,
+} from "./relay-privacy-layer";
+
 import type { MessageSendResult } from "../src/lib/messaging/types";
 
 import type {
@@ -456,6 +462,16 @@ export class CentralEventPublishingService {
     this.config = DEFAULT_UNIFIED_CONFIG;
     // Keep config.relays in sync with resolved relays for consistency
     this.config.relays = this.relays.slice();
+
+    // Initialize relay privacy layer with default Satnam relay configurations
+    try {
+      initializeDefaultRelayConfigs();
+      console.log(
+        "[CEPS] Relay privacy layer initialized with default configurations"
+      );
+    } catch (error) {
+      console.warn("[CEPS] Failed to initialize relay privacy layer:", error);
+    }
 
     // Add global error handler for WebSocket failures
     this.setupGlobalErrorHandling();
@@ -1548,9 +1564,21 @@ export class CentralEventPublishingService {
       await Promise.race([publishPromise, timeoutPromise]);
     };
 
-    // 1) Non-PoW relays
+    // 1) Non-PoW relays with privacy layer support
     for (const r of nonPow) {
       try {
+        // Check if relay privacy layer is enabled and configured
+        const relayConfig = relayPrivacyLayer.getRelayConfig(r);
+
+        if (relayConfig.batchingEnabled) {
+          // Use privacy layer batching for this relay
+          await relayPrivacyLayer.publishWithBatching(ev, relayConfig);
+          console.log(
+            `[CEPS] Event queued for batched publishing to ${r} (privacy level: ${relayConfig.privacyLevel})`
+          );
+        }
+
+        // Always publish directly (batching is metadata protection, not delivery guarantee)
         await publishWithTimeout(r, ev);
         results.push({ relay: r, ok: true });
         console.log(`[CEPS] Successfully published to ${r}`);

@@ -97,10 +97,13 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN NULL; END;
 
     -- Unique owner_hash constraint for upserts (idempotent)
-    BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname='user_signing_prefs_owner_unique' AND conrelid='public.user_signing_preferences'::regclass
+    ) THEN
       ALTER TABLE public.user_signing_preferences
-        ADD CONSTRAINT IF NOT EXISTS user_signing_prefs_owner_unique UNIQUE (owner_hash);
-    EXCEPTION WHEN OTHERS THEN NULL; END;
+        ADD CONSTRAINT user_signing_prefs_owner_unique UNIQUE (owner_hash);
+    END IF;
 
     -- RLS policy aligned with app.current_user_hash
     IF NOT EXISTS (

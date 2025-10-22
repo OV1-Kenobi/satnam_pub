@@ -7,6 +7,9 @@ export { default as FamilyLightningTreasury } from "./FamilyLightningTreasury";
 export { default as IndividualFinancesDashboard } from "./IndividualFinancesDashboard";
 export { default as SovereignFamilyBanking } from "./SovereignFamilyBanking";
 
+// Admin Components
+export { default as HierarchicalAdminDashboard } from "./admin/HierarchicalAdminDashboard";
+
 // Communications & Messaging
 export { FamilyFederationInvitationModal } from "./communications/FamilyFederationInvitationModal";
 export { GiftwrappedMessaging } from "./communications/GiftwrappedMessaging";
@@ -22,6 +25,8 @@ export {
   FamilyFederationAuthWrapper,
 } from "./auth/FamilyFederationAuth";
 export { default as FamilyFederationSignIn } from "./auth/FamilyFederationSignIn";
+export { WebAuthnAuthentication } from "./auth/WebAuthnAuthentication";
+export { WebAuthnRegistration } from "./auth/WebAuthnRegistration";
 export { default as AuthTestingPanel } from "./AuthTestingPanel";
 export { default as IndividualAuth } from "./IndividualAuth";
 export { MaxPrivacyAuth } from "./MaxPrivacyAuth";

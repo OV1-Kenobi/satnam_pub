@@ -405,11 +405,26 @@ export default function NFCProvisioningGuide({ onBack }: Props) {
         {/* Resources */}
         <section className="mt-6">
           <h3 className="text-lg font-semibold text-white mb-2">Additional Resources</h3>
-          <ul className="list-disc list-inside text-purple-100 space-y-1">
-            <li><a className="underline" href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer">Satnam NFC Provisioning (HTML)</a></li>
-            <li><a className="underline" href="/docs/Satnam-NFC-Provisioning-Guide.pdf" target="_blank" rel="noopener noreferrer">Satnam NFC Provisioning (PDF)</a></li>
-            <li><a className="underline" href="https://github.com/boltcard/bolt-nfc-android-app/releases" target="_blank" rel="noopener noreferrer">Boltcard Android Releases</a></li>
-          </ul>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-semibold text-purple-300 mb-2">📚 Documentation</h4>
+              <ul className="list-disc list-inside text-purple-100 space-y-1">
+                <li><a className="underline" href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer">Provisioning Guide (HTML)</a></li>
+                <li><a className="underline" href="/docs/Satnam-NFC-Provisioning-Guide.pdf" target="_blank" rel="noopener noreferrer">Provisioning Guide (PDF)</a></li>
+                <li><a className="underline" href="/docs/NFC_TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer">Troubleshooting Guide</a></li>
+                <li><a className="underline" href="/docs/NFC_API_ENDPOINTS.md" target="_blank" rel="noopener noreferrer">API Reference</a></li>
+                <li><a className="underline" href="/docs/NFC_SECURITY_ARCHITECTURE.md" target="_blank" rel="noopener noreferrer">Security Architecture</a></li>
+                <li><a className="underline" href="/docs/NFC_FEATURE_FLAGS.md" target="_blank" rel="noopener noreferrer">Feature Flags</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-purple-300 mb-2">🔧 Tools & Apps</h4>
+              <ul className="list-disc list-inside text-purple-100 space-y-1">
+                <li><a className="underline" href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer">Blob Viewer Tool</a></li>
+                <li><a className="underline" href="https://github.com/boltcard/bolt-nfc-android-app/releases" target="_blank" rel="noopener noreferrer">Boltcard Android App</a></li>
+              </ul>
+            </div>
+          </div>
         </section>
       </div >
     </div >

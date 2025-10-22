@@ -602,6 +602,28 @@
 [functions."cleanup-expired-credentials"]
   schedule = "0 */6 * * *"  # Run every 6 hours
 
+# Phase 1: SimpleProof Timestamping Functions
+[functions."simpleproof-timestamp"]
+  memory = 256
+  timeout = 30
+  included_files = ["netlify/functions_active/utils/env.ts", "netlify/functions_active/utils/rate-limiter.js", "netlify/functions_active/supabase.js"]
+
+[functions."simpleproof-verify"]
+  memory = 128
+  timeout = 15
+  included_files = ["netlify/functions_active/utils/env.ts", "netlify/functions_active/utils/rate-limiter.js", "netlify/functions_active/supabase.js"]
+
+# Phase 2: Iroh Node Discovery Functions
+[functions."iroh-discover-node"]
+  memory = 256
+  timeout = 30
+  included_files = ["netlify/functions_active/utils/env.ts", "netlify/functions_active/utils/rate-limiter.js", "netlify/functions_active/supabase.js"]
+
+[functions."iroh-verify-node"]
+  memory = 128
+  timeout = 15
+  included_files = ["netlify/functions_active/utils/env.ts", "netlify/functions_active/utils/rate-limiter.js"]
+
 # Build optimization settings
 [build.processing]
   skip_processing = false

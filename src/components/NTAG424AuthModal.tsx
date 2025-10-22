@@ -733,11 +733,15 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                 <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
                   <div className="flex items-start space-x-2 text-blue-300 text-sm">
                     <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium mb-2">Need help programming your NFC Name Tag?</p>
+                    <div className="w-full">
+                      <p className="font-medium mb-2">Need help with NFC?</p>
                       <div className="space-y-1">
                         <a href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">📖 Provisioning Guide</a>
                         <a href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">🔧 Blob Viewer Tool</a>
+                        <a href="/docs/NFC_TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">❓ Troubleshooting Guide</a>
+                        <a href="/docs/NFC_API_ENDPOINTS.md" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">⚙️ API Reference</a>
+                        <a href="/docs/NFC_SECURITY_ARCHITECTURE.md" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">🔒 Security Architecture</a>
+                        <a href="/docs/NFC_FEATURE_FLAGS.md" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline block">🚩 Feature Flags</a>
                       </div>
                     </div>
                   </div>

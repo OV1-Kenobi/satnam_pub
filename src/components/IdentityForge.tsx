@@ -54,7 +54,9 @@ import { isLightningAddressReachable, parseLightningAddress } from "../utils/lig
 
 import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/endpoints/lnbits.js";
 
-
+import { clientConfig } from "../config/env.client";
+import { createAttestation } from "../lib/attestation-manager";
+import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 
 // Feature flag: LNBits integration
 const rawLnBitsFlag =
@@ -62,6 +64,10 @@ const rawLnBitsFlag =
   (typeof process !== 'undefined' ? (process as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED : undefined);
 
 const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 'true';
+
+// Feature flags for SimpleProof and Iroh
+const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
+const IROH_ENABLED: boolean = clientConfig.flags.irohEnabled ?? false;
 
 
 
@@ -251,6 +257,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     website: ''
   });
 
+  // Verification Step State (Phase 3B - SimpleProof/Iroh Integration)
+  const [showVerificationStep, setShowVerificationStep] = useState(false);
+  const [verificationOptIn, setVerificationOptIn] = useState(false);
+  const [isCreatingAttestation, setIsCreatingAttestation] = useState(false);
+  const [attestationError, setAttestationError] = useState<string | null>(null);
+  const [attestationSuccess, setAttestationSuccess] = useState(false);
+  const [verificationId, setVerificationId] = useState<string | null>(null);
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   // Use refs to track current values for cleanup without triggering effect re-runs
@@ -1355,6 +1368,42 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     }
   };
 
+  // Handler for creating attestation during registration (Phase 3B)
+  const handleCreateAttestation = async () => {
+    if (!verificationId) {
+      setAttestationError('Verification ID not available');
+      return;
+    }
+
+    try {
+      setIsCreatingAttestation(true);
+      setAttestationError(null);
+
+      // Create attestation with SimpleProof and/or Iroh based on feature flags
+      const attestation = await createAttestation({
+        verificationId,
+        eventType: 'account_creation',
+        metadata: `Account created via Identity Forge on ${new Date().toISOString()}`,
+        includeSimpleproof: SIMPLEPROOF_ENABLED,
+        includeIroh: false, // User doesn't provide node ID during registration
+      });
+
+      setAttestationSuccess(true);
+      setVerificationOptIn(true);
+
+      // Auto-proceed to completion after 2 seconds
+      setTimeout(() => {
+        setIsComplete(true);
+      }, 2000);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to create attestation';
+      setAttestationError(errorMsg);
+      console.error('Attestation creation failed:', error);
+    } finally {
+      setIsCreatingAttestation(false);
+    }
+  };
+
   const nextStep = async () => {
 
 
@@ -1369,10 +1418,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           setErrorMessage('Please verify the TOTP sent to your existing Nostr account before continuing.');
           return;
         }
-        // For import users, register identity and go directly to completion
+        // For import users, register identity and go directly to completion (skip verification step)
         try {
           await registerIdentity();
-          setCurrentStep(4); // Go directly to completion screen
+          setCurrentStep(5); // Go directly to completion screen (skip verification step for import users)
         } catch (error) {
           console.error("❌ Failed to register imported identity:", error);
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1419,9 +1468,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           throw new Error('Registration failed - invalid response from server');
         }
 
-        // Go directly to completion screen (step 4)
+        // Check if verification is enabled - if so, show verification step (4), otherwise go to completion (5)
         setGenerationStep("Identity claimed successfully!");
-        setCurrentStep(4);
+        if (SIMPLEPROOF_ENABLED || IROH_ENABLED) {
+          setCurrentStep(4); // Show verification step
+        } else {
+          setCurrentStep(5); // Skip to completion
+        }
       } catch (error) {
         console.error("❌ Failed to complete identity creation:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1452,7 +1505,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       setCurrentStep(currentStep + 1);
     } else {
-      // Step 4 is the final completion screen
+      // Step 5 is the final completion screen (Step 4 is verification)
       setIsComplete(true);
     }
   };
@@ -1490,6 +1543,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         return canContinueStep3;
       case 4:
+        // Verification step (Phase 3B) - always can continue (skip or verify)
+        return true;
+      case 5:
         // Final completion screen - no continue button needed
         return false;
       default:
@@ -1669,7 +1725,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         {/* Progress Indicator */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
-            {[1, 2, 3, 4].map((step) => (
+            {[1, 2, 3, 4, 5].map((step) => (
               <div key={step} className="flex items-center">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${step <= currentStep
@@ -1679,7 +1735,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 >
                   {step < currentStep ? <Check className="h-5 w-5" /> : step}
                 </div>
-                {step < 4 && (
+                {step < 5 && (
                   <div
                     className={`h-1 w-8 mx-2 transition-all duration-300 ${step < currentStep ? "bg-orange-500" : "bg-white/20"
                       }`}
@@ -1692,6 +1748,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             <span>Identity</span>
             <span>Keys</span>
             <span>Profile</span>
+            <span>Verify</span>
             <span>Complete</span>
           </div>
           {/* Quick Amber Connect (Android only, feature-flagged) */}
@@ -2773,13 +2830,25 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               </div>
             )
           }
-
-
-
-
-          {/* Step 4: Final Completion Screen */}
+          {/* Step 4: Verification Step (Phase 3B - SimpleProof/Iroh Integration) */}
           {
             currentStep === 4 && (
+              <VerificationOptInStep
+                verificationId={verificationId || ''}
+                username={formData.username}
+                onSkip={() => setCurrentStep(5)}
+                onComplete={(success: boolean) => {
+                  if (success) {
+                    setCurrentStep(5);
+                  }
+                }}
+              />
+            )
+          }
+
+          {/* Step 5: Final Completion Screen */}
+          {
+            currentStep === 5 && (
               <div className="space-y-6">
                 {isGenerating ? (
                   <div className="space-y-6">
@@ -2952,7 +3021,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           {/* Navigation Buttons */}
           {
             (() => {
-              const shouldShow = !(currentStep === 4 && registrationResult);
+              const shouldShow = !(currentStep === 5 && registrationResult);
 
               return shouldShow;
             })() && (

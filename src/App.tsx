@@ -28,6 +28,7 @@ import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
 import NFCProvisioningGuide from "./components/NFCProvisioningGuide";
 import Settings from "./components/Settings";
+import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
 
 import AmberIntentCallback from "./components/auth/AmberIntentCallback";
 
@@ -87,6 +88,7 @@ function App() {
     | "nfc-provisioning-guide"
     | "settings"
     | "amber-intent-callback"
+    | "admin-dashboard"
   >("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
@@ -684,6 +686,23 @@ function App() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Settings />
         </div>
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "admin-dashboard") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <HierarchicalAdminDashboard />
       </PageWrapper>
     );
   }

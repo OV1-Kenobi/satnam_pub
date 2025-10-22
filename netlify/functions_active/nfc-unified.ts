@@ -707,7 +707,7 @@ async function handleLogin(event: any) {
       npub: user.hashed_npub || reg.owner_hash,
       nip05: undefined,
       federationRole: (user.role as any) || "private",
-      authMethod: "nip05-password",
+      authMethod: "nfc",
       isWhitelisted: false,
       votingPower: 0,
       stewardApproved: false,

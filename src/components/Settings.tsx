@@ -209,6 +209,30 @@ const Settings: React.FC = () => {
           </div>
         </section>
 
+        <section className="bg-purple-900/60 border border-yellow-400/20 rounded-2xl p-6">
+          <h2 className="text-xl font-semibold text-yellow-300 mb-4">📚 Help & Documentation</h2>
+          <div className="space-y-2">
+            <a href="/docs/satnam-nfc-provisioning-guide.html" target="_blank" rel="noopener noreferrer" className="block w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              📖 NFC Provisioning Guide
+            </a>
+            <a href="/docs/NFC_TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer" className="block w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              ❓ Troubleshooting Guide
+            </a>
+            <a href="/docs/NFC_API_ENDPOINTS.md" target="_blank" rel="noopener noreferrer" className="block w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              ⚙️ API Reference
+            </a>
+            <a href="/docs/NFC_SECURITY_ARCHITECTURE.md" target="_blank" rel="noopener noreferrer" className="block w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              🔒 Security Architecture
+            </a>
+            <a href="/docs/NFC_FEATURE_FLAGS.md" target="_blank" rel="noopener noreferrer" className="block w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              🚩 Feature Flags
+            </a>
+            <a href="/docs/ntag424-blob-viewer.html" target="_blank" rel="noopener noreferrer" className="block w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              🔧 Blob Viewer Tool
+            </a>
+          </div>
+        </section>
+
       </div>
 
       {showRotationWizard.open && (

@@ -11,6 +11,11 @@
 
 // IMPORTANT: Browser-only APIs (no Node crypto). Use Web Crypto API.
 
+import {
+  detectDeviceChange,
+  generateDeviceFingerprint,
+  generateFingerprintHash,
+} from "../../../lib/auth/token-binding";
 import { showToast } from "../../services/toastService";
 import { decryptNsecSimple } from "../privacy/encryption";
 
@@ -331,6 +336,10 @@ interface VaultRecordPBKDF2 {
   wrappedNpubB64?: string;
   wrappedNpubIvB64?: string;
   createdAt: number;
+  // Token binding fields (optional for backward compatibility)
+  deviceFingerprintHash?: string;
+  tokenBindingProof?: string;
+  lastDeviceChangeCheck?: number;
 }
 
 interface VaultRecordWebAuthn {
@@ -344,6 +353,10 @@ interface VaultRecordWebAuthn {
   wrappedNpubB64?: string;
   wrappedNpubIvB64?: string;
   createdAt: number;
+  // Token binding fields (optional for backward compatibility)
+  deviceFingerprintHash?: string;
+  tokenBindingProof?: string;
+  lastDeviceChangeCheck?: number;
 }
 
 export function isWebAuthnAvailable(): boolean {
@@ -363,6 +376,10 @@ interface VaultRecordDevice {
   wrappedNpubB64?: string;
   wrappedNpubIvB64?: string;
   createdAt: number;
+  // Token binding fields (optional for backward compatibility)
+  deviceFingerprintHash?: string;
+  tokenBindingProof?: string;
+  lastDeviceChangeCheck?: number;
 }
 
 async function tryWebAuthnUnlock(): Promise<boolean> {
@@ -681,6 +698,48 @@ export const ClientSessionVault = {
     deviceKey = null;
     pendingNsecHex = null;
     pendingNpub = null;
+  },
+
+  // Update vault record with token binding information
+  async updateTokenBinding(): Promise<void> {
+    const record = await loadRecord();
+    if (!record) return;
+
+    try {
+      const fingerprint = await generateDeviceFingerprint();
+      const fingerprintHash = await generateFingerprintHash(fingerprint);
+
+      // Update record with token binding info
+      const updatedRecord = {
+        ...record,
+        deviceFingerprintHash: fingerprintHash,
+        lastDeviceChangeCheck: Date.now(),
+      };
+
+      await saveRecord(updatedRecord);
+      console.log("[ClientSessionVault] Token binding updated");
+    } catch (error) {
+      console.warn(
+        "[ClientSessionVault] Failed to update token binding:",
+        error
+      );
+    }
+  },
+
+  // Check if device has changed since last binding
+  async hasDeviceChanged(): Promise<boolean> {
+    const record = await loadRecord();
+    if (!record || !record.deviceFingerprintHash) return false;
+
+    try {
+      return await detectDeviceChange(record.deviceFingerprintHash);
+    } catch (error) {
+      console.warn(
+        "[ClientSessionVault] Device change detection failed:",
+        error
+      );
+      return true; // Assume device changed on error (safer)
+    }
   },
 };
 

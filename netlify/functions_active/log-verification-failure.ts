@@ -82,43 +82,27 @@ function validateRequest(body: any): {
       error: "identifierHash is required and must be a string",
     };
   }
+
+  if (identifierHash.length !== 64) {
+    return {
+      valid: false,
+      error: "identifierHash must be 64 characters (SHA-256 hex)",
+    };
+  }
+
   // Validate optional fields
-  if (body.verificationMethod !== undefined && typeof body.verificationMethod !== "string") {
-    return { valid: false, error: "verificationMethod must be a string" };
-  }
-
-  if (body.errorMessage !== undefined && typeof body.errorMessage !== "string") {
-    return { valid: false, error: "errorMessage must be a string" };
-  }
-
-  if (body.userDuid !== undefined && typeof body.userDuid !== "string") {
-    return { valid: false, error: "userDuid must be a string" };
-  }
-
-  if (body.ipAddressHash !== undefined && typeof body.ipAddressHash !== "string") {
-    return { valid: false, error: "ipAddressHash must be a string" };
-  }
-
-  if (body.responseTimeMs !== undefined && typeof body.responseTimeMs !== "number") {
+  if (
+    body.responseTimeMs !== undefined &&
+    typeof body.responseTimeMs !== "number"
+  ) {
     return { valid: false, error: "responseTimeMs must be a number" };
   }
 
-  if (body.responseTimeMs && body.responseTimeMs < 0) {
+  if (body.responseTimeMs !== undefined && body.responseTimeMs < 0) {
     return { valid: false, error: "responseTimeMs must be non-negative" };
   }
 
   return {
-    valid: true,
-    data: {
-      failureType,
-      identifierHash,
-      verificationMethod: body.verificationMethod,
-      errorMessage: body.errorMessage,
-      responseTimeMs: body.responseTimeMs,
-      userDuid: body.userDuid,
-      ipAddressHash: body.ipAddressHash,
-    },
-  };
     valid: true,
     data: {
       failureType,

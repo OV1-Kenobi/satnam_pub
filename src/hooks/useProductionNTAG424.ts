@@ -39,6 +39,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
  * React hook for NFC-based authentication and registration routed via unified function
  */
 export const useProductionNTAG424 = () => {
+  // Feature flag check: NFC MFA must be enabled
+  const NFC_MFA_ENABLED =
+    (import.meta.env.VITE_ENABLE_NFC_MFA as string) === "true";
+
   const [authState, setAuthState] = useState<ProductionNTAG424AuthState>({
     isAuthenticated: false,
     sessionToken: null,
@@ -51,134 +55,170 @@ export const useProductionNTAG424 = () => {
 
   /**
    * Authenticate with NTAG424 production tag via NFC
+   * @param pin - 6-digit PIN for tag authentication
+   * @param sunNonce - Optional SUN nonce for NIP-42 challenge binding
    */
-  const authenticateWithNFC = useCallback(async (pin: string) => {
-    setIsProcessing(true);
-    setAuthState((prev) => ({ ...prev, error: null }));
-    try {
-      if (typeof window === "undefined" || !("NDEFReader" in window)) {
-        throw new Error("NFC not supported on this device/browser");
-      }
-      // Basic PIN validation (6 digits)
-      const pinOk = typeof pin === "string" && /^[0-9]{6}$/.test(pin.trim());
-      if (!pinOk) {
-        throw new Error("Invalid PIN format. Use 6 digits.");
-      }
-      const ndef = new (window as any).NDEFReader();
-      return await new Promise<any>((resolve, reject) => {
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let listenerAdded = false;
+  const authenticateWithNFC = useCallback(
+    async (pin: string, sunNonce?: string) => {
+      setIsProcessing(true);
+      setAuthState((prev) => ({ ...prev, error: null }));
+      try {
+        // Feature flag check
+        if (!NFC_MFA_ENABLED) {
+          throw new Error(
+            "NFC MFA is not enabled. Please enable VITE_ENABLE_NFC_MFA."
+          );
+        }
+        if (typeof window === "undefined" || !("NDEFReader" in window)) {
+          throw new Error("NFC not supported on this device/browser");
+        }
+        // Basic PIN validation (6 digits)
+        const pinOk = typeof pin === "string" && /^[0-9]{6}$/.test(pin.trim());
+        if (!pinOk) {
+          throw new Error("Invalid PIN format. Use 6 digits.");
+        }
+        const ndef = new (window as any).NDEFReader();
+        return await new Promise<any>((resolve, reject) => {
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          let listenerAdded = false;
 
-        const cleanup = () => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (listenerAdded) {
-            try {
-              ndef.removeEventListener("reading", readingHandler);
-            } catch {}
-          }
-        };
-
-        const readingHandler = async (event: any) => {
-          try {
-            const uid = event.serialNumber;
-            const headers = await getAuthHeaders();
-            const hasAuth = !!headers.Authorization;
-            if (hasAuth) {
-              const res = await fetch(`${API_BASE}/nfc-unified/verify`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...headers },
-                body: JSON.stringify({ tagUID: uid, pin }),
-              });
-              const json = await res.json();
-              if (!res.ok || !json?.success) {
-                throw new Error(json?.error || `HTTP ${res.status}`);
-              }
-              cleanup();
-              setAuthState((prev) => ({
-                ...prev,
-                isAuthenticated: true,
-                error: null,
-              }));
-              resolve({ success: true, data: json?.data });
-            } else {
-              const mapRaw = localStorage.getItem("nfc_tag_map");
-              const map = mapRaw
-                ? (JSON.parse(mapRaw) as Record<string, string>)
-                : {};
-              const tagId = map[uid];
-              if (!tagId) {
-                throw new Error(
-                  "Tag not recognized on this device. Complete registration or sign in normally once to link."
-                );
-              }
-              const res = await fetch(`${API_BASE}/nfc-unified/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tagId, tagUID: uid, pin }),
-              });
-              const json = await res.json();
-              if (!res.ok || !json?.success) {
-                throw new Error(json?.error || `HTTP ${res.status}`);
-              }
+          const cleanup = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (listenerAdded) {
               try {
-                const { default: SecureTokenManager } = await import(
-                  "../lib/auth/secure-token-manager"
-                );
-                const token: string = json?.data?.sessionToken;
-                const payload = SecureTokenManager.parseTokenPayload(token);
-                const expMs = payload?.exp
-                  ? payload.exp * 1000
-                  : Date.now() + 15 * 60 * 1000;
-                SecureTokenManager.setAccessToken(token, expMs);
+                ndef.removeEventListener("reading", readingHandler);
               } catch {}
+            }
+          };
+
+          const readingHandler = async (event: any) => {
+            try {
+              const uid = event.serialNumber;
+              const headers = await getAuthHeaders();
+              const hasAuth = !!headers.Authorization;
+              if (hasAuth) {
+                // Build request body with optional SUN binding
+                const requestBody: any = { tagUID: uid, pin };
+                if (sunNonce) {
+                  // If SUN nonce provided, include it as challengeData for NIP-42 binding
+                  requestBody.challengeData = sunNonce;
+                }
+                const res = await fetch(`${API_BASE}/nfc-unified/verify`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", ...headers },
+                  body: JSON.stringify(requestBody),
+                });
+                const json = await res.json();
+                if (!res.ok || !json?.success) {
+                  throw new Error(json?.error || `HTTP ${res.status}`);
+                }
+                // Extract and store session token from response
+                try {
+                  const { default: SecureTokenManager } = await import(
+                    "../lib/auth/secure-token-manager"
+                  );
+                  const token: string = json?.data?.sessionToken;
+                  if (token) {
+                    const payload = SecureTokenManager.parseTokenPayload(token);
+                    const expMs = payload?.exp
+                      ? payload.exp * 1000
+                      : Date.now() + 15 * 60 * 1000;
+                    SecureTokenManager.setAccessToken(token, expMs);
+                  }
+                } catch {}
+                cleanup();
+                setAuthState((prev) => ({
+                  ...prev,
+                  isAuthenticated: true,
+                  sessionToken: json?.data?.sessionToken || null,
+                  error: null,
+                }));
+                resolve({
+                  success: true,
+                  data: json?.data,
+                  sessionToken: json?.data?.sessionToken,
+                });
+              } else {
+                const mapRaw = localStorage.getItem("nfc_tag_map");
+                const map = mapRaw
+                  ? (JSON.parse(mapRaw) as Record<string, string>)
+                  : {};
+                const tagId = map[uid];
+                if (!tagId) {
+                  throw new Error(
+                    "Tag not recognized on this device. Complete registration or sign in normally once to link."
+                  );
+                }
+                const res = await fetch(`${API_BASE}/nfc-unified/login`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ tagId, tagUID: uid, pin }),
+                });
+                const json = await res.json();
+                if (!res.ok || !json?.success) {
+                  throw new Error(json?.error || `HTTP ${res.status}`);
+                }
+                try {
+                  const { default: SecureTokenManager } = await import(
+                    "../lib/auth/secure-token-manager"
+                  );
+                  const token: string = json?.data?.sessionToken;
+                  const payload = SecureTokenManager.parseTokenPayload(token);
+                  const expMs = payload?.exp
+                    ? payload.exp * 1000
+                    : Date.now() + 15 * 60 * 1000;
+                  SecureTokenManager.setAccessToken(token, expMs);
+                } catch {}
+                cleanup();
+                setAuthState((prev) => ({
+                  ...prev,
+                  isAuthenticated: true,
+                  sessionToken: json?.data?.sessionToken || null,
+                  error: null,
+                }));
+                resolve({ success: true, data: json?.data });
+              }
+            } catch (err: any) {
               cleanup();
               setAuthState((prev) => ({
                 ...prev,
-                isAuthenticated: true,
-                sessionToken: json?.data?.sessionToken || null,
-                error: null,
+                error: err?.message || "NFC authentication error",
               }));
-              resolve({ success: true, data: json?.data });
+              reject(err);
+            } finally {
+              setIsProcessing(false);
             }
-          } catch (err: any) {
+          };
+
+          ndef
+            .scan()
+            .then(() => {
+              listenerAdded = true;
+              ndef.addEventListener("reading", readingHandler);
+            })
+            .catch((err: unknown) => {
+              cleanup();
+              reject(err instanceof Error ? err : new Error("NFC scan failed"));
+            });
+
+          timeoutId = setTimeout(() => {
             cleanup();
-            setAuthState((prev) => ({
-              ...prev,
-              error: err?.message || "NFC authentication error",
-            }));
-            reject(err);
-          } finally {
             setIsProcessing(false);
-          }
-        };
-
-        ndef
-          .scan()
-          .then(() => {
-            listenerAdded = true;
-            ndef.addEventListener("reading", readingHandler);
-          })
-          .catch((err: unknown) => {
-            cleanup();
-            reject(err instanceof Error ? err : new Error("NFC scan failed"));
-          });
-
-        timeoutId = setTimeout(() => {
-          cleanup();
-          setIsProcessing(false);
-          setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
-          reject(new Error("NFC read timeout"));
-        }, 30000);
-      });
-    } catch (error: any) {
-      setIsProcessing(false);
-      setAuthState((prev) => ({
-        ...prev,
-        error: error?.message || "NFC authentication error",
-      }));
-      throw error;
-    }
-  }, []);
+            setAuthState((prev) => ({ ...prev, error: "NFC read timeout" }));
+            reject(new Error("NFC read timeout"));
+          }, 30000);
+        });
+      } catch (error: any) {
+        setIsProcessing(false);
+        setAuthState((prev) => ({
+          ...prev,
+          error: error?.message || "NFC authentication error",
+        }));
+        throw error;
+      }
+    },
+    []
+  );
 
   /**
    * Register a new NTAG424 production tag via NFC
@@ -192,6 +232,12 @@ export const useProductionNTAG424 = () => {
       setIsProcessing(true);
       setAuthState((prev) => ({ ...prev, error: null }));
       try {
+        // Feature flag check
+        if (!NFC_MFA_ENABLED) {
+          throw new Error(
+            "NFC MFA is not enabled. Please enable VITE_ENABLE_NFC_MFA."
+          );
+        }
         if (typeof window === "undefined" || !("NDEFReader" in window)) {
           throw new Error("NFC not supported on this device/browser");
         }
@@ -322,6 +368,12 @@ export const useProductionNTAG424 = () => {
     setIsProcessing(true);
     setAuthState((prev) => ({ ...prev, error: null }));
     try {
+      // Feature flag check
+      if (!NFC_MFA_ENABLED) {
+        throw new Error(
+          "NFC MFA is not enabled. Please enable VITE_ENABLE_NFC_MFA."
+        );
+      }
       if (typeof window === "undefined" || !("NDEFReader" in window)) {
         throw new Error("NFC not supported on this device/browser");
       }
@@ -525,6 +577,12 @@ export const useProductionNTAG424 = () => {
       pin: string;
       enableSDM: boolean;
     }): Promise<boolean> => {
+      // Feature flag check
+      if (!NFC_MFA_ENABLED) {
+        throw new Error(
+          "NFC MFA is not enabled. Please enable VITE_ENABLE_NFC_MFA."
+        );
+      }
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE}/nfc-unified/program`, {
         method: "POST",
@@ -540,6 +598,12 @@ export const useProductionNTAG424 = () => {
   );
 
   const verifyTag = useCallback(async (): Promise<boolean> => {
+    // Feature flag check
+    if (!NFC_MFA_ENABLED) {
+      throw new Error(
+        "NFC MFA is not enabled. Please enable VITE_ENABLE_NFC_MFA."
+      );
+    }
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/nfc-unified/verify-tag`, {
       method: "POST",
@@ -549,9 +613,15 @@ export const useProductionNTAG424 = () => {
     if (!res.ok || !json?.success)
       throw new Error(json?.error || `HTTP ${res.status}`);
     return true;
-  }, []);
+  }, [NFC_MFA_ENABLED]);
 
   const eraseTag = useCallback(async (): Promise<boolean> => {
+    // Feature flag check
+    if (!NFC_MFA_ENABLED) {
+      throw new Error(
+        "NFC MFA is not enabled. Please enable VITE_ENABLE_NFC_MFA."
+      );
+    }
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/nfc-unified/erase`, {
       method: "POST",
@@ -561,7 +631,7 @@ export const useProductionNTAG424 = () => {
     if (!res.ok || !json?.success)
       throw new Error(json?.error || `HTTP ${res.status}`);
     return true;
-  }, []);
+  }, [NFC_MFA_ENABLED]);
 
   return {
     authState,
