@@ -465,6 +465,23 @@ export const ContactCard: React.FC<ContactCardProps> = ({
             </span>
           )}
 
+          {/* Phase 3 Day 2: Trust Score Badge */}
+          {contact.cachedTrustScore !== undefined && (
+            <span
+              className={`px-2 py-1 rounded-full text-xs font-medium border ${contact.cachedTrustScore >= 80
+                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                  : contact.cachedTrustScore >= 60
+                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                    : contact.cachedTrustScore >= 40
+                      ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                      : 'bg-red-500/20 text-red-400 border-red-500/30'
+                }`}
+              title={`Trust Score: ${contact.cachedTrustScore.toFixed(1)}/100`}
+            >
+              ⭐ {contact.cachedTrustScore.toFixed(0)}
+            </span>
+          )}
+
         </div>
 
         {/* NIP-05 */}

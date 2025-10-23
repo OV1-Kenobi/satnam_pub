@@ -129,9 +129,10 @@ CREATE POLICY "service_role_insert_results" ON public.multi_method_verification_
     WITH CHECK (true);
 
 -- RLS Policy: Allow authenticated users to view their own results
+-- Cast auth.uid() to TEXT since user_identities.id is TEXT (DUID), not UUID
 CREATE POLICY "users_view_own_results" ON public.multi_method_verification_results
     FOR SELECT
-    USING (user_duid = (SELECT user_duid FROM user_identities WHERE id = auth.uid() LIMIT 1));
+    USING (user_duid = (SELECT id FROM user_identities WHERE id = auth.uid()::text LIMIT 1));
 
 -- RLS Policy: Allow service role to manage stats
 CREATE POLICY "service_role_manage_trust_stats" ON public.trust_score_statistics

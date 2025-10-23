@@ -190,6 +190,26 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - **Hardware Discounts** and conference access
 - **Citadel Equity** for community ownership
 
+### 🤝 **Trust Provider Marketplace**
+
+- **Decentralized Trust Scoring** - Multi-metric trust evaluation system
+- **Provider Discovery** - Search and filter trust providers by metrics
+- **Trust Metrics** - Rank, followers, network hops, influence, reliability, recency
+- **Community Ratings** - User-submitted provider reviews and ratings
+- **Trust Comparison** - Compare multiple providers side-by-side
+- **Subscription Management** - Subscribe/unsubscribe from trust providers
+- **NIP-85 Integration** - Nostr-based trust assertions and verification
+- **Privacy-Preserving** - All trust data encrypted and user-controlled
+
+### 📊 **Decentralized Identity Verification**
+
+- **Multi-Method Verification** - DNS, Nostr kind:0, and PKARR BitTorrent DHT
+- **Hybrid NIP-05** - Combined verification methods for enhanced reliability
+- **SimpleProof Timestamping** - Blockchain-based proof of existence
+- **Verification Status Display** - Real-time verification method indicators
+- **Fallback Mechanisms** - Automatic retry with alternative verification methods
+- **Privacy-First** - No external API calls, all verification client-side when possible
+
 ## Hierarchical Role-Based Access Control
 
 Satnam.pub implements a sophisticated hierarchical Role-Based Access Control (RBAC) system designed for family sovereignty and privacy:
@@ -662,7 +682,7 @@ If you discover a security vulnerability, please report it to our security team 
 - [x] Family treasury management
 - [x] Emergency recovery protocols
 
-### Phase 3: Advanced Bitcoin Stack 🚧
+### Phase 3: Advanced Bitcoin Stack ✅
 
 - [x] Multi-layer Lightning/Cashu/Fedimint bridge
 - [x] Family federation with guardian consensus
@@ -671,14 +691,21 @@ If you discover a security vulnerability, please report it to our security team 
 - [x] Atomic swap operations
 - [x] Cross-mint Cashu management
 - [x] Emergency liquidity protocols
+- [x] **Trust Provider Marketplace** - Decentralized trust scoring and provider discovery
+- [x] **Trust Metrics Comparison** - Multi-provider trust analysis and comparison
+- [x] **Trust Provider Ratings** - Community-driven provider evaluation system
+- [x] **NIP-85 Trust Provider Implementation** - Nostr-based trust assertions and verification
 
-### Phase 4: Citadel Academy & Ecosystem ⏳
+### Phase 4: Citadel Academy & Ecosystem 🚧
 
 - [x] Full Citadel Academy integration
 - [x] Nostr Knowledge Management System
 - [x] Badge-based learning achievements
 - [x] Enhanced badge and reward system
 - [x] Hardware security integration, w/pin protected N424 NFCs
+- [x] **SimpleProof Timestamping** - Blockchain-based proof of existence and timestamping
+- [x] **Decentralized Identity Verification** - Multi-method verification (kind:0, PKARR, DNS)
+- [x] **Hybrid NIP-05 Verification** - Combined DNS and Nostr-based identity verification
 - [ ] Mobile application
 - [ ] Browser extension
 - [ ] Advanced self-custody journey tools
@@ -746,12 +773,16 @@ copies or substantial portions of the Software.
   - [Privacy & Sovereignty Controls](docs/PRIVACY_SOVEREIGNTY_CONTROLS.md)
   - [Security Guidelines](docs/PRIVACY_FIRST_SECURITY.md)
   - [Family Federation Auth](docs/FAMILY_FEDERATION_AUTH.md)
-  - [FROST Zero-Knowledge Nsec](docs/cryptography/FROST-ZERO-KNOWLEDGE-NSEC.md) - **NEW**
+  - [FROST Zero-Knowledge Nsec](docs/cryptography/FROST-ZERO-KNOWLEDGE-NSEC.md)
   - [Hybrid SSS/FROST Implementation](docs/SHAMIR-SECRET-SHARING.md)
   - [Lightning Integration](docs/LIGHTNING_ADDRESSES.md)
   - [PhoenixD Integration](docs/PHOENIXD_INTEGRATION.md)
   - [Privacy Protection](docs/PRIVACY-PROTECTION.md)
-  - [Individual Wallet API](docs/INDIVIDUAL_WALLET_API.md) - **NEW** Individual Wallet Sovereignty API reference
+  - [Individual Wallet API](docs/INDIVIDUAL_WALLET_API.md)
+  - [NIP-85 Trust Provider Configuration](docs/NIP85_CONFIGURATION_GUIDE.md) - **NEW**
+  - [Multi-Method Verification Guide](docs/MULTI_METHOD_VERIFICATION_GUIDE.md) - **NEW**
+  - [SimpleProof Timestamping](docs/PHASE1_COMPLETE_SUMMARY.md#simpleproof-timestamping) - **NEW**
+  - [WebAuthn Quick Start](docs/auth/WEBAUTHN_QUICK_START.md) - **NEW**
 - **GitHub Issues**: Report bugs and request features
 - **Community**: Join our discussions on Nostr
 - **Email**: support@satnam.pub
@@ -772,8 +803,9 @@ If you've lost access to your identity:
 
 ---
 
-**Last Updated**: July 2025  
-**Version**: 0.1.0  
+**Last Updated**: October 2025
+**Version**: 0.1.0
+**Status**: Phase 3 Complete, Phase 4 In Progress
 **Maintainers**: Satnam.pub Team
 
 ---

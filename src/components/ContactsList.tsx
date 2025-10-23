@@ -21,6 +21,7 @@ interface ContactsListProps {
   loading?: boolean;
   searchQuery?: string;
   selectionMode?: boolean;
+  enableTrustFiltering?: boolean;
 }
 
 export const ContactsList: React.FC<ContactsListProps> = ({
@@ -34,6 +35,7 @@ export const ContactsList: React.FC<ContactsListProps> = ({
   loading = false,
   searchQuery = '',
   selectionMode = false,
+  enableTrustFiltering = false,
 }) => {
   const [showFilters, setShowFilters] = useState<boolean>(false);
   const [filters, setFilters] = useState<ContactFilters>({});
@@ -41,6 +43,7 @@ export const ContactsList: React.FC<ContactsListProps> = ({
     field: 'displayName',
     direction: 'asc',
   });
+  const [trustFilters, setTrustFilters] = useState<TrustFilters>({});
 
   /**
    * CRITICAL SECURITY: User-controlled local contact list operation logging
@@ -129,6 +132,30 @@ export const ContactsList: React.FC<ContactsListProps> = ({
       appliedFilters.push(`verified:${filters.verified}`);
     }
 
+    // Phase 3 Day 2: Apply trust-based filters
+    if (enableTrustFiltering) {
+      if (trustFilters.minTrustScore !== undefined) {
+        filtered = filtered.filter(contact =>
+          (contact.cachedTrustScore || 0) >= trustFilters.minTrustScore!
+        );
+        appliedFilters.push(`minTrustScore:${trustFilters.minTrustScore}`);
+      }
+
+      if (trustFilters.maxTrustScore !== undefined) {
+        filtered = filtered.filter(contact =>
+          (contact.cachedTrustScore || 0) <= trustFilters.maxTrustScore!
+        );
+        appliedFilters.push(`maxTrustScore:${trustFilters.maxTrustScore}`);
+      }
+
+      if (trustFilters.showUnverified === false) {
+        filtered = filtered.filter(contact =>
+          contact.nip05Verified || contact.pubkeyVerified || contact.vpVerified || contact.physicallyVerified
+        );
+        appliedFilters.push(`verified:true`);
+      }
+    }
+
     // Log filtering operations for user transparency
     if (appliedFilters.length > 0) {
       logContactListOperation({
@@ -169,6 +196,11 @@ export const ContactsList: React.FC<ContactsListProps> = ({
           aValue = a.contactCount;
           bValue = b.contactCount;
           break;
+        // Phase 3 Day 2: Trust score sorting
+        case 'trustScore':
+          aValue = a.cachedTrustScore || 0;
+          bValue = b.cachedTrustScore || 0;
+          break;
         default:
           aValue = a.displayName.toLowerCase();
           bValue = b.displayName.toLowerCase();
@@ -191,7 +223,7 @@ export const ContactsList: React.FC<ContactsListProps> = ({
     });
 
     return filtered;
-  }, [contacts, searchQuery, filters, sortOptions]);
+  }, [contacts, searchQuery, filters, sortOptions, trustFilters, enableTrustFiltering]);
 
   const handleSortChange = (field: ContactSortOptions['field']): void => {
     setSortOptions(prev => {
@@ -269,7 +301,7 @@ export const ContactsList: React.FC<ContactsListProps> = ({
             <label className="text-sm text-purple-200">Sort by:</label>
             <select
               value={sortOptions.field}
-              onChange={(e) => handleSortChange(e.target.value as ContactSortOptions['field'])}
+              onChange={(e) => handleSortChange(e.target.value as ContactSortOptions['field'] | 'trustScore')}
               className="px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
             >
               <option value="displayName" className="bg-purple-900">Name</option>
@@ -277,6 +309,9 @@ export const ContactsList: React.FC<ContactsListProps> = ({
               <option value="lastContact" className="bg-purple-900">Last Contact</option>
               <option value="trustLevel" className="bg-purple-900">Trust Level</option>
               <option value="contactCount" className="bg-purple-900">Message Count</option>
+              {enableTrustFiltering && (
+                <option value="trustScore" className="bg-purple-900">Trust Score</option>
+              )}
             </select>
             <button
               onClick={() => handleSortChange(sortOptions.field)}
@@ -392,6 +427,16 @@ export const ContactsList: React.FC<ContactsListProps> = ({
               </select>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Phase 3 Day 2: Trust Filter Panel */}
+      {enableTrustFiltering && showFilters && (
+        <div className="mt-4">
+          <TrustFilterPanel
+            onFilterChange={setTrustFilters}
+            currentFilters={trustFilters}
+          />
         </div>
       )}
 

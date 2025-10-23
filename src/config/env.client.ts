@@ -16,6 +16,11 @@ export type ClientConfig = {
     dashboard?: string;
     platformLightning?: string; // Lightning Address domain (e.g., my.satnam.pub)
   };
+  nip85: {
+    primaryRelay: string;
+    cacheTTLMs: number;
+    defaultExposureLevel: "public" | "contacts" | "whitelist" | "private";
+  };
   flags: {
     lnbitsEnabled: boolean;
     amberSigningEnabled: boolean;
@@ -33,6 +38,11 @@ export type ClientConfig = {
     adminAuditLogEnabled: boolean; // Phase 1 Enterprise: Admin audit logging
     webauthnEnabled: boolean; // Phase 2 Enterprise: FIDO2/WebAuthn hardware security key support
     webauthnPlatformAuthenticatorEnabled: boolean; // Phase 2 Enterprise: Platform authenticators (Windows Hello, Touch ID, Face ID) with biometric risk warning
+    nip85TrustProviderEnabled: boolean; // Phase 1: NIP-85 Trust Provider - Master toggle for all NIP-85 functionality
+    nip85PublishingEnabled: boolean; // Phase 1: NIP-85 Publishing - Enable publishing assertions to Nostr
+    nip85QueryEnabled: boolean; // Phase 1: NIP-85 Query - Enable querying assertions from relays
+    nip85CacheEnabled: boolean; // Phase 1: NIP-85 Caching - Enable in-memory caching for performance
+    nip85AuditLoggingEnabled: boolean; // Phase 1: NIP-85 Audit Logging - Enable audit logging for all queries
   };
 };
 
@@ -135,6 +145,36 @@ const WEBAUTHN_PLATFORM_AUTHENTICATOR_ENABLED =
     .toString()
     .toLowerCase() === "true";
 
+// Phase 1: NIP-85 Trust Provider - Master toggle for all NIP-85 functionality; default: false
+const NIP85_TRUST_PROVIDER_ENABLED =
+  ((process.env.VITE_NIP85_TRUST_PROVIDER_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: NIP-85 Publishing - Enable publishing assertions to Nostr; default: false
+const NIP85_PUBLISHING_ENABLED =
+  ((process.env.VITE_NIP85_PUBLISHING_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: NIP-85 Query - Enable querying assertions from relays; default: true
+const NIP85_QUERY_ENABLED =
+  ((process.env.VITE_NIP85_QUERY_ENABLED as string) || "true")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: NIP-85 Caching - Enable in-memory caching for performance; default: true
+const NIP85_CACHE_ENABLED =
+  ((process.env.VITE_NIP85_CACHE_ENABLED as string) || "true")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: NIP-85 Audit Logging - Enable audit logging for all queries; default: true
+const NIP85_AUDIT_LOGGING_ENABLED =
+  ((process.env.VITE_NIP85_AUDIT_LOGGING_ENABLED as string) || "true")
+    .toString()
+    .toLowerCase() === "true";
+
 export const clientConfig: ClientConfig = {
   lnbits: {
     // Only required when LNbits integration is enabled
@@ -148,6 +188,21 @@ export const clientConfig: ClientConfig = {
     dashboard: process.env.VITE_DASHBOARD_URL as string,
     platformLightning:
       (process.env.VITE_PLATFORM_LIGHTNING_DOMAIN as string) || "my.satnam.pub",
+  },
+  nip85: {
+    primaryRelay:
+      (process.env.VITE_NIP85_PRIMARY_RELAY as string) ||
+      "wss://relay.satnam.pub",
+    cacheTTLMs: parseInt(
+      (process.env.VITE_NIP85_CACHE_TTL_MS as string) || "300000",
+      10
+    ),
+    defaultExposureLevel: ((process.env
+      .VITE_NIP85_DEFAULT_EXPOSURE_LEVEL as string) || "private") as
+      | "public"
+      | "contacts"
+      | "whitelist"
+      | "private",
   },
   flags: {
     lnbitsEnabled: LNBITS_ENABLED,
@@ -167,6 +222,11 @@ export const clientConfig: ClientConfig = {
     webauthnEnabled: WEBAUTHN_ENABLED,
     webauthnPlatformAuthenticatorEnabled:
       WEBAUTHN_PLATFORM_AUTHENTICATOR_ENABLED,
+    nip85TrustProviderEnabled: NIP85_TRUST_PROVIDER_ENABLED,
+    nip85PublishingEnabled: NIP85_PUBLISHING_ENABLED,
+    nip85QueryEnabled: NIP85_QUERY_ENABLED,
+    nip85CacheEnabled: NIP85_CACHE_ENABLED,
+    nip85AuditLoggingEnabled: NIP85_AUDIT_LOGGING_ENABLED,
   },
 } as const;
 
