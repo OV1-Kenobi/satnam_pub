@@ -24,14 +24,14 @@ import IndividualPaymentAutomationModal from "./components/IndividualPaymentAuto
 import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
 
+import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
 import NFCProvisioningGuide from "./components/NFCProvisioningGuide";
 import Settings from "./components/Settings";
-import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
 
 import AmberIntentCallback from "./components/auth/AmberIntentCallback";
-
+import PublicProfilePage from "./components/PublicProfilePage";
 
 import { useAuth } from "./components/auth/AuthProvider";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
@@ -89,7 +89,9 @@ function App() {
     | "settings"
     | "amber-intent-callback"
     | "admin-dashboard"
+    | "public-profile"
   >("landing");
+  const [profileParams, setProfileParams] = useState<{ username?: string; npub?: string } | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
   const [loadingNfcModal, setLoadingNfcModal] = useState(false);
@@ -154,6 +156,32 @@ function App() {
     };
 
     checkForInvitationToken();
+  }, []); // Run only once on mount
+
+  // Check for profile routes in URL on component mount
+  useEffect(() => {
+    try {
+      // Check for /profile/{username} or /profile/npub/{npub} patterns
+      const usernameMatch = window.location.pathname.match(/\/profile\/([^\/]+)$/);
+      const npubMatch = window.location.pathname.match(/\/profile\/npub\/([^\/]+)$/);
+      const shortMatch = window.location.pathname.match(/\/p\/([^\/]+)$/);
+
+      if (usernameMatch) {
+        const username = decodeURIComponent(usernameMatch[1]);
+        setProfileParams({ username });
+        setCurrentView('public-profile');
+      } else if (npubMatch) {
+        const npub = decodeURIComponent(npubMatch[1]);
+        setProfileParams({ npub });
+        setCurrentView('public-profile');
+      } else if (shortMatch) {
+        const username = decodeURIComponent(shortMatch[1]);
+        setProfileParams({ username });
+        setCurrentView('public-profile');
+      }
+    } catch (error) {
+      console.error('Error processing profile route:', error);
+    }
   }, []); // Run only once on mount
 
   // App-level navigation event listener used by IdentityForge completion screen
@@ -707,8 +735,26 @@ function App() {
     );
   }
 
-
-
+  if (currentView === "public-profile") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <PublicProfilePage
+          username={profileParams?.username}
+          npub={profileParams?.npub}
+          onBack={() => setCurrentView("landing")}
+        />
+      </PageWrapper>
+    );
+  }
 
 
   if (currentView === "ln-node-management") {

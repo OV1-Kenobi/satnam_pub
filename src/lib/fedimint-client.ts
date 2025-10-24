@@ -1,4 +1,3 @@
-
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
  * @param {string} key - Environment variable key
@@ -6,7 +5,7 @@
  */
 function getEnvVar(key: string): string | undefined {
   if (typeof import.meta !== "undefined") {
-    const metaWithEnv = /** @type {Object} */ (import.meta);
+    const metaWithEnv = /** @type {Object} */ import.meta;
     if (metaWithEnv.env) {
       return metaWithEnv.env[key];
     }
@@ -66,11 +65,8 @@ export class FedimintClient {
   private axiosInstance;
 
   constructor() {
-    // Environment variable helper for both Vite and Node.js
-    const getEnvVar = (key: string): string => {
-      return import.meta.env[key] || "";
-    };
-
+    // Use centralized env var helper (works in both browser and Netlify Functions)
+    // Note: getEnvVar is defined at the top of this file and handles both import.meta.env and process.env
     this.config = {
       federationId:
         getEnvVar("VITE_FEDIMINT_FEDERATION_ID") || "test_federation",

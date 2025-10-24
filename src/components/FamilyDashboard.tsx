@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   ArrowLeft,
   Bitcoin,
   BookOpen,
@@ -12,6 +13,7 @@ import {
   XCircle
 } from "lucide-react";
 import React, { useState } from "react";
+import { FeatureFlags } from "../lib/feature-flags";
 import { FederationRole } from "../types/auth";
 import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
@@ -284,17 +286,36 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </div>
 
         {/* Family Members Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {familyMembers.map((member) => (
-            <FamilyWalletCard
-              key={member.id}
-              member={member}
-              onCopyAddress={() => { }}
-              onSend={() => handleSendPayment(member.id)}
-              onReceive={() => handleReceivePayment(member.id)}
-              onShowQR={() => handleShowQR(member.lightningAddress || '')}
-            />
-          ))}
+        <div className="mb-8">
+          {!FeatureFlags.isFedimintEnabled() && (
+            <div className="bg-amber-500/10 border border-amber-400/50 rounded-xl p-6 mb-6">
+              <div className="flex items-start gap-4">
+                <AlertCircle className="h-6 w-6 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-lg font-semibold text-amber-300 mb-2">Payment Features Unavailable</h3>
+                  <p className="text-amber-100 mb-4">
+                    Family Federation is running in MVP mode. Payment features (send, receive, wallet operations) are currently disabled. Core federation, messaging, and member management features are fully functional.
+                  </p>
+                  <p className="text-sm text-amber-200">
+                    To enable payment features, set <code className="bg-black/30 px-2 py-1 rounded">VITE_FEDIMINT_INTEGRATION_ENABLED=true</code> in your environment configuration.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {familyMembers.map((member) => (
+              <FamilyWalletCard
+                key={member.id}
+                member={member}
+                onCopyAddress={() => { }}
+                onSend={() => FeatureFlags.isFedimintEnabled() && handleSendPayment(member.id)}
+                onReceive={() => FeatureFlags.isFedimintEnabled() && handleReceivePayment(member.id)}
+                onShowQR={() => FeatureFlags.isFedimintEnabled() && handleShowQR(member.lightningAddress || '')}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Recent Transactions */}

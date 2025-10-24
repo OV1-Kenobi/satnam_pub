@@ -8,6 +8,17 @@
   CI = "true"
   # Cache bust after complete Argon2 removal + PBKDF2 migration - 2025-08-04
   NETLIFY_CACHE_BUST = "pbkdf2-migration-complete-20250804"
+  # Family Federation Decoupling feature flags - BIFROST-First Strategy
+  VITE_BIFROST_ENABLED = "false"
+  VITE_FEDIMINT_INTEGRATION_ENABLED = "false"
+  VITE_FAMILY_FEDERATION_ENABLED = "true"
+  VITE_FROST_SIGNING_ENABLED = "true"
+  VITE_PAYMENT_AUTOMATION_ENABLED = "false"
+  # Phase 3: Public Profile URL System feature flags (default: false for production safety)
+  VITE_PUBLIC_PROFILES_ENABLED = "false"
+  VITE_PROFILE_SEARCH_ENABLED = "false"
+  VITE_PROFILE_ANALYTICS_ENABLED = "false"
+  VITE_PROFILE_CUSTOMIZATION_ENABLED = "false"
 
 # Development server configuration
 [dev]
@@ -203,6 +214,38 @@
   from = "/api/lnurlp/platform/:username"
   to = "/.netlify/functions/lnbits-proxy?action=lnurlpPlatform&username=:username"
   status = 200
+  force = true
+
+# Phase 3: Public Profile URL System - Backward compatibility redirects (301 Permanent)
+# Redirect old profile endpoints to unified-profiles with action-based routing
+[[redirects]]
+  from = "/api/profile"
+  to = "/.netlify/functions/unified-profiles?action=getProfile"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/profile-visibility"
+  to = "/.netlify/functions/unified-profiles?action=updateVisibility"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/profile-analytics"
+  to = "/.netlify/functions/unified-profiles?action=getAnalytics"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/profile-view"
+  to = "/.netlify/functions/unified-profiles?action=trackView"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/search-profiles"
+  to = "/.netlify/functions/unified-profiles?action=searchProfiles"
+  status = 301
   force = true
 
 # Generic mapping for other API endpoints (excluding auth which is handled above)
@@ -623,6 +666,18 @@
   memory = 128
   timeout = 15
   included_files = ["netlify/functions_active/utils/env.ts", "netlify/functions_active/utils/rate-limiter.js"]
+
+# Phase 3: Public Profile URL System - Unified Profiles Function
+[functions."unified-profiles"]
+  node_bundler = "esbuild"
+  memory_size = 256  # 256MB for profile operations (consolidated from 5 separate functions)
+  timeout = 15
+  included_files = [
+    "netlify/functions_active/utils/env.ts",
+    "netlify/functions_active/utils/rate-limiter.js",
+    "netlify/functions_active/supabase.js",
+    "netlify/functions/security/session-manager.ts"
+  ]
 
 # Build optimization settings
 [build.processing]

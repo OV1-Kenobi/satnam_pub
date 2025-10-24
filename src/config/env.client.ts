@@ -16,6 +16,14 @@ export type ClientConfig = {
     dashboard?: string;
     platformLightning?: string; // Lightning Address domain (e.g., my.satnam.pub)
   };
+  blossom: {
+    primaryUrl: string; // Primary Blossom server URL (Phase 5A: self-hosted)
+    fallbackUrl: string; // Fallback Blossom server URL (Phase 5A: nostr.build)
+    timeoutMs: number; // Request timeout before failover (Phase 5A)
+    retryAttempts: number; // Number of retry attempts per server (Phase 5A)
+    // Legacy support (Phase 4B compatibility)
+    serverUrl: string; // Deprecated: use primaryUrl instead
+  };
   nip85: {
     primaryRelay: string;
     cacheTTLMs: number;
@@ -43,6 +51,18 @@ export type ClientConfig = {
     nip85QueryEnabled: boolean; // Phase 1: NIP-85 Query - Enable querying assertions from relays
     nip85CacheEnabled: boolean; // Phase 1: NIP-85 Caching - Enable in-memory caching for performance
     nip85AuditLoggingEnabled: boolean; // Phase 1: NIP-85 Audit Logging - Enable audit logging for all queries
+    // Family Federation Decoupling flags
+    bifrostEnabled: boolean; // Family Federation: Enable BIFROST integration (preferred, default: false for MVP)
+    fedimintIntegrationEnabled: boolean; // Family Federation: Enable Fedimint payment integration (legacy, default: false for MVP)
+    familyFederationEnabled: boolean; // Family Federation: Enable core federation functionality (default: true)
+    frostSigningEnabled: boolean; // Family Federation: Enable FROST multi-signature signing (default: true)
+    paymentAutomationEnabled: boolean; // Family Federation: Enable payment automation (requires bifrostEnabled or fedimintIntegrationEnabled)
+    // Phase 3: Public Profile URL System flags
+    publicProfilesEnabled: boolean; // Phase 3: Enable Public Profile URL System (master toggle, default: false)
+    profileSearchEnabled: boolean; // Phase 3: Enable profile search functionality (default: false)
+    profileAnalyticsEnabled: boolean; // Phase 3: Enable privacy-first profile analytics (default: false)
+    profileCustomizationEnabled: boolean; // Phase 3: Enable profile customization (themes, banners, social links, default: false)
+    blossomUploadEnabled: boolean; // Phase 4B: Enable Blossom image uploads (default: false)
   };
 };
 
@@ -175,6 +195,66 @@ const NIP85_AUDIT_LOGGING_ENABLED =
     .toString()
     .toLowerCase() === "true";
 
+// Family Federation Decoupling: Enable BIFROST integration (preferred); default: false (MVP without payments)
+const BIFROST_ENABLED =
+  ((process.env.VITE_BIFROST_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Family Federation Decoupling: Enable Fedimint payment integration (legacy); default: false (MVP without payments)
+const FEDIMINT_INTEGRATION_ENABLED =
+  ((process.env.VITE_FEDIMINT_INTEGRATION_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Family Federation Decoupling: Enable core federation functionality; default: true
+const FAMILY_FEDERATION_ENABLED =
+  ((process.env.VITE_FAMILY_FEDERATION_ENABLED as string) || "true")
+    .toString()
+    .toLowerCase() === "true";
+
+// Family Federation Decoupling: Enable FROST multi-signature signing; default: true
+const FROST_SIGNING_ENABLED =
+  ((process.env.VITE_FROST_SIGNING_ENABLED as string) || "true")
+    .toString()
+    .toLowerCase() === "true";
+
+// Family Federation Decoupling: Enable payment automation; default: false (requires fedimintIntegrationEnabled)
+const PAYMENT_AUTOMATION_ENABLED =
+  ((process.env.VITE_PAYMENT_AUTOMATION_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 3: Public Profile URL System - Master toggle; default: false (opt-in)
+const PUBLIC_PROFILES_ENABLED =
+  ((process.env.VITE_PUBLIC_PROFILES_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 3: Profile search functionality; default: false (opt-in)
+const PROFILE_SEARCH_ENABLED =
+  ((process.env.VITE_PROFILE_SEARCH_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 3: Privacy-first profile analytics; default: false (opt-in)
+const PROFILE_ANALYTICS_ENABLED =
+  ((process.env.VITE_PROFILE_ANALYTICS_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 3: Profile customization (themes, banners, social links); default: false (opt-in)
+const PROFILE_CUSTOMIZATION_ENABLED =
+  ((process.env.VITE_PROFILE_CUSTOMIZATION_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 4B: Blossom image uploads; default: false (opt-in)
+const BLOSSOM_UPLOAD_ENABLED =
+  ((process.env.VITE_BLOSSOM_UPLOAD_ENABLED as string) || "false")
+    .toString()
+    .toLowerCase() === "true";
+
 export const clientConfig: ClientConfig = {
   lnbits: {
     // Only required when LNbits integration is enabled
@@ -188,6 +268,28 @@ export const clientConfig: ClientConfig = {
     dashboard: process.env.VITE_DASHBOARD_URL as string,
     platformLightning:
       (process.env.VITE_PLATFORM_LIGHTNING_DOMAIN as string) || "my.satnam.pub",
+  },
+  blossom: {
+    // Phase 5A: Multi-server support with automatic failover
+    primaryUrl:
+      (process.env.VITE_BLOSSOM_PRIMARY_URL as string) ||
+      (process.env.VITE_BLOSSOM_NOSTR_BUILD_URL as string) || // Legacy fallback
+      "https://blossom.nostr.build",
+    fallbackUrl:
+      (process.env.VITE_BLOSSOM_FALLBACK_URL as string) ||
+      "https://blossom.nostr.build",
+    timeoutMs: parseInt(
+      (process.env.VITE_BLOSSOM_TIMEOUT_MS as string) || "30000",
+      10
+    ),
+    retryAttempts: parseInt(
+      (process.env.VITE_BLOSSOM_RETRY_ATTEMPTS as string) || "2",
+      10
+    ),
+    // Legacy support (Phase 4B compatibility)
+    serverUrl:
+      (process.env.VITE_BLOSSOM_NOSTR_BUILD_URL as string) ||
+      "https://blossom.nostr.build",
   },
   nip85: {
     primaryRelay:
@@ -227,6 +329,19 @@ export const clientConfig: ClientConfig = {
     nip85QueryEnabled: NIP85_QUERY_ENABLED,
     nip85CacheEnabled: NIP85_CACHE_ENABLED,
     nip85AuditLoggingEnabled: NIP85_AUDIT_LOGGING_ENABLED,
+    // Family Federation Decoupling flags
+    bifrostEnabled: BIFROST_ENABLED,
+    fedimintIntegrationEnabled: FEDIMINT_INTEGRATION_ENABLED,
+    familyFederationEnabled: FAMILY_FEDERATION_ENABLED,
+    frostSigningEnabled: FROST_SIGNING_ENABLED,
+    paymentAutomationEnabled: PAYMENT_AUTOMATION_ENABLED,
+    // Phase 3: Public Profile URL System flags
+    publicProfilesEnabled: PUBLIC_PROFILES_ENABLED,
+    profileSearchEnabled: PROFILE_SEARCH_ENABLED,
+    profileAnalyticsEnabled: PROFILE_ANALYTICS_ENABLED,
+    profileCustomizationEnabled: PROFILE_CUSTOMIZATION_ENABLED,
+    // Phase 4B: Banner Management flags
+    blossomUploadEnabled: BLOSSOM_UPLOAD_ENABLED,
   },
 } as const;
 

@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { PaymentSchedule } from '../lib/payment-automation.js';
 
 // Import production services
+import { FeatureFlags } from '../lib/feature-flags';
 import { contactApi, ContactValidationResult, PaymentRecipient, UserContactData } from '../services/contactApiService';
 import { showToast } from '../services/toastService';
 import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
@@ -816,6 +817,39 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
       }
     }));
   };
+
+  // Feature flag check - show disabled message if payment automation is not enabled
+  if (!FeatureFlags.isPaymentAutomationEnabled()) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="p-8 text-center">
+            <div className="mb-4 flex justify-center">
+              <AlertCircle className="w-16 h-16 text-amber-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Automation Unavailable</h2>
+            <p className="text-gray-600 mb-6">
+              Payment automation features are currently disabled in MVP mode. This feature requires Fedimint integration to be enabled.
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-sm text-amber-900 font-mono">
+                To enable payment automation, set:<br />
+                <code className="block mt-2 bg-white p-2 rounded border border-amber-200">
+                  VITE_FEDIMINT_INTEGRATION_ENABLED=true
+                </code>
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">

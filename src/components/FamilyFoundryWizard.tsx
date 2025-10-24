@@ -1,34 +1,21 @@
 import {
   ArrowLeft,
-  ArrowRight,
   CheckCircle,
   Crown,
+  Mail,
   Shield,
   Users,
-  Zap,
-  Key,
-  Award,
-  Heart,
-  Star,
-  Target,
-  BookOpen,
-  Lock,
-  Eye,
-  EyeOff,
-  Mail,
-  QrCode,
-  Copy,
-  ExternalLink,
-  X
+  Zap
 } from "lucide-react";
 import React, { useState } from "react";
-import { FamilyFoundryService, CharterDefinition, RBACDefinition } from '../lib/api/family-foundry.js';
+import { CharterDefinition, RBACDefinition } from '../lib/api/family-foundry.js';
+import { FeatureFlags } from '../lib/feature-flags';
+import { PaymentCascadeNode } from '../lib/payment-automation';
+import FamilyFederationCreationModal from "./FamilyFederationCreationModal";
 import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
 import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";
-import FamilyFederationCreationModal from "./FamilyFederationCreationModal";
 import PaymentCascadeModal from './PaymentCascadeModal';
-import { PaymentCascadeNode } from '../lib/payment-automation';
 
 interface TrustedPeer {
   id: string;
@@ -192,12 +179,12 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
 
   const nextStep = () => {
     setError(null);
-    
+
     if (currentStep === 'invites') {
       setShowInviteModal(true);
       return;
     }
-    
+
     if (currentStep === 'federation') {
       setShowFederationModal(true);
       return;
@@ -222,7 +209,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
       // Integrate with existing PostAuthInvitationModal system
       // This will use the existing /api/authenticated/generate-peer-invite endpoint
       // which provides DM, QR code, course credits, and landing page integration
-      
+
       const invitationPromises = trustedPeers.map(async (peer) => {
         const response = await fetch('/api/authenticated/generate-peer-invite', {
           method: 'POST',
@@ -245,11 +232,11 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
       });
 
       await Promise.all(invitationPromises);
-      
+
       // Close modal and continue to federation creation
       setShowInviteModal(false);
       setCurrentStep('federation');
-      
+
     } catch (error) {
       console.error('Error sending invitations:', error);
       setError('Failed to send invitations');
@@ -285,7 +272,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             onBack={onBack}
           />
         );
-      
+
       case 'rbac':
         return (
           <FamilyFoundryStep2RBAC
@@ -295,7 +282,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             onBack={prevStep}
           />
         );
-      
+
       case 'invites':
         return (
           <FamilyFoundryStep3Invite
@@ -305,7 +292,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             onBack={prevStep}
           />
         );
-      
+
       case 'federation':
         return (
           <div className="space-y-8">
@@ -367,7 +354,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             </div>
           </div>
         );
-      
+
       default:
         return null;
     }
@@ -388,13 +375,12 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                 <div key={step.id} className="flex items-center">
                   <div className="flex flex-col items-center">
                     <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${
-                        isCompleted
-                          ? 'bg-green-600'
-                          : isActive
+                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${isCompleted
+                        ? 'bg-green-600'
+                        : isActive
                           ? 'bg-purple-600'
                           : 'bg-white/10'
-                      }`}
+                        }`}
                     >
                       {isCompleted ? (
                         <CheckCircle className="h-6 w-6 text-white" />
@@ -403,18 +389,16 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                       )}
                     </div>
                     <span
-                      className={`text-sm mt-2 font-medium ${
-                        isActive ? 'text-white' : 'text-purple-300'
-                      }`}
+                      className={`text-sm mt-2 font-medium ${isActive ? 'text-white' : 'text-purple-300'
+                        }`}
                     >
                       {step.name}
                     </span>
                   </div>
                   {index < steps.length - 1 && (
                     <div
-                      className={`w-16 h-1 mx-4 transition-all duration-300 ${
-                        isCompleted ? 'bg-green-600' : 'bg-white/10'
-                      }`}
+                      className={`w-16 h-1 mx-4 transition-all duration-300 ${isCompleted ? 'bg-green-600' : 'bg-white/10'
+                        }`}
                     />
                   )}
                 </div>
@@ -494,6 +478,21 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
         </div>
       )}
 
+      {/* MVP Mode Information - Shown when Fedimint is disabled */}
+      {!FeatureFlags.isFedimintEnabled() && (
+        <div className="fixed bottom-4 left-4 bg-blue-600/90 backdrop-blur-sm text-white px-6 py-4 rounded-lg shadow-lg border border-blue-400/50 max-w-sm">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-semibold mb-1">MVP Mode Active</h4>
+              <p className="text-sm text-blue-100">
+                Family Federation is running in MVP mode without payment features. Core federation, messaging, and consensus operations are fully functional.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Federation Creation Modal */}
       <FamilyFederationCreationModal
         isOpen={showFederationModal}
@@ -505,15 +504,18 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
         onComplete={handleFederationComplete}
       />
 
-      <PaymentCascadeModal
-        isOpen={showCascadeModal}
-        onClose={() => setShowCascadeModal(false)}
-        onSave={handleCascadeSave}
-        familyMembers={familyMembersForCascade}
-        totalAmount={charter.initialTreasury}
-        defaultCurrency="sats"
-        title="Family Treasury Cascade Setup"
-      />
+      {/* Payment Cascade Modal - Only shown when Fedimint is enabled */}
+      {FeatureFlags.isFedimintEnabled() && (
+        <PaymentCascadeModal
+          isOpen={showCascadeModal}
+          onClose={() => setShowCascadeModal(false)}
+          onSave={handleCascadeSave}
+          familyMembers={familyMembersForCascade}
+          totalAmount={charter.initialTreasury}
+          defaultCurrency="sats"
+          title="Family Treasury Cascade Setup"
+        />
+      )}
     </div>
   );
 };

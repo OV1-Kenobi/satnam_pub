@@ -11,8 +11,10 @@
  * ✅ Zero-knowledge Nsec management protocols
  * ✅ NIP-59 Gift Wrapped messaging for federation communications
  * ✅ Privacy-preserving family banking and eCash operations
+ * ✅ BIFROST-First Strategy: BIFROST integration for threshold signatures
  */
 
+import { BifrostFamilyFederation } from "../src/lib/bifrost-federation-adapter";
 import { ECashNote, FedimintConfig } from "./fedimint/types";
 
 /**
@@ -251,6 +253,7 @@ export class FamilyNostrFederation {
 /**
  * Enhanced Family Nostr Federation Service
  * MASTER CONTEXT COMPLIANCE: Production implementation with governance
+ * BIFROST-First Strategy: Supports BIFROST threshold signatures
  */
 export class EnhancedFamilyNostrFederation extends FamilyNostrFederation {
   private familyMembers: Map<string, EnhancedFamilyMember> = new Map();
@@ -262,6 +265,7 @@ export class EnhancedFamilyNostrFederation extends FamilyNostrFederation {
   private mintId: string;
   private guardianNodes: string[];
   private inviteCode: string;
+  private bifrost: BifrostFamilyFederation | null = null;
 
   constructor() {
     super();
@@ -277,22 +281,56 @@ export class EnhancedFamilyNostrFederation extends FamilyNostrFederation {
   }
 
   private async initializeFamilyFederation(): Promise<void> {
-    if (!this.federationId) {
-      throw new Error("FEDIMINT_FAMILY_FEDERATION_ID not configured");
+    // Check if BIFROST is enabled (preferred)
+    if (FeatureFlags.isBifrostEnabled()) {
+      try {
+        this.bifrost = new BifrostFamilyFederation(this.federationId);
+        console.log("✅ BIFROST federation initialized");
+        await this.initializeFamilyMembers();
+        return;
+      } catch (error) {
+        console.warn(
+          "⚠️ BIFROST initialization failed - federation will operate in identity-only mode",
+          error
+        );
+        this.bifrost = null;
+      }
     }
 
-    const config: FedimintConfig = {
-      federationId: this.federationId,
-      guardianUrls: this.guardianNodes,
-      threshold: parseInt(getEnvVar("FEDIMINT_NOSTR_THRESHOLD") || "5"),
-      totalGuardians: parseInt(
-        getEnvVar("FEDIMINT_NOSTR_GUARDIAN_COUNT") || "7"
-      ),
-      inviteCode: this.inviteCode,
-    };
+    // Fall back to Fedimint if enabled
+    if (!this.federationId) {
+      console.warn(
+        "⚠️ Payment integration not configured - federation will operate in identity-only mode"
+      );
+      // Generate temporary federation ID for identity-only mode
+      this.federationId = `fed_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      await this.initializeFamilyMembers();
+      return;
+    }
 
-    await this.initialize(config);
-    await this.initializeFamilyMembers();
+    try {
+      const config: FedimintConfig = {
+        federationId: this.federationId,
+        guardianUrls: this.guardianNodes,
+        threshold: parseInt(getEnvVar("FEDIMINT_NOSTR_THRESHOLD") || "5"),
+        totalGuardians: parseInt(
+          getEnvVar("FEDIMINT_NOSTR_GUARDIAN_COUNT") || "7"
+        ),
+        inviteCode: this.inviteCode,
+      };
+
+      await this.initialize(config);
+      await this.initializeFamilyMembers();
+    } catch (error) {
+      console.warn(
+        "⚠️ Fedimint initialization failed - federation will operate in identity-only mode",
+        error
+      );
+      // Continue without Fedimint
+      await this.initializeFamilyMembers();
+    }
   }
   private async initializeFamilyMembers(): Promise<void> {
     const members: EnhancedFamilyMember[] = [
@@ -658,6 +696,56 @@ export class EnhancedFamilyNostrFederation extends FamilyNostrFederation {
         (p) => p.status === "pending"
       ).length,
       guardianHealth: health,
+    };
+  }
+
+  /**
+   * BIFROST-First Strategy: Sign message using BIFROST threshold signatures
+   * Falls back to Fedimint if BIFROST is not available
+   */
+  async signWithBifrost(message: string): Promise<{
+    success: boolean;
+    signature?: string;
+    error?: string;
+  }> {
+    if (!FeatureFlags.isBifrostEnabled()) {
+      return {
+        success: false,
+        error:
+          "BIFROST not enabled. Enable VITE_BIFROST_ENABLED to use BIFROST signing.",
+      };
+    }
+
+    if (!this.bifrost) {
+      return {
+        success: false,
+        error: "BIFROST not initialized",
+      };
+    }
+
+    try {
+      const result = await this.bifrost.signMessage(message);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown signing error",
+      };
+    }
+  }
+
+  /**
+   * Get BIFROST federation status
+   */
+  getBifrostStatus(): {
+    enabled: boolean;
+    initialized: boolean;
+    federationId: string;
+  } {
+    return {
+      enabled: FeatureFlags.isBifrostEnabled(),
+      initialized: this.bifrost !== null,
+      federationId: this.federationId,
     };
   }
 }

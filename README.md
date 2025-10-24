@@ -6,7 +6,7 @@
 [![Nostr Protocol](https://img.shields.io/badge/Protocol-Nostr-purple.svg)]()
 [![Privacy First](https://img.shields.io/badge/Privacy-First-green.svg)]()
 
-> **Forge Your Sovereign Family Legacy** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians, no compromises, and complete privacy. Establishing your Cognitive Capital Accounting system that tracks knowledge, skills, and achievements for self-sovereign Individuals and Families.
+> **Secure Your Sovereign Family Dynasty** - Create decentralized, interoperable identities and human-readable Bitcoin addresses for your family with no custodians, no compromises, and complete privacy. Validate who you are, who your peers are, how you all communicate, and how you all transact. Establishing the foundations of your Cognitive Capital Accounting system that tracks trust, identity, peers, finances, knowledge, skills, and achievements for self-sovereign Individuals, Families, and Businesses.
 
 ## Table of Contents
 
@@ -27,9 +27,9 @@
 
 ## Overview
 
-Satnam.pub is a Bitcoin-only, privacy-first, sovereign family banking and identity platform that empowers families and individuals to create and manage decentralized digital identities and finances without relying on custodial services. Built exclusively on Bitcoin, Lightning, Nostr, and eCash protocols, the platform provides a comprehensive suite of tools for identity forging, education, family coordination, and financial sovereignty.
+Satnam.pub is a reference implementation for establishing source of truth architectures, cultivating, tracking, and managing trust, privacy, and data sovereignty. Satnam.pub is a Bitcoin-only, privacy-first, sovereign family identity, communication, and banking platform that empowers individual to institutional scale creation and management of decentralized digital identities, communications, and finances without relying on custodial services. Built exclusively with Bitcoin as the final settlement layer, using Lightning, Nostr, and eCash protocols, the platform provides a comprehensive suite of tools. Designed for claiming our individual, family, and business names, for accelerating our education, to secure our family office communications, and to achieve sovereignty over our finances.
 
-The project combines the security and sovereignty of Bitcoin with the interoperability of Nostr to create human-readable addresses, family dashboards, and educational resources - all while maintaining complete user control over private keys, identity data, and financial information.
+The project combines the security and sovereignty of Bitcoin with the interoperability of Nostr to create human-readable addresses, family dashboards, and educational resources - all while maintaining complete user control over private keys, identity data, and financial information. Guiding users through a self-custody journey, Satnam.pub empowers individuals and families to achieve sovereignty over their digital identities, communications, and finances.
 
 Whether you're a Bitcoin beginner seeking education or an advanced user coordinating family security, Satnam.pub provides the tools to build your digital dynasty with pure Bitcoin sovereignty and uncompromising privacy.
 
@@ -38,8 +38,8 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 ### 🛡️ **Bitcoin-Only**
 
 - No altcoins, no tokens, no compromises
-- All value transfer and authentication is Bitcoin-native
-- Lightning Network, Fedimint, and Cashu for all payments
+- All value transfer and authentication is Bitcoin-native and denominated in satoshis
+- Lightning Network, Fedimint, and Cashu for all payment rails
 
 ### 🔒 **Privacy-First**
 
@@ -105,10 +105,16 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 
 ### 🌐 **Nostr Protocol Integration**
 
-- Native Nostr protocol implementation (NIP-04, NIP-05, NIP-07, NIP-17, NIP-26, NIP-41, NIP-42, NIP-44, NIP-58, NIP-59)
-- Human-readable verification system (username@satnam.pub)
-- Lightning addresses for seamless 'Zap' payments
-- Cross-platform identity portability
+- Native Nostr protocol implementation (NIP-04, NIP-05, NIP-07, NIP-17, NIP-26, NIP-41, NIP-42, NIP-44, NIP-46, NIP-55 NIP-58, NIP-59, NIP-85)
+- Human-readable verification system (username@my.satnam.pub)
+- Lightning addresses for seamless 'Zap' payments forward to your self-custodied LN Address
+- Integration with Nostr Wallet Connect (NWC) for self-custody wallet connections
+- Nostr-based authentication for all services
+- Nostr-based trust scoring and verification
+- Nostr-based trust metrics and comparison
+- Nostr-based trust provider marketplace
+- Nostr-based trust provider ratings and reviews
+- Nostr-based trust assertions and verification
 - Nostr badges for self-custody milestones and for knowledge, skills, & achievements
 
 ### 🔐 **Advanced Security & Privacy**
@@ -184,7 +190,7 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - **NIP-58 Badge System** with Web of Trust verification
 - **Mentor Notarization** for educational achievements
 - **Bitcoin-Only Rewards** including Lightning sats and family treasury credits
-- **Achievement NFTs** for permanent record keeping
+- **Achievement Attestations** for SimpleProof permanent record keeping
 - **Premium Access Tokens** for advanced educational content
 - **Mentorship Sessions** with Bitcoin experts
 - **Hardware Discounts** and conference access
@@ -317,7 +323,7 @@ The Sovereign Family Banking component provides comprehensive family financial m
 #### **Core Features**
 
 - **Lightning Network Integration**: Instant Bitcoin payments with PhoenixD
-- **Family Wallets**: Manage payments and spending limits
+- **Family Wallets**: Multi-sig wallets to manage payments and spending limits
 - **Bitcoin Treasury**: Secure family savings and long-term holdings
 - **Privacy Protection**: LNProxy privacy routing for all transactions
 
@@ -412,10 +418,13 @@ Satnam.pub is built exclusively on open protocols:
   - NIP-41: Key migration events (whitelist and migrate)
   - NIP-42: Authenticated relay connections (AUTH)
   - NIP-44: Modern DM encryption (XChaCha20-Poly1305)
+  - NIP-46: Remote signing (Amber app support)
+  - NIP-55: Remote signing (NIP-46 vs NIP-55)
   - NIP-58: Badge system for achievements
   - NIP-59: Gift-wrapped messages (primary DM method currently)
-- **Fedimint:** Federation-based custody, privacy, and Nsec key protection/rotation
-- **Cashu:** Private eCash for Bitcoin
+  - NIP-85: Event deletion (soft delete for spam reduction)
+- **Fedimint:** Federation-based custody, privacy, and Nsec key protection/rotation and recovery, along with multi-sig guardianship and emergency protocols, AND family/business treasury management
+- **Cashu:** Private eCash for Bitcoin, digital and/or physical bearer instruments for private payments between trusted peers, with internal and external swaps, and cross-mint compatibility
 
 ## Installation
 
@@ -431,9 +440,9 @@ For detailed development setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md
 
 ## Quick Start
 
-### 1. Forge Your Identity
+### 1. Create Your Identity
 
-Visit 'satnam.pub' and click "Forge Identity" to create your sovereign digital identity.
+Visit 'satnam.pub' and click "Claim Your Name" to create your sovereign digital identity.
 
 ### 2. Authentication Methods
 
@@ -459,7 +468,7 @@ After authentication, access your family dashboard to:
 
 After authentication, access your family dashboard to:
 
-- View family members and their Bitcoin addresses
+- View family members and their LN Bitcoin addresses
 - Coordinate multi-signature setups
 - Access educational resources and Cognitive Capital Accounting system
 - Monitor Lightning Network activity, channels, and liquidity through Family Financials dashboard
@@ -493,8 +502,12 @@ If you lose access, use the password protected recovery system with encrypted ba
 - **@noble/secp256k1** for cryptographic operations
 - **bech32** for address encoding
 - **bolt11** for Lightning invoice parsing
-- **Fedimint** for family federation
-- **Cashu** for eCash implementation
+- **Fedimint** for group account, communication, and finance management
+- **Cashu** for eCash bearer instrument implementation
+- **NWC** for Nostr Wallet Connect self-custody wallet connections
+- **LNbits** for account management and payment routing
+- **PhoenixD** for Lightning Network operations
+- **SimpleProof** for trust assertions and verification
 
 ### Project Structure
 
@@ -603,33 +616,6 @@ Satnam.pub implements a server-side Deterministic User ID (DUID) system aligned 
 - **Ephemeral Key Generation**: Keys are created, used, and destroyed without persistent storage
 - **Browser-Native Cryptography**: All cryptographic operations run client-side using Web Crypto API
 
-### 🔍 **Zero-Knowledge Proof Implementation**
-
-Satnam.pub will be leveraging zero-knowledge proofs in several key areas, with a comprehensive audit process starting Q3 2025 (seeking user feedback on potential audit partners):
-
-1. **Transaction Verification** (zk-SNARKs) - Phase 1, Current-Q3 2025
-
-   - Verify Lightning payment amounts without revealing values
-   - Confirm transaction history without exposing transaction graph
-   - Validate spending limits compliance without revealing actual spending
-
-2. **Identity & Authentication** (Bulletproofs) - Phase 2, Q4 2025
-
-   - Age verification without revealing birth date
-   - Guardian approval without exposing transaction details
-   - Account ownership proof without linking identities
-
-3. **Family Treasury Management** (zk-STARKs) - Phase 3, Q2 2026
-
-   - Multi-signature verification without revealing individual signatures
-   - Treasury balance verification without exposing actual amounts
-   - Spending policy compliance without revealing transaction details
-
-4. **Fedimint & Cashu Integration** - Phase 4, Q4 2026
-   - Blind issuance and redemption of eCash tokens
-   - Federated custody verification without revealing guardian identities
-   - Cross-federation transfers without exposing source/destination
-
 ### 📊 **Privacy-Preserving Analytics**
 
 Satnam.pub implements a unique approach to analytics that preserves privacy:
@@ -659,7 +645,7 @@ Please review our comprehensive [Security Guidelines](SECURITY_GUIDELINES.md) be
 If you discover a security vulnerability, please report it to our security team immediately:
 
 - Email: admin@satnam.pub
-- For sensitive issues, use our Nostr ID: ov1@satnam.pub
+- For sensitive issues, use our Nostr ID: admin@my.satnam.pub
 
 ## Development Roadmap
 
@@ -698,9 +684,9 @@ If you discover a security vulnerability, please report it to our security team 
 
 ### Phase 4: Citadel Academy & Ecosystem 🚧
 
-- [x] Full Citadel Academy integration
-- [x] Nostr Knowledge Management System
-- [x] Badge-based learning achievements
+- [ ] Full Citadel Academy integration
+- [ ] Nostr Knowledge Management System
+- [ ] Badge-based learning achievements
 - [x] Enhanced badge and reward system
 - [x] Hardware security integration, w/pin protected N424 NFCs
 - [x] **SimpleProof Timestamping** - Blockchain-based proof of existence and timestamping
