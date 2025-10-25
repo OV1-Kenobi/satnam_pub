@@ -19,6 +19,12 @@
   VITE_PROFILE_SEARCH_ENABLED = "false"
   VITE_PROFILE_ANALYTICS_ENABLED = "false"
   VITE_PROFILE_CUSTOMIZATION_ENABLED = "false"
+  # Phase 2A/2B: PKARR Decentralized Identity Verification (default: false for production safety)
+  VITE_PKARR_ENABLED = "false"                          # Master PKARR feature flag
+  VITE_HYBRID_IDENTITY_ENABLED = "false"                # Hybrid verification (PKARR + kind:0 + DNS)
+  VITE_PKARR_AUTO_VERIFY_ON_ADD = "false"               # Auto-verify contacts on creation
+  VITE_PKARR_ADMIN_ENABLED = "false"                    # Admin analytics dashboard
+  VITE_MULTI_METHOD_VERIFICATION_ENABLED = "false"      # Parallel multi-method verification
 
 # Development server configuration
 [dev]
@@ -644,6 +650,12 @@
 # Scheduled functions for cleanup tasks (only essential ones)
 [functions."cleanup-expired-credentials"]
   schedule = "0 */6 * * *"  # Run every 6 hours
+
+# Phase 2A Day 6: Scheduled PKARR Republishing
+[functions."scheduled-pkarr-republish"]
+  schedule = "0 */6 * * *"  # Run every 6 hours (PKARR records have 24h TTL)
+  memory = 256
+  timeout = 60
 
 # Phase 1: SimpleProof Timestamping Functions
 [functions."simpleproof-timestamp"]

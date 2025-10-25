@@ -272,6 +272,80 @@ export const handler: Handler = async (event) => {
       return badRequest({ error: "Failed to store PKARR record" }, 500);
     }
 
+    // Optional: Create SimpleProof timestamp for blockchain verification
+    // Feature flag gated: VITE_SIMPLEPROOF_ENABLED
+    let simpleproofTimestampId: string | null = null;
+    const simpleproofEnabled = getEnvVar("VITE_SIMPLEPROOF_ENABLED") === "true";
+
+    if (simpleproofEnabled) {
+      try {
+        // Create hash of PKARR record for timestamping
+        const recordData = JSON.stringify({
+          public_key: payload.public_key,
+          records: payload.records,
+          timestamp: payload.timestamp,
+          sequence: payload.sequence,
+        });
+
+        // Call simpleproof-timestamp function
+        const timestampResponse = await fetch(
+          `${
+            process.env.URL || "https://www.satnam.pub"
+          }/.netlify/functions/simpleproof-timestamp`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "create",
+              data: recordData,
+              verification_id: insertedRecord.id, // Link to PKARR record
+            }),
+          }
+        );
+
+        if (timestampResponse.ok) {
+          const timestampData = await timestampResponse.json();
+
+          // Store timestamp ID in simpleproof_timestamps table
+          const { data: timestampRecord } = await supabase
+            .from("simpleproof_timestamps")
+            .select("id")
+            .eq("verification_id", insertedRecord.id)
+            .maybeSingle();
+
+          if (timestampRecord) {
+            simpleproofTimestampId = timestampRecord.id;
+
+            // Update PKARR record with SimpleProof verification
+            await supabase
+              .from("pkarr_records")
+              .update({
+                simpleproof_timestamp_id: timestampRecord.id,
+                simpleproof_verified: true,
+                simpleproof_verified_at: Math.floor(Date.now() / 1000),
+              })
+              .eq("id", insertedRecord.id);
+
+            console.log(
+              `SimpleProof timestamp created for PKARR record: ${insertedRecord.id}`
+            );
+          }
+        } else {
+          console.warn(
+            `SimpleProof timestamp creation failed (non-critical): ${timestampResponse.status}`
+          );
+        }
+      } catch (simpleproofError) {
+        // Non-critical error: PKARR record is still valid without SimpleProof
+        console.warn(
+          "SimpleProof timestamp creation failed (non-critical):",
+          simpleproofError instanceof Error
+            ? simpleproofError.message
+            : "Unknown error"
+        );
+      }
+    }
+
     // Cache for 5 minutes
     const cacheHeaders = {
       "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
@@ -286,6 +360,8 @@ export const handler: Handler = async (event) => {
           public_key: payload.public_key,
           sequence: payload.sequence,
           message: "PKARR record published successfully",
+          simpleproof_timestamp_id: simpleproofTimestampId,
+          simpleproof_enabled: simpleproofEnabled,
         },
       },
       cacheHeaders

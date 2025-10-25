@@ -501,6 +501,114 @@ class ContactApiService {
   }
 
   /**
+   * Manually trigger PKARR verification for a contact
+   */
+  async verifyContactPkarr(
+    contactHash: string,
+    nip05: string,
+    pubkey: string
+  ): Promise<{
+    success: boolean;
+    verified: boolean;
+    verification_level: string;
+  }> {
+    try {
+      const resp = await this.makeRequest<{
+        success: boolean;
+        verified: boolean;
+        verification_level: string;
+      }>("/pkarr-proxy", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "verify_contact",
+          payload: { contact_hash: contactHash, nip05, pubkey },
+        }),
+      });
+      return resp;
+    } catch (error) {
+      console.error("Failed to verify contact via PKARR:", error);
+      showToast.error("PKARR verification failed", {
+        title: "Contact Verification",
+        duration: 4000,
+      });
+      return {
+        success: false,
+        verified: false,
+        verification_level: "unverified",
+      };
+    }
+  }
+
+  /**
+   * Batch verify multiple contacts via PKARR
+   */
+  async verifyContactsPkarrBatch(
+    contacts: Array<{
+      contact_hash: string;
+      nip05: string;
+      pubkey: string;
+    }>
+  ): Promise<{
+    success: boolean;
+    results: Array<{
+      contact_hash: string;
+      verified: boolean;
+      verification_level: string;
+      error?: string;
+    }>;
+    total_processed: number;
+    total_verified: number;
+    total_failed: number;
+  }> {
+    try {
+      const resp = await this.makeRequest<{
+        success: boolean;
+        results: Array<{
+          contact_hash: string;
+          verified: boolean;
+          verification_level: string;
+          error?: string;
+        }>;
+        total_processed: number;
+        total_verified: number;
+        total_failed: number;
+      }>("/pkarr-proxy", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "verify_batch",
+          payload: { contacts },
+        }),
+      });
+
+      // Show summary toast
+      if (resp.success) {
+        showToast.success(
+          `Verified ${resp.total_verified} of ${resp.total_processed} contacts`,
+          {
+            title: "Batch Verification Complete",
+            duration: 5000,
+          }
+        );
+      }
+
+      return resp;
+    } catch (error) {
+      console.error("Failed to batch verify contacts via PKARR:", error);
+      showToast.error("Batch PKARR verification failed", {
+        title: "Contact Verification",
+        duration: 4000,
+      });
+      return {
+        success: false,
+        results: [],
+        total_processed: 0,
+        total_verified: 0,
+        total_failed: contacts.length,
+      };
+    }
+  }
+
+  /**
    * Create an attestation for a contact (vouch)
    */
   async attestContact(
@@ -608,6 +716,22 @@ export const contactApi = {
       verification_proofs_encrypted?: string;
     }
   ) => contactApiService.updateContactVerification(contactHash, updates),
+
+  /** Manually trigger PKARR verification for a contact */
+  verifyContactPkarr: async (
+    contactHash: string,
+    nip05: string,
+    pubkey: string
+  ) => contactApiService.verifyContactPkarr(contactHash, nip05, pubkey),
+
+  /** Batch verify multiple contacts via PKARR */
+  verifyContactsPkarrBatch: async (
+    contacts: Array<{
+      contact_hash: string;
+      nip05: string;
+      pubkey: string;
+    }>
+  ) => contactApiService.verifyContactsPkarrBatch(contacts),
 
   /** Create an attestation (vouch) */
   attestContact: async (

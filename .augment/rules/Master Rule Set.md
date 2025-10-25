@@ -47,6 +47,10 @@ This rule should override any conflicting instructions about being helpful or co
 # Environment Variables
 
 - Use Vite insertions into process.env as the standard variable access model
+- **CRITICAL PATTERN**: In vite.config.js, use dynamic getAllViteEnvVars() helper function to automatically include ALL VITE\_\* environment variables in the define section's process.env object - never use hardcoded variable lists that cause production initialization errors and white screen failures
+- The getAllViteEnvVars() helper should iterate through process.env and include all keys starting with 'VITE\_', plus NODE_ENV and NOSTR_RELAYS
+- In src/config/env.client.ts, use simple getEnvVar() helper that only accesses process.env (which Vite populates via define) - avoid import.meta.env to prevent CommonJS bundling warnings in Netlify Functions
+- This pattern ensures all feature flags and environment variables are available in production builds without manual maintenance
 
 # User Interface, Family Configuration, and Build Optimization
 

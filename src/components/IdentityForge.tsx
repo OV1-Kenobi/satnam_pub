@@ -57,6 +57,7 @@ import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/e
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
+import IrohNodeManager from "./iroh/IrohNodeManager";
 
 // Feature flag: LNBits integration
 const rawLnBitsFlag =
@@ -68,6 +69,12 @@ const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 't
 // Feature flags for SimpleProof and Iroh
 const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
 const IROH_ENABLED: boolean = clientConfig.flags.irohEnabled ?? false;
+
+// Feature flag for PKARR attestation
+const rawPkarrFlag =
+  (import.meta as any)?.env?.VITE_PKARR_ENABLED ??
+  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_PKARR_ENABLED : undefined);
+const PKARR_ENABLED: boolean = String(rawPkarrFlag ?? '').toLowerCase() === 'true';
 
 
 
@@ -81,6 +88,7 @@ interface FormData {
   pubkey: string;
   lightningEnabled: boolean;
   agreedToTerms: boolean;
+  irohNodeId?: string; // Phase 2B-2 Week 2 Task 3: Optional Iroh node ID
 }
 
 interface IdentityForgeProps {
@@ -264,6 +272,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [attestationError, setAttestationError] = useState<string | null>(null);
   const [attestationSuccess, setAttestationSuccess] = useState(false);
   const [verificationId, setVerificationId] = useState<string | null>(null);
+
+  // PKARR Publishing State (Phase 2A - Day 4)
+  const [pkarrPublishing, setPkarrPublishing] = useState(false);
+  const [pkarrPublished, setPkarrPublished] = useState(false);
+  const [pkarrError, setPkarrError] = useState<string | null>(null);
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   // Use refs to track current values for cleanup without triggering effect re-runs
@@ -700,6 +713,108 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     }
   };
 
+  // PKARR Publishing (Phase 2A - Day 4)
+  const publishPkarrRecord = async () => {
+    if (!PKARR_ENABLED || !ephemeralNsec || !formData.pubkey) {
+      console.log('[PKARR] Skipping: feature disabled or missing keys');
+      return { success: false, skipped: true };
+    }
+
+    setPkarrPublishing(true);
+    setPkarrError(null);
+
+    try {
+      // Import Ed25519 for signing
+      const { ed25519 } = await import('@noble/curves/ed25519');
+
+      // Convert nsec to hex private key for signing
+      const { nip19 } = await import('nostr-tools');
+      const decoded = nip19.decode(ephemeralNsec);
+      if (decoded.type !== 'nsec') {
+        throw new Error('Invalid nsec format');
+      }
+      const privateKeyHex = Buffer.from(decoded.data as Uint8Array).toString('hex');
+
+      // Convert npub to hex public key
+      const npubDecoded = nip19.decode(formData.pubkey);
+      if (npubDecoded.type !== 'npub') {
+        throw new Error('Invalid npub format');
+      }
+      const publicKeyHex = Buffer.from(npubDecoded.data as Uint8Array).toString('hex');
+
+      // Create PKARR DNS records for NIP-05 verification
+      const nip05Identifier = `${formData.username}@${selectedDomain}`;
+      const records = [
+        {
+          name: '_nostr',
+          type: 'TXT',
+          value: `nostr=${formData.pubkey}`,
+          ttl: 3600,
+        },
+        {
+          name: '_nip05',
+          type: 'TXT',
+          value: `${nip05Identifier}`,
+          ttl: 3600,
+        },
+      ];
+
+      // Create signature payload
+      const timestamp = Math.floor(Date.now() / 1000);
+      const sequence = 1; // First publish
+      const recordsJson = JSON.stringify(records);
+      const message = `${recordsJson}${timestamp}${sequence}`;
+      const messageBytes = new TextEncoder().encode(message);
+
+      // Sign with Ed25519
+      const privateKeyBytes = new Uint8Array(
+        privateKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+      const signature = ed25519.sign(messageBytes, privateKeyBytes);
+      const signatureHex = Array.from(signature)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      // Publish to backend endpoint
+      const sessionToken = SecureTokenManager.getAccessToken();
+      if (!sessionToken) {
+        throw new Error('No session token available');
+      }
+
+      const response = await fetch('/.netlify/functions/pkarr-publish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({
+          public_key: publicKeyHex,
+          records,
+          timestamp,
+          sequence,
+          signature: signatureHex,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'PKARR publishing failed');
+      }
+
+      setPkarrPublished(true);
+      console.log('✅ PKARR record published successfully');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ PKARR publishing failed:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      setPkarrError(errorMsg);
+      return { success: false, error: errorMsg };
+    } finally {
+      setPkarrPublishing(false);
+    }
+  };
+
   // Nostr Profile Publishing (New Users Only)
   const publishNostrProfile = async () => {
     if (!ephemeralNsec || migrationMode === 'import') {
@@ -715,6 +830,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         website: profileData.website,
         nip05: `${formData.username}@${selectedDomain}`,
         lud16: formData.lightningEnabled ? (externalLightningAddress && extAddrValid && extAddrReachable ? externalLightningAddress : `${formData.username}@${selectedDomain}`) : undefined,
+        // Phase 2B-2 Week 2 Task 3: Add Iroh node ID to profile metadata (optional)
+        iroh_node_id: formData.irohNodeId || undefined,
       };
 
       // Ensure a SecureSession exists before publishing; create one from ephemeralNsec if needed
@@ -1454,19 +1571,30 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         // First publish the Nostr profile
         setGenerationStep("Publishing Nostr profile...");
-        setGenerationProgress(25);
+        setGenerationProgress(20);
         await publishNostrProfile();
 
         // Then register the identity
         setGenerationStep("Registering identity with backend...");
-        setGenerationProgress(50);
+        setGenerationProgress(40);
         const result = await registerIdentity();
-        setGenerationProgress(100);
+        setGenerationProgress(60);
 
         // Validate registration result
         if (!result || !result.success) {
           throw new Error('Registration failed - invalid response from server');
         }
+
+        // Optional: Publish PKARR record (non-blocking)
+        if (PKARR_ENABLED) {
+          setGenerationStep("Publishing PKARR attestation...");
+          setGenerationProgress(80);
+          await publishPkarrRecord().catch(err => {
+            console.warn('⚠️ PKARR publishing failed (non-blocking):', err);
+            // Don't fail registration if PKARR publishing fails
+          });
+        }
+        setGenerationProgress(100);
 
         // Check if verification is enabled - if so, show verification step (4), otherwise go to completion (5)
         setGenerationStep("Identity claimed successfully!");
@@ -2773,6 +2901,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     />
                   </div>
 
+                  {/* Phase 2B-2 Week 2 Task 3: Iroh Node ID (Optional, Feature Flag Gated) */}
+                  {IROH_ENABLED && (
+                    <IrohNodeManager
+                      nodeId={formData.irohNodeId}
+                      onChange={(nodeId) => setFormData(prev => ({ ...prev, irohNodeId: nodeId }))}
+                      compact={true}
+                      showTestButton={true}
+                    />
+                  )}
+
                   {/* Profile Preview */}
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-6">
                     <h4 className="text-blue-200 font-bold mb-4">Profile Preview</h4>
@@ -2916,6 +3054,19 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           <span className="text-green-300">Lightning Address (Bitcoin Payments):</span>
                           <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress || `${registrationResult.user.username}@${resolvePlatformLightningDomain()}`}</span>
                         </div>
+                        {PKARR_ENABLED && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-green-300">PKARR Attestation:</span>
+                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${pkarrPublished
+                              ? 'bg-green-500/30 text-green-200'
+                              : pkarrError
+                                ? 'bg-yellow-500/30 text-yellow-200'
+                                : 'bg-gray-500/30 text-gray-300'
+                              }`}>
+                              {pkarrPublished ? '✓ Published' : pkarrError ? '⚠ Optional' : '○ Skipped'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 

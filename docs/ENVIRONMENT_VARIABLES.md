@@ -2,6 +2,62 @@
 
 This project splits environment configuration between browser (Vite, public) and server (Netlify Functions, private). Public variables use the VITE\_\* prefix and are safe to expose in the client bundle. All others must remain server-only.
 
+## Critical Pattern: Dynamic Environment Variable Inclusion
+
+**IMPORTANT:** The codebase uses a dynamic pattern to automatically include ALL `VITE_*` environment variables in production builds without manual maintenance.
+
+### Implementation
+
+In `vite.config.js`, the `getAllViteEnvVars()` helper function automatically collects all environment variables:
+
+```javascript
+// Helper to collect all VITE_* environment variables
+function getAllViteEnvVars() {
+  const viteEnv = {};
+  if (typeof process !== 'undefined' && process.env) {
+    Object.keys(process.env).forEach(key => {
+      if (key.startsWith('VITE_') || key === 'NODE_ENV' || key === 'NOSTR_RELAYS') {
+        viteEnv[key] = process.env[key] || '';
+      }
+    });
+  }
+  return viteEnv;
+}
+
+// In defineConfig:
+define: {
+  global: "globalThis",
+  __DEV__: isDevelopment,
+  'process.env': JSON.stringify(getAllViteEnvVars()),
+}
+```
+
+### Why This Matters
+
+- **Prevents production failures:** Hardcoded variable lists cause white screen errors when new feature flags are added
+- **Zero maintenance:** New `VITE_*` variables are automatically included without updating `vite.config.js`
+- **Consistent access:** All code uses `process.env.VITE_*` pattern (populated by Vite's `define`)
+- **No CommonJS warnings:** Avoids `import.meta.env` which causes bundling issues in Netlify Functions
+
+### Client-Side Access Pattern
+
+In `src/config/env.client.ts`, use a simple helper that accesses `process.env`:
+
+```typescript
+function getEnvVar(key: string): string | undefined {
+  if (
+    typeof process !== "undefined" &&
+    process.env &&
+    process.env[key] !== undefined
+  ) {
+    return process.env[key];
+  }
+  return undefined;
+}
+```
+
+**DO NOT** use `import.meta.env` in files that may be imported by Netlify Functions, as this causes CommonJS bundling errors.
+
 ## LNbits (server-only)
 
 - LNBITS_BASE_URL (required)

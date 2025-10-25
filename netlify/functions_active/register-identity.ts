@@ -153,6 +153,79 @@ async function getDUIDSecret() {
 }
 
 /**
+ * Publish PKARR record asynchronously (non-blocking)
+ * Phase 2A Day 5: Server-side PKARR publishing after registration
+ * @param npub - User's Nostr public key (npub format)
+ * @param username - User's username
+ * @param domain - Platform domain for NIP-05
+ */
+async function publishPkarrRecordAsync(
+  npub: string,
+  username: string,
+  domain: string
+): Promise<void> {
+  try {
+    // Import nip19 for npub decoding
+    const { nip19 } = await import("nostr-tools");
+
+    // Decode npub to hex public key
+    const decoded = nip19.decode(npub);
+    if (decoded.type !== "npub") {
+      throw new Error("Invalid npub format");
+    }
+    // decoded.data for npub is already a hex string, not Uint8Array
+    const publicKeyHex =
+      typeof decoded.data === "string"
+        ? decoded.data
+        : Buffer.from(decoded.data as Uint8Array).toString("hex");
+
+    // Create PKARR DNS records for NIP-05 verification
+    const nip05Identifier = `${username}@${domain}`;
+    const records = [
+      {
+        name: "_nostr",
+        type: "TXT",
+        value: `nostr=${npub}`,
+        ttl: 3600,
+      },
+      {
+        name: "_nip05",
+        type: "TXT",
+        value: nip05Identifier,
+        ttl: 3600,
+      },
+    ];
+
+    // Store in database (pkarr_records table)
+    const recordsJson = JSON.stringify(records);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const sequence = 1; // First publish
+
+    // Insert into pkarr_records table
+    const { error: insertError } = await supabase.from("pkarr_records").insert({
+      public_key: publicKeyHex,
+      records: recordsJson,
+      timestamp,
+      sequence,
+      signature: "", // Server-side publishing doesn't require signature verification
+      relay_urls: [], // Will be populated by scheduled republish job
+      last_published_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    });
+
+    if (insertError) {
+      console.error("❌ PKARR database insert failed:", insertError);
+      throw new Error(`PKARR database insert failed: ${insertError.message}`);
+    }
+
+    console.log("✅ PKARR record stored in database for:", nip05Identifier);
+  } catch (error) {
+    console.error("❌ PKARR publishing error:", error);
+    throw error;
+  }
+}
+
+/**
  * SECURITY: Password hashing utilities with PBKDF2/SHA-512
  * Implements secure password storage with unique salts per user
  */
@@ -1156,6 +1229,22 @@ export const handler: Handler = async (event, context) => {
           },
         }),
       };
+    }
+
+    // Optional: Publish PKARR record (non-blocking - Phase 2A Day 5)
+    const pkarrEnabled = process.env.VITE_PKARR_ENABLED === "true";
+    if (pkarrEnabled && validatedData.npub) {
+      // Fire-and-forget PKARR publishing (don't block registration)
+      publishPkarrRecordAsync(
+        validatedData.npub,
+        validatedData.username,
+        resolvePlatformLightningDomainServer()
+      ).catch((err) => {
+        console.warn(
+          "⚠️ PKARR publishing failed (non-blocking):",
+          err instanceof Error ? err.message : err
+        );
+      });
     }
 
     // Create secure JWT token compatible with frontend SecureTokenManager expectations

@@ -6,8 +6,11 @@ import KeyRotationWizard from "./KeyRotationWizard";
 import ProfileVisibilitySettings from "./ProfileVisibilitySettings";
 
 import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
+import { showToast } from "../services/toastService";
 import AmberConnectButton from "./auth/AmberConnectButton";
 import SignerMethodSettings from "./auth/SignerMethodSettings";
+import IrohNodeManager from "./iroh/IrohNodeManager";
+import AttestationsTab from "./Settings/AttestationsTab";
 
 
 
@@ -51,6 +54,12 @@ const Settings: React.FC = () => {
 
   // Feature flags
   const publicProfilesEnabled = getFlag("VITE_PUBLIC_PROFILES_ENABLED", false);
+  const pkarrEnabled = getFlag("VITE_PKARR_ENABLED", false);
+  const irohEnabled = getFlag("VITE_IROH_ENABLED", false);
+
+  // Iroh verification state
+  const [irohVerificationEnabled, setIrohVerificationEnabled] = useState<boolean>(false);
+  const [userIrohNodeId, setUserIrohNodeId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     try {
@@ -72,6 +81,38 @@ const Settings: React.FC = () => {
     const val = !!e.target.checked;
     setPreferNip55(val);
     try { if (typeof window !== "undefined") window.localStorage.setItem("amberPreferNip55", val ? "true" : "false"); } catch { }
+  };
+
+  // Iroh verification handlers
+  const handleToggleIrohVerification = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const enabled = e.target.checked;
+    setIrohVerificationEnabled(enabled);
+
+    // Save to user preferences (placeholder - implement API call)
+    try {
+      // TODO: API call to update user preferences
+      // await updateUserPreferences({ iroh_verification_enabled: enabled });
+      showToast.success(
+        enabled ? 'Iroh verification enabled' : 'Iroh verification disabled',
+        { duration: 2000 }
+      );
+    } catch (error) {
+      showToast.error('Failed to update Iroh verification settings', { duration: 3000 });
+      setIrohVerificationEnabled(!enabled); // Revert on error
+    }
+  };
+
+  const handleIrohNodeIdChange = async (nodeId: string | undefined) => {
+    setUserIrohNodeId(nodeId);
+
+    // Save to user profile metadata (placeholder - implement API call)
+    try {
+      // TODO: API call to update user profile
+      // await updateUserProfile({ iroh_node_id: nodeId });
+      showToast.success('Iroh node ID updated', { duration: 2000 });
+    } catch (error) {
+      showToast.error('Failed to update Iroh node ID', { duration: 3000 });
+    }
   };
 
   // Handle Escape key to close modal
@@ -126,6 +167,58 @@ const Settings: React.FC = () => {
           <div className="grid grid-cols-1 gap-6 mb-6">
             <section className="bg-purple-900/60 border border-purple-500/30 rounded-2xl p-6">
               <SettingsProfileVisibilitySection authToken={auth.sessionToken || ""} />
+            </section>
+          </div>
+        )}
+
+        {/* PKARR Attestations Settings (Feature Flag Gated - Phase 2A Day 7) */}
+        {pkarrEnabled && (
+          <div className="grid grid-cols-1 gap-6 mb-6">
+            <section className="bg-purple-900/60 border border-purple-500/30 rounded-2xl p-6">
+              <AttestationsTab />
+            </section>
+          </div>
+        )}
+
+        {/* Iroh Verification Settings (Feature Flag Gated - Phase 2B-2 Week 2 Task 3 Day 2 - ALL ROLES) */}
+        {irohEnabled && (
+          <div className="grid grid-cols-1 gap-6 mb-6">
+            <section className="bg-purple-900/60 border border-purple-500/30 rounded-2xl p-6">
+              <h2 className="text-xl font-semibold text-white mb-2">
+                Iroh DHT Verification
+              </h2>
+              <p className="text-purple-200 text-sm mb-6">
+                Iroh provides decentralized peer-to-peer verification using DHT (Distributed Hash Table) technology.
+                Configure your Iroh node ID to enable P2P discovery and verification.
+              </p>
+
+              {/* Toggle for enabling/disabling Iroh verification */}
+              <div className="mb-6">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={irohVerificationEnabled}
+                    onChange={handleToggleIrohVerification}
+                    className="w-5 h-5 text-purple-600 bg-purple-900 border-purple-400 rounded focus:ring-purple-500"
+                  />
+                  <span className="text-white font-medium">Enable Iroh DHT Verification</span>
+                </label>
+                <p className="text-purple-300 text-xs mt-2 ml-8">
+                  When enabled, your Iroh node will be discoverable via the DHT network
+                </p>
+              </div>
+
+              {/* IrohNodeManager component (full view) */}
+              {irohVerificationEnabled && (
+                <div className="mt-4">
+                  <IrohNodeManager
+                    nodeId={userIrohNodeId}
+                    onChange={handleIrohNodeIdChange}
+                    compact={false}
+                    showTestButton={true}
+                  />
+                </div>
+              )}
             </section>
           </div>
         )}

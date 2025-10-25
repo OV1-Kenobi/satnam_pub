@@ -6,17 +6,25 @@
 
 import {
   AlertTriangle,
+  ArrowLeft,
   BarChart3,
   CheckCircle,
   Clock,
   Copy,
+  CreditCard,
+  Globe,
+  Info,
   Key,
   RefreshCw,
+  Server,
   Shield,
+  ShieldCheck,
   Users
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import IrohNodeDiscoveryPanel from "./IrohNodeDiscoveryPanel";
+import PkarrAnalyticsDashboard from "./PkarrAnalyticsDashboard";
 
 interface AdminRole {
   id: string;
@@ -65,12 +73,15 @@ const HierarchicalAdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "subordinates" | "codes" | "audit"
+    "overview" | "subordinates" | "codes" | "audit" | "verification-methods"
   >("overview");
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [generatingBypassCode, setGeneratingBypassCode] = useState(false);
   const [generatingRecoveryCodes, setGeneratingRecoveryCodes] = useState(false);
+  const [selectedVerificationMethod, setSelectedVerificationMethod] = useState<
+    'iroh' | 'pkarr' | 'simpleproof' | 'nip05' | 'nfc' | null
+  >(null);
 
   useEffect(() => {
     loadDashboard();
@@ -270,6 +281,7 @@ const HierarchicalAdminDashboard: React.FC = () => {
               { id: "subordinates", label: "Subordinates", icon: Users },
               { id: "codes", label: "Codes", icon: Key },
               { id: "audit", label: "Audit Log", icon: Clock },
+              { id: "verification-methods", label: "Verification Methods", icon: ShieldCheck },
             ] as const
           ).map((tab) => (
             <button
@@ -305,6 +317,12 @@ const HierarchicalAdminDashboard: React.FC = () => {
         )}
         {activeTab === "audit" && (
           <AuditTab auditLog={dashboardData.recentActions} />
+        )}
+        {activeTab === "verification-methods" && (
+          <VerificationMethodsTab
+            selectedMethod={selectedVerificationMethod}
+            onMethodSelect={setSelectedVerificationMethod}
+          />
         )}
       </div>
 
@@ -546,6 +564,198 @@ function CodeDisplayModal({
   );
 }
 
+// ============================================================================
+// VERIFICATION METHOD CARD COMPONENT
+// ============================================================================
+
+interface VerificationMethodCardProps {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  isActive?: boolean;
+  isDisabled?: boolean;
+}
+
+function VerificationMethodCard({
+  title,
+  description,
+  icon,
+  onClick,
+  isActive = false,
+  isDisabled = false,
+}: VerificationMethodCardProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={isDisabled}
+      className={`
+        w-full text-left p-6 rounded-lg border-2 transition-all
+        ${isActive
+          ? 'border-purple-600 bg-purple-50'
+          : isDisabled
+            ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+            : 'border-gray-200 bg-white hover:border-purple-400 hover:bg-purple-50'
+        }
+      `}
+    >
+      <div className="flex items-start space-x-4">
+        <div className={`
+          p-3 rounded-lg
+          ${isActive
+            ? 'bg-purple-600 text-white'
+            : isDisabled
+              ? 'bg-gray-300 text-gray-500'
+              : 'bg-purple-100 text-purple-600'
+          }
+        `}>
+          {icon}
+        </div>
+        <div className="flex-1">
+          <h3 className={`text-lg font-semibold mb-1 ${isDisabled ? 'text-gray-500' : 'text-gray-900'}`}>
+            {title}
+          </h3>
+          <p className={`text-sm ${isDisabled ? 'text-gray-400' : 'text-gray-600'}`}>
+            {description}
+          </p>
+          {isDisabled && (
+            <p className="text-xs text-gray-500 mt-2 italic">
+              Dashboard coming soon
+            </p>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ============================================================================
+// VERIFICATION METHODS TAB COMPONENT
+// ============================================================================
+
+interface VerificationMethodsTabProps {
+  selectedMethod: 'iroh' | 'pkarr' | 'simpleproof' | 'nip05' | 'nfc' | null;
+  onMethodSelect: (method: 'iroh' | 'pkarr' | 'simpleproof' | 'nip05' | 'nfc' | null) => void;
+}
+
+function VerificationMethodsTab({ selectedMethod, onMethodSelect }: VerificationMethodsTabProps) {
+  const irohEnabled = import.meta.env.VITE_IROH_ENABLED === 'true';
+  const pkarrEnabled = import.meta.env.VITE_PKARR_ENABLED === 'true';
+  const simpleproofEnabled = import.meta.env.VITE_SIMPLEPROOF_ENABLED === 'true';
+
+  // If a method is selected, show its dashboard
+  if (selectedMethod === 'iroh' && irohEnabled) {
+    return (
+      <div>
+        <button
+          onClick={() => onMethodSelect(null)}
+          className="mb-4 text-purple-600 hover:text-purple-800 flex items-center space-x-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Verification Methods</span>
+        </button>
+        <IrohNodeDiscoveryPanel />
+      </div>
+    );
+  }
+
+  if (selectedMethod === 'pkarr' && pkarrEnabled) {
+    return (
+      <div>
+        <button
+          onClick={() => onMethodSelect(null)}
+          className="mb-4 text-purple-600 hover:text-purple-800 flex items-center space-x-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Verification Methods</span>
+        </button>
+        <PkarrAnalyticsDashboard />
+      </div>
+    );
+  }
+
+  // Default: Show method selection grid
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Verification Methods Analytics</h2>
+        <p className="text-gray-600">
+          Monitor and analyze different verification methods used across the platform.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Iroh DHT Verification */}
+        {irohEnabled && (
+          <VerificationMethodCard
+            title="Iroh DHT Verification"
+            description="Peer-to-peer node discovery via distributed hash table"
+            icon={<Server className="w-6 h-6" />}
+            onClick={() => onMethodSelect('iroh')}
+            isActive={selectedMethod === 'iroh'}
+          />
+        )}
+
+        {/* PKARR Verification */}
+        {pkarrEnabled && (
+          <VerificationMethodCard
+            title="PKARR Verification"
+            description="Public key address resource records on DHT"
+            icon={<Key className="w-6 h-6" />}
+            onClick={() => onMethodSelect('pkarr')}
+            isActive={selectedMethod === 'pkarr'}
+          />
+        )}
+
+        {/* SimpleProof Timestamping */}
+        {simpleproofEnabled && (
+          <VerificationMethodCard
+            title="SimpleProof Timestamps"
+            description="Blockchain-based proof of existence timestamps"
+            icon={<Clock className="w-6 h-6" />}
+            onClick={() => onMethodSelect('simpleproof')}
+            isActive={selectedMethod === 'simpleproof'}
+            isDisabled={true} // Placeholder - dashboard not yet implemented
+          />
+        )}
+
+        {/* NIP-05/DNS Verification */}
+        <VerificationMethodCard
+          title="NIP-05/DNS Verification"
+          description="DNS-based identity verification and True Name management"
+          icon={<Globe className="w-6 h-6" />}
+          onClick={() => onMethodSelect('nip05')}
+          isActive={selectedMethod === 'nip05'}
+          isDisabled={true} // Placeholder - dashboard not yet implemented
+        />
+
+        {/* NFC Name Tag */}
+        <VerificationMethodCard
+          title="NFC Name Tag"
+          description="Physical NFC tag programming and peer contact management"
+          icon={<CreditCard className="w-6 h-6" />}
+          onClick={() => onMethodSelect('nfc')}
+          isActive={selectedMethod === 'nfc'}
+          isDisabled={true} // Placeholder - dashboard not yet implemented
+        />
+      </div>
+
+      {/* Info message when no method selected */}
+      {!selectedMethod && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+          <div className="flex items-start space-x-3">
+            <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div>
+              <p className="text-sm text-blue-900 font-medium">Select a verification method to view analytics</p>
+              <p className="text-sm text-blue-700 mt-1">
+                Click on any enabled verification method card above to view detailed statistics and monitoring data.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default HierarchicalAdminDashboard;
-
-

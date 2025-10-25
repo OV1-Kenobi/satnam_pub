@@ -598,9 +598,10 @@ export const nip05Utils = {
 /**
  * Single method verification result
  * Phase 1 Week 4: Multi-method verification with progressive trust
+ * Phase 2B-2 Week 2: Added Iroh as optional 5th verification method
  */
 export interface MethodVerificationResult {
-  method: "kind:0" | "pkarr" | "dns";
+  method: "kind:0" | "pkarr" | "dns" | "iroh";
   verified: boolean;
   pubkey?: string;
   nip05?: string;
@@ -609,12 +610,14 @@ export interface MethodVerificationResult {
   about?: string;
   error?: string;
   response_time_ms: number;
-  timestamp: number;
+  timestamp?: number;
+  metadata?: any; // Method-specific metadata (e.g., Iroh node info)
 }
 
 /**
  * Hybrid NIP-05 Verifier Result
  * Phase 1 Week 4: Includes multi-method results and trust score
+ * Phase 2B-2 Week 2: Added Iroh as optional 5th verification method
  */
 export interface HybridVerificationResult {
   verified: boolean;
@@ -623,7 +626,7 @@ export interface HybridVerificationResult {
   name?: string;
   picture?: string;
   about?: string;
-  verificationMethod: "kind:0" | "pkarr" | "dns" | "none";
+  verificationMethod: "kind:0" | "pkarr" | "dns" | "iroh" | "none";
   error?: string;
   verification_timestamp: number;
   response_time_ms: number;
@@ -635,6 +638,7 @@ export interface HybridVerificationResult {
     kind0?: boolean;
     pkarr?: boolean;
     dns?: boolean;
+    iroh?: boolean; // Phase 2B-2 Week 2: Iroh node reachability
     agreementCount?: number; // How many methods agree
   };
 }
@@ -648,6 +652,9 @@ export interface HybridVerificationConfig extends NIP05VerificationConfig {
   // Phase 1 Week 4: Multi-method verification config
   enableMultiMethodVerification?: boolean;
   requireMinimumTrustLevel?: "high" | "medium" | "low" | "none";
+  // Phase 2B-2 Week 2: Iroh integration (optional 5th verification method)
+  enableIrohDiscovery?: boolean;
+  irohTimeout?: number;
 }
 
 export class HybridNIP05Verifier {
@@ -669,6 +676,9 @@ export class HybridNIP05Verifier {
       // Phase 1 Week 4: Multi-method verification
       enableMultiMethodVerification: false, // Disabled by default, enable via feature flag
       requireMinimumTrustLevel: "none", // No minimum trust level by default
+      // Phase 2B-2 Week 2: Iroh integration (optional 5th verification method)
+      enableIrohDiscovery: false, // Disabled by default, opt-in via VITE_IROH_ENABLED
+      irohTimeout: 10000, // 10 seconds (DHT lookups can be slow)
       ...config,
     };
     this.dnsVerifier = new NIP05VerificationService(config);
@@ -756,6 +766,13 @@ export class HybridNIP05Verifier {
 
     if (this.config.enableDnsResolution) {
       promises.push(this.tryDnsResolutionMultiMethod(identifier));
+    }
+
+    // Phase 2B-2 Week 2: Add Iroh discovery as optional 5th verification method
+    if (this.config.enableIrohDiscovery && expectedPubkey) {
+      promises.push(
+        this.tryIrohDiscoveryMultiMethod(expectedPubkey, identifier)
+      );
     }
 
     // Wait for all methods to complete
@@ -1384,6 +1401,7 @@ export class HybridNIP05Verifier {
       kind0?: boolean;
       pkarr?: boolean;
       dns?: boolean;
+      iroh?: boolean;
       agreementCount?: number;
     } = { agreementCount };
 
@@ -1391,6 +1409,8 @@ export class HybridNIP05Verifier {
       if (result.method === "kind:0") methodAgreement.kind0 = result.verified;
       if (result.method === "pkarr") methodAgreement.pkarr = result.verified;
       if (result.method === "dns") methodAgreement.dns = result.verified;
+      // Phase 2B-2 Week 2: Add Iroh to method agreement tracking
+      if (result.method === "iroh") methodAgreement.iroh = result.verified;
     }
 
     // Select primary result (prefer higher trust methods)
@@ -1409,6 +1429,122 @@ export class HybridNIP05Verifier {
       methodAgreement,
       primaryResult,
     };
+  }
+
+  /**
+   * Phase 2B-2 Week 2: Multi-method version of Iroh discovery
+   * Returns MethodVerificationResult for parallel verification
+   */
+  private async tryIrohDiscoveryMultiMethod(
+    pubkey: string,
+    identifier: string
+  ): Promise<MethodVerificationResult | null> {
+    const startTime = Date.now();
+    try {
+      // Dynamically import IrohVerificationService to avoid bundling when disabled
+      const { irohVerificationService } = await import(
+        "../services/irohVerificationService"
+      );
+
+      // Check if Iroh is enabled
+      if (!irohVerificationService.isEnabled()) {
+        return null;
+      }
+
+      // First, try to get node ID from kind:0 metadata
+      const ceps = new CentralEventPublishingService();
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), this.config.kind0Timeout || 3000);
+      });
+
+      const kind0Result = await Promise.race([
+        ceps.resolveIdentityFromKind0(pubkey),
+        timeoutPromise,
+      ]);
+
+      let nodeId: string | null = null;
+      if (kind0Result && kind0Result.success) {
+        // Extract node ID from metadata
+        nodeId = irohVerificationService.extractNodeIdFromMetadata(kind0Result);
+      }
+
+      // If no node ID found, cannot perform Iroh discovery
+      if (!nodeId) {
+        return {
+          method: "iroh",
+          verified: false,
+          pubkey,
+          nip05: identifier,
+          error: "No Iroh node ID found in kind:0 metadata",
+          response_time_ms: Date.now() - startTime,
+          metadata: {
+            iroh_enabled: true,
+            node_id_found: false,
+          },
+        };
+      }
+
+      // Perform Iroh node discovery
+      const irohTimeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), this.config.irohTimeout || 10000);
+      });
+
+      const discoveryResult = await Promise.race([
+        irohVerificationService.verifyNode({ node_id: nodeId }),
+        irohTimeoutPromise,
+      ]);
+
+      if (!discoveryResult) {
+        return {
+          method: "iroh",
+          verified: false,
+          pubkey,
+          nip05: identifier,
+          error: "Iroh discovery timeout",
+          response_time_ms: Date.now() - startTime,
+          metadata: {
+            iroh_enabled: true,
+            node_id: nodeId,
+            timeout: true,
+          },
+        };
+      }
+
+      // Check if node is reachable
+      const verified = discoveryResult.success && discoveryResult.is_reachable;
+
+      return {
+        method: "iroh",
+        verified,
+        pubkey,
+        nip05: identifier,
+        error: verified
+          ? undefined
+          : discoveryResult.error || "Node unreachable",
+        response_time_ms: Date.now() - startTime,
+        metadata: {
+          iroh_enabled: true,
+          node_id: nodeId,
+          is_reachable: discoveryResult.is_reachable,
+          relay_url: discoveryResult.relay_url,
+          direct_addresses: discoveryResult.direct_addresses,
+          cached: discoveryResult.cached,
+        },
+      };
+    } catch (error) {
+      return {
+        method: "iroh",
+        verified: false,
+        pubkey,
+        nip05: identifier,
+        error: error instanceof Error ? error.message : "Iroh discovery failed",
+        response_time_ms: Date.now() - startTime,
+        metadata: {
+          iroh_enabled: true,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      };
+    }
   }
 
   /**

@@ -2,19 +2,19 @@
  * Attestation Manager
  * Handles creation, retrieval, and management of timestamped proofs
  * Integrates with SimpleProof and Iroh verification systems
- * 
+ *
  * @compliance Privacy-first, zero-knowledge, RLS policies
  */
 
-import { supabase } from './supabase';
+import { supabase } from "./supabase";
 
-export type AttestationEventType = 
-  | 'account_creation'
-  | 'profile_update'
-  | 'key_rotation'
-  | 'custom_note'
-  | 'document_hash'
-  | 'profile_snapshot';
+export type AttestationEventType =
+  | "account_creation"
+  | "profile_update"
+  | "key_rotation"
+  | "custom_note"
+  | "document_hash"
+  | "profile_snapshot";
 
 export interface Attestation {
   id: string;
@@ -39,7 +39,7 @@ export interface Attestation {
     lastSeen?: number;
     isReachable: boolean;
   };
-  status: 'pending' | 'verified' | 'failed';
+  status: "pending" | "verified" | "failed";
   createdAt: number;
   updatedAt: number;
 }
@@ -56,7 +56,9 @@ export interface AttestationRequest {
 /**
  * Create a new attestation with optional SimpleProof and Iroh verification
  */
-export async function createAttestation(request: AttestationRequest): Promise<Attestation> {
+export async function createAttestation(
+  request: AttestationRequest
+): Promise<Attestation> {
   try {
     const now = Math.floor(Date.now() / 1000);
 
@@ -64,21 +66,24 @@ export async function createAttestation(request: AttestationRequest): Promise<At
     let simpleproofResult = null;
     if (request.includeSimpleproof) {
       try {
-        const response = await fetch('/.netlify/functions/simpleproof-timestamp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            verification_id: request.verificationId,
-            event_type: request.eventType,
-            metadata: request.metadata,
-          }),
-        });
+        const response = await fetch(
+          "/.netlify/functions/simpleproof-timestamp",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              verification_id: request.verificationId,
+              event_type: request.eventType,
+              metadata: request.metadata,
+            }),
+          }
+        );
 
         if (response.ok) {
           simpleproofResult = await response.json();
         }
       } catch (error) {
-        console.warn('SimpleProof timestamp failed:', error);
+        console.warn("SimpleProof timestamp failed:", error);
       }
     }
 
@@ -86,12 +91,15 @@ export async function createAttestation(request: AttestationRequest): Promise<At
     let irohResult = null;
     if (request.includeIroh && request.nodeId) {
       try {
-        const response = await fetch('/.netlify/functions/iroh-discover-node', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/.netlify/functions/iroh-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            verification_id: request.verificationId,
-            node_id: request.nodeId,
+            action: "discover_node",
+            payload: {
+              verification_id: request.verificationId,
+              node_id: request.nodeId,
+            },
           }),
         });
 
@@ -99,12 +107,12 @@ export async function createAttestation(request: AttestationRequest): Promise<At
           irohResult = await response.json();
         }
       } catch (error) {
-        console.warn('Iroh discovery failed:', error);
+        console.warn("Iroh discovery failed:", error);
       }
     }
 
     // Determine status based on results
-    const status = simpleproofResult || irohResult ? 'verified' : 'pending';
+    const status = simpleproofResult || irohResult ? "verified" : "pending";
 
     const attestation: Attestation = {
       id: `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -120,7 +128,7 @@ export async function createAttestation(request: AttestationRequest): Promise<At
 
     return attestation;
   } catch (error) {
-    console.error('Failed to create attestation:', error);
+    console.error("Failed to create attestation:", error);
     throw error;
   }
 }
@@ -128,21 +136,23 @@ export async function createAttestation(request: AttestationRequest): Promise<At
 /**
  * Retrieve all attestations for a user
  */
-export async function getAttestations(verificationId: string): Promise<Attestation[]> {
+export async function getAttestations(
+  verificationId: string
+): Promise<Attestation[]> {
   try {
     // Query SimpleProof timestamps
     const { data: simpleproofData, error: spError } = await supabase
-      .from('simpleproof_timestamps')
-      .select('*')
-      .eq('verification_id', verificationId);
+      .from("simpleproof_timestamps")
+      .select("*")
+      .eq("verification_id", verificationId);
 
     if (spError) throw spError;
 
     // Query Iroh discoveries
     const { data: irohData, error: irohError } = await supabase
-      .from('iroh_node_discovery')
-      .select('*')
-      .eq('verification_id', verificationId);
+      .from("iroh_node_discovery")
+      .select("*")
+      .eq("verification_id", verificationId);
 
     if (irohError) throw irohError;
 
@@ -155,7 +165,7 @@ export async function getAttestations(verificationId: string): Promise<Attestati
         attestations.push({
           id: sp.id,
           verificationId: sp.verification_id,
-          eventType: 'account_creation',
+          eventType: "account_creation",
           simpleproofTimestamp: {
             id: sp.id,
             otsProof: sp.ots_proof,
@@ -165,7 +175,7 @@ export async function getAttestations(verificationId: string): Promise<Attestati
             verifiedAt: sp.verified_at,
             isValid: sp.is_valid,
           },
-          status: sp.is_valid ? 'verified' : 'pending',
+          status: sp.is_valid ? "verified" : "pending",
           createdAt: sp.created_at,
           updatedAt: sp.verified_at || sp.created_at,
         });
@@ -178,7 +188,7 @@ export async function getAttestations(verificationId: string): Promise<Attestati
         attestations.push({
           id: iroh.id,
           verificationId: iroh.verification_id,
-          eventType: 'account_creation',
+          eventType: "account_creation",
           irohNodeDiscovery: {
             id: iroh.id,
             nodeId: iroh.node_id,
@@ -188,7 +198,7 @@ export async function getAttestations(verificationId: string): Promise<Attestati
             lastSeen: iroh.last_seen,
             isReachable: iroh.is_reachable,
           },
-          status: iroh.is_reachable ? 'verified' : 'pending',
+          status: iroh.is_reachable ? "verified" : "pending",
           createdAt: iroh.discovered_at,
           updatedAt: iroh.last_seen || iroh.discovered_at,
         });
@@ -198,7 +208,7 @@ export async function getAttestations(verificationId: string): Promise<Attestati
     // Sort by creation date (newest first)
     return attestations.sort((a, b) => b.createdAt - a.createdAt);
   } catch (error) {
-    console.error('Failed to retrieve attestations:', error);
+    console.error("Failed to retrieve attestations:", error);
     throw error;
   }
 }
@@ -206,20 +216,22 @@ export async function getAttestations(verificationId: string): Promise<Attestati
 /**
  * Get a single attestation by ID
  */
-export async function getAttestation(attestationId: string): Promise<Attestation | null> {
+export async function getAttestation(
+  attestationId: string
+): Promise<Attestation | null> {
   try {
     // Try SimpleProof first
     const { data: spData } = await supabase
-      .from('simpleproof_timestamps')
-      .select('*')
-      .eq('id', attestationId)
+      .from("simpleproof_timestamps")
+      .select("*")
+      .eq("id", attestationId)
       .single();
 
     if (spData) {
       return {
         id: spData.id,
         verificationId: spData.verification_id,
-        eventType: 'account_creation',
+        eventType: "account_creation",
         simpleproofTimestamp: {
           id: spData.id,
           otsProof: spData.ots_proof,
@@ -229,7 +241,7 @@ export async function getAttestation(attestationId: string): Promise<Attestation
           verifiedAt: spData.verified_at,
           isValid: spData.is_valid,
         },
-        status: spData.is_valid ? 'verified' : 'pending',
+        status: spData.is_valid ? "verified" : "pending",
         createdAt: spData.created_at,
         updatedAt: spData.verified_at || spData.created_at,
       };
@@ -237,16 +249,16 @@ export async function getAttestation(attestationId: string): Promise<Attestation
 
     // Try Iroh
     const { data: irohData } = await supabase
-      .from('iroh_node_discovery')
-      .select('*')
-      .eq('id', attestationId)
+      .from("iroh_node_discovery")
+      .select("*")
+      .eq("id", attestationId)
       .single();
 
     if (irohData) {
       return {
         id: irohData.id,
         verificationId: irohData.verification_id,
-        eventType: 'account_creation',
+        eventType: "account_creation",
         irohNodeDiscovery: {
           id: irohData.id,
           nodeId: irohData.node_id,
@@ -256,7 +268,7 @@ export async function getAttestation(attestationId: string): Promise<Attestation
           lastSeen: irohData.last_seen,
           isReachable: irohData.is_reachable,
         },
-        status: irohData.is_reachable ? 'verified' : 'pending',
+        status: irohData.is_reachable ? "verified" : "pending",
         createdAt: irohData.discovered_at,
         updatedAt: irohData.last_seen || irohData.discovered_at,
       };
@@ -264,7 +276,7 @@ export async function getAttestation(attestationId: string): Promise<Attestation
 
     return null;
   } catch (error) {
-    console.error('Failed to retrieve attestation:', error);
+    console.error("Failed to retrieve attestation:", error);
     return null;
   }
 }
@@ -282,26 +294,25 @@ export function formatAttestation(attestation: Attestation): {
   const methods: string[] = [];
 
   if (attestation.simpleproofTimestamp) {
-    methods.push('SimpleProof');
+    methods.push("SimpleProof");
   }
   if (attestation.irohNodeDiscovery) {
-    methods.push('Iroh');
+    methods.push("Iroh");
   }
 
   const eventLabels: Record<AttestationEventType, string> = {
-    account_creation: 'Account Created',
-    profile_update: 'Profile Updated',
-    key_rotation: 'Keys Rotated',
-    custom_note: 'Custom Note',
-    document_hash: 'Document Hashed',
-    profile_snapshot: 'Profile Snapshot',
+    account_creation: "Account Created",
+    profile_update: "Profile Updated",
+    key_rotation: "Keys Rotated",
+    custom_note: "Custom Note",
+    document_hash: "Document Hashed",
+    profile_snapshot: "Profile Snapshot",
   };
 
   return {
-    title: eventLabels[attestation.eventType] || 'Attestation',
-    description: attestation.metadata || 'No description provided',
+    title: eventLabels[attestation.eventType] || "Attestation",
+    description: attestation.metadata || "No description provided",
     timestamp: date.toLocaleString(),
     methods,
   };
 }
-

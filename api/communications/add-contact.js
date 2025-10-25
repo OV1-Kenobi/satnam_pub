@@ -87,6 +87,36 @@ export default async function handler(req, res) {
     const { data, error } = await client.from('encrypted_contacts').insert(rows).select();
     if (error) { console.error('add-contact db error:', error); res.status(500).json({ success: false, error: 'Failed to add contact' }); return; }
 
+    // Optional automatic PKARR verification (feature flag gated)
+    const autoVerifyPkarr = process.env.VITE_PKARR_AUTO_VERIFY_ON_ADD === 'true';
+    if (autoVerifyPkarr && body.nip05 && body.pubkey) {
+      // Async verification (fire and forget - don't block contact creation)
+      const verifyPayload = {
+        contact_hash,
+        nip05: body.nip05,
+        pubkey: body.pubkey
+      };
+
+      // Get the authorization header to pass through
+      const authHeader = req.headers?.authorization || req.headers?.Authorization || '';
+
+      // Fire async request to pkarr-proxy endpoint
+      fetch('/.netlify/functions/pkarr-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify({
+          action: 'verify_contact',
+          payload: verifyPayload
+        })
+      }).catch(err => {
+        // Log error but don't fail contact creation
+        console.error('Background PKARR verification failed:', err instanceof Error ? err.message : err);
+      });
+    }
+
     res.status(200).json({ success: true, contact: Array.isArray(data) ? data[0] : data });
   } catch (e) {
     const code = e && typeof e === 'object' && 'statusCode' in e ? e.statusCode : 500;

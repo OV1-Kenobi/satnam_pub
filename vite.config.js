@@ -20,6 +20,19 @@ function getEnvVar(key) {
 const isDevelopment = getEnvVar('NODE_ENV') === 'development';
 const isProduction = getEnvVar('NODE_ENV') === 'production';
 
+// Helper to collect all VITE_* environment variables
+function getAllViteEnvVars() {
+  const viteEnv = {};
+  if (typeof process !== 'undefined' && process.env) {
+    Object.keys(process.env).forEach(key => {
+      if (key.startsWith('VITE_') || key === 'NODE_ENV' || key === 'NOSTR_RELAYS') {
+        viteEnv[key] = process.env[key] || '';
+      }
+    });
+  }
+  return viteEnv;
+}
+
 export default defineConfig({
   plugins: [react()],
 
@@ -120,9 +133,80 @@ export default defineConfig({
               return 'crypto-vendor';
             }
 
+            // PHASE 1: Heavy third-party dependencies
+            // Image editing library (react-easy-crop is ~100 kB)
+            if (id.includes('react-easy-crop')) {
+              return 'image-editor';
+            }
+
+            // QR code libraries
+            if (id.includes('qrcode') || id.includes('qr-code')) {
+              return 'qr-code';
+            }
+
+            // Alby Lightning Tools (large library)
+            if (id.includes('@getalby/lightning-tools') || id.includes('@getalby/sdk')) {
+              return 'alby-vendor';
+            }
+
+            // JWT and payment libraries
+            if (id.includes('bolt11') || id.includes('jose') || id.includes('jsonwebtoken')) {
+              return 'jwt-vendor';
+            }
+
+            // Date utilities
+            if (id.includes('date-fns')) {
+              return 'date-vendor';
+            }
+
+            // Router
+            if (id.includes('react-router-dom')) {
+              return 'router-vendor';
+            }
+
+            // Supabase
+            if (id.includes('@supabase/supabase-js')) {
+              return 'supabase-vendor';
+            }
+
+            // Capacitor (mobile)
+            if (id.includes('@capacitor/')) {
+              return 'capacitor-vendor';
+            }
+
+            // PHASE 3: Additional vendor splitting for better caching
+            // Chart libraries (if used)
+            if (id.includes('recharts')) {
+              return 'charts-vendor';
+            }
+
+            // FROST and cryptographic signing
+            if (id.includes('@cmdcode/frost') || id.includes('@frostr/bifrost')) {
+              return 'frost-vendor';
+            }
+
+            // Phoenix and Lightning server libraries
+            if (id.includes('phoenix-server-js')) {
+              return 'phoenix-vendor';
+            }
+
+            // Database libraries
+            if (id.includes('node_modules/pg') || id.includes('node_modules/redis')) {
+              return 'database-vendor';
+            }
+
+            // Shamirs secret sharing
+            if (id.includes('shamirs-secret-sharing') || id.includes('z32')) {
+              return 'shamir-vendor';
+            }
+
             // UI libraries - only create chunks for libraries that are actually used
             if (id.includes('lucide-react')) return 'icons-vendor';
-            // Remove ui-vendor chunk as clsx/tailwind-merge might not be imported directly
+
+            // Skeleton loaders and UI utilities
+            if (id.includes('react-loading-skeleton') || id.includes('react-easy-crop')) {
+              return 'ui-utils-vendor';
+            }
 
             // Everything else
             return 'vendor';
@@ -183,10 +267,69 @@ export default defineConfig({
             return 'security';
           }
 
-          // Components - split by feature
+          // PHASE 2: Components - split by feature and directory
           if (id.includes('src/components/')) {
-            if (id.includes('Modal') || id.includes('Dialog')) return 'ui-modals';
-            if (id.includes('Form') || id.includes('Input')) return 'ui-forms';
+            // Admin components (admin dashboard, analytics, etc.)
+            if (id.includes('src/components/admin/')) {
+              return 'admin-components';
+            }
+
+            // Education components (courses, progress, etc.)
+            if (id.includes('src/components/education/')) {
+              return 'education-components';
+            }
+
+            // Trust system components (trust scoring, providers, etc.)
+            if (id.includes('src/components/trust/')) {
+              return 'trust-components';
+            }
+
+            // Profile customization components (banner manager, etc.)
+            if (id.includes('src/components/profile/')) {
+              return 'profile-components';
+            }
+
+            // Dashboard components (all *Dashboard.tsx files)
+            if (id.includes('Dashboard.tsx') ||
+                id.includes('FamilyFinancials') ||
+                id.includes('IndividualFinances') ||
+                id.includes('EnhancedFamily') ||
+                id.includes('EnhancedLiquidity')) {
+              return 'dashboard-components';
+            }
+
+            // Modal components (remaining modals not in ui-modals)
+            if (id.includes('Modal') || id.includes('Dialog')) {
+              return 'ui-modals';
+            }
+
+            // Form components
+            if (id.includes('Form') || id.includes('Input')) {
+              return 'ui-forms';
+            }
+
+            // Messaging and communications
+            if (id.includes('src/components/communications/') ||
+                id.includes('src/components/messaging/') ||
+                id.includes('src/components/privacy-messaging/')) {
+              return 'messaging-components';
+            }
+
+            // Payment components
+            if (id.includes('src/components/payments/') ||
+                id.includes('PaymentModal') ||
+                id.includes('PaymentAutomation')) {
+              return 'payment-components';
+            }
+
+            // Wallet components
+            if (id.includes('src/components/wallet/') ||
+                id.includes('FamilyWallet') ||
+                id.includes('LNBits')) {
+              return 'wallet-components';
+            }
+
+            // Everything else stays in components
             return 'components';
           }
 
@@ -236,24 +379,8 @@ export default defineConfig({
     global: "globalThis",
     __DEV__: isDevelopment,
     // Provide a concrete process.env object at runtime so dynamic lookups work in the browser
-    'process.env': JSON.stringify({
-      NODE_ENV: getEnvVar('NODE_ENV') || 'production',
-      VITE_SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL') || '',
-      VITE_SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY') || '',
-      VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
-      VITE_API_BASE_URL: getEnvVar('VITE_API_BASE_URL') || '/.netlify/functions',
-      VITE_API_URL: getEnvVar('VITE_API_URL') || '',
-      VITE_NOSTR_RELAYS: getEnvVar('VITE_NOSTR_RELAYS') || '',
-      NOSTR_RELAYS: getEnvVar('NOSTR_RELAYS') || '',
-    }),
-    'globalThis.__APP_ENV__': JSON.stringify({
-      NODE_ENV: getEnvVar('NODE_ENV') || 'production',
-      VITE_SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL') || '',
-      VITE_SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY') || '',
-      VITE_LIGHTNING_DOMAIN: getEnvVar('VITE_LIGHTNING_DOMAIN') || '',
-      VITE_API_BASE_URL: getEnvVar('VITE_API_BASE_URL') || '/.netlify/functions',
-      VITE_API_URL: getEnvVar('VITE_API_URL') || '',
-    }),
+    // This includes ALL VITE_* environment variables automatically
+    'process.env': JSON.stringify(getAllViteEnvVars()),
   },
 
   optimizeDeps: {

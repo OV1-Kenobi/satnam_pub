@@ -4,6 +4,25 @@
  * - No secrets here; safe for bundling in browser JS
  */
 
+/**
+ * Hybrid environment variable getter
+ * Works in both browser (import.meta.env) and Netlify Functions (process.env)
+ * @param key - Environment variable key
+ * @returns Environment variable value or undefined
+ */
+function getEnvVar(key: string): string | undefined {
+  // Fallback to process.env (works in both Netlify Functions and Vite builds with define)
+  if (
+    typeof process !== "undefined" &&
+    process.env &&
+    process.env[key] !== undefined
+  ) {
+    return process.env[key];
+  }
+
+  return undefined;
+}
+
 export type ClientConfig = {
   lnbits: {
     baseUrl: string;
@@ -67,244 +86,223 @@ export type ClientConfig = {
 };
 
 const LNBITS_ENABLED =
-  ((process.env.VITE_LNBITS_INTEGRATION_ENABLED as string) || "false")
+  (getEnvVar("VITE_LNBITS_INTEGRATION_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Amber Android signer integration (NIP-46/NIP-55) feature flag; default: false (opt-in)
 const AMBER_SIGNING_ENABLED =
-  ((process.env.VITE_ENABLE_AMBER_SIGNING as string) || "false")
+  (getEnvVar("VITE_ENABLE_AMBER_SIGNING") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1: Hybrid identity verification (kind:0 → PKARR → DNS); default: false
 const HYBRID_IDENTITY_ENABLED =
-  ((process.env.VITE_HYBRID_IDENTITY_ENABLED as string) || "false")
+  (getEnvVar("VITE_HYBRID_IDENTITY_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1: BitTorrent DHT PKARR integration; default: false
 const PKARR_ENABLED =
-  ((process.env.VITE_PKARR_ENABLED as string) || "false")
-    .toString()
-    .toLowerCase() === "true";
+  (getEnvVar("VITE_PKARR_ENABLED") || "false").toString().toLowerCase() ===
+  "true";
 
 // Phase 1 Week 4: Parallel multi-method verification with trust scoring; default: false
 const MULTI_METHOD_VERIFICATION_ENABLED =
-  ((process.env.VITE_MULTI_METHOD_VERIFICATION_ENABLED as string) || "false")
+  (getEnvVar("VITE_MULTI_METHOD_VERIFICATION_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1: SimpleProof timestamping with OpenTimestamps and Bitcoin anchoring; default: false
 const SIMPLEPROOF_ENABLED =
-  ((process.env.VITE_SIMPLEPROOF_ENABLED as string) || "false")
+  (getEnvVar("VITE_SIMPLEPROOF_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 2: Iroh node discovery via DHT for decentralized verification; default: false
 const IROH_ENABLED =
-  ((process.env.VITE_IROH_ENABLED as string) || "false")
-    .toString()
-    .toLowerCase() === "true";
+  (getEnvVar("VITE_IROH_ENABLED") || "false").toString().toLowerCase() ===
+  "true";
 
 // TIER 1: Relay privacy layer with per-relay batching; default: true (enabled after testing)
 const RELAY_PRIVACY_ENABLED =
-  ((process.env.VITE_RELAY_PRIVACY_ENABLED as string) || "true")
+  (getEnvVar("VITE_RELAY_PRIVACY_ENABLED") || "true")
     .toString()
     .toLowerCase() === "true";
 
 // TIER 1: Device fingerprint-based token binding; default: true (enabled after testing)
 const TOKEN_BINDING_ENABLED =
-  ((process.env.VITE_TOKEN_BINDING_ENABLED as string) || "true")
+  (getEnvVar("VITE_TOKEN_BINDING_ENABLED") || "true")
     .toString()
     .toLowerCase() === "true";
 
 // TIER 1: Timing attack prevention audit logging; default: false (opt-in for debugging)
 const TIMING_AUDIT_ENABLED =
-  ((process.env.VITE_TIMING_AUDIT_ENABLED as string) || "false")
+  (getEnvVar("VITE_TIMING_AUDIT_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1 Enterprise: Hierarchical admin dashboards; default: false
 const HIERARCHICAL_ADMIN_ENABLED =
-  ((process.env.VITE_HIERARCHICAL_ADMIN_ENABLED as string) || "false")
+  (getEnvVar("VITE_HIERARCHICAL_ADMIN_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1 Enterprise: Bypass code management; default: false
 const BYPASS_CODE_ENABLED =
-  ((process.env.VITE_BYPASS_CODE_ENABLED as string) || "false")
+  (getEnvVar("VITE_BYPASS_CODE_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1 Enterprise: Recovery code management; default: false
 const RECOVERY_CODE_ENABLED =
-  ((process.env.VITE_RECOVERY_CODE_ENABLED as string) || "false")
+  (getEnvVar("VITE_RECOVERY_CODE_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1 Enterprise: Admin audit logging; default: false
 const ADMIN_AUDIT_LOG_ENABLED =
-  ((process.env.VITE_ADMIN_AUDIT_LOG_ENABLED as string) || "false")
+  (getEnvVar("VITE_ADMIN_AUDIT_LOG_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 2 Enterprise: FIDO2/WebAuthn hardware security key support; default: false
 const WEBAUTHN_ENABLED =
-  ((process.env.VITE_WEBAUTHN_ENABLED as string) || "false")
-    .toString()
-    .toLowerCase() === "true";
+  (getEnvVar("VITE_WEBAUTHN_ENABLED") || "false").toString().toLowerCase() ===
+  "true";
 
 // Phase 2 Enterprise: Platform authenticators (Windows Hello, Touch ID, Face ID); default: false
 // WARNING: Platform authenticators are less secure than hardware keys due to biometric risks
 const WEBAUTHN_PLATFORM_AUTHENTICATOR_ENABLED =
-  (
-    (process.env.VITE_WEBAUTHN_PLATFORM_AUTHENTICATOR_ENABLED as string) ||
-    "false"
-  )
+  (getEnvVar("VITE_WEBAUTHN_PLATFORM_AUTHENTICATOR_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1: NIP-85 Trust Provider - Master toggle for all NIP-85 functionality; default: false
 const NIP85_TRUST_PROVIDER_ENABLED =
-  ((process.env.VITE_NIP85_TRUST_PROVIDER_ENABLED as string) || "false")
+  (getEnvVar("VITE_NIP85_TRUST_PROVIDER_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1: NIP-85 Publishing - Enable publishing assertions to Nostr; default: false
 const NIP85_PUBLISHING_ENABLED =
-  ((process.env.VITE_NIP85_PUBLISHING_ENABLED as string) || "false")
+  (getEnvVar("VITE_NIP85_PUBLISHING_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 1: NIP-85 Query - Enable querying assertions from relays; default: true
 const NIP85_QUERY_ENABLED =
-  ((process.env.VITE_NIP85_QUERY_ENABLED as string) || "true")
-    .toString()
-    .toLowerCase() === "true";
+  (getEnvVar("VITE_NIP85_QUERY_ENABLED") || "true").toString().toLowerCase() ===
+  "true";
 
 // Phase 1: NIP-85 Caching - Enable in-memory caching for performance; default: true
 const NIP85_CACHE_ENABLED =
-  ((process.env.VITE_NIP85_CACHE_ENABLED as string) || "true")
-    .toString()
-    .toLowerCase() === "true";
+  (getEnvVar("VITE_NIP85_CACHE_ENABLED") || "true").toString().toLowerCase() ===
+  "true";
 
 // Phase 1: NIP-85 Audit Logging - Enable audit logging for all queries; default: true
 const NIP85_AUDIT_LOGGING_ENABLED =
-  ((process.env.VITE_NIP85_AUDIT_LOGGING_ENABLED as string) || "true")
+  (getEnvVar("VITE_NIP85_AUDIT_LOGGING_ENABLED") || "true")
     .toString()
     .toLowerCase() === "true";
 
 // Family Federation Decoupling: Enable BIFROST integration (preferred); default: false (MVP without payments)
 const BIFROST_ENABLED =
-  ((process.env.VITE_BIFROST_ENABLED as string) || "false")
-    .toString()
-    .toLowerCase() === "true";
+  (getEnvVar("VITE_BIFROST_ENABLED") || "false").toString().toLowerCase() ===
+  "true";
 
 // Family Federation Decoupling: Enable Fedimint payment integration (legacy); default: false (MVP without payments)
 const FEDIMINT_INTEGRATION_ENABLED =
-  ((process.env.VITE_FEDIMINT_INTEGRATION_ENABLED as string) || "false")
+  (getEnvVar("VITE_FEDIMINT_INTEGRATION_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Family Federation Decoupling: Enable core federation functionality; default: true
 const FAMILY_FEDERATION_ENABLED =
-  ((process.env.VITE_FAMILY_FEDERATION_ENABLED as string) || "true")
+  (getEnvVar("VITE_FAMILY_FEDERATION_ENABLED") || "true")
     .toString()
     .toLowerCase() === "true";
 
 // Family Federation Decoupling: Enable FROST multi-signature signing; default: true
 const FROST_SIGNING_ENABLED =
-  ((process.env.VITE_FROST_SIGNING_ENABLED as string) || "true")
+  (getEnvVar("VITE_FROST_SIGNING_ENABLED") || "true")
     .toString()
     .toLowerCase() === "true";
 
 // Family Federation Decoupling: Enable payment automation; default: false (requires fedimintIntegrationEnabled)
 const PAYMENT_AUTOMATION_ENABLED =
-  ((process.env.VITE_PAYMENT_AUTOMATION_ENABLED as string) || "false")
+  (getEnvVar("VITE_PAYMENT_AUTOMATION_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 3: Public Profile URL System - Master toggle; default: false (opt-in)
 const PUBLIC_PROFILES_ENABLED =
-  ((process.env.VITE_PUBLIC_PROFILES_ENABLED as string) || "false")
+  (getEnvVar("VITE_PUBLIC_PROFILES_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 3: Profile search functionality; default: false (opt-in)
 const PROFILE_SEARCH_ENABLED =
-  ((process.env.VITE_PROFILE_SEARCH_ENABLED as string) || "false")
+  (getEnvVar("VITE_PROFILE_SEARCH_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 3: Privacy-first profile analytics; default: false (opt-in)
 const PROFILE_ANALYTICS_ENABLED =
-  ((process.env.VITE_PROFILE_ANALYTICS_ENABLED as string) || "false")
+  (getEnvVar("VITE_PROFILE_ANALYTICS_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 3: Profile customization (themes, banners, social links); default: false (opt-in)
 const PROFILE_CUSTOMIZATION_ENABLED =
-  ((process.env.VITE_PROFILE_CUSTOMIZATION_ENABLED as string) || "false")
+  (getEnvVar("VITE_PROFILE_CUSTOMIZATION_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 // Phase 4B: Blossom image uploads; default: false (opt-in)
 const BLOSSOM_UPLOAD_ENABLED =
-  ((process.env.VITE_BLOSSOM_UPLOAD_ENABLED as string) || "false")
+  (getEnvVar("VITE_BLOSSOM_UPLOAD_ENABLED") || "false")
     .toString()
     .toLowerCase() === "true";
 
 export const clientConfig: ClientConfig = {
   lnbits: {
     // Only required when LNbits integration is enabled
-    baseUrl: (process.env.VITE_LNBITS_BASE_URL as string) || "",
+    baseUrl: getEnvVar("VITE_LNBITS_BASE_URL") || "",
   },
   api: {
-    baseUrl: (process.env.VITE_API_BASE_URL as string) || "/api",
+    baseUrl: getEnvVar("VITE_API_BASE_URL") || "/api",
   },
   domains: {
-    main: process.env.VITE_SATNAM_DOMAIN as string,
-    dashboard: process.env.VITE_DASHBOARD_URL as string,
+    main: getEnvVar("VITE_SATNAM_DOMAIN"),
+    dashboard: getEnvVar("VITE_DASHBOARD_URL"),
     platformLightning:
-      (process.env.VITE_PLATFORM_LIGHTNING_DOMAIN as string) || "my.satnam.pub",
+      getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN") || "my.satnam.pub",
   },
   blossom: {
     // Phase 5A: Multi-server support with automatic failover
     primaryUrl:
-      (process.env.VITE_BLOSSOM_PRIMARY_URL as string) ||
-      (process.env.VITE_BLOSSOM_NOSTR_BUILD_URL as string) || // Legacy fallback
+      getEnvVar("VITE_BLOSSOM_PRIMARY_URL") ||
+      getEnvVar("VITE_BLOSSOM_NOSTR_BUILD_URL") || // Legacy fallback
       "https://blossom.nostr.build",
     fallbackUrl:
-      (process.env.VITE_BLOSSOM_FALLBACK_URL as string) ||
-      "https://blossom.nostr.build",
-    timeoutMs: parseInt(
-      (process.env.VITE_BLOSSOM_TIMEOUT_MS as string) || "30000",
-      10
-    ),
+      getEnvVar("VITE_BLOSSOM_FALLBACK_URL") || "https://blossom.nostr.build",
+    timeoutMs: parseInt(getEnvVar("VITE_BLOSSOM_TIMEOUT_MS") || "30000", 10),
     retryAttempts: parseInt(
-      (process.env.VITE_BLOSSOM_RETRY_ATTEMPTS as string) || "2",
+      getEnvVar("VITE_BLOSSOM_RETRY_ATTEMPTS") || "2",
       10
     ),
     // Legacy support (Phase 4B compatibility)
     serverUrl:
-      (process.env.VITE_BLOSSOM_NOSTR_BUILD_URL as string) ||
+      getEnvVar("VITE_BLOSSOM_NOSTR_BUILD_URL") ||
       "https://blossom.nostr.build",
   },
   nip85: {
     primaryRelay:
-      (process.env.VITE_NIP85_PRIMARY_RELAY as string) ||
-      "wss://relay.satnam.pub",
-    cacheTTLMs: parseInt(
-      (process.env.VITE_NIP85_CACHE_TTL_MS as string) || "300000",
-      10
-    ),
-    defaultExposureLevel: ((process.env
-      .VITE_NIP85_DEFAULT_EXPOSURE_LEVEL as string) || "private") as
-      | "public"
-      | "contacts"
-      | "whitelist"
-      | "private",
+      getEnvVar("VITE_NIP85_PRIMARY_RELAY") || "wss://relay.satnam.pub",
+    cacheTTLMs: parseInt(getEnvVar("VITE_NIP85_CACHE_TTL_MS") || "300000", 10),
+    defaultExposureLevel: (getEnvVar("VITE_NIP85_DEFAULT_EXPOSURE_LEVEL") ||
+      "private") as "public" | "contacts" | "whitelist" | "private",
   },
   flags: {
     lnbitsEnabled: LNBITS_ENABLED,
