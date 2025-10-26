@@ -97,7 +97,8 @@ export class IrohVerificationService {
         direct_addresses: null,
         is_reachable: false,
         discovered_at: Math.floor(Date.now() / 1000),
-        error: "Iroh verification is disabled (feature flag: VITE_IROH_ENABLED)",
+        error:
+          "Iroh verification is disabled (feature flag: VITE_IROH_ENABLED)",
       };
     }
 
@@ -155,7 +156,8 @@ export class IrohVerificationService {
         direct_addresses: null,
         last_seen: Math.floor(Date.now() / 1000),
         cached: false,
-        error: "Iroh verification is disabled (feature flag: VITE_IROH_ENABLED)",
+        error:
+          "Iroh verification is disabled (feature flag: VITE_IROH_ENABLED)",
       };
     }
 
@@ -211,7 +213,8 @@ export class IrohVerificationService {
       return {
         success: false,
         nodes: [],
-        error: "Iroh verification is disabled (feature flag: VITE_IROH_ENABLED)",
+        error:
+          "Iroh verification is disabled (feature flag: VITE_IROH_ENABLED)",
       };
     }
 
@@ -275,6 +278,37 @@ export class IrohVerificationService {
   }
 }
 
-// Export singleton instance
-export const irohVerificationService = new IrohVerificationService();
+// ============================================================================
+// SINGLETON INSTANCE (LAZY INITIALIZATION)
+// ============================================================================
 
+/**
+ * Lazy-initialized singleton instance to avoid circular dependency issues
+ * and initialization order problems with chunk splitting.
+ *
+ * This pattern ensures the instance is only created when first accessed,
+ * not at module load time, which prevents TDZ errors when chunks are loaded
+ * in different orders.
+ */
+let _instance: IrohVerificationService | null = null;
+
+export function getIrohVerificationService(): IrohVerificationService {
+  if (!_instance) {
+    _instance = new IrohVerificationService();
+  }
+  return _instance;
+}
+
+// Export singleton instance for backward compatibility
+// This uses lazy initialization via getter to avoid initialization order issues
+export const irohVerificationService = new Proxy(
+  {} as IrohVerificationService,
+  {
+    get(_target, prop) {
+      const instance = getIrohVerificationService();
+      const value = instance[prop as keyof IrohVerificationService];
+      // Bind methods to the instance to preserve 'this' context
+      return typeof value === "function" ? value.bind(instance) : value;
+    },
+  }
+);

@@ -14,36 +14,116 @@ ALTER DATABASE postgres SET row_security = on;
 -- ============================================================================
 -- COMPOSITE INDEXES FOR ENCRYPTED_CONTACTS
 -- Optimize frequent query patterns in verify-contact-pkarr endpoint
+-- Note: Indexes are conditional to handle different encrypted_contacts schemas
 -- ============================================================================
 
 -- Index for contact lookup by owner_hash + contact_hash
 -- Used in: verify-contact-pkarr endpoint (primary query)
 -- Query pattern: WHERE owner_hash = ? AND contact_hash = ?
-CREATE INDEX IF NOT EXISTS idx_contacts_owner_contact_hash 
-ON public.encrypted_contacts(owner_hash, contact_hash)
-INCLUDE (id, pkarr_verified, verification_level);
+DO $$
+BEGIN
+    -- Check if all required columns exist
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'owner_hash'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'contact_hash'
+    ) THEN
+        -- Create index with INCLUDE columns only if they exist
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = 'encrypted_contacts'
+            AND column_name IN ('id', 'pkarr_verified', 'verification_level')
+            GROUP BY table_name
+            HAVING COUNT(*) = 3
+        ) THEN
+            CREATE INDEX IF NOT EXISTS idx_contacts_owner_contact_hash
+            ON public.encrypted_contacts(owner_hash, contact_hash)
+            INCLUDE (id, pkarr_verified, verification_level);
+        ELSE
+            -- Create without INCLUDE if columns don't exist
+            CREATE INDEX IF NOT EXISTS idx_contacts_owner_contact_hash
+            ON public.encrypted_contacts(owner_hash, contact_hash);
+        END IF;
+    END IF;
+END $$;
 
-COMMENT ON INDEX idx_contacts_owner_contact_hash IS 
+COMMENT ON INDEX idx_contacts_owner_contact_hash IS
 'Composite index for fast contact lookup by owner and contact hash with included columns';
 
 -- Index for verification status queries
 -- Used in: Analytics queries, batch verification
 -- Query pattern: WHERE owner_hash = ? AND pkarr_verified = ?
-CREATE INDEX IF NOT EXISTS idx_contacts_owner_pkarr_verified 
-ON public.encrypted_contacts(owner_hash, pkarr_verified)
-WHERE pkarr_verified = false;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'owner_hash'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'pkarr_verified'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_contacts_owner_pkarr_verified
+        ON public.encrypted_contacts(owner_hash, pkarr_verified)
+        WHERE pkarr_verified = false;
+    END IF;
+END $$;
 
-COMMENT ON INDEX idx_contacts_owner_pkarr_verified IS 
+COMMENT ON INDEX idx_contacts_owner_pkarr_verified IS
 'Partial index for unverified contacts to speed up verification workflows';
 
 -- Index for verification level queries
 -- Used in: Analytics, dashboard queries
 -- Query pattern: WHERE verification_level = ? AND created_at > ?
-CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_time 
-ON public.encrypted_contacts(verification_level, created_at DESC)
-WHERE verification_level IN ('basic', 'verified', 'trusted');
+-- Note: Handles both created_at and added_at column name variations
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'verification_level'
+    ) THEN
+        -- Try created_at first
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = 'encrypted_contacts'
+            AND column_name = 'created_at'
+        ) THEN
+            CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_time
+            ON public.encrypted_contacts(verification_level, created_at DESC)
+            WHERE verification_level IN ('basic', 'verified', 'trusted');
+        -- Fall back to added_at
+        ELSIF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = 'encrypted_contacts'
+            AND column_name = 'added_at'
+        ) THEN
+            CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_time
+            ON public.encrypted_contacts(verification_level, added_at DESC)
+            WHERE verification_level IN ('basic', 'verified', 'trusted');
+        -- Create without timestamp if neither exists
+        ELSE
+            CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_only
+            ON public.encrypted_contacts(verification_level)
+            WHERE verification_level IN ('basic', 'verified', 'trusted');
+        END IF;
+    END IF;
+END $$;
 
-COMMENT ON INDEX idx_contacts_verification_level_time IS 
+COMMENT ON INDEX idx_contacts_verification_level_time IS
 'Index for verification level analytics with time-based filtering';
 
 -- ============================================================================
@@ -111,23 +191,22 @@ COMMENT ON INDEX idx_pkarr_history_record_time IS
 
 -- Index for active cache entries
 -- Used in: Cache lookup, hit rate calculation
--- Query pattern: WHERE query_key = ? AND expires_at > NOW()
-CREATE INDEX IF NOT EXISTS idx_pkarr_cache_active 
+-- Query pattern: WHERE query_key = ? AND success = true
+CREATE INDEX IF NOT EXISTS idx_pkarr_cache_active
 ON public.pkarr_resolution_cache(query_key, expires_at)
-WHERE success = true AND expires_at > EXTRACT(EPOCH FROM NOW());
+WHERE success = true;
 
-COMMENT ON INDEX idx_pkarr_cache_active IS 
-'Partial index for active (non-expired) cache entries';
+COMMENT ON INDEX idx_pkarr_cache_active IS
+'Partial index for successful cache entries';
 
 -- Index for cache cleanup
 -- Used in: Periodic cache cleanup operations
--- Query pattern: WHERE expires_at < NOW() ORDER BY expires_at
-CREATE INDEX IF NOT EXISTS idx_pkarr_cache_expired 
-ON public.pkarr_resolution_cache(expires_at)
-WHERE expires_at < EXTRACT(EPOCH FROM NOW());
+-- Query pattern: ORDER BY expires_at for cleanup scans
+CREATE INDEX IF NOT EXISTS idx_pkarr_cache_expired
+ON public.pkarr_resolution_cache(expires_at);
 
-COMMENT ON INDEX idx_pkarr_cache_expired IS 
-'Partial index for expired cache entries to speed up cleanup';
+COMMENT ON INDEX idx_pkarr_cache_expired IS
+'Index on expires_at to support cleanup and ordering operations';
 
 -- ============================================================================
 -- OPTIMIZE RLS POLICY QUERIES
@@ -156,8 +235,18 @@ COMMENT ON INDEX idx_pkarr_history_rls IS
 -- STATISTICS AND MAINTENANCE
 -- ============================================================================
 
--- Update table statistics for query planner
-ANALYZE public.encrypted_contacts;
+-- Update table statistics for query planner (conditional for encrypted_contacts)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+    ) THEN
+        EXECUTE 'ANALYZE public.encrypted_contacts';
+    END IF;
+END $$;
+
 ANALYZE public.pkarr_records;
 ANALYZE public.pkarr_publish_history;
 ANALYZE public.pkarr_resolution_cache;
@@ -208,6 +297,10 @@ COMMENT ON FUNCTION check_pkarr_index_usage IS
 -- ============================================================================
 
 -- Function to estimate query performance for contact lookup
+-- WARNING: This function assumes encrypted_contacts has columns: id, pkarr_verified,
+-- verification_level, owner_hash, contact_hash. It will fail at runtime if these
+-- columns don't exist in your schema. Only use if your encrypted_contacts table
+-- has these columns.
 CREATE OR REPLACE FUNCTION estimate_contact_lookup_performance(
     p_owner_hash VARCHAR,
     p_contact_hash VARCHAR
@@ -218,48 +311,69 @@ RETURNS TABLE (
     uses_index BOOLEAN
 ) AS $$
 DECLARE
-    query_plan TEXT;
+    plan_json JSON;
+    plan_text TEXT;
 BEGIN
-    -- Get query plan
-    SELECT INTO query_plan
-        query_plan_text
-    FROM (
-        SELECT string_agg(line, E'\n') AS query_plan_text
-        FROM (
-            SELECT * FROM (
-                EXPLAIN (FORMAT TEXT)
-                SELECT id, pkarr_verified, verification_level
-                FROM public.encrypted_contacts
-                WHERE owner_hash = p_owner_hash
-                  AND contact_hash = p_contact_hash
-                LIMIT 1
-            ) AS plan_lines(line)
-        ) AS plan_text
-    ) AS full_plan;
+    -- Check if encrypted_contacts table exists and has required columns
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'encrypted_contacts'
+    ) THEN
+        RAISE EXCEPTION 'encrypted_contacts table does not exist';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name IN ('id', 'pkarr_verified', 'verification_level', 'owner_hash', 'contact_hash')
+        GROUP BY table_name
+        HAVING COUNT(*) = 5
+    ) THEN
+        RAISE EXCEPTION 'encrypted_contacts table is missing required columns: id, pkarr_verified, verification_level, owner_hash, contact_hash';
+    END IF;
+
+    -- Get query plan as JSON via dynamic SQL
+    EXECUTE format(
+        'EXPLAIN (FORMAT JSON) SELECT id, pkarr_verified, verification_level FROM public.encrypted_contacts WHERE owner_hash = %L AND contact_hash = %L LIMIT 1',
+        p_owner_hash, p_contact_hash
+    ) INTO plan_json;
+
+    plan_text := plan_json::text;
 
     -- Parse plan for index usage
     RETURN QUERY
     SELECT
         1::BIGINT AS estimated_rows,
         0.0::NUMERIC AS estimated_cost,
-        (query_plan LIKE '%Index Scan%' OR query_plan LIKE '%Index Only Scan%') AS uses_index;
+        (plan_text LIKE '%Index Scan%' OR plan_text LIKE '%Index Only Scan%') AS uses_index;
 END;
 $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION estimate_contact_lookup_performance(VARCHAR, VARCHAR) TO authenticated;
 
-COMMENT ON FUNCTION estimate_contact_lookup_performance IS 
-'Estimate query performance for contact lookup operations';
+COMMENT ON FUNCTION estimate_contact_lookup_performance IS
+'Estimate query performance for contact lookup operations. Requires encrypted_contacts table with columns: id, pkarr_verified, verification_level, owner_hash, contact_hash';
 
 -- ============================================================================
 -- VACUUM AND REINDEX MAINTENANCE
 -- ============================================================================
 
--- Vacuum and reindex for optimal performance
-VACUUM ANALYZE public.encrypted_contacts;
-VACUUM ANALYZE public.pkarr_records;
-VACUUM ANALYZE public.pkarr_publish_history;
-VACUUM ANALYZE public.pkarr_resolution_cache;
+-- Vacuum and reindex for optimal performance (conditional for encrypted_contacts)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+    ) THEN
+        EXECUTE 'ANALYZE public.encrypted_contacts';
+    END IF;
+END $$;
+
+ANALYZE public.pkarr_records;
+ANALYZE public.pkarr_publish_history;
+ANALYZE public.pkarr_resolution_cache;
 
 -- Note: REINDEX should be run during maintenance windows
 -- REINDEX TABLE CONCURRENTLY public.encrypted_contacts;

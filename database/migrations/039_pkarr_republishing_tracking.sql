@@ -101,7 +101,7 @@ RETURNS TABLE (
     public_key VARCHAR(64),
     z32_address VARCHAR(52),
     records JSONB,
-    timestamp BIGINT,
+    "timestamp" BIGINT,
     sequence INTEGER,
     signature VARCHAR(128),
     relay_urls TEXT[],

@@ -21,9 +21,18 @@ WITH relay_counts AS (
     SELECT
         DATE_TRUNC('hour', TO_TIMESTAMP(created_at)) AS hour_bucket,
         DATE_TRUNC('day', TO_TIMESTAMP(created_at)) AS day_bucket,
-        UNNEST(relay_urls) AS relay_url
-    FROM public.pkarr_records
+        relay_url
+    FROM public.pkarr_records,
+         LATERAL UNNEST(relay_urls) AS relay_url
     WHERE created_at >= EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
+),
+relay_aggregates AS (
+    SELECT
+        hour_bucket,
+        day_bucket,
+        COUNT(DISTINCT relay_url) AS unique_relays_used
+    FROM relay_counts
+    GROUP BY hour_bucket, day_bucket
 )
 SELECT
     -- Time period aggregations
@@ -51,16 +60,18 @@ SELECT
     -- User distribution
     COUNT(DISTINCT pr.user_duid) AS unique_users,
 
-    -- Relay distribution (using subquery to count distinct relays)
-    (SELECT COUNT(DISTINCT rc.relay_url)
-     FROM relay_counts rc
-     WHERE rc.hour_bucket = DATE_TRUNC('hour', TO_TIMESTAMP(pr.created_at))
-       AND rc.day_bucket = DATE_TRUNC('day', TO_TIMESTAMP(pr.created_at))
-    ) AS unique_relays_used
+    -- Relay distribution (from pre-aggregated CTE)
+    COALESCE(ra.unique_relays_used, 0) AS unique_relays_used
 
 FROM public.pkarr_records pr
+LEFT JOIN relay_aggregates ra
+    ON ra.hour_bucket = DATE_TRUNC('hour', TO_TIMESTAMP(pr.created_at))
+    AND ra.day_bucket = DATE_TRUNC('day', TO_TIMESTAMP(pr.created_at))
 WHERE pr.created_at >= EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')
-GROUP BY hour_bucket, day_bucket
+GROUP BY
+    DATE_TRUNC('hour', TO_TIMESTAMP(pr.created_at)),
+    DATE_TRUNC('day', TO_TIMESTAMP(pr.created_at)),
+    ra.unique_relays_used
 ORDER BY day_bucket DESC, hour_bucket DESC;
 
 -- Grant read access to authenticated users
@@ -139,35 +150,35 @@ SELECT
     COUNT(CASE WHEN kind0_verified = true THEN 1 END) AS kind0_verified_count,
     COUNT(CASE WHEN physical_mfa_verified = true THEN 1 END) AS physical_mfa_verified_count,
     COUNT(CASE WHEN iroh_dht_verified = true THEN 1 END) AS iroh_dht_verified_count,
-    
+
     -- Verification level distribution
     COUNT(CASE WHEN verification_level = 'unverified' THEN 1 END) AS unverified_count,
     COUNT(CASE WHEN verification_level = 'basic' THEN 1 END) AS basic_count,
     COUNT(CASE WHEN verification_level = 'verified' THEN 1 END) AS verified_count,
     COUNT(CASE WHEN verification_level = 'trusted' THEN 1 END) AS trusted_count,
-    
+
     -- Percentages
     ROUND((COUNT(CASE WHEN pkarr_verified = true THEN 1 END)::DECIMAL / NULLIF(COUNT(*), 0)) * 100, 2) AS pkarr_verified_percent,
     ROUND((COUNT(CASE WHEN simpleproof_verified = true THEN 1 END)::DECIMAL / NULLIF(COUNT(*), 0)) * 100, 2) AS simpleproof_verified_percent,
     ROUND((COUNT(CASE WHEN kind0_verified = true THEN 1 END)::DECIMAL / NULLIF(COUNT(*), 0)) * 100, 2) AS kind0_verified_percent,
     ROUND((COUNT(CASE WHEN physical_mfa_verified = true THEN 1 END)::DECIMAL / NULLIF(COUNT(*), 0)) * 100, 2) AS physical_mfa_verified_percent,
-    
+
     -- Multi-method verification
-    COUNT(CASE 
-        WHEN (pkarr_verified::int + simpleproof_verified::int + kind0_verified::int + physical_mfa_verified::int + iroh_dht_verified::int) >= 2 
-        THEN 1 
+    COUNT(CASE
+        WHEN (pkarr_verified::int + simpleproof_verified::int + kind0_verified::int + physical_mfa_verified::int + iroh_dht_verified::int) >= 2
+        THEN 1
     END) AS multi_method_verified_count,
-    
+
     -- Timestamp
     NOW() AS calculated_at
 
-FROM public.encrypted_contacts
-WHERE created_at >= NOW() - INTERVAL '30 days';
+FROM public.encrypted_contacts;
+-- Note: Removed time filter as encrypted_contacts may not have timestamp columns in all schemas
 
 -- Grant read access to authenticated users
 GRANT SELECT ON public.pkarr_verification_method_distribution TO authenticated;
 
-COMMENT ON VIEW public.pkarr_verification_method_distribution IS 'Distribution of verification methods across contacts (last 30 days)';
+COMMENT ON VIEW public.pkarr_verification_method_distribution IS 'Distribution of verification methods across all contacts';
 
 -- ============================================================================
 -- VIEW 4: pkarr_recent_activity
@@ -188,17 +199,17 @@ SELECT
     pr.last_publish_error,
     pr.relay_urls,
     pr.user_duid,
-    
+
     -- Time since last activity
     EXTRACT(EPOCH FROM NOW()) - pr.updated_at AS seconds_since_update,
-    EXTRACT(EPOCH FROM NOW()) - pr.last_published_at AS seconds_since_publish,
-    
+    EXTRACT(EPOCH FROM NOW()) - COALESCE(pr.last_published_at, 0) AS seconds_since_publish,
+
     -- Cache status
     CASE
         WHEN pr.cache_expires_at > EXTRACT(EPOCH FROM NOW()) THEN 'valid'
         ELSE 'expired'
     END AS cache_status,
-    
+
     -- Publish status
     CASE
         WHEN pr.last_publish_error IS NOT NULL THEN 'error'
@@ -223,20 +234,61 @@ COMMENT ON VIEW public.pkarr_recent_activity IS 'Recent PKARR verification activ
 -- ============================================================================
 
 -- Index for time-based queries on pkarr_records
-CREATE INDEX IF NOT EXISTS idx_pkarr_records_created_at_verified 
+CREATE INDEX IF NOT EXISTS idx_pkarr_records_created_at_verified
 ON public.pkarr_records(created_at, verified);
 
 -- Index for relay health queries
-CREATE INDEX IF NOT EXISTS idx_pkarr_history_relay_timestamp_success 
+CREATE INDEX IF NOT EXISTS idx_pkarr_history_relay_timestamp_success
 ON public.pkarr_publish_history(relay_url, publish_timestamp, success);
 
--- Index for verification method queries on encrypted_contacts
-CREATE INDEX IF NOT EXISTS idx_contacts_verification_flags 
-ON public.encrypted_contacts(pkarr_verified, simpleproof_verified, kind0_verified, physical_mfa_verified);
+-- Index for verification method queries on encrypted_contacts (only if columns exist)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'pkarr_verified'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_contacts_verification_flags
+        ON public.encrypted_contacts(pkarr_verified, simpleproof_verified, kind0_verified, physical_mfa_verified);
+    END IF;
+END $$;
 
--- Index for verification level distribution
-CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_created 
-ON public.encrypted_contacts(verification_level, created_at);
+-- Index for verification level distribution (only if columns exist)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name = 'verification_level'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'encrypted_contacts'
+        AND column_name IN ('created_at', 'added_at')
+    ) THEN
+        -- Try created_at first, fall back to added_at
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = 'encrypted_contacts'
+            AND column_name = 'created_at'
+        ) THEN
+            CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_created
+            ON public.encrypted_contacts(verification_level, created_at);
+        ELSIF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = 'encrypted_contacts'
+            AND column_name = 'added_at'
+        ) THEN
+            CREATE INDEX IF NOT EXISTS idx_contacts_verification_level_added
+            ON public.encrypted_contacts(verification_level, added_at);
+        END IF;
+    END IF;
+END $$;
 
 -- ============================================================================
 -- ANALYTICS HELPER FUNCTIONS
@@ -266,7 +318,10 @@ BEGIN
             2
         ) AS success_rate_percent,
         COUNT(DISTINCT user_duid)::BIGINT AS unique_users,
-        COUNT(DISTINCT UNNEST(relay_urls))::BIGINT AS unique_relays
+        (SELECT COUNT(DISTINCT relay_url)::BIGINT
+         FROM public.pkarr_records pr, UNNEST(pr.relay_urls) AS relay_url
+         WHERE pr.created_at >= start_time AND pr.created_at <= end_time
+        ) AS unique_relays
     FROM public.pkarr_records
     WHERE created_at >= start_time AND created_at <= end_time;
 END;

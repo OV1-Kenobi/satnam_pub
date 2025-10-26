@@ -215,6 +215,12 @@ export default defineConfig({
           // Source code chunking - be more specific to avoid mixed imports
           // Priority order: most specific first to avoid conflicts
 
+          // Configuration - keep separate to avoid circular dependencies
+          // This must be loaded early and independently
+          if (id.includes('src/config/')) {
+            return 'config';
+          }
+
           // Core API client (base)
           if (id.includes('src/lib/api.ts') || id.includes('src/lib/api.js')) {
             return 'api-core';
@@ -331,6 +337,12 @@ export default defineConfig({
 
             // Everything else stays in components
             return 'components';
+          }
+
+          // Services - keep together to avoid initialization order issues
+          // This includes verification services, toast service, etc.
+          if (id.includes('src/services/')) {
+            return 'services';
           }
 
           // Hooks
