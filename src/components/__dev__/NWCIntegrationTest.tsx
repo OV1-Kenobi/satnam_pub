@@ -26,8 +26,8 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useNWCWallet } from '../hooks/useNWCWallet';
-import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
+import { useNWCWallet } from '../../hooks/useNWCWallet';
+import { useAuth } from '../auth/AuthProvider'; // FIXED: Use unified auth system
 
 interface TestResult {
   name: string;
@@ -44,7 +44,8 @@ interface TestSuite {
 }
 
 export default function NWCIntegrationTest() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const userRole = user?.federationRole || 'private';
   const {
     connections,
     primaryConnection,

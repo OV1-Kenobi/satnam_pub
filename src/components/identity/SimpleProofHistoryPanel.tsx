@@ -23,14 +23,15 @@
  * @compliance Privacy-first, zero-knowledge, no PII display
  */
 
-import { Shield, Clock, CheckCircle, XCircle, ExternalLink, Filter, ChevronLeft, ChevronRight, AlertCircle, Bitcoin } from 'lucide-react';
-import React, { useState, useEffect, useCallback } from 'react';
-import { simpleProofService, Timestamp } from '../../services/simpleProofService';
+import { AlertCircle, Bitcoin, ChevronLeft, ChevronRight, Clock, Filter, Shield, XCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { clientConfig } from '../../config/env.client';
+import { withSentryErrorBoundary } from '../../lib/sentry';
+import { simpleProofService, Timestamp } from '../../services/simpleProofService';
 import { SimpleProofVerificationStatus } from './SimpleProofVerificationStatus';
 
 // Event types for SimpleProof attestations
-export type SimpleProofEventType = 
+export type SimpleProofEventType =
   | 'account_creation'
   | 'key_rotation'
   | 'nfc_registration'
@@ -39,6 +40,12 @@ export type SimpleProofEventType =
   | 'unknown';
 
 interface SimpleProofHistoryPanelProps {
+  /**
+   * PRIVACY REQUIREMENT: userId MUST be hashed before passing to this component
+   * - Use auth.user?.hashed_npub if available
+   * - Or use hashUserData() from lib/security/privacy-hashing.js
+   * - NEVER pass raw user IDs, UUIDs, npubs, or other PII
+   */
   userId: string;
   className?: string;
   pageSize?: number;
@@ -46,7 +53,7 @@ interface SimpleProofHistoryPanelProps {
   showCostInfo?: boolean;
 }
 
-export const SimpleProofHistoryPanel: React.FC<SimpleProofHistoryPanelProps> = ({
+const SimpleProofHistoryPanelComponent: React.FC<SimpleProofHistoryPanelProps> = ({
   userId,
   className = '',
   pageSize = 10,
@@ -256,7 +263,7 @@ export const SimpleProofHistoryPanel: React.FC<SimpleProofHistoryPanelProps> = (
           <Shield className="h-16 w-16 text-gray-500 mx-auto mb-4" />
           <p className="text-gray-400 mb-2">No blockchain attestations found</p>
           <p className="text-sm text-gray-500">
-            {filterStatus !== 'all' 
+            {filterStatus !== 'all'
               ? 'Try changing the filter to see more results'
               : 'Attestations will appear here after creating blockchain timestamps for important identity events'}
           </p>
@@ -327,4 +334,28 @@ export const SimpleProofHistoryPanel: React.FC<SimpleProofHistoryPanelProps> = (
     </div>
   );
 };
+
+// Wrap with Sentry error boundary for graceful error handling (skip in test environment)
+// FIXED: Use consistent Vite pattern with process.env (populated by Vite define)
+const isTestEnv = typeof process !== 'undefined' && process.env.NODE_ENV === 'test';
+
+export const SimpleProofHistoryPanel = isTestEnv
+  ? SimpleProofHistoryPanelComponent
+  : withSentryErrorBoundary(
+    SimpleProofHistoryPanelComponent,
+    // FIXED: Use dark theme styling consistent with component (bg-white/10, text-white)
+    <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+        <div>
+          <h3 className="font-semibold text-red-300 mb-1">
+            History Panel Temporarily Unavailable
+          </h3>
+          <p className="text-sm text-red-300">
+            Unable to load attestation history. Please try again later.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 

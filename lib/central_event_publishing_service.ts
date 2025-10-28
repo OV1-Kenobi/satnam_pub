@@ -3763,6 +3763,200 @@ export class CentralEventPublishingService {
     }
     return { event: ev as any };
   }
+
+  // ========================================================================
+  // FEDERATED SIGNING METHODS
+  // ========================================================================
+
+  /**
+   * Publish guardian approval request via NIP-59 gift-wrapped messaging
+   *
+   * Sends a private, encrypted approval request to a guardian for federated signing.
+   * Uses NIP-59 to ensure privacy and prevent social graph analysis.
+   *
+   * @param guardianPubkey - Guardian's public key (hex)
+   * @param approvalRequest - Approval request details
+   * @returns Event ID of the published approval request
+   */
+  async publishGuardianApprovalRequest(
+    guardianPubkey: string,
+    approvalRequest: {
+      requestId: string;
+      familyId: string;
+      eventType: string;
+      eventTemplate: any;
+      threshold: number;
+      expiresAt: number;
+      requesterPubkey: string;
+    }
+  ): Promise<{ success: boolean; eventId?: string; error?: string }> {
+    try {
+      console.log(
+        `[CEPS] Publishing guardian approval request to ${guardianPubkey}`
+      );
+
+      // Create approval request message
+      const content = JSON.stringify({
+        type: "guardian_approval_request",
+        requestId: approvalRequest.requestId,
+        familyId: approvalRequest.familyId,
+        eventType: approvalRequest.eventType,
+        eventTemplate: approvalRequest.eventTemplate,
+        threshold: approvalRequest.threshold,
+        expiresAt: approvalRequest.expiresAt,
+        requesterPubkey: approvalRequest.requesterPubkey,
+        timestamp: Math.floor(Date.now() / 1000),
+      });
+
+      // Send via NIP-59 gift-wrapped messaging for maximum privacy
+      const eventId = await this.sendServerDM(guardianPubkey, content);
+
+      console.log(`[CEPS] Guardian approval request published: ${eventId}`);
+
+      return { success: true, eventId };
+    } catch (error) {
+      console.error(
+        "[CEPS] Failed to publish guardian approval request:",
+        error
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Publish federated signing event after threshold is met
+   *
+   * Broadcasts a completed multi-signature event to Nostr relays.
+   * This is called after enough guardians have provided their signatures
+   * and the event has been successfully signed.
+   *
+   * @param signedEvent - The fully signed Nostr event
+   * @param familyId - Family identifier for relay selection
+   * @returns Event ID of the published event
+   */
+  async publishFederatedSigningEvent(
+    signedEvent: Event,
+    familyId?: string
+  ): Promise<{ success: boolean; eventId?: string; error?: string }> {
+    try {
+      console.log(
+        `[CEPS] Publishing federated signing event for family ${familyId}`
+      );
+
+      // Verify event is properly signed
+      if (!this.verifyEvent(signedEvent)) {
+        throw new Error("Event signature verification failed");
+      }
+
+      // Publish to relays (use family-specific relays if available)
+      const relays = familyId
+        ? [...this.relays, `wss://relay.satnam.pub`] // Add family relay if needed
+        : this.relays;
+
+      const eventId = await this.publishEvent(signedEvent, relays);
+
+      console.log(`[CEPS] Federated signing event published: ${eventId}`);
+
+      return { success: true, eventId };
+    } catch (error) {
+      console.error("[CEPS] Failed to publish federated signing event:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * Notify guardians that signing is complete
+   *
+   * Sends a notification to all participating guardians when the threshold
+   * has been met and the event has been successfully broadcast.
+   * Uses NIP-59 for privacy.
+   *
+   * @param guardianPubkeys - Array of guardian public keys (hex)
+   * @param notification - Notification details
+   * @returns Results for each guardian notification
+   */
+  async notifyGuardianSigningComplete(
+    guardianPubkeys: string[],
+    notification: {
+      requestId: string;
+      familyId: string;
+      eventType: string;
+      eventId: string;
+      completedAt: number;
+      participatingGuardians: string[];
+    }
+  ): Promise<{
+    success: boolean;
+    results: Array<{
+      guardianPubkey: string;
+      success: boolean;
+      eventId?: string;
+      error?: string;
+    }>;
+  }> {
+    try {
+      console.log(
+        `[CEPS] Notifying ${guardianPubkeys.length} guardians of signing completion`
+      );
+
+      const results = await Promise.all(
+        guardianPubkeys.map(async (guardianPubkey) => {
+          try {
+            const content = JSON.stringify({
+              type: "guardian_signing_complete",
+              requestId: notification.requestId,
+              familyId: notification.familyId,
+              eventType: notification.eventType,
+              eventId: notification.eventId,
+              completedAt: notification.completedAt,
+              participatingGuardians: notification.participatingGuardians,
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+
+            const eventId = await this.sendServerDM(guardianPubkey, content);
+
+            return { guardianPubkey, success: true, eventId };
+          } catch (error) {
+            console.error(
+              `[CEPS] Failed to notify guardian ${guardianPubkey}:`,
+              error
+            );
+            return {
+              guardianPubkey,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        })
+      );
+
+      const allSuccess = results.every((r) => r.success);
+
+      console.log(
+        `[CEPS] Guardian notifications complete: ${
+          results.filter((r) => r.success).length
+        }/${results.length} successful`
+      );
+
+      return { success: allSuccess, results };
+    } catch (error) {
+      console.error("[CEPS] Failed to notify guardians:", error);
+      return {
+        success: false,
+        results: guardianPubkeys.map((guardianPubkey) => ({
+          guardianPubkey,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        })),
+      };
+    }
+  }
 }
 
 export const central_event_publishing_service =

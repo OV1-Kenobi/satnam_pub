@@ -27,10 +27,8 @@ export {
 export { default as FamilyFederationSignIn } from "./auth/FamilyFederationSignIn";
 export { WebAuthnAuthentication } from "./auth/WebAuthnAuthentication";
 export { WebAuthnRegistration } from "./auth/WebAuthnRegistration";
-export { default as AuthTestingPanel } from "./AuthTestingPanel";
 export { default as IndividualAuth } from "./IndividualAuth";
 export { MaxPrivacyAuth } from "./MaxPrivacyAuth";
-export { PrivacyFirstAuthDemo } from "./PrivacyFirstAuthDemo";
 
 // Fedimint & Governance
 export { default as FamilyCoordination } from "./FamilyCoordination";
@@ -40,7 +38,6 @@ export { default as FamilyFedimintGovernance } from "./FamilyFedimintGovernance"
 export { default as EnhancedLiquidityDashboard } from "./EnhancedLiquidityDashboard";
 export { default as PhoenixDNodeStatus } from "./PhoenixDNodeStatus";
 export { default as SmartPaymentModal } from "./SmartPaymentModal";
-export { default as SmartPaymentModalDemo } from "./SmartPaymentModalDemo";
 export { default as UnifiedFamilyPayments } from "./UnifiedFamilyPayments";
 
 // Privacy & Enhanced Features
@@ -63,7 +60,6 @@ export { default as SignInModal } from "./SignInModal";
 // Wallet & Card Components
 export { CreditsBalance } from "./CreditsBalance";
 export { default as FamilyWalletCard } from "./FamilyWalletCard";
-export { default as FamilyWalletDemo } from "./FamilyWalletDemo";
 
 // Contact Management
 export { default as AddContactForm } from "./AddContactForm";
@@ -74,6 +70,7 @@ export { default as EditContactForm } from "./EditContactForm";
 // Onboarding & Education
 export { default as EducationPlatform } from "./EducationPlatform";
 export { default as FamilyOnboarding } from "./FamilyOnboarding";
+export { default as GuardianOnboardingGuide } from "./GuardianOnboardingGuide";
 export { default as IdentityForge } from "./IdentityForge";
 export { default as KeyRotationWizard } from "./KeyRotationWizard";
 export { default as Settings } from "./Settings";
@@ -84,9 +81,7 @@ export { CryptoProvider } from "./CryptoProvider";
 export { default as NostrEcosystem } from "./NostrEcosystem";
 
 // Status & Monitoring
-export { default as ApiDebug } from "./ApiDebug";
 export { default as ApiStatus } from "./ApiStatus";
-export { default as ApiTestPage } from "./ApiTestPage";
 export { default as ServerStatus } from "./ServerStatus";
 
 // Utility Components

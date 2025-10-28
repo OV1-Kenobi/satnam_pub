@@ -9,12 +9,14 @@ import {
   RefreshCw,
   Settings,
   Shield,
+  Sparkles,
   Users,
   Wallet,
   Zap,
   type LucideIcon
 } from 'lucide-react';
 import React from 'react';
+import { Helmet } from 'react-helmet-async';
 
 interface FeaturesOverviewProps {
   onBack: () => void;
@@ -27,6 +29,9 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
   };
   const openSignIn = () => {
     window.dispatchEvent(new Event('satnam:open-signin'));
+  };
+  const openClaimName = () => {
+    navigate('forge');
   };
 
   type Feature = {
@@ -230,101 +235,131 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <div className="sticky top-0 z-20 bg-white/10 backdrop-blur-sm border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={onBack}
-                className="text-white hover:text-purple-200 transition-colors duration-200"
-              >
-                <ArrowLeft className="h-6 w-6" />
-              </button>
-              <div>
-                <h1 className="text-3xl font-bold text-white">Features Overview</h1>
-                <p className="text-purple-200">Comprehensive guide to all Satnam.pub features</p>
+    <>
+      {/* SEO Meta Tags */}
+      <Helmet>
+        <title>Platform Features & Capabilities | Satnam.pub</title>
+        <meta
+          name="description"
+          content="Explore Satnam.pub features: Nostr identity, family federations, Lightning payments, private messaging, Bitcoin education, and more."
+        />
+        <meta property="og:title" content="Platform Features & Capabilities | Satnam.pub" />
+        <meta
+          property="og:description"
+          content="Explore Satnam.pub features: Nostr identity, family federations, Lightning payments, private messaging, Bitcoin education, and more."
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://www.satnam.pub/features" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Platform Features & Capabilities | Satnam.pub" />
+        <meta
+          name="twitter:description"
+          content="Explore Satnam.pub features: Nostr identity, family federations, Lightning payments, private messaging, and more."
+        />
+      </Helmet>
+
+      <div className="min-h-screen">
+        {/* Header */}
+        <div className="sticky top-0 z-20 bg-white/10 backdrop-blur-sm border-b border-white/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={onBack}
+                  className="text-white hover:text-purple-200 transition-colors duration-200"
+                >
+                  <ArrowLeft className="h-6 w-6" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-white">Features Overview</h1>
+                  <p className="text-purple-200">Comprehensive guide to all Satnam.pub features</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="space-y-12">
-          {featureCategories.map((category, categoryIndex) => {
-            const features = category.features;
-            return (
-              <div key={categoryIndex} className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
-                <div className="text-center mb-8">
-                  <h2 className="text-2xl font-bold text-white mb-2">{category.title}</h2>
-                  <p className="text-purple-200">{category.description}</p>
-                </div>
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {features.map((feature: any, featureIndex: number) => {
-                    const Icon = feature.icon;
-                    return (
-                      <div
-                        key={featureIndex}
-                        tabIndex={0}
-                        aria-describedby={`tip-${categoryIndex}-${featureIndex}`}
-                        className={`group relative border-2 rounded-xl p-6 transition-all duration-300 hover:scale-105 ${getColorClasses(feature.color)}`}
-                      >
-                        <div className="flex items-center space-x-3 mb-4">
-                          <div className={`p-2 rounded-lg ${getColorClasses(feature.color).replace('hover:scale-105', '')}`}>
-                            <Icon className="h-6 w-6" />
-                          </div>
-                          <h3 className="text-lg font-semibold">{feature.name}</h3>
-                        </div>
-                        <p className="text-sm opacity-80 mb-3">{feature.description}</p>
-                        <div className="mt-4">
-                          <button
-                            onClick={feature.action}
-                            className="bg-white/80 text-black font-semibold py-2 px-3 rounded-md hover:bg-white transition-colors"
-                          >
-                            {feature.ctaLabel || 'Open'}
-                          </button>
-                        </div>
+        {/* Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="space-y-12">
+            {featureCategories.map((category, categoryIndex) => {
+              const features = category.features;
+              return (
+                <div key={categoryIndex} className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+                  <div className="text-center mb-8">
+                    <h2 className="text-2xl font-bold text-white mb-2">{category.title}</h2>
+                    <p className="text-purple-200">{category.description}</p>
+                  </div>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {features.map((feature: any, featureIndex: number) => {
+                      const Icon = feature.icon;
+                      return (
                         <div
-                          id={`tip-${categoryIndex}-${featureIndex}`}
-                          role="tooltip"
-                          className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full z-20 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 group-focus-within:opacity-100 group-focus-within:scale-100 transition duration-200 bg-white/90 text-black rounded-lg shadow-lg max-w-xs px-3 py-2 border border-white/30"
+                          key={featureIndex}
+                          tabIndex={0}
+                          aria-describedby={`tip-${categoryIndex}-${featureIndex}`}
+                          className={`group relative border-2 rounded-xl p-6 transition-all duration-300 hover:scale-105 ${getColorClasses(feature.color)}`}
                         >
-                          <p className="text-xs leading-snug">{feature.tooltip ?? feature.description}</p>
+                          <div className="flex items-center space-x-3 mb-4">
+                            <div className={`p-2 rounded-lg ${getColorClasses(feature.color).replace('hover:scale-105', '')}`}>
+                              <Icon className="h-6 w-6" />
+                            </div>
+                            <h3 className="text-lg font-semibold">{feature.name}</h3>
+                          </div>
+                          <p className="text-sm opacity-80 mb-3">{feature.description}</p>
+                          <div className="mt-4">
+                            <button
+                              onClick={feature.action}
+                              className="bg-white/80 text-black font-semibold py-2 px-3 rounded-md hover:bg-white transition-colors"
+                            >
+                              {feature.ctaLabel || 'Open'}
+                            </button>
+                          </div>
+                          <div
+                            id={`tip-${categoryIndex}-${featureIndex}`}
+                            role="tooltip"
+                            className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full z-20 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 group-focus-within:opacity-100 group-focus-within:scale-100 transition duration-200 bg-white/90 text-black rounded-lg shadow-lg max-w-xs px-3 py-2 border border-white/30"
+                          >
+                            <p className="text-xs leading-snug">{feature.tooltip ?? feature.description}</p>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+
+
+
+          {/* Call to Action */}
+          <div className="text-center mt-12 mb-16">
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+              <h2 className="text-2xl font-bold text-white mb-4">Ready to Get Started?</h2>
+              <p className="text-purple-200 mb-6">
+                Choose your path to sovereignty and start building your family's digital dynasty today.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                  onClick={openClaimName}
+                  className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 shadow-xl hover:shadow-2xl transform hover:scale-105"
+                >
+                  <Sparkles className="h-5 w-5" />
+                  <span>Claim Your Name</span>
+                </button>
+                <button
+                  onClick={openSignIn}
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white font-semibold py-3 px-8 rounded-lg transition-all duration-300 border border-white/20"
+                >
+                  Sign In
+                </button>
               </div>
-            );
-          })}
-        </div>
-
-
-
-        {/* Call to Action */}
-        <div className="text-center mt-12">
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
-            <h2 className="text-2xl font-bold text-white mb-4">Ready to Get Started?</h2>
-            <p className="text-purple-200 mb-6">
-              Choose your path to sovereignty and start building your family's digital dynasty today.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button
-                onClick={onBack}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 flex items-center space-x-2"
-              >
-                <ArrowLeft className="h-5 w-5" />
-                <span>Back to Home</span>
-              </button>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

@@ -9,7 +9,7 @@
  * ✅ Integration with unified messaging service architecture
  */
 
-import { nip19 } from "../../../src/lib/nostr-browser";
+import { nip19 } from "nostr-tools";
 import { PrivacyUtils } from "../privacy/encryption";
 import { supabase } from "../supabase"; // Use singleton client
 

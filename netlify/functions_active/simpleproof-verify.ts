@@ -7,12 +7,27 @@
  * - Returns: is_valid, bitcoin_block, bitcoin_tx, confidence
  * - Caching: 24-hour TTL for verified proofs
  * - Privacy-first: No PII stored, only proofs and verification results
+ *
+ * Phase 2B-2 Day 15: Enhanced with structured logging + Sentry error tracking
  */
 
 import type { Handler } from "@netlify/functions";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createLogger,
+  logApiCall,
+  logCacheEvent,
+  logRateLimitEvent,
+} from "../functions/utils/logging.js";
+import {
+  addSimpleProofBreadcrumb,
+  captureSimpleProofError,
+  initializeSentry,
+} from "../functions/utils/sentry.server.js";
 import { getEnvVar } from "./utils/env.js";
 import { allowRequest } from "./utils/rate-limiter.js";
+
+// Security: Input validation patterns
+const MAX_OTS_PROOF_LENGTH = 100000; // 100KB max for OTS proof
 
 interface SimpleProofVerifyRequest {
   ots_proof: string;
@@ -40,14 +55,37 @@ const verificationCache = new Map<
 >();
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
 
-function corsHeaders() {
+// Security: Whitelist of allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  "https://www.satnam.pub",
+  "https://satnam.pub",
+  "https://app.satnam.pub",
+];
+
+// Add localhost for development
+if (process.env.NODE_ENV === "development") {
+  ALLOWED_ORIGINS.push("http://localhost:5173", "http://localhost:3000");
+}
+
+function corsHeaders(origin?: string) {
+  // Validate origin against whitelist
+  const allowedOrigin =
+    origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
   return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
+    "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400", // 24 hours
     Vary: "Origin",
+    // Security headers
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "1; mode=block",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
   } as const;
 }
 
@@ -80,9 +118,7 @@ function getCacheKey(otsProof: string): string {
   return `verify:${otsProof.substring(0, 32)}`;
 }
 
-function getCachedResult(
-  cacheKey: string
-): SimpleProofVerifyResponse | null {
+function getCachedResult(cacheKey: string): SimpleProofVerifyResponse | null {
   const cached = verificationCache.get(cacheKey);
   if (!cached) return null;
 
@@ -137,17 +173,29 @@ async function callSimpleProofVerifyApi(
   }
 }
 
+// Create logger instance
+const logger = createLogger({ component: "simpleproof-verify" });
+
 export const handler: Handler = async (event) => {
+  const startTime = Date.now();
+  const origin = event.headers.origin || event.headers.Origin;
+
+  // Initialize Sentry for error tracking
+  initializeSentry();
+
   // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 204,
-      headers: corsHeaders(),
+      headers: corsHeaders(origin),
     };
   }
 
   // Only allow POST
   if (event.httpMethod !== "POST") {
+    logger.warn("Method not allowed", {
+      metadata: { method: event.httpMethod },
+    });
     return badRequest("Method not allowed", 405);
   }
 
@@ -158,7 +206,17 @@ export const handler: Handler = async (event) => {
     const rateLimitKey = `simpleproof-verify:${clientIp}`;
 
     // 100 requests per hour (3600000 ms) - verification is cheaper than creation
-    if (!allowRequest(rateLimitKey, 100, 3600000)) {
+    const allowed = allowRequest(rateLimitKey, 100, 3600000);
+    logRateLimitEvent(allowed, rateLimitKey, 100, 100, {
+      component: "simpleproof-verify",
+      action: "verify",
+    });
+
+    if (!allowed) {
+      logger.warn("Rate limit exceeded", {
+        action: "verify",
+        metadata: { clientIp, limit: 100 },
+      });
       return json(429, { error: "Rate limit exceeded: 100 requests per hour" });
     }
 
@@ -167,24 +225,70 @@ export const handler: Handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch {
+      logger.error("Invalid JSON in request body");
       return badRequest("Invalid JSON in request body");
     }
 
-    // Validate input
+    // Security: Validate input
     if (!body.ots_proof || typeof body.ots_proof !== "string") {
-      return badRequest("Missing or invalid required field: ots_proof (string)");
+      logger.warn("Missing or invalid ots_proof field");
+      return badRequest(
+        "Missing or invalid required field: ots_proof (string)"
+      );
     }
+
+    // Security: Prevent DoS via large payloads
+    if (body.ots_proof.length > MAX_OTS_PROOF_LENGTH) {
+      logger.warn("OTS proof exceeds maximum length", {
+        metadata: { length: body.ots_proof.length, max: MAX_OTS_PROOF_LENGTH },
+      });
+      return badRequest(
+        `OTS proof exceeds maximum length of ${MAX_OTS_PROOF_LENGTH} characters`
+      );
+    }
+
+    logger.info("Verification request received", {
+      action: "verify",
+    });
+
+    // Add Sentry breadcrumb for request
+    addSimpleProofBreadcrumb("SimpleProof verification request received", {
+      action: "verify",
+    });
 
     // Check cache first
     const cacheKey = getCacheKey(body.ots_proof);
     const cachedResult = getCachedResult(cacheKey);
     if (cachedResult) {
-      console.log("SimpleProof verification cache hit");
+      logCacheEvent(true, cacheKey, {
+        component: "simpleproof-verify",
+        action: "verify",
+      });
+      logger.info("Cache hit", {
+        action: "verify",
+        metadata: { cacheKey: cacheKey.substring(0, 16) + "..." },
+      });
+
+      // Add Sentry breadcrumb for cache hit
+      addSimpleProofBreadcrumb("SimpleProof verification cache hit", {
+        cached: true,
+      });
+
+      const duration = Date.now() - startTime;
+      logger.info("Request completed", {
+        action: "verify",
+        metadata: { duration, statusCode: 200, cached: true },
+      });
       return json(200, cachedResult, {
         "Cache-Control": "public, max-age=86400", // 24 hours
         "X-Cache": "HIT",
       });
     }
+
+    logCacheEvent(false, cacheKey, {
+      component: "simpleproof-verify",
+      action: "verify",
+    });
 
     // Get API credentials
     const apiKey = getEnvVar("VITE_SIMPLEPROOF_API_KEY");
@@ -192,22 +296,46 @@ export const handler: Handler = async (event) => {
       getEnvVar("VITE_SIMPLEPROOF_API_URL") || "https://api.simpleproof.com";
 
     if (!apiKey) {
-      console.error("SimpleProof API key not configured");
+      logger.error("SimpleProof API key not configured");
       return serverError("SimpleProof service not configured");
     }
 
     // Call SimpleProof API
     let apiResult: SimpleProofApiVerifyResponse;
+    const apiStartTime = Date.now();
     try {
+      logger.debug("Calling SimpleProof API", { action: "verify" });
       apiResult = await callSimpleProofVerifyApi(
         body.ots_proof,
         apiKey,
         apiUrl
       );
+      const apiDuration = Date.now() - apiStartTime;
+      logApiCall("POST", apiUrl, 200, apiDuration, {
+        component: "simpleproof-verify",
+        action: "verify",
+      });
     } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("SimpleProof verify API call failed:", errorMsg);
+      const apiDuration = Date.now() - apiStartTime;
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("SimpleProof API call failed", {
+        action: "verify",
+        metadata: { error: errorMsg, duration: apiDuration },
+      });
+
+      // Capture error in Sentry
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(errorMsg),
+        {
+          component: "simpleproof-verify",
+          action: "verifyTimestamp",
+          metadata: {
+            apiUrl,
+            duration: apiDuration,
+            status: "api_error",
+          },
+        }
+      );
 
       if (errorMsg.includes("abort")) {
         return serverError("SimpleProof API timeout (>10s)");
@@ -227,19 +355,54 @@ export const handler: Handler = async (event) => {
     // Cache the result
     setCachedResult(cacheKey, response);
 
-    console.log(
-      `SimpleProof verification: ${response.is_valid ? "valid" : "invalid"} (${response.confidence})`
+    logger.info("Verification completed successfully", {
+      action: "verify",
+      metadata: {
+        isValid: response.is_valid,
+        bitcoinBlock: response.bitcoin_block,
+        confidence: response.confidence,
+      },
+    });
+
+    // Add Sentry breadcrumb for success
+    addSimpleProofBreadcrumb(
+      "SimpleProof verification completed successfully",
+      {
+        is_valid: response.is_valid,
+        confidence: response.confidence,
+      }
     );
+
+    const duration = Date.now() - startTime;
+    logger.info("Request completed", {
+      action: "verify",
+      metadata: { duration, statusCode: 200, cached: false },
+    });
 
     return json(200, response, {
       "Cache-Control": "public, max-age=86400", // 24 hours
       "X-Cache": "MISS",
     });
   } catch (error) {
-    const errorMsg =
-      error instanceof Error ? error.message : "Unknown error";
-    console.error("SimpleProof verify handler error:", errorMsg);
+    const duration = Date.now() - startTime;
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    logger.error("Handler error", {
+      metadata: { error: errorMsg, duration },
+    });
+
+    // Capture error in Sentry
+    captureSimpleProofError(
+      error instanceof Error ? error : new Error(errorMsg),
+      {
+        component: "simpleproof-verify",
+        action: "handler",
+        metadata: {
+          duration,
+          httpMethod: event.httpMethod,
+        },
+      }
+    );
+
     return serverError("Internal server error");
   }
 };
-

@@ -1,12 +1,12 @@
 // src/components/AuthTestingPanel.tsx
-import React, { useState } from "react";
-import { ApiClient } from '../../utils/api-client.js';
 import {
   finalizeEvent as finishEvent,
   generateSecretKey as generatePrivateKey,
   getPublicKey,
   nip19,
-} from '../lib/nostr-browser.js';
+} from 'nostr-tools';
+import React, { useState } from "react";
+import { ApiClient } from '../../utils/api-client.js';
 
 interface TestResult {
   test: string;
@@ -328,10 +328,10 @@ const AuthTestingPanel: React.FC = () => {
             <div
               key={index}
               className={`p-3 rounded border-l-4 ${result.status === "success"
-                  ? "bg-green-900/30 border-green-400"
-                  : result.status === "error"
-                    ? "bg-red-900/30 border-red-400"
-                    : "bg-yellow-900/30 border-yellow-400"
+                ? "bg-green-900/30 border-green-400"
+                : result.status === "error"
+                  ? "bg-red-900/30 border-red-400"
+                  : "bg-yellow-900/30 border-yellow-400"
                 }`}
             >
               <div className="flex items-center space-x-2">

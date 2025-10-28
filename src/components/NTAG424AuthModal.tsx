@@ -28,6 +28,7 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import { config } from "../../config";
 import { nfcConfig } from "../../config/index";
+import { clientConfig } from "../config/env.client";
 import { useProductionNTAG424 } from "../hooks/useProductionNTAG424";
 import { FederationRole } from '../types/auth';
 import { useAuth } from "./auth/AuthProvider";
@@ -38,6 +39,7 @@ import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 
 import { supabase } from "../lib/supabase";
 import { isLightningAddressReachable, parseLightningAddress, toLnurlpUrl } from "../utils/lightning-address";
+import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 
 
 
@@ -47,6 +49,9 @@ const rawLnBitsFlag =
 
 const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 'true';
 const API_BASE: string = (import.meta as any)?.env?.VITE_API_BASE_URL || "/api";
+
+// Feature flag for SimpleProof
+const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
 
 
 interface NTAG424AuthModalProps {
@@ -117,6 +122,7 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
 
 
   const [operationType, setOperationType] = useState<'auth' | 'register' | 'init'>('auth');
+  const [verificationId, setVerificationId] = useState<string | null>(null);
 
   const auth = useAuth();
 
@@ -193,6 +199,8 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
     try {
       const success = await registerNewTag(pin, userNpub, familyRole);
       if (success) {
+        // Generate verification ID for SimpleProof attestation
+        setVerificationId(`nfc-registration-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`);
         setCurrentStep('success');
         setTimeout(() => {
           setCurrentStep('input');
@@ -817,6 +825,56 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                     ? 'Your NFC tag is initialized and ready. You can now complete registration.'
                     : 'Your NFC tag has been registered successfully!'}
               </p>
+
+              {/* SimpleProof Blockchain Attestation (Optional) - Only for registration */}
+              {/* FIXED: Removed selectedCardId requirement to work when LNBITS is disabled */}
+              {SIMPLEPROOF_ENABLED && operationType === 'register' && verificationId && (
+                <div className="mt-6 bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
+                  <h4 className="text-orange-200 font-semibold mb-2 text-sm">🔐 Blockchain Attestation (Optional)</h4>
+                  <p className="text-purple-200 text-xs mb-3">
+                    Create a permanent, verifiable record of your NFC Name Tag registration on the Bitcoin blockchain.
+                  </p>
+                  <p className="text-purple-300 text-xs mb-3 italic">
+                    ⚠️ Privacy Notice: Only a cryptographic hash of your registration data will be stored on-chain, not your actual identity.
+                  </p>
+                  <SimpleProofTimestampButton
+                    data={JSON.stringify({
+                      eventType: 'nfc_registration',
+                      // PRIVACY FIX: Use timestamp-based hash instead of PII
+                      // This creates a unique, verifiable record without exposing user identity
+                      registrationTimestamp: Date.now(),
+                      // Simple hash using timestamp + random value for uniqueness
+                      registrationId: `nfc-reg-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
+                      registeredAt: new Date().toISOString(),
+                    })}
+                    verificationId={verificationId}
+                    eventType="nfc_registration"
+                    estimatedFeeSats={500}
+                    requireConfirmation={true}
+                    onSuccess={(result: any) => {
+                      console.log('✅ SimpleProof attestation created for NFC registration:', result);
+                      showToast.success('Blockchain attestation created successfully', {
+                        title: 'SimpleProof',
+                        duration: 3000
+                      });
+                    }}
+                    onError={(error: any) => {
+                      console.error('❌ SimpleProof attestation failed:', error);
+                      showToast.error('Attestation failed. You can continue without it.', {
+                        title: 'SimpleProof',
+                        duration: 3000
+                      });
+                    }}
+                    variant="primary"
+                    size="sm"
+                    className="w-full"
+                  />
+                  <p className="text-purple-300 text-xs mt-2 text-center">
+                    You can skip this step and continue
+                  </p>
+                </div>
+              )}
+
               <div className="mt-6 grid sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => { try { window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'forge' } })); } catch { } onClose(); }}

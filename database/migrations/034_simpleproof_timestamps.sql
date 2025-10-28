@@ -53,6 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_simpleproof_is_valid
 ALTER TABLE public.simpleproof_timestamps ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Allow service role to insert timestamps (idempotent with IF NOT EXISTS check)
+-- FIX: Cast auth.uid() to VARCHAR to match user_duid type
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -65,13 +66,14 @@ BEGIN
             WITH CHECK (
                 verification_id IN (
                     SELECT id FROM multi_method_verification_results
-                    WHERE user_duid = auth.uid()
+                    WHERE user_duid = auth.uid()::VARCHAR
                 )
             );
     END IF;
 END $$;
 
 -- RLS Policy: Allow authenticated users to view their own timestamps (idempotent)
+-- FIX: Cast auth.uid() to VARCHAR to match user_duid type
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -84,13 +86,14 @@ BEGIN
             USING (
                 verification_id IN (
                     SELECT id FROM multi_method_verification_results
-                    WHERE user_duid = auth.uid()
+                    WHERE user_duid = auth.uid()::VARCHAR
                 )
             );
     END IF;
 END $$;
 
 -- RLS Policy: Allow service role to update verification status (idempotent, restrictive)
+-- FIX: Cast auth.uid() to VARCHAR to match user_duid type
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -104,7 +107,7 @@ BEGIN
             WITH CHECK (
                 verification_id IN (
                     SELECT id FROM multi_method_verification_results
-                    WHERE user_duid = auth.uid()
+                    WHERE user_duid = auth.uid()::VARCHAR
                 )
             );
     END IF;

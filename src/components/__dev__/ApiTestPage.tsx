@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { FamilyApiService } from '../services/familyApi';
-import { IndividualApiService } from '../services/individualApi';
+import { FamilyApiService } from '../../services/familyApi';
+import { IndividualApiService } from '../../services/individualApi';
 
 interface ApiTestResult {
   name: string;

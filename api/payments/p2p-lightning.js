@@ -14,24 +14,8 @@
  * - P2P_INTERNAL_LIGHTNING (PhoenixD primary) and P2P_EXTERNAL_LIGHTNING (Breez primary)
  */
 
-// TODO: Convert session-manager.ts to JavaScript for proper imports
-// import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
-
-// Mock SecureSessionManager for Master Context compliance testing
-const SecureSessionManager = {
-  validateSessionFromHeader: async (authHeader) => {
-    // Mock session validation for testing
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return { isAuthenticated: false };
-    }
-    return {
-      isAuthenticated: true,
-      sessionToken: authHeader.replace('Bearer ', ''),
-      federationRole: 'adult', // Default to adult for sovereignty testing
-      memberId: 'test-member-id'
-    };
-  }
-};
+// PRODUCTION: Use real SecureSessionManager for authentication
+import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
@@ -387,7 +371,7 @@ async function handler(event, context) {
 
     // Generate privacy-preserving payment hash
     const paymentHash = await generateP2PPaymentHash(
-      sessionValidation.memberId,
+      sessionValidation.userId,
       paymentRequest.toUser,
       paymentRequest.amount
     );
@@ -396,7 +380,7 @@ async function handler(event, context) {
     let result;
     if (paymentRequest.paymentType === 'P2P_INTERNAL_LIGHTNING') {
       result = await mockP2PInternalPayment(
-        sessionValidation.memberId,
+        sessionValidation.userId,
         paymentRequest.toUser,
         paymentRequest.amount,
         paymentRequest.memo || '',
@@ -405,7 +389,7 @@ async function handler(event, context) {
       );
     } else {
       result = await mockP2PExternalPayment(
-        sessionValidation.memberId,
+        sessionValidation.userId,
         paymentRequest.toUser,
         paymentRequest.amount,
         paymentRequest.memo || '',

@@ -1,6 +1,7 @@
 /**
  * SimpleProof Service
  * Phase 2B-2 Day 8: SimpleProof Integration
+ * Phase 2B-2 Day 15: Error Monitoring & Logging Enhancement
  *
  * Provides client-side wrapper around simpleproof-timestamp and simpleproof-verify
  * endpoints for blockchain-based proof of existence and timestamp verification.
@@ -9,6 +10,11 @@
  */
 
 import { clientConfig } from "../config/env.client";
+import {
+  addSimpleProofBreadcrumb,
+  captureSimpleProofError,
+} from "../lib/sentry";
+import { createLogger, logCacheEvent, logOperation } from "./loggingService";
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -57,6 +63,12 @@ export interface Timestamp {
 }
 
 export interface TimestampHistoryRequest {
+  /**
+   * PRIVACY REQUIREMENT: user_id MUST be hashed before passing to this service
+   * - Use auth.user?.hashed_npub if available
+   * - Or use hashUserData() from lib/security/privacy-hashing.js
+   * - NEVER pass raw user IDs, UUIDs, npubs, or other PII
+   */
   user_id: string;
   limit?: number;
 }
@@ -76,6 +88,41 @@ export interface TimestampByIdResponse {
   success: boolean;
   timestamp: Timestamp | null;
   error?: string;
+}
+
+// ============================================================================
+// FETCH HELPERS
+// ============================================================================
+
+/**
+ * Fetch with timeout to prevent hanging requests
+ * @param url - The URL to fetch
+ * @param options - Fetch options
+ * @param timeoutMs - Timeout in milliseconds (default: 30000ms = 30s)
+ * @returns Promise<Response>
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 30000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
 }
 
 // ============================================================================
@@ -125,14 +172,20 @@ class SimpleProofCache {
 // ============================================================================
 
 export class SimpleProofService {
-  private readonly timestampEndpoint = "/.netlify/functions/simpleproof-timestamp";
+  private readonly timestampEndpoint =
+    "/.netlify/functions/simpleproof-timestamp";
   private readonly verifyEndpoint = "/.netlify/functions/simpleproof-verify";
   private readonly enabled: boolean;
   private readonly cache = new SimpleProofCache();
+  private readonly logger = createLogger({ component: "simpleProofService" });
 
   constructor() {
     // Check if SimpleProof is enabled via feature flag (default: false, opt-in)
     this.enabled = clientConfig.flags.simpleproofEnabled || false;
+
+    this.logger.info("SimpleProof service initialized", {
+      metadata: { enabled: this.enabled },
+    });
   }
 
   /**
@@ -149,61 +202,133 @@ export class SimpleProofService {
   async createTimestamp(
     request: TimestampCreateRequest
   ): Promise<TimestampResult> {
+    const context = {
+      action: "createTimestamp",
+      verificationId: request.verification_id,
+      eventType: request.metadata?.eventType,
+    };
+
     if (!this.enabled) {
+      this.logger.warn("SimpleProof is disabled", context);
       return {
         success: false,
         ots_proof: "",
         bitcoin_block: null,
         bitcoin_tx: null,
         verified_at: Math.floor(Date.now() / 1000),
-        error: "SimpleProof is disabled (feature flag: VITE_SIMPLEPROOF_ENABLED)",
+        error:
+          "SimpleProof is disabled (feature flag: VITE_SIMPLEPROOF_ENABLED)",
       };
     }
 
+    // Add breadcrumb for tracking
+    addSimpleProofBreadcrumb("Creating timestamp", {
+      verification_id: request.verification_id,
+      event_type: request.metadata?.eventType,
+    });
+
     try {
-      const response = await fetch(this.timestampEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      return await logOperation(
+        "SimpleProof timestamp creation",
+        async () => {
+          const response = await fetchWithTimeout(this.timestampEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              data: request.data,
+              verification_id: request.verification_id,
+              metadata: request.metadata,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error || `HTTP ${response.status}`;
+
+            this.logger.error(`Timestamp creation failed: ${errorMessage}`, {
+              ...context,
+              metadata: {
+                status: response.status,
+                error: errorMessage,
+              },
+            });
+
+            // Capture error in Sentry
+            captureSimpleProofError(
+              new Error(`Timestamp creation failed: ${errorMessage}`),
+              {
+                verificationId: request.verification_id,
+                eventType: request.metadata?.eventType,
+                component: "simpleProofService",
+                action: "createTimestamp",
+                metadata: {
+                  status: response.status,
+                  error: errorMessage,
+                },
+              }
+            );
+
+            return {
+              success: false,
+              ots_proof: "",
+              bitcoin_block: null,
+              bitcoin_tx: null,
+              verified_at: Math.floor(Date.now() / 1000),
+              error: errorMessage,
+            };
+          }
+
+          const data = await response.json();
+
+          // Cache the result
+          const cacheKey = this.cache.getCacheKey(
+            "timestamp",
+            request.verification_id
+          );
+          this.cache.set(cacheKey, data);
+          logCacheEvent(false, cacheKey, context); // Cache MISS (new entry)
+
+          // Add success breadcrumb
+          addSimpleProofBreadcrumb("Timestamp created successfully", {
+            verification_id: request.verification_id,
+            bitcoin_block: data.bitcoin_block,
+          });
+
+          return {
+            success: true,
+            ...data,
+          };
         },
-        body: JSON.stringify({
-          data: request.data,
-          verification_id: request.verification_id,
-          metadata: request.metadata,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return {
-          success: false,
-          ots_proof: "",
-          bitcoin_block: null,
-          bitcoin_tx: null,
-          verified_at: Math.floor(Date.now() / 1000),
-          error: errorData.error || `HTTP ${response.status}`,
-        };
-      }
-
-      const data = await response.json();
-      
-      // Cache the result
-      const cacheKey = this.cache.getCacheKey("timestamp", request.verification_id);
-      this.cache.set(cacheKey, data);
-
-      return {
-        success: true,
-        ...data,
-      };
+        context
+      );
     } catch (error) {
-      console.error("SimpleProof timestamp creation error:", error);
+      // Handle errors thrown by logOperation (network errors, JSON parsing errors, etc.)
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Capture error in Sentry
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          verificationId: request.verification_id,
+          eventType: request.metadata?.eventType,
+          component: "simpleProofService",
+          action: "createTimestamp",
+          metadata: {
+            error_type: "network_error",
+          },
+        }
+      );
+
       return {
         success: false,
         ots_proof: "",
         bitcoin_block: null,
         bitcoin_tx: null,
         verified_at: Math.floor(Date.now() / 1000),
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
       };
     }
   }
@@ -215,7 +340,12 @@ export class SimpleProofService {
   async verifyTimestamp(
     request: TimestampVerifyRequest
   ): Promise<VerificationResult> {
+    const context = {
+      action: "verifyTimestamp",
+    };
+
     if (!this.enabled) {
+      this.logger.warn("SimpleProof is disabled", context);
       return {
         success: false,
         is_valid: false,
@@ -223,58 +353,115 @@ export class SimpleProofService {
         bitcoin_tx: null,
         confidence: "unconfirmed",
         verified_at: Math.floor(Date.now() / 1000),
-        error: "SimpleProof is disabled (feature flag: VITE_SIMPLEPROOF_ENABLED)",
+        error:
+          "SimpleProof is disabled (feature flag: VITE_SIMPLEPROOF_ENABLED)",
       };
     }
 
     // Check cache first
-    const cacheKey = this.cache.getCacheKey("verify", request.ots_proof.substring(0, 32));
+    // Use full ots_proof to avoid cache key collisions
+    const cacheKey = this.cache.getCacheKey("verify", request.ots_proof);
     const cachedResult = this.cache.get<VerificationResult>(cacheKey);
     if (cachedResult) {
+      logCacheEvent(true, cacheKey, context); // Cache HIT
       return {
         ...cachedResult,
         cached: true,
       };
     }
 
+    logCacheEvent(false, cacheKey, context); // Cache MISS
+
     try {
-      const response = await fetch(this.verifyEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      return await logOperation(
+        "SimpleProof timestamp verification",
+        async () => {
+          const response = await fetchWithTimeout(this.verifyEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ots_proof: request.ots_proof,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error || `HTTP ${response.status}`;
+
+            this.logger.error(`Verification failed: ${errorMessage}`, {
+              ...context,
+              metadata: {
+                status: response.status,
+                error: errorMessage,
+              },
+            });
+
+            // Capture error in Sentry
+            captureSimpleProofError(
+              new Error(`Verification failed: ${errorMessage}`),
+              {
+                component: "simpleProofService",
+                action: "verifyTimestamp",
+                metadata: {
+                  status: response.status,
+                  error: errorMessage,
+                },
+              }
+            );
+
+            return {
+              success: false,
+              is_valid: false,
+              bitcoin_block: null,
+              bitcoin_tx: null,
+              confidence: "unconfirmed",
+              verified_at: Math.floor(Date.now() / 1000),
+              error: errorMessage,
+            };
+          }
+
+          const data = await response.json();
+
+          const result: VerificationResult = {
+            success: true,
+            cached: false,
+            ...data,
+          };
+
+          // Cache the result
+          this.cache.set(cacheKey, result);
+
+          this.logger.info("Verification completed", {
+            ...context,
+            metadata: {
+              is_valid: result.is_valid,
+              confidence: result.confidence,
+            },
+          });
+
+          return result;
         },
-        body: JSON.stringify({
-          ots_proof: request.ots_proof,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        return {
-          success: false,
-          is_valid: false,
-          bitcoin_block: null,
-          bitcoin_tx: null,
-          confidence: "unconfirmed",
-          verified_at: Math.floor(Date.now() / 1000),
-          error: errorData.error || `HTTP ${response.status}`,
-        };
-      }
-
-      const data = await response.json();
-      
-      const result: VerificationResult = {
-        success: true,
-        cached: false,
-        ...data,
-      };
-
-      // Cache the result
-      this.cache.set(cacheKey, result);
-
-      return result;
+        context
+      );
     } catch (error) {
-      console.error("SimpleProof verification error:", error);
+      // Handle errors thrown by logOperation (network errors, etc.)
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Capture error in Sentry
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: "simpleProofService",
+          action: "verifyTimestamp",
+          metadata: {
+            error_type: "network_error",
+          },
+        }
+      );
+
       return {
         success: false,
         is_valid: false,
@@ -282,7 +469,135 @@ export class SimpleProofService {
         bitcoin_tx: null,
         confidence: "unconfirmed",
         verified_at: Math.floor(Date.now() / 1000),
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Get timestamp history for a user
+   * Action: history
+   */
+  async getTimestampHistory(
+    request: TimestampHistoryRequest
+  ): Promise<TimestampHistoryResponse> {
+    // PRIVACY: Do NOT log user_id (even if hashed) - not critical for debugging
+    const context = {
+      action: "getTimestampHistory",
+      // userId intentionally omitted for privacy
+    };
+
+    if (!this.enabled) {
+      this.logger.warn("SimpleProof is disabled", context);
+      return {
+        success: false,
+        timestamps: [],
+        total: 0,
+        error:
+          "SimpleProof is disabled (feature flag: VITE_SIMPLEPROOF_ENABLED)",
+      };
+    }
+
+    // Check cache first
+    const cacheKey = this.cache.getCacheKey(
+      "history",
+      request.user_id,
+      String(request.limit || 100)
+    );
+    const cached = this.cache.get<TimestampHistoryResponse>(cacheKey);
+    if (cached) {
+      logCacheEvent(true, cacheKey, context); // Cache HIT
+      return cached;
+    }
+
+    try {
+      return await logOperation(
+        "SimpleProof timestamp history",
+        async () => {
+          const response = await fetchWithTimeout(this.timestampEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              action: "history",
+              user_id: request.user_id,
+              limit: request.limit || 100,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error || `HTTP ${response.status}`;
+
+            this.logger.error(`History fetch failed: ${errorMessage}`, {
+              ...context,
+              metadata: {
+                status: response.status,
+                error: errorMessage,
+              },
+            });
+
+            // Capture error in Sentry
+            captureSimpleProofError(
+              new Error(`History fetch failed: ${errorMessage}`),
+              {
+                component: "simpleProofService",
+                action: "getTimestampHistory",
+                metadata: {
+                  status: response.status,
+                  error: errorMessage,
+                },
+              }
+            );
+
+            return {
+              success: false,
+              timestamps: [],
+              total: 0,
+              error: errorMessage,
+            };
+          }
+
+          const data = await response.json();
+
+          // Cache the result
+          this.cache.set(cacheKey, {
+            success: true,
+            timestamps: data.timestamps || [],
+            total: data.total || 0,
+          });
+          logCacheEvent(false, cacheKey, context); // Cache MISS (new entry)
+
+          return {
+            success: true,
+            timestamps: data.timestamps || [],
+            total: data.total || 0,
+          };
+        },
+        context
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Capture error in Sentry
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: "simpleProofService",
+          action: "getTimestampHistory",
+          metadata: {
+            error_type: "network_error",
+          },
+        }
+      );
+
+      return {
+        success: false,
+        timestamps: [],
+        total: 0,
+        error: errorMessage,
       };
     }
   }
@@ -297,4 +612,3 @@ export class SimpleProofService {
 
 // Export singleton instance
 export const simpleProofService = new SimpleProofService();
-

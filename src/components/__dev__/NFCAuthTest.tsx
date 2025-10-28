@@ -4,31 +4,30 @@
  * @compliance Master Context - Privacy-first, Bitcoin-only, browser-compatible
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Smartphone, 
-  CreditCard, 
-  Shield, 
-  Zap, 
-  CheckCircle, 
-  XCircle, 
+import {
   AlertTriangle,
-  Loader2,
-  RefreshCw,
-  QrCode,
+  CheckCircle,
+  CreditCard,
   Eye,
   EyeOff,
+  Loader2,
   Lock,
-  Unlock
+  QrCode,
+  RefreshCw,
+  Shield,
+  Smartphone,
+  Unlock,
+  XCircle,
+  Zap
 } from 'lucide-react';
-import { 
-  NFCAuthService, 
-  NFCHardwareSecurityManager,
-  TapToSpendRequest,
-  TapToSignRequest,
-  NTAG424DNAConfig
-} from '../lib/nfc-auth.js';
+import { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
+import {
+  NFCAuthService,
+  NFCHardwareSecurityManager,
+  TapToSignRequest,
+  TapToSpendRequest
+} from '../../lib/nfc-auth';
 
 // Use native Web Crypto API - no polyfills per master context
 
@@ -91,11 +90,11 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
       // Use the browser's native crypto
       const crypto = window.crypto;
       setCryptoProvider(crypto);
-      
+
       console.log('🔐 Initializing NFC Hardware Security Manager...');
-      
+
       const manager = new NFCHardwareSecurityManager();
-      
+
       // Register a test NFC device with enhanced configuration
       const service = manager.registerNFCDevice('test-ntag424', {
         familyId: 'satnam.pub',
@@ -108,13 +107,13 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
 
       // Initialize NFC
       await manager.initializeAllDevices();
-      
+
       setNfcManager(manager);
       setNfcService(service);
       setIsInitialized(true);
-      
+
       console.log('✅ Enhanced NFC Hardware Security Manager initialized');
-      
+
     } catch (error) {
       console.error('❌ Failed to initialize enhanced NFC:', error);
       setErrorMessage('Enhanced NFC not supported in this browser or device');
@@ -201,9 +200,9 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
       setIsListening(true);
       setOperationStatus('pending');
       setErrorMessage('');
-      
+
       console.log('👂 NFC listening started - tap your NTAG424 DNA device');
-      
+
     } catch (error) {
       console.error('❌ Failed to start NFC listening:', error);
       setErrorMessage('Failed to start NFC listening');
@@ -218,9 +217,9 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
       await nfcService.stopListening();
       setIsListening(false);
       setOperationStatus('idle');
-      
+
       console.log('🛑 NFC listening stopped');
-      
+
     } catch (error) {
       console.error('❌ Failed to stop NFC listening:', error);
     }
@@ -254,7 +253,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
         setOperationStatus('success');
         setLastAuth({ type: 'spend', ...request, timestamp: new Date() });
         console.log('✅ Tap-to-Spend successful');
-        
+
         // Auto-clear data if enabled
         if (autoClearData) {
           setTimeout(() => {
@@ -302,7 +301,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
         setOperationStatus('success');
         setLastAuth({ type: 'sign', message: signMessage, signature, timestamp: new Date() });
         console.log('✅ Tap-to-Sign successful:', signature);
-        
+
         // Auto-clear data if enabled
         if (autoClearData) {
           setTimeout(() => {
@@ -351,7 +350,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
 
     try {
       console.log('🧪 Testing crypto operations...');
-      
+
       // Test key generation
       const keyPair = await cryptoProvider.subtle.generateKey(
         {
@@ -392,7 +391,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
       console.log('✅ Random bytes generated:', randomBytes.length);
 
       console.log('🎉 All crypto operations passed!');
-      
+
     } catch (error) {
       console.error('❌ Crypto test failed:', error);
     }
@@ -511,19 +510,18 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
 
       {/* Operation Status */}
       {operationStatus !== 'idle' && (
-        <div className={`mb-6 p-4 rounded-lg border ${
-          operationStatus === 'success' ? 'bg-green-50 border-green-200' :
-          operationStatus === 'error' ? 'bg-red-50 border-red-200' :
-          'bg-blue-50 border-blue-200'
-        }`}>
+        <div className={`mb-6 p-4 rounded-lg border ${operationStatus === 'success' ? 'bg-green-50 border-green-200' :
+            operationStatus === 'error' ? 'bg-red-50 border-red-200' :
+              'bg-blue-50 border-blue-200'
+          }`}>
           <div className="flex items-center space-x-3">
             {operationStatus === 'pending' && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
             {operationStatus === 'success' && <CheckCircle className="h-5 w-5 text-green-600" />}
             {operationStatus === 'error' && <XCircle className="h-5 w-5 text-red-600" />}
             <div>
               <p className="font-medium text-gray-900">
-                {lastOperation} {operationStatus === 'pending' ? 'in progress...' : 
-                                operationStatus === 'success' ? 'completed successfully' : 'failed'}
+                {lastOperation} {operationStatus === 'pending' ? 'in progress...' :
+                  operationStatus === 'success' ? 'completed successfully' : 'failed'}
               </p>
               {errorMessage && (
                 <p className="text-sm text-red-600 mt-1">{errorMessage}</p>
@@ -546,19 +544,19 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
               <span>{showPrivateData ? 'Hide' : 'Show'} Details</span>
             </button>
           </div>
-          
+
           <div className="flex items-start space-x-6">
             <div className="flex-shrink-0">
               <div className="p-4 bg-white border border-gray-200 rounded-lg">
-                                 <QRCode
-                   value={JSON.stringify(pairingData)}
-                   size={200}
-                   level="M"
-                   title="NFC Device Pairing QR Code"
-                 />
+                <QRCode
+                  value={JSON.stringify(pairingData)}
+                  size={200}
+                  level="M"
+                  title="NFC Device Pairing QR Code"
+                />
               </div>
             </div>
-            
+
             {showPrivateData && (
               <div className="flex-1 space-y-3">
                 <div>
@@ -582,10 +580,10 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
               </div>
             )}
           </div>
-          
+
           <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-700">
-              <strong>Security Note:</strong> This QR code contains sensitive pairing information. 
+              <strong>Security Note:</strong> This QR code contains sensitive pairing information.
               Only scan with trusted NFC devices. The code expires in 5 minutes for security.
             </p>
           </div>
@@ -777,7 +775,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
             <QrCode className="h-4 w-4" />
             <span>Generate Pairing QR</span>
           </button>
-          
+
           <button
             onClick={testCryptoOperations}
             disabled={!cryptoProvider}
@@ -786,7 +784,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
             <Shield className="h-4 w-4" />
             <span>Test Crypto</span>
           </button>
-          
+
           <button
             onClick={startListening}
             disabled={isListening || operationStatus === 'pending'}
@@ -795,7 +793,7 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
             <Zap className="h-4 w-4" />
             <span>Start Listening</span>
           </button>
-          
+
           <button
             onClick={stopListening}
             disabled={!isListening}
@@ -805,13 +803,13 @@ export function NFCAuthTest({ onBack }: NFCAuthTestProps) {
             <span>Stop Listening</span>
           </button>
         </div>
-        
+
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <div className="flex items-center space-x-2">
             <AlertTriangle className="h-4 w-4 text-yellow-600" />
             <p className="text-sm text-yellow-700">
-              <strong>Enhanced Implementation:</strong> This version includes QR code pairing, 
-              enhanced crypto operations with @peculiar/webcrypto, and improved privacy controls. 
+              <strong>Enhanced Implementation:</strong> This version includes QR code pairing,
+              enhanced crypto operations with @peculiar/webcrypto, and improved privacy controls.
               NFC functionality requires physical NTAG424 DNA hardware and browser NFC support.
             </p>
           </div>

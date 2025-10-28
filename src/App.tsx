@@ -8,6 +8,7 @@ import {
   Zap
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ContactsManagerModal } from './components/ContactsManagerModal';
 import DynasticSovereignty from "./components/DynasticSovereignty";
 import EducationPlatform from "./components/EducationPlatform";
@@ -17,11 +18,9 @@ import FamilyCoordination from "./components/FamilyCoordination";
 import FamilyDashboard from "./components/FamilyDashboard";
 import FamilyFoundryWizard from "./components/FamilyFoundryWizard";
 import FamilyPaymentAutomationModal from "./components/FamilyPaymentAutomationModal";
-import FeaturesOverview from "./components/FeaturesOverview";
 import IdentityForge from "./components/IdentityForge";
 import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
-import NostrEcosystem from "./components/NostrEcosystem";
 import SignInModal from "./components/SignInModal";
 
 import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
@@ -53,10 +52,16 @@ import "./lib/signers/register-signers";
 
 
 const NTAG424AuthModal = lazy(() => import("./components/NTAG424AuthModal"));
+const FamilyFoundryLandingPage = lazy(() => import("./components/pages/FamilyFoundryLandingPage"));
+const FeaturesOverview = lazy(() => import("./components/FeaturesOverview"));
+const NostrEcosystem = lazy(() => import("./components/NostrEcosystem"));
 
 
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [currentView, setCurrentView] = useState<
     | "landing"
     | "forge"
@@ -233,7 +238,26 @@ function App() {
     } catch { }
   }, []);
 
+  // Sync React Router location with currentView state
+  // NOTE: This is a hybrid approach mixing React Router (declarative) with local state (imperative)
+  // Consider fully migrating to React Router with proper <Routes> and removing currentView state
+  useEffect(() => {
+    const path = location.pathname;
 
+    // Map URL paths to currentView states
+    // IMPORTANT: Keep this mapping complete for all routes to prevent state divergence
+    if (path === '/family-foundry') {
+      // This is handled by Routes component below
+      setCurrentView('family-foundry');
+    } else if (path === '/features') {
+      setCurrentView('features-overview');
+    } else if (path === '/nostr-resources') {
+      setCurrentView('nostr-ecosystem');
+    } else if (path === '/') {
+      setCurrentView('landing');
+    }
+    // TODO: Add mappings for all other routes (dashboard, forge, etc.) to ensure consistency
+  }, [location]);
 
   // Handler for protected routes - checks auth and either shows sign-in or goes to destination
   const handleProtectedRoute = (destination: 'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management') => {
@@ -344,6 +368,30 @@ function App() {
       }
     }, 100);
   };
+
+  // Check if we're on a React Router route (public landing pages)
+  if (location.pathname === '/family-foundry') {
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-blue-900 flex items-center justify-center">
+          <div className="text-white text-xl">Loading...</div>
+        </div>
+      }>
+        <FamilyFoundryLandingPage
+          onClaimName={() => {
+            // Navigate directly to forge view without race condition
+            // The location sync effect will handle setting currentView
+            setCurrentView('forge');
+          }}
+          onSignIn={() => setSignInModalOpen(true)}
+          onStartFoundry={() => {
+            navigate('/');
+            handleProtectedRoute('family-foundry');
+          }}
+        />
+      </Suspense>
+    );
+  }
 
   if (currentView === "forge") {
     return (
@@ -482,7 +530,9 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <NostrEcosystem onBack={() => setCurrentView("landing")} />
+        <Suspense fallback={<div className="text-white text-center py-20">Loading...</div>}>
+          <NostrEcosystem onBack={() => setCurrentView("landing")} />
+        </Suspense>
       </PageWrapper>
     );
   }
@@ -516,7 +566,9 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FeaturesOverview onBack={() => setCurrentView("landing")} />
+        <Suspense fallback={<div className="text-white text-center py-20">Loading...</div>}>
+          <FeaturesOverview onBack={() => setCurrentView("landing")} />
+        </Suspense>
       </PageWrapper>
     );
   }

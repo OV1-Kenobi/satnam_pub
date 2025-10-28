@@ -1,7 +1,7 @@
 import { Bitcoin, Download, Send, Users, Zap } from "lucide-react";
 import React, { useState } from "react";
-import { FamilyMember } from "../types/shared";
-import SmartPaymentModal from "./SmartPaymentModal";
+import { FamilyMember } from "../../types/shared";
+import SmartPaymentModal from "../SmartPaymentModal";
 
 // Mock family members data
 const mockFamilyMembers: FamilyMember[] = [

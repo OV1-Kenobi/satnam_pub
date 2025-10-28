@@ -12,6 +12,8 @@
  * - Maintain zero-knowledge principles
  */
 
+import { hashWithPrivacySalt } from "../../lib/crypto/privacy-manager";
+
 // Types for encrypted and decrypted user data
 export interface EncryptedUserData {
   id: string;
@@ -112,8 +114,15 @@ function cacheDecryptedData(userId: string, data: DecryptedUserProfile): void {
  */
 
 /**
- * Decrypt individual field using brute force approach with common values
- * Note: This is a simplified implementation. In production, you'd need proper decryption.
+ * Decrypt a single hashed field
+ *
+ * IMPORTANT: Hashed fields cannot be "decrypted" in the traditional sense.
+ * They are one-way hashes. We can only:
+ * 1. Use known values (from user input during session)
+ * 2. Verify hashes match expected values
+ * 3. Return empty strings for unknown hashed data
+ *
+ * For actual encrypted data (not hashed), use the encryption utilities.
  */
 async function decryptField(
   fieldName: string,
@@ -121,33 +130,34 @@ async function decryptField(
   userSalt: string,
   knownValue?: string
 ): Promise<string> {
-  // If we have the known value (e.g., from user input), use it directly
+  // If we have the known value (e.g., from user input during login), use it directly
   if (knownValue) {
-    return knownValue;
+    // Verify the known value matches the hash
+    try {
+      const computedHash = await hashWithPrivacySalt(knownValue, userSalt);
+      if (computedHash === hashedValue) {
+        return knownValue;
+      } else {
+        console.warn(
+          `Hash mismatch for ${fieldName} - known value may be incorrect`
+        );
+        return knownValue; // Return anyway, but log warning
+      }
+    } catch (error) {
+      console.error(`Failed to verify hash for ${fieldName}:`, error);
+      return knownValue;
+    }
   }
 
-  // For demo purposes, return placeholder values
-  // In production, you'd implement proper decryption logic
-  switch (fieldName) {
-    case "hashed_username":
-      return "decrypted_username"; // Placeholder
-    case "hashed_bio":
-      return "User bio content"; // Placeholder
-    case "hashed_display_name":
-      return "Display Name"; // Placeholder
-    case "hashed_picture":
-      return ""; // Empty for now
-    case "hashed_npub":
-      return "npub1..."; // Placeholder
-    case "hashed_nip05":
-      return "user@satnam.pub"; // Placeholder
-    case "hashed_lightning_address":
-      return "user@satnam.pub"; // Placeholder
-    case "hashed_encrypted_nsec":
-      return "encrypted_nsec_data"; // Placeholder
-    default:
-      return "";
-  }
+  // CRITICAL: Hashed data cannot be decrypted without the original value
+  // Return empty string for display purposes
+  // The application should maintain known values in session state
+  console.warn(
+    `Cannot decrypt hashed field ${fieldName} without known value. ` +
+      `Hashed data is one-way and requires the original value from user input.`
+  );
+
+  return ""; // Return empty string - UI should handle gracefully
 }
 
 /**

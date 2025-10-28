@@ -7,9 +7,14 @@
 
 import { AlertTriangle, CheckCircle, RefreshCw, X } from 'lucide-react';
 import React, { useState } from 'react';
+import { clientConfig } from '../../config/env.client';
 import { nostrKeyRecovery } from '../../lib/auth/nostr-key-recovery';
 import IdentityForge from '../IdentityForge';
+import { SimpleProofTimestampButton } from "../identity/SimpleProofTimestampButton";
 import { useAuth } from './AuthProvider';
+
+// Feature flag for SimpleProof
+const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
 
 interface KeyRotationModalProps {
   isOpen: boolean;
@@ -36,12 +41,12 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
   const [rotationStep, setRotationStep] = useState<'setup' | 'processing' | 'keys' | 'completed'>('setup');
   const [isProcessing, setIsProcessing] = useState(false);
   const [rotationId, setRotationId] = useState<string | null>(null);
-  // Identity Forge handles key display/backup; no in-modal key state needed.
-  // Keeping placeholder state for potential future flows (not used currently).
-  // const [newKeys, setNewKeys] = useState<{ npub: string; nsec: string } | null>(null);
+  // SECURITY: Only store npub in state, not nsec (user already backed up keys in Identity Forge)
+  const [newKeys, setNewKeys] = useState<{ npub: string } | null>(null);
   const [migrationSteps, setMigrationSteps] = useState<string[]>([]);
   // Identity Forge overlay state (must be declared before usage)
   const [showIdentityForge, setShowIdentityForge] = useState<boolean>(false);
+  const [verificationId, setVerificationId] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -397,6 +402,47 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
               </div>
 
 
+              {/* SimpleProof Blockchain Attestation (Optional) */}
+              {SIMPLEPROOF_ENABLED && verificationId && newKeys && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-orange-800 mb-2">🔐 Blockchain Attestation (Optional)</h3>
+                  <p className="text-orange-700 text-sm mb-4">
+                    Create a permanent, verifiable record of your key rotation on the Bitcoin blockchain.
+                    This links your old and new keys for identity continuity.
+                    <strong className="block mt-2 text-orange-800">
+                      ⚠️ Privacy Notice: The rotation reason will NOT be stored on the blockchain (only in our database).
+                    </strong>
+                  </p>
+                  <SimpleProofTimestampButton
+                    data={JSON.stringify({
+                      eventType: 'key_rotation',
+                      oldNpub: auth.user?.hashed_npub || 'unknown',
+                      newNpub: newKeys.npub,
+                      nip05: nip05 || auth.user?.hashed_nip05 || '',
+                      lightningAddress: lightningAddress || auth.user?.hashed_lightning_address || '',
+                      // PRIVACY: Removed 'reason' field - stored only in database, not on blockchain
+                      rotatedAt: new Date().toISOString(),
+                    })}
+                    verificationId={verificationId}
+                    eventType="key_rotation"
+                    estimatedFeeSats={500}
+                    requireConfirmation={true}
+                    onSuccess={(result: any) => {
+                      console.log('✅ SimpleProof attestation created for key rotation:', result);
+                    }}
+                    onError={(error: any) => {
+                      console.error('❌ SimpleProof attestation failed:', error);
+                    }}
+                    variant="primary"
+                    size="md"
+                    className="w-full"
+                  />
+                  <p className="text-orange-600 text-xs mt-3 text-center">
+                    You can skip this step and close the modal
+                  </p>
+                </div>
+              )}
+
               {/* Next Steps */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h3 className="font-semibold text-blue-800 mb-2">Next Steps</h3>
@@ -473,6 +519,10 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
                       if (result.success) {
                         setShowIdentityForge(false);
                         setMigrationSteps(result.migrationSteps || []);
+                        // SECURITY: Only store npub, not nsec (user already backed up keys)
+                        setNewKeys({ npub });
+                        // Generate verification ID for SimpleProof attestation
+                        setVerificationId(`key-rotation-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`);
                         setRotationStep('completed');
                         if (onRotationComplete) onRotationComplete();
                       } else {

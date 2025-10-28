@@ -8,6 +8,7 @@ import {
   Zap
 } from "lucide-react";
 import React, { useState } from "react";
+import { clientConfig } from '../config/env.client';
 import { CharterDefinition, RBACDefinition } from '../lib/api/family-foundry.js';
 import { FeatureFlags } from '../lib/feature-flags';
 import { PaymentCascadeNode } from '../lib/payment-automation';
@@ -15,7 +16,11 @@ import FamilyFederationCreationModal from "./FamilyFederationCreationModal";
 import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
 import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";
+import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 import PaymentCascadeModal from './PaymentCascadeModal';
+
+// Feature flag for SimpleProof
+const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
 
 interface TrustedPeer {
   id: string;
@@ -31,7 +36,7 @@ interface FamilyFoundryWizardProps {
   onBack?: () => void;
 }
 
-type WizardStep = 'charter' | 'rbac' | 'invites' | 'federation';
+type WizardStep = 'charter' | 'rbac' | 'invites' | 'federation' | 'complete';
 
 const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   onComplete,
@@ -45,6 +50,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showCascadeModal, setShowCascadeModal] = useState(false);
   const [paymentCascade, setPaymentCascade] = useState<PaymentCascadeNode[]>([]);
+  const [federationId, setFederationId] = useState<string | null>(null);
+  const [verificationId, setVerificationId] = useState<string | null>(null);
 
   // Step 1: Charter Definition
   const [charter, setCharter] = useState<CharterDefinition>({
@@ -243,9 +250,13 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
     }
   };
 
-  const handleFederationComplete = (federationId: string) => {
-    console.log('Federation created successfully:', federationId);
-    onComplete();
+  const handleFederationComplete = (newFederationId: string) => {
+    // REMOVED: console.log (use proper logging mechanism for production)
+    setFederationId(newFederationId);
+    // SECURITY: Use cryptographically secure random generation (Web Crypto API)
+    setVerificationId(`family-federation-${Date.now()}-${crypto.randomUUID()}`);
+    setShowFederationModal(false);
+    setCurrentStep('complete');
   };
 
   const handleCascadeSave = (cascade: PaymentCascadeNode[]) => {
@@ -350,6 +361,96 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
               >
                 <Zap className="h-4 w-4" />
                 Configure Federation
+              </button>
+            </div>
+          </div>
+        );
+
+      case 'complete':
+        return (
+          <div className="max-w-4xl mx-auto">
+            {/* Success Header */}
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="h-10 w-10 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-2">Federation Created Successfully!</h2>
+              <p className="text-purple-200">
+                Your family federation "{charter.familyName}" has been established
+              </p>
+            </div>
+
+            {/* Federation Summary */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
+              <h3 className="text-xl font-bold text-white mb-4">Federation Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-purple-300 text-sm">Federation ID</p>
+                  <p className="text-white font-mono text-sm">{federationId?.substring(0, 16)}...</p>
+                </div>
+                <div>
+                  <p className="text-purple-300 text-sm">Family Name</p>
+                  <p className="text-white">{charter.familyName}</p>
+                </div>
+                <div>
+                  <p className="text-purple-300 text-sm">Motto</p>
+                  <p className="text-white">{charter.familyMotto}</p>
+                </div>
+                <div>
+                  <p className="text-purple-300 text-sm">Members</p>
+                  <p className="text-white">{trustedPeers.length} invited</p>
+                </div>
+              </div>
+            </div>
+
+            {/* SimpleProof Blockchain Attestation (Optional) */}
+            {SIMPLEPROOF_ENABLED && verificationId && federationId && (
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-6 mb-6">
+                <h4 className="text-orange-200 font-bold mb-3">🔐 Blockchain Attestation (Optional)</h4>
+                <p className="text-purple-200 text-sm mb-4">
+                  Create a permanent, verifiable record of your family federation establishment on the Bitcoin blockchain.
+                  This provides cryptographic proof of your federation's founding charter and members.
+                </p>
+                <SimpleProofTimestampButton
+                  data={JSON.stringify({
+                    eventType: 'family_federation',
+                    federationId: federationId,
+                    familyName: charter.familyName,
+                    familyMotto: charter.familyMotto,
+                    foundingDate: charter.foundingDate,
+                    missionStatement: charter.missionStatement,
+                    memberCount: trustedPeers.length,
+                    members: trustedPeers.map(p => ({ name: p.name, role: p.role })),
+                    createdAt: new Date().toISOString(),
+                  })}
+                  verificationId={verificationId}
+                  eventType="family_federation"
+                  estimatedFeeSats={500}
+                  requireConfirmation={true}
+                  onSuccess={(result: any) => {
+                    console.log('✅ SimpleProof attestation created for family federation:', result);
+                  }}
+                  onError={(error: any) => {
+                    console.error('❌ SimpleProof attestation failed:', error);
+                  }}
+                  variant="primary"
+                  size="md"
+                  className="w-full"
+                />
+                <p className="text-purple-300 text-xs mt-3 text-center">
+                  You can skip this step and continue to your family dashboard
+                </p>
+              </div>
+            )}
+
+            {/* Navigation */}
+            <div className="flex justify-center">
+              <button
+                onClick={onComplete}
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300"
+              >
+                <Users className="h-5 w-5" />
+                Go to Family Dashboard
               </button>
             </div>
           </div>

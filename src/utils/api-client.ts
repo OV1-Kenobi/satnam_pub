@@ -4,11 +4,12 @@
  */
 
 export interface AuthRequest {
-  type: "otp-initiate" | "otp-verify";
+  type: "otp-initiate" | "otp-verify" | "nwc";
   npub?: string;
   nip05?: string;
   otpKey?: string;
   otp?: string;
+  nwcUri?: string;
 }
 
 export interface AuthResponse {

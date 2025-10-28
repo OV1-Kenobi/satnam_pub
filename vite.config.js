@@ -1,3 +1,4 @@
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import { defineConfig } from "vite";
@@ -34,7 +35,20 @@ function getAllViteEnvVars() {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Sentry source map upload (only in production builds with auth token)
+    isProduction && process.env.SENTRY_AUTH_TOKEN && sentryVitePlugin({
+      org: process.env.VITE_SENTRY_ORG || "satnam-pub",
+      project: process.env.VITE_SENTRY_PROJECT || "satnam-pub",
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      sourcemaps: {
+        assets: "./dist/**",
+        filesToDeleteAfterUpload: "./dist/**/*.map", // Delete source maps after upload for security
+      },
+      telemetry: false, // Disable Sentry telemetry for privacy
+    }),
+  ].filter(Boolean), // Remove falsy values (when Sentry plugin is disabled)
 
   esbuild: {
     jsx: 'automatic',
@@ -99,7 +113,7 @@ export default defineConfig({
     sourcemap: true,
     minify: isProduction ? "terser" : false,
     target: "es2020", // Use more conservative target for better compatibility
-    chunkSizeWarningLimit: 600, // Slightly increase from 500kb to 600kb
+    chunkSizeWarningLimit: 400, // Reduced from 600kb to encourage smaller chunks
 
     // CRITICAL FIX: Ensure proper ES module output for dynamic imports
     format: "es",
@@ -159,9 +173,14 @@ export default defineConfig({
               return 'date-vendor';
             }
 
-            // Router
-            if (id.includes('react-router-dom')) {
+            // Router and SEO
+            if (id.includes('react-router-dom') || id.includes('react-router')) {
               return 'router-vendor';
+            }
+
+            // SEO and meta tags
+            if (id.includes('react-helmet-async') || id.includes('react-helmet')) {
+              return 'seo-vendor';
             }
 
             // Supabase
@@ -206,6 +225,41 @@ export default defineConfig({
             // Skeleton loaders and UI utilities
             if (id.includes('react-loading-skeleton') || id.includes('react-easy-crop')) {
               return 'ui-utils-vendor';
+            }
+
+            // Zod validation library (can be large)
+            if (id.includes('zod')) {
+              return 'validation-vendor';
+            }
+
+            // Sentry error tracking
+            if (id.includes('@sentry/')) {
+              return 'sentry-vendor';
+            }
+
+            // WebSocket and real-time libraries
+            if (id.includes('websocket') || id.includes('ws')) {
+              return 'websocket-vendor';
+            }
+
+            // Polyfills and compatibility libraries
+            if (id.includes('core-js') || id.includes('regenerator-runtime')) {
+              return 'polyfills-vendor';
+            }
+
+            // Utility libraries (lodash, ramda, etc.)
+            if (id.includes('lodash') || id.includes('ramda') || id.includes('underscore')) {
+              return 'utils-vendor';
+            }
+
+            // Form libraries
+            if (id.includes('formik') || id.includes('react-hook-form') || id.includes('yup')) {
+              return 'forms-vendor';
+            }
+
+            // Animation libraries
+            if (id.includes('framer-motion') || id.includes('react-spring')) {
+              return 'animation-vendor';
             }
 
             // Everything else
@@ -275,6 +329,11 @@ export default defineConfig({
 
           // PHASE 2: Components - split by feature and directory
           if (id.includes('src/components/')) {
+            // Public landing pages (lazy-loaded)
+            if (id.includes('src/components/pages/')) {
+              return 'landing-pages';
+            }
+
             // Admin components (admin dashboard, analytics, etc.)
             if (id.includes('src/components/admin/')) {
               return 'admin-components';

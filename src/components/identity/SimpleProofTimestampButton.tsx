@@ -26,6 +26,7 @@
 import { AlertCircle, Bitcoin, CheckCircle, Loader2, Shield, X } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 import { clientConfig } from '../../config/env.client';
+import { withSentryErrorBoundary } from '../../lib/sentry';
 import { simpleProofService } from '../../services/simpleProofService';
 import { showToast } from '../../services/toastService';
 
@@ -49,7 +50,7 @@ interface SimpleProofTimestampButtonProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-export const SimpleProofTimestampButton: React.FC<SimpleProofTimestampButtonProps> = ({
+const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonProps> = ({
   data,
   verificationId,
   eventType,
@@ -71,7 +72,7 @@ export const SimpleProofTimestampButton: React.FC<SimpleProofTimestampButtonProp
 
   // Check feature flags
   const simpleproofEnabled = clientConfig.flags.simpleproofEnabled || false;
-  const feeWarningsEnabled = clientConfig.flags.simpleproofFeeWarningsEnabled !== false; // Default: true
+  const feeWarningsEnabled = true; // Default: true (fee warnings always enabled for cost awareness)
 
   // Handle button click - show confirmation modal if needed
   const handleButtonClick = useCallback(() => {
@@ -324,4 +325,31 @@ export const SimpleProofTimestampButton: React.FC<SimpleProofTimestampButtonProp
     </>
   );
 };
+
+// Wrap with Sentry error boundary for graceful error handling (skip in test environment)
+export const SimpleProofTimestampButton =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'test'
+    ? SimpleProofTimestampButtonComponent
+    : withSentryErrorBoundary(
+      SimpleProofTimestampButtonComponent,
+      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-red-900 mb-1">
+              SimpleProof Attestation Temporarily Unavailable
+            </h3>
+            <p className="text-sm text-red-700 mb-3">
+              The blockchain attestation feature encountered an error. Your identity is still secure.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
 

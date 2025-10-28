@@ -14,6 +14,15 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock Sentry (must be before component import)
+vi.mock('../../src/lib/sentry', () => ({
+  withSentryErrorBoundary: vi.fn((Component) => Component),
+  initializeSentry: vi.fn(),
+  captureSimpleProofError: vi.fn(),
+  addSimpleProofBreadcrumb: vi.fn(),
+}));
+
 import { SimpleProofTimestampButton } from '../../src/components/identity/SimpleProofTimestampButton';
 import * as simpleProofService from '../../src/services/simpleProofService';
 import * as toastService from '../../src/services/toastService';
@@ -193,8 +202,24 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
+
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
 
       // Should show loading state
       await waitFor(() => {
@@ -231,8 +256,24 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
+
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
 
       await waitFor(() => {
         expect(toastService.showToast.error).toHaveBeenCalledWith(
@@ -263,8 +304,24 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
+
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
 
       await waitFor(() => {
         expect(onSuccess).toHaveBeenCalledWith({
@@ -298,8 +355,24 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
+
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
 
       await waitFor(() => {
         expect(onError).toHaveBeenCalledWith('API error');
@@ -309,8 +382,14 @@ describe('SimpleProofTimestampButton', () => {
 
   describe('Loading State', () => {
     it('should show loading state during timestamp creation', async () => {
+      // Create a promise that we can control
+      let resolvePromise: (value: any) => void;
+      const controlledPromise = new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
+
       vi.mocked(simpleProofService.simpleProofService.createTimestamp).mockImplementationOnce(
-        () => new Promise((resolve) => setTimeout(resolve, 1000))
+        () => controlledPromise as Promise<any>
       );
 
       render(
@@ -320,13 +399,42 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
 
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
+
+      // Wait for loading state to appear
       await waitFor(() => {
         expect(screen.getByText('Creating Timestamp...')).toBeTruthy();
-        expect(button.getAttribute('aria-busy')).toBe('true');
-        expect(button.getAttribute('disabled')).toBe('');
+      });
+
+      // Verify loading state attributes
+      const loadingButton = screen.getByRole('button', { name: /create blockchain timestamp/i });
+      expect(loadingButton.getAttribute('aria-busy')).toBe('true');
+      expect(loadingButton.getAttribute('disabled')).toBe('');
+
+      // Resolve the promise to clean up
+      resolvePromise!({
+        success: true,
+        ots_proof: 'test',
+        bitcoin_block: 800000,
+        bitcoin_tx: 'a'.repeat(64),
+        verified_at: Math.floor(Date.now() / 1000),
       });
     });
   });
@@ -340,8 +448,24 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
+
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
 
       await waitFor(() => {
         expect(toastService.showToast.error).toHaveBeenCalledWith(
@@ -359,8 +483,24 @@ describe('SimpleProofTimestampButton', () => {
         />
       );
 
-      const button = screen.getByRole('button');
+      // Click the initial button to open confirmation modal
+      const button = screen.getByRole('button', { name: /create blockchain timestamp/i });
       fireEvent.click(button);
+
+      // Wait for confirmation modal to appear
+      await waitFor(() => {
+        expect(screen.getByText('Blockchain Attestation Cost')).toBeTruthy();
+      });
+
+      // Check the confirmation checkbox
+      const confirmCheckbox = screen.getByRole('checkbox', {
+        name: /I understand this will incur Bitcoin transaction fees/i,
+      });
+      fireEvent.click(confirmCheckbox);
+
+      // Click "Confirm & Create" button
+      const confirmButton = screen.getByRole('button', { name: /confirm & create/i });
+      fireEvent.click(confirmButton);
 
       await waitFor(() => {
         expect(toastService.showToast.error).toHaveBeenCalledWith(

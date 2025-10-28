@@ -8,8 +8,8 @@ import { getEnvVar } from "../utils/env.js";
  */
 
 import { createHash } from "crypto";
-import { FamilyFederationUser } from "../../src/types/auth";
-import { defaultLogger as logger } from "../../utils/logger.js";
+import { FamilyFederationUser, FederationRole } from "../../../src/types/auth";
+import { defaultLogger as logger } from "../../../utils/logger";
 import db from "../db";
 
 export interface UserProfile {
@@ -17,11 +17,12 @@ export interface UserProfile {
   username: string;
   npub_hash?: string;
   nip05_hash?: string;
-  federation_role?: "parent" | "child" | "guardian";
-  auth_method?: "otp" | "nwc";
+  federation_role?: FederationRole;
+  auth_method?: "otp" | "nwc" | "nip05-password" | "nip07" | "nsec";
   is_whitelisted?: boolean;
   voting_power?: number;
   guardian_approved?: boolean;
+  steward_approved?: boolean;
   family_id?: string;
   created_at?: Date;
   updated_at?: Date;
@@ -81,7 +82,9 @@ export class UserService {
 
       return result.rows[0] as UserProfile;
     } catch (error) {
-      logger.error("Error fetching user by ID", { userId, error });
+      // PRIVACY: Hash userId before logging (never log raw UUIDs)
+      const userIdHash = this.hashIdentifier(userId);
+      logger.error("Error fetching user by ID", { userIdHash, error });
       throw new Error("Failed to fetch user data");
     }
   }
@@ -104,11 +107,17 @@ export class UserService {
     return {
       npub: originalNpub, // Use the original npub from session context
       nip05: originalNip05, // Use the original nip05 from session context
-      federationRole: profile.federation_role || "child",
-      authMethod: profile.auth_method || "otp",
+      federationRole:
+        (profile.federation_role as FederationRole) || "offspring",
+      authMethod:
+        profile.auth_method === "nip05-password" ||
+        profile.auth_method === "nip07"
+          ? profile.auth_method
+          : "nip05-password",
       isWhitelisted: profile.is_whitelisted || false,
       votingPower: profile.voting_power || 1,
       guardianApproved: profile.guardian_approved || false,
+      stewardApproved: profile.steward_approved || false,
       sessionToken: "", // This will be set by the session manager
     };
   }
@@ -154,11 +163,12 @@ export class UserService {
     username: string;
     npub: string;
     nip05?: string;
-    federation_role?: "parent" | "child" | "guardian";
-    auth_method?: "otp" | "nwc";
+    federation_role?: FederationRole;
+    auth_method?: "otp" | "nwc" | "nip05-password" | "nip07" | "nsec";
     is_whitelisted?: boolean;
     voting_power?: number;
     guardian_approved?: boolean;
+    steward_approved?: boolean;
     family_id?: string;
   }): Promise<UserProfile> {
     try {

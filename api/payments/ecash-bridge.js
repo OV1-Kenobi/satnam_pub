@@ -14,24 +14,8 @@
  * - Bidirectional Fedimint↔Cashu conversion with no receiving limits for any role
  */
 
-// TODO: Convert session-manager.ts to JavaScript for proper imports
-// import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
-
-// Mock SecureSessionManager for Master Context compliance testing
-const SecureSessionManager = {
-  validateSessionFromHeader: async (authHeader) => {
-    // Mock session validation for testing
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return { isAuthenticated: false };
-    }
-    return {
-      isAuthenticated: true,
-      sessionToken: authHeader.replace('Bearer ', ''),
-      federationRole: 'adult', // Default to adult for sovereignty testing
-      memberId: 'test-member-id'
-    };
-  }
-};
+// PRODUCTION: Use real SecureSessionManager for authentication
+import { SecureSessionManager } from "../../netlify/functions/security/session-manager.js";
 
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling

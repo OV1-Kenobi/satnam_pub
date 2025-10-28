@@ -7,6 +7,7 @@
  */
 
 import { config as appConfig } from "../config";
+import { central_event_publishing_service as CEPS } from "../lib/central_event_publishing_service";
 
 export interface CommunicationMessage {
   recipient: string; // npub or nip05
@@ -171,28 +172,60 @@ export class NostrCommunicationService extends CommunicationService {
     try {
       console.log(`📨 [NOSTR] Sending ${message.type} to ${message.recipient}`);
 
-      // TODO: Implement actual Nostr DM sending
-      // This would involve:
-      // 1. Connect to Nostr relays
-      // 2. Create encrypted DM event (NIP-04 or NIP-44)
-      // 3. Publish to relays
-      // 4. Wait for confirmation
+      // PRODUCTION IMPLEMENTATION: Use CEPS for real Nostr DM delivery
+      // Supports NIP-04, NIP-17, and NIP-59 gift-wrapped messaging
 
-      // For now, simulate the process
-      if (typeof window !== "undefined" && (window as any).__DEV__) {
-        console.log(
-          `🔐 [DEV] OTP sent (length: ${message.metadata?.otp?.length || 0})`
+      // CEPS will handle session management internally
+      // No need to call ensureActiveUserSession() as it's private
+
+      let messageId: string;
+
+      // Route based on message type
+      if (message.type === "otp" && message.metadata?.otp) {
+        // OTP delivery via CEPS sendOTPDM (supports gift-wrap)
+        const result = await CEPS.sendOTPDM(
+          message.recipient,
+          undefined, // userNip05 optional
+          { preferGiftWrap: message.metadata?.giftwrapped !== false }
         );
-      }
 
-      // Simulate network delay
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 + Math.random() * 2000)
-      );
+        if (!result.success) {
+          throw new Error(result.error || "OTP delivery failed");
+        }
+
+        messageId = result.messageId || `otp_${Date.now()}`;
+        console.log(
+          `✅ [NOSTR] OTP delivered via ${result.messageType}:`,
+          messageId
+        );
+      } else if (message.type === "invitation") {
+        // Peer invitation via CEPS sendStandardDirectMessage
+        const content = JSON.stringify({
+          type: "peer_invitation",
+          content: message.content,
+          metadata: message.metadata,
+          timestamp: Date.now(),
+        });
+
+        messageId = await CEPS.sendStandardDirectMessage(
+          message.recipient,
+          content
+        );
+
+        console.log(`✅ [NOSTR] Invitation sent:`, messageId);
+      } else {
+        // Generic message via CEPS sendStandardDirectMessage
+        messageId = await CEPS.sendStandardDirectMessage(
+          message.recipient,
+          message.content
+        );
+
+        console.log(`✅ [NOSTR] Message sent:`, messageId);
+      }
 
       return {
         success: true,
-        messageId: `nostr_${Date.now()}_${crypto.randomUUID()}`,
+        messageId,
         deliveryStatus: "sent",
       };
     } catch (error) {

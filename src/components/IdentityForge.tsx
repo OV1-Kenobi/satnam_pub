@@ -56,6 +56,7 @@ import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/e
 
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
+import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
 
@@ -3069,6 +3070,41 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {/* SimpleProof Blockchain Attestation (Optional) */}
+                    {SIMPLEPROOF_ENABLED && verificationId && (
+                      <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-6">
+                        <h4 className="text-orange-200 font-bold mb-3">🔐 Blockchain Attestation (Optional)</h4>
+                        <p className="text-purple-200 text-sm mb-4">
+                          Create a permanent, verifiable record of your account creation on the Bitcoin blockchain.
+                          This is optional but recommended for maximum identity verification.
+                        </p>
+                        <SimpleProofTimestampButton
+                          data={JSON.stringify({
+                            username: registrationResult.user.username,
+                            nip05: registrationResult.user.nip05 || `${registrationResult.user.username}@${selectedDomain}`,
+                            lightningAddress: registrationResult.user.lightningAddress || `${registrationResult.user.username}@${resolvePlatformLightningDomain()}`,
+                            createdAt: new Date().toISOString(),
+                          })}
+                          verificationId={verificationId}
+                          eventType="account_creation"
+                          estimatedFeeSats={500}
+                          requireConfirmation={true}
+                          onSuccess={(result: any) => {
+                            console.log('✅ SimpleProof attestation created for account creation:', result);
+                          }}
+                          onError={(error: any) => {
+                            console.error('❌ SimpleProof attestation failed:', error);
+                          }}
+                          variant="primary"
+                          size="md"
+                          className="w-full"
+                        />
+                        <p className="text-purple-300 text-xs mt-3 text-center">
+                          You can skip this step and continue with your sovereignty journey
+                        </p>
+                      </div>
+                    )}
 
                     <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-6">
                       <h4 className="text-purple-200 font-bold mb-3">🎯 Your Sovereignty Journey Begins</h4>

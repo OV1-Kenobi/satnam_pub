@@ -14,10 +14,11 @@
  * @compliance Privacy-first, zero-knowledge, no PII display
  */
 
-import { CheckCircle, Clock, Copy, Shield, XCircle, ExternalLink } from 'lucide-react';
+import { AlertCircle, Clock, Copy, ExternalLink, Shield } from 'lucide-react';
 import React, { useCallback } from 'react';
-import { showToast } from '../../services/toastService';
 import { clientConfig } from '../../config/env.client';
+import { withSentryErrorBoundary } from '../../lib/sentry';
+import { showToast } from '../../services/toastService';
 
 interface SimpleProofVerificationStatusProps {
   verified: boolean;
@@ -31,7 +32,7 @@ interface SimpleProofVerificationStatusProps {
   className?: string;
 }
 
-export const SimpleProofVerificationStatus: React.FC<SimpleProofVerificationStatusProps> = ({
+const SimpleProofVerificationStatusComponent: React.FC<SimpleProofVerificationStatusProps> = ({
   verified,
   otsProof = null,
   bitcoinBlock = null,
@@ -103,11 +104,10 @@ export const SimpleProofVerificationStatus: React.FC<SimpleProofVerificationStat
   if (compact) {
     return (
       <div
-        className={`inline-flex items-center space-x-2 px-2 py-1 rounded-md text-xs ${
-          verified
-            ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-            : 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
-        } ${className}`}
+        className={`inline-flex items-center space-x-2 px-2 py-1 rounded-md text-xs ${verified
+          ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+          : 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+          } ${className}`}
         title={`SimpleProof: ${verified ? 'Verified on Bitcoin' : 'Not verified'}${cached ? ' (cached)' : ''}`}
         role="status"
         aria-label={`SimpleProof verification status: ${verified ? 'verified' : 'not verified'}`}
@@ -126,11 +126,10 @@ export const SimpleProofVerificationStatus: React.FC<SimpleProofVerificationStat
   // Detailed view (for verification displays and contact details)
   return (
     <div
-      className={`bg-white/10 backdrop-blur-sm rounded-lg p-4 border ${
-        verified
-          ? 'border-orange-500/30 bg-orange-500/5'
-          : 'border-gray-500/30 bg-gray-500/5'
-      } ${className}`}
+      className={`bg-white/10 backdrop-blur-sm rounded-lg p-4 border ${verified
+        ? 'border-orange-500/30 bg-orange-500/5'
+        : 'border-gray-500/30 bg-gray-500/5'
+        } ${className}`}
       role="region"
       aria-label="SimpleProof verification details"
     >
@@ -146,11 +145,10 @@ export const SimpleProofVerificationStatus: React.FC<SimpleProofVerificationStat
           </div>
         </div>
         <div
-          className={`px-2 py-1 rounded text-xs font-medium ${
-            verified
-              ? 'bg-orange-500/20 text-orange-300'
-              : 'bg-gray-500/20 text-gray-300'
-          }`}
+          className={`px-2 py-1 rounded text-xs font-medium ${verified
+            ? 'bg-orange-500/20 text-orange-300'
+            : 'bg-gray-500/20 text-gray-300'
+            }`}
           role="status"
           aria-live="polite"
         >
@@ -254,4 +252,20 @@ export const SimpleProofVerificationStatus: React.FC<SimpleProofVerificationStat
     </div>
   );
 };
+
+// Wrap with Sentry error boundary for graceful error handling (skip in test environment)
+export const SimpleProofVerificationStatus =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'test'
+    ? SimpleProofVerificationStatusComponent
+    : withSentryErrorBoundary(
+      SimpleProofVerificationStatusComponent,
+      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+          <p className="text-sm text-red-700">
+            Verification status temporarily unavailable
+          </p>
+        </div>
+      </div>
+    );
 

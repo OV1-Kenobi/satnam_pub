@@ -1,9 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { HelmetProvider } from "react-helmet-async";
+import { BrowserRouter } from "react-router-dom";
 import AppWithErrorBoundary from './App';
 import { AuthProvider } from "./components/auth/AuthProvider";
 import { CryptoPreloader } from "./components/CryptoPreloader";
 import "./index.css";
+import { initializeSentry } from "./lib/sentry";
+
+// Initialize Sentry error tracking (Phase 2B-2 Day 15)
+initializeSentry();
 
 // Early diagnostics: inspect React module shape in production builds
 if (import.meta.env && import.meta.env.PROD) {
@@ -101,11 +107,15 @@ window.addEventListener('unhandledrejection', (event) => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {/* Preload crypto modules immediately to avoid late dynamic import failures */}
-    <CryptoPreloader immediate />
-    <AuthProvider>
-      <AppWithErrorBoundary />
-    </AuthProvider>
+    <BrowserRouter>
+      <HelmetProvider>
+        {/* Preload crypto modules immediately to avoid late dynamic import failures */}
+        <CryptoPreloader immediate />
+        <AuthProvider>
+          <AppWithErrorBoundary />
+        </AuthProvider>
+      </HelmetProvider>
+    </BrowserRouter>
   </StrictMode>,
 );
 

@@ -1160,17 +1160,40 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
       );
     }
   }, []);
-  // Load NFC gating preference on mount and configure vault policy accordingly
+
+  /**
+   * Load NFC gating preference when authenticated
+   * CRITICAL FIX: Only fetch NFC preferences when:
+   * 1. NFC feature flag is enabled
+   * 2. User is authenticated (has valid token)
+   * 3. Prevents 401 errors on public landing page
+   */
   useEffect(() => {
     const NFC_ENABLED =
       (import.meta.env.VITE_ENABLE_NFC_MFA ?? "false") === "true";
+
+    // Early return if NFC is not enabled
     if (!NFC_ENABLED) return;
+
+    // CRITICAL FIX: Only fetch preferences if user is authenticated
+    // This prevents 401 errors on the public landing page
+    const token = SecureTokenManager.getAccessToken();
+    if (!token || !state.authenticated) {
+      console.debug(
+        "⏸️ NFC preferences fetch skipped - user not authenticated"
+      );
+      return;
+    }
+
     (async () => {
       try {
         const res = await fetchWithAuth("/api/nfc-unified/preferences", {
           method: "GET",
         });
-        if (!res?.ok) return;
+        if (!res?.ok) {
+          console.debug("⚠️ NFC preferences fetch failed:", res.status);
+          return;
+        }
         const j = await res.json().catch(() => ({}));
         const prefs = j?.data?.preferences || {};
         const requireNfc = !!prefs.require_nfc_for_unlock;
@@ -1188,14 +1211,19 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
               confirmationMode: confirm ? "per_operation" : "per_unlock",
             },
           });
+          console.log("✅ NFC policy configured from user preferences");
         } else {
           setNFCPolicy({ policy: "none" });
         }
-      } catch {
+      } catch (error) {
+        console.debug(
+          "⚠️ NFC preferences fetch error:",
+          error instanceof Error ? error.message : "Unknown error"
+        );
         // Ignore; leave policy as-is
       }
     })();
-  }, []);
+  }, [state.authenticated]); // Re-run when authentication state changes
 
   return {
     // State

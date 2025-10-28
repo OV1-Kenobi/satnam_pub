@@ -11,7 +11,7 @@
 
 import { AlertTriangle, Check, Key, Lock, Shield, Smartphone, Wallet, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { useAuth } from './auth/AuthProvider';
+import { useAuth } from '../auth/AuthProvider';
 
 interface PrivacyFirstAuthDemoProps {
   isOpen: boolean;

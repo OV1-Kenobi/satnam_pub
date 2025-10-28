@@ -14,9 +14,10 @@
  * @compliance Privacy-first, zero-knowledge, no PII display
  */
 
-import { Shield, Clock, XCircle, Info } from 'lucide-react';
+import { AlertCircle, Clock, Info, Shield, XCircle } from 'lucide-react';
 import React, { useState } from 'react';
 import { clientConfig } from '../../config/env.client';
+import { withSentryErrorBoundary } from '../../lib/sentry';
 import { SimpleProofVerificationStatus } from './SimpleProofVerificationStatus';
 
 export type BadgeVariant = 'verified' | 'pending' | 'error';
@@ -32,7 +33,7 @@ interface SimpleProofVerificationBadgeProps {
   className?: string;
 }
 
-export const SimpleProofVerificationBadge: React.FC<SimpleProofVerificationBadgeProps> = ({
+const SimpleProofVerificationBadgeComponent: React.FC<SimpleProofVerificationBadgeProps> = ({
   variant,
   otsProof = null,
   bitcoinBlock = null,
@@ -56,7 +57,7 @@ export const SimpleProofVerificationBadge: React.FC<SimpleProofVerificationBadge
   // Get badge styling based on variant
   const getBadgeStyles = (): string => {
     const baseStyles = 'inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border transition-all';
-    
+
     switch (variant) {
       case 'verified':
         return `${baseStyles} bg-orange-500/20 text-orange-300 border-orange-500/30 hover:bg-orange-500/30`;
@@ -101,7 +102,7 @@ export const SimpleProofVerificationBadge: React.FC<SimpleProofVerificationBadge
   const getTooltipContent = (): string => {
     switch (variant) {
       case 'verified':
-        return bitcoinBlock 
+        return bitcoinBlock
           ? `Verified on Bitcoin block #${bitcoinBlock.toLocaleString()}`
           : 'Verified on Bitcoin blockchain';
       case 'pending':
@@ -149,11 +150,11 @@ export const SimpleProofVerificationBadge: React.FC<SimpleProofVerificationBadge
 
       {/* Details Modal */}
       {showDetails && variant === 'verified' && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
           onClick={() => setShowDetails(false)}
         >
-          <div 
+          <div
             className="bg-purple-900 rounded-2xl p-6 max-w-2xl w-full border border-orange-500/30 relative"
             onClick={(e) => e.stopPropagation()}
           >
@@ -195,8 +196,8 @@ export const SimpleProofVerificationBadge: React.FC<SimpleProofVerificationBadge
                 <div className="text-xs text-orange-300">
                   <p className="font-semibold mb-1">About Blockchain Attestations</p>
                   <p>
-                    SimpleProof creates permanent, tamper-proof records on the Bitcoin blockchain. 
-                    Each attestation incurs on-chain transaction fees and should only be used for 
+                    SimpleProof creates permanent, tamper-proof records on the Bitcoin blockchain.
+                    Each attestation incurs on-chain transaction fees and should only be used for
                     important identity events such as account creation, key rotation, or family federation establishment.
                   </p>
                 </div>
@@ -218,4 +219,16 @@ export const SimpleProofVerificationBadge: React.FC<SimpleProofVerificationBadge
     </>
   );
 };
+
+// Wrap with Sentry error boundary for graceful error handling (skip in test environment)
+export const SimpleProofVerificationBadge =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'test'
+    ? SimpleProofVerificationBadgeComponent
+    : withSentryErrorBoundary(
+      SimpleProofVerificationBadgeComponent,
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+        <AlertCircle className="h-3 w-3" />
+        Error
+      </span>
+    );
 

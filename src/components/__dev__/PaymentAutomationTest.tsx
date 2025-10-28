@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Zap, Clock, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
-import PaymentAutomationService, { PaymentSchedule, PaymentNotification } from '../lib/payment-automation.js';
+import { AlertCircle, CheckCircle, Clock, DollarSign, Zap } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import PaymentAutomationService, { PaymentNotification, PaymentSchedule } from '../../lib/payment-automation.js';
 
 const PaymentAutomationTest: React.FC = () => {
   const [schedules, setSchedules] = useState<PaymentSchedule[]>([]);
@@ -10,7 +10,7 @@ const PaymentAutomationTest: React.FC = () => {
 
   useEffect(() => {
     // Subscribe to notifications
-    const subscriptionId = PaymentAutomationService.subscribeToNotifications((notification) => {
+    const subscriptionId = PaymentAutomationService.subscribeToNotifications((notification: PaymentNotification) => {
       setNotifications(prev => [notification, ...prev]);
     });
 
@@ -56,7 +56,7 @@ const PaymentAutomationTest: React.FC = () => {
 
       const newSchedule = await PaymentAutomationService.createPaymentSchedule(testSchedule);
       setSchedules(prev => [...prev, newSchedule]);
-      
+
       console.log('✅ Test payment schedule created:', newSchedule);
     } catch (error) {
       console.error('❌ Error creating test schedule:', error);

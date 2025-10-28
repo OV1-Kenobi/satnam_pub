@@ -7,12 +7,30 @@
  * - Returns: ots_proof, bitcoin_block, bitcoin_tx, verified_at
  * - Rate limiting: 10 requests/hour per user
  * - Privacy-first: No PII stored, only hashes and proofs
+ *
+ * Phase 2B-2 Day 15: Enhanced with structured logging + Sentry error tracking
  */
 
 import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+import {
+  createLogger,
+  logApiCall,
+  logDatabaseOperation,
+  logRateLimitEvent,
+} from "../functions/utils/logging.js";
+import {
+  addSimpleProofBreadcrumb,
+  captureSimpleProofError,
+  initializeSentry,
+} from "../functions/utils/sentry.server.js";
 import { getEnvVar } from "./utils/env.js";
 import { allowRequest } from "./utils/rate-limiter.js";
+
+// Security: Input validation patterns
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_DATA_LENGTH = 10000; // 10KB max for data field
 
 interface SimpleProofRequest {
   action?: string; // Action-based routing: "create", "verify", "history", "get"
@@ -37,14 +55,36 @@ interface SimpleProofApiResponse {
   timestamp?: number;
 }
 
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
+// Security: Whitelist of allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  "https://www.satnam.pub",
+  "https://satnam.pub",
+  "https://app.satnam.pub",
+];
 
-function corsHeaders() {
+// Add localhost for development
+if (process.env.NODE_ENV === "development") {
+  ALLOWED_ORIGINS.push("http://localhost:5173", "http://localhost:3000");
+}
+
+function corsHeaders(origin?: string) {
+  // Validate origin against whitelist
+  const allowedOrigin =
+    origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
   return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
+    "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400", // 24 hours
     Vary: "Origin",
+    // Security headers
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "1; mode=block",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
   } as const;
 }
 
@@ -105,7 +145,7 @@ async function callSimpleProofApi(
 }
 
 async function storeTimestamp(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   verificationId: string,
   otsProof: string,
   bitcoinBlock: number | null,
@@ -132,20 +172,32 @@ async function storeTimestamp(
     throw new Error("Failed to store timestamp: no ID returned");
   }
 
-  return data.id;
+  return data.id as string;
 }
 
+// Create logger instance
+const logger = createLogger({ component: "simpleproof-timestamp" });
+
+// PERFORMANCE: Initialize Sentry once at module load time (not per request)
+initializeSentry();
+
 export const handler: Handler = async (event) => {
+  const startTime = Date.now();
+  const origin = event.headers.origin || event.headers.Origin;
+
   // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 204,
-      headers: corsHeaders(),
+      headers: corsHeaders(origin),
     };
   }
 
   // Only allow POST
   if (event.httpMethod !== "POST") {
+    logger.warn("Method not allowed", {
+      metadata: { method: event.httpMethod },
+    });
     return badRequest("Method not allowed", 405);
   }
 
@@ -160,7 +212,17 @@ export const handler: Handler = async (event) => {
     const action = JSON.parse(event.body || "{}").action || "create";
     const rateLimit = action === "create" ? 10 : 100;
 
-    if (!allowRequest(rateLimitKey, rateLimit, 3600000)) {
+    const allowed = allowRequest(rateLimitKey, rateLimit, 3600000);
+    logRateLimitEvent(allowed, rateLimitKey, rateLimit, rateLimit, {
+      component: "simpleproof-timestamp",
+      action,
+    });
+
+    if (!allowed) {
+      logger.warn("Rate limit exceeded", {
+        action,
+        metadata: { clientIp, limit: rateLimit },
+      });
       return json(429, {
         error: `Rate limit exceeded: ${rateLimit} requests per hour`,
       });
@@ -171,21 +233,68 @@ export const handler: Handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch {
+      logger.error("Invalid JSON in request body");
       return badRequest("Invalid JSON in request body");
     }
 
     // Route based on action (default: "create" for backward compatibility)
     const requestAction = body.action || "create";
 
+    logger.info("Request received", {
+      action: requestAction,
+      verificationId: body.verification_id,
+    });
+
+    // Add Sentry breadcrumb for request
+    addSimpleProofBreadcrumb("SimpleProof timestamp request received", {
+      action: requestAction,
+      verification_id: body.verification_id,
+    });
+
     switch (requestAction) {
       case "create":
-        return await handleCreateTimestamp(body);
+        const result = await handleCreateTimestamp(body);
+        const duration = Date.now() - startTime;
+        logger.info("Request completed", {
+          action: requestAction,
+          verificationId: body.verification_id,
+          metadata: { duration, statusCode: result.statusCode },
+        });
+
+        // Add Sentry breadcrumb for success
+        addSimpleProofBreadcrumb("SimpleProof timestamp created successfully", {
+          verification_id: body.verification_id,
+          duration,
+        });
+
+        return result;
       default:
+        logger.warn("Unknown action", {
+          action: requestAction,
+          metadata: { requestedAction: requestAction },
+        });
         return badRequest(`Unknown action: ${requestAction}`);
     }
   } catch (error) {
+    const duration = Date.now() - startTime;
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("SimpleProof timestamp handler error:", errorMsg);
+    logger.error("Handler error", {
+      metadata: { error: errorMsg, duration },
+    });
+
+    // Capture error in Sentry
+    captureSimpleProofError(
+      error instanceof Error ? error : new Error(errorMsg),
+      {
+        component: "simpleproof-timestamp",
+        action: "handler",
+        metadata: {
+          duration,
+          httpMethod: event.httpMethod,
+        },
+      }
+    );
+
     return serverError("Internal server error");
   }
 };
@@ -195,9 +304,16 @@ export const handler: Handler = async (event) => {
 // ============================================================================
 
 async function handleCreateTimestamp(body: SimpleProofRequest) {
-  // Validate input
+  // Security: Validate input
   if (!body.data || typeof body.data !== "string") {
     return badRequest("Missing or invalid required field: data (string)");
+  }
+
+  // Security: Prevent DoS via large payloads
+  if (body.data.length > MAX_DATA_LENGTH) {
+    return badRequest(
+      `Data field exceeds maximum length of ${MAX_DATA_LENGTH} characters`
+    );
   }
 
   if (!body.verification_id || typeof body.verification_id !== "string") {
@@ -206,11 +322,9 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
     );
   }
 
-  // Validate UUID format (basic check)
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(body.verification_id)) {
-    return badRequest("Invalid verification_id format (must be UUID)");
+  // Security: Validate UUID format to prevent injection attacks
+  if (!UUID_PATTERN.test(body.verification_id)) {
+    return badRequest("Invalid verification_id format (must be valid UUID)");
   }
 
   // Get API credentials
@@ -219,17 +333,48 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
     getEnvVar("VITE_SIMPLEPROOF_API_URL") || "https://api.simpleproof.com";
 
   if (!apiKey) {
-    console.error("SimpleProof API key not configured");
+    logger.error("SimpleProof API key not configured");
     return serverError("SimpleProof service not configured");
   }
 
   // Call SimpleProof API
   let apiResult: SimpleProofApiResponse;
+  const apiStartTime = Date.now();
   try {
+    logger.debug("Calling SimpleProof API", {
+      action: "create",
+      verificationId: body.verification_id,
+    });
     apiResult = await callSimpleProofApi(body.data!, apiKey, apiUrl);
+    const apiDuration = Date.now() - apiStartTime;
+    logApiCall("POST", apiUrl, 200, apiDuration, {
+      component: "simpleproof-timestamp",
+      action: "create",
+      verificationId: body.verification_id,
+    });
   } catch (error) {
+    const apiDuration = Date.now() - apiStartTime;
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("SimpleProof API call failed:", errorMsg);
+    logger.error("SimpleProof API call failed", {
+      action: "create",
+      verificationId: body.verification_id,
+      metadata: { error: errorMsg, duration: apiDuration },
+    });
+
+    // Capture error in Sentry
+    captureSimpleProofError(
+      error instanceof Error ? error : new Error(errorMsg),
+      {
+        component: "simpleproof-timestamp",
+        action: "createTimestamp",
+        verificationId: body.verification_id,
+        metadata: {
+          apiUrl,
+          duration: apiDuration,
+          status: "api_error",
+        },
+      }
+    );
 
     // Graceful degradation: return error but don't crash
     if (errorMsg.includes("abort")) {
@@ -240,17 +385,29 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
 
   // Validate API response
   if (!apiResult.ots_proof) {
-    console.error("SimpleProof API returned invalid response:", apiResult);
+    logger.error("Invalid response from SimpleProof API", {
+      action: "create",
+      verificationId: body.verification_id,
+    });
     return serverError("Invalid response from SimpleProof API");
   }
 
   // Store in database
-  const supabase = createClient(
-    getEnvVar("VITE_SUPABASE_URL"),
-    getEnvVar("VITE_SUPABASE_ANON_KEY")
-  );
+  const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
+  const supabaseKey = getEnvVar("VITE_SUPABASE_ANON_KEY");
+
+  if (!supabaseUrl || !supabaseKey) {
+    logger.error("Missing Supabase configuration", {
+      action: "create",
+      verificationId: body.verification_id,
+    });
+    return serverError("Database configuration error");
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   let timestampId: string;
+  const dbStartTime = Date.now();
   try {
     timestampId = await storeTimestamp(
       supabase,
@@ -259,9 +416,32 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
       apiResult.bitcoin_block || null,
       apiResult.bitcoin_tx || null
     );
+    const dbDuration = Date.now() - dbStartTime;
+    logDatabaseOperation("INSERT", "simpleproof_timestamps", true, dbDuration, {
+      component: "simpleproof-timestamp",
+      action: "create",
+      verificationId: body.verification_id,
+    });
   } catch (error) {
+    const dbDuration = Date.now() - dbStartTime;
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Failed to store timestamp:", errorMsg);
+    logDatabaseOperation(
+      "INSERT",
+      "simpleproof_timestamps",
+      false,
+      dbDuration,
+      {
+        component: "simpleproof-timestamp",
+        action: "create",
+        verificationId: body.verification_id,
+        metadata: { error: errorMsg },
+      }
+    );
+    logger.error("Failed to store timestamp", {
+      action: "create",
+      verificationId: body.verification_id,
+      metadata: { error: errorMsg },
+    });
     return serverError(`Database error: ${errorMsg}`);
   }
 
@@ -273,9 +453,14 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
     verified_at: Math.floor(Date.now() / 1000),
   };
 
-  console.log(
-    `SimpleProof timestamp created: ${timestampId} for verification ${body.verification_id}`
-  );
+  logger.info("Timestamp created successfully", {
+    action: "create",
+    verificationId: body.verification_id,
+    metadata: {
+      timestampId,
+      bitcoinBlock: apiResult.bitcoin_block,
+    },
+  });
 
   return json(200, response, {
     "Cache-Control": "no-cache, no-store, must-revalidate",

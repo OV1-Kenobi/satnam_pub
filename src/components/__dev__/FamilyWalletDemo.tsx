@@ -1,24 +1,7 @@
 import { AlertTriangle, RefreshCw, Users, Zap } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import FamilyWalletCard, { mockFamilyMembers } from './FamilyWalletCard';
-
-// Import the FamilyMember interface from FamilyWalletCard
-interface FamilyMember {
-  id: string;
-  username: string;
-  lightningAddress: string;
-  role: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
-  spendingLimits?: {
-    daily: number;
-    weekly: number;
-  };
-  nip05Verified: boolean;
-  balance?: number;
-  recentActivity?: {
-    lastTransaction: string;
-    transactionCount24h: number;
-  };
-}
+import type { FamilyMember } from '../../types/shared';
+import FamilyWalletCard, { mockFamilyMembers } from '../FamilyWalletCard';
 
 interface ApiResponse {
   success: boolean;
@@ -50,7 +33,7 @@ const FamilyWalletDemo: React.FC = () => {
       } else {
         // Fetch from API
         const response = await fetch('/api/family/members');
-        
+
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -122,7 +105,7 @@ const FamilyWalletDemo: React.FC = () => {
               <p className="text-amber-200">Sovereign Lightning Wallets for Every Family Member</p>
             </div>
           </div>
-          
+
           {/* Controls */}
           <div className="flex items-center justify-center space-x-4 mb-6">
             <button
@@ -133,7 +116,7 @@ const FamilyWalletDemo: React.FC = () => {
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
-            
+
             <button
               onClick={() => setUseMockData(!useMockData)}
               className="bg-white/10 hover:bg-white/20 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 border border-white/20"
@@ -229,8 +212,8 @@ const FamilyWalletDemo: React.FC = () => {
             Powered by Lightning Network • Privacy-First • Self-Sovereign
           </p>
           <p className="text-white/60 text-xs mt-2">
-            Demo Mode: {useMockData ? 'Mock Data' : 'API Data'} • 
-            Total Members: {members.length} • 
+            Demo Mode: {useMockData ? 'Mock Data' : 'API Data'} •
+            Total Members: {members.length} •
             Last Updated: {new Date().toLocaleTimeString()}
           </p>
         </div>

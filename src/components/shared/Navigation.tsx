@@ -1,4 +1,5 @@
 import { ExternalLink, LogOut, Menu, Network, User, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { showToast } from "../../services/toastService";
 import { useAuth } from "../auth/AuthProvider";
 
@@ -28,6 +29,7 @@ const Navigation: React.FC<NavigationProps> = ({
   showCommunications,
   setShowCommunications,
 }) => {
+  const navigate = useNavigate();
   const messaging = usePrivacyFirstMessaging();
   const incomingCount = (messaging?.incomingMessages || []).length;
 
@@ -61,10 +63,12 @@ const Navigation: React.FC<NavigationProps> = ({
   };
 
   const navigationItems = [
+    { label: "Family Foundry", action: () => navigate("/family-foundry"), external: false },
+    { label: "Features", action: () => navigate("/features"), external: false },
+    { label: "Nostr Resources", action: () => navigate("/nostr-resources"), external: false },
     { label: "Family Financials", action: () => setCurrentView("dashboard") },
     { label: "Individual Finances", action: () => setCurrentView("individual-finances") },
     { label: "Communications", action: () => handleProtectedRoute("communications") },
-    { label: "Nostr Resources", action: () => setCurrentView("nostr-ecosystem") },
     { label: "Advanced Coordination", action: () => setCurrentView("coordination") },
     { label: "Recovery Help", action: () => setCurrentView("recovery") },
     {

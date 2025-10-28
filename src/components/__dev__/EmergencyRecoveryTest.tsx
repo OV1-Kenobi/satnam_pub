@@ -7,27 +7,25 @@
  * Tests multi-sig, password, and Shamir Secret Sharing recovery protocols.
  */
 
-import React, { useState, useEffect } from 'react';
 import {
+  AlertCircle,
   AlertTriangle,
   CheckCircle,
   Clock,
   Eye,
   EyeOff,
   FileText,
+  Info,
   Key,
-  Lock,
-  Shield,
-  Users,
-  X,
-  Zap,
   RefreshCw,
+  Shield,
   UserCheck,
-  AlertCircle,
-  Info
+  X,
+  Zap
 } from 'lucide-react';
-import { EmergencyRecoverySystem, EmergencyRecoveryRequest, GuardianApproval } from '../lib/emergency-recovery.js';
-import { FederationRole } from '../types/auth';
+import { useState } from 'react';
+import { EmergencyRecoveryRequest, EmergencyRecoverySystem, GuardianApproval } from '../../lib/emergency-recovery';
+import { FederationRole } from '../../types/auth';
 
 interface TestScenario {
   id: string;
@@ -147,7 +145,7 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
       // Step 1: Initiate recovery request
       steps.push('1. Initiating recovery request...');
       setCurrentStep('Initiating recovery request...');
-      
+
       const recoveryResult = await EmergencyRecoverySystem.initiateRecovery({
         userId: mockUser.id,
         userNpub: mockUser.npub,
@@ -265,7 +263,7 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
     } catch (error) {
       const duration = Date.now() - startTime;
       errors.push(`Unexpected error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
+
       return {
         scenarioId: scenario.id,
         success: false,
@@ -282,19 +280,19 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
   const shouldGuardianApprove = (guardian: any, scenario: TestScenario): boolean => {
     // Guardians are more likely to approve critical requests
     if (scenario.urgency === 'critical') return true;
-    
+
     // Stewards are more likely to approve steward requests
     if (guardian.role === 'steward' && scenario.userRole === 'steward') return true;
-    
+
     // Guardians are more likely to approve guardian requests
     if (guardian.role === 'guardian' && scenario.userRole === 'guardian') return true;
-    
+
     // Higher approval rate for high urgency
     if (scenario.urgency === 'high') return Math.random() > 0.3;
-    
+
     // Medium approval rate for medium urgency
     if (scenario.urgency === 'medium') return Math.random() > 0.5;
-    
+
     // Lower approval rate for low urgency
     return Math.random() > 0.7;
   };
@@ -328,7 +326,7 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
       try {
         const result = await simulateRecoveryRequest(scenario);
         setTestResults(prev => [...prev, result]);
-        
+
         // Brief pause between tests
         await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (error) {
@@ -434,38 +432,35 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
           return (
             <div
               key={scenario.id}
-              className={`bg-white rounded-xl border-2 p-6 transition-all duration-300 ${
-                result?.success
+              className={`bg-white rounded-xl border-2 p-6 transition-all duration-300 ${result?.success
                   ? 'border-green-200 bg-green-50'
                   : result?.success === false
-                  ? 'border-red-200 bg-red-50'
-                  : isRunning
-                  ? 'border-blue-200 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+                    ? 'border-red-200 bg-red-50'
+                    : isRunning
+                      ? 'border-blue-200 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                }`}
             >
               {/* Scenario Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900 mb-1">{scenario.name}</h3>
                   <p className="text-sm text-gray-600 mb-2">{scenario.description}</p>
-                  
+
                   {/* Role Badge */}
                   <div className="flex items-center space-x-2 mb-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      scenario.userRole === 'guardian' ? 'bg-purple-100 text-purple-800' :
-                      scenario.userRole === 'steward' ? 'bg-blue-100 text-blue-800' :
-                      scenario.userRole === 'adult' ? 'bg-green-100 text-green-800' :
-                      'bg-orange-100 text-orange-800'
-                    }`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${scenario.userRole === 'guardian' ? 'bg-purple-100 text-purple-800' :
+                        scenario.userRole === 'steward' ? 'bg-blue-100 text-blue-800' :
+                          scenario.userRole === 'adult' ? 'bg-green-100 text-green-800' :
+                            'bg-orange-100 text-orange-800'
+                      }`}>
                       {scenario.userRole}
                     </span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      scenario.urgency === 'critical' ? 'bg-red-100 text-red-800' :
-                      scenario.urgency === 'high' ? 'bg-orange-100 text-orange-800' :
-                      scenario.urgency === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${scenario.urgency === 'critical' ? 'bg-red-100 text-red-800' :
+                        scenario.urgency === 'high' ? 'bg-orange-100 text-orange-800' :
+                          scenario.urgency === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                      }`}>
                       {scenario.urgency}
                     </span>
                   </div>
@@ -513,14 +508,13 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
                 <div className="mb-4 p-3 bg-white border rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700">Result:</span>
-                    <span className={`text-sm font-medium ${
-                      result.success ? 'text-green-600' : 'text-red-600'
-                    }`}>
+                    <span className={`text-sm font-medium ${result.success ? 'text-green-600' : 'text-red-600'
+                      }`}>
                       {result.finalStatus.toUpperCase()}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500">
-                    Duration: {result.duration}ms | 
+                    Duration: {result.duration}ms |
                     Approvals: {result.guardianApprovals.filter(a => a.approval === 'approved').length}/
                     {result.guardianApprovals.length}
                   </div>
@@ -536,13 +530,12 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
               <button
                 onClick={() => runSingleTest(scenario)}
                 disabled={isRunningTest}
-                className={`w-full px-4 py-2 rounded-lg font-medium transition-colors ${
-                  result?.success
+                className={`w-full px-4 py-2 rounded-lg font-medium transition-colors ${result?.success
                     ? 'bg-green-600 text-white hover:bg-green-700'
                     : result?.success === false
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      ? 'bg-red-600 text-white hover:bg-red-700'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {isRunning ? 'Running...' : result ? 'Re-run Test' : 'Run Test'}
               </button>
@@ -555,19 +548,18 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
       {showDetails && testResults.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Detailed Test Results</h2>
-          
+
           <div className="space-y-6">
             {testResults.map((result, index) => {
               const scenario = TEST_SCENARIOS.find(s => s.id === result.scenarioId);
-              
+
               return (
                 <div key={index} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-gray-900">{scenario?.name}</h3>
                     <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
                         {result.finalStatus}
                       </span>
                       <span className="text-sm text-gray-500">{result.duration}ms</span>
@@ -594,11 +586,10 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
                       <div className="space-y-1">
                         {result.guardianApprovals.map((approval, approvalIndex) => (
                           <div key={approvalIndex} className="text-sm flex items-center space-x-2">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              approval.approval === 'approved' ? 'bg-green-100 text-green-800' :
-                              approval.approval === 'rejected' ? 'bg-red-100 text-red-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${approval.approval === 'approved' ? 'bg-green-100 text-green-800' :
+                                approval.approval === 'rejected' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                              }`}>
                               {approval.approval}
                             </span>
                             <span className="text-gray-600">{approval.guardianNpub.substring(0, 20)}...</span>
@@ -641,9 +632,8 @@ export function EmergencyRecoveryTest({ onBack }: { onBack?: () => void }) {
                 <span className="font-medium text-gray-900">{guardian.name}</span>
               </div>
               <div className="text-sm text-gray-600 mb-1">{guardian.npub}</div>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                guardian.role === 'guardian' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-              }`}>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${guardian.role === 'guardian' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                }`}>
                 {guardian.role}
               </span>
             </div>
