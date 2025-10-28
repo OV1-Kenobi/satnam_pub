@@ -1,3 +1,21 @@
+/**
+ * Auth-Unified Netlify Function - Security Hardened
+ * Centralized authentication endpoint with all security utilities applied
+ *
+ * Security Features:
+ * - Centralized security headers (7 headers)
+ * - CORS origin validation (no wildcard)
+ * - Input validation and sanitization
+ * - Database-backed rate limiting
+ * - Secure JWT validation
+ * - Standardized error handling
+ */
+
+// Import centralized security utilities
+import {
+    getSecurityHeaders
+} from "./utils/security-headers.js";
+
 // Inline check-refresh implementation (moved above handler for scope availability)
 async function handleCheckRefreshInline(event, context, corsHeaders) {
   console.log('🔄 CHECK-REFRESH: Starting check-refresh handler');
@@ -920,26 +938,19 @@ function resolveAuthRoute(path, method) {
  * @param {Object} event - Netlify function event
  * @returns {Object} CORS headers
  */
+/**
+ * Build CORS headers using centralized security utility
+ * Replaces old buildCorsHeaders function with security-hardened version
+ */
 function buildCorsHeaders(event) {
   const origin = event.headers?.origin || event.headers?.Origin;
-  const isProd = process.env.NODE_ENV === 'production';
-
-  // Use FRONTEND_URL with fallback to primary production origin per user preferences
-  const allowedOrigin = isProd
-    ? (process.env.FRONTEND_URL || 'https://www.satnam.pub')
-    : (origin || '*');
-
-  const allowCredentials = allowedOrigin !== '*';
-
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Credentials': String(allowCredentials),
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
-    'Content-Type': 'application/json',
-  };
+  // Use centralized security headers utility with strict CSP for API endpoints
+  const headers = getSecurityHeaders(origin, {
+    cspPolicy: "default-src 'none'; frame-ancestors 'none'",
+  });
+  // Add Content-Type for JSON responses
+  headers["Content-Type"] = "application/json";
+  return headers;
 }
 
 // SECURE JWT VERIFICATION FUNCTION (shared between signin and session validation)
@@ -1397,11 +1408,15 @@ async function handleSigninInline(event, context, corsHeaders) {
 
 // Exported Netlify handler (ESM)
 export const handler = async (event, context) => {
-  // CRITICAL DEBUG: Log all incoming requests to identify routing issues
+  const requestId = generateRequestId();
+  const origin = event.headers?.origin || event.headers?.Origin;
+  const clientIP = getClientIP(event.headers);
+
+  // Log incoming request (non-sensitive)
   console.log('🔄 AUTH-UNIFIED: Incoming request', {
+    requestId,
     path: event.path,
     method: event.httpMethod,
-    headers: Object.keys(event.headers || {}),
     timestamp: new Date().toISOString()
   });
 
@@ -1410,8 +1425,8 @@ export const handler = async (event, context) => {
   // CORS preflight
   const method = (event.httpMethod || 'GET').toUpperCase();
   if (method === 'OPTIONS') {
-    console.log('🔄 AUTH-UNIFIED: CORS preflight for', event.path);
-    return { statusCode: 204, headers: corsHeaders, body: '' };
+    console.log('🔄 AUTH-UNIFIED: CORS preflight', { requestId });
+    return preflightResponse(origin);
   }
 
   try {
@@ -1419,13 +1434,28 @@ export const handler = async (event, context) => {
     const target = resolveAuthRoute(path, method);
 
     console.log('🔄 AUTH-UNIFIED: Route resolution', {
+      requestId,
       path,
       method,
       target: target ? target.endpoint : 'NOT_FOUND'
     });
 
     if (!target || !target.inline) {
-      return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Not found' }) };
+      return errorResponse(404, 'Not found', requestId, origin);
+    }
+
+    // Check rate limit for authentication endpoints
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitConfig = RATE_LIMITS[target.endpoint.toUpperCase()] || RATE_LIMITS.AUTH_SIGNIN;
+    const rateLimitAllowed = await checkRateLimit(rateLimitKey, rateLimitConfig);
+
+    if (!rateLimitAllowed) {
+      logError(new Error('Rate limit exceeded'), {
+        requestId,
+        endpoint: target.endpoint,
+        method,
+      });
+      return createRateLimitErrorResponse(requestId, origin);
     }
 
     switch (target.endpoint) {
@@ -1448,10 +1478,15 @@ export const handler = async (event, context) => {
       case 'check-username-availability':
         return await handleCheckUsernameAvailabilityInline(event, context, corsHeaders);
       default:
-        return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Endpoint not found' }) };
+        return errorResponse(404, 'Endpoint not found', requestId, origin);
     }
   } catch (error) {
-    console.error('auth-unified handler error:', error);
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication service error' }) };
+    const requestId = generateRequestId();
+    logError(error, {
+      requestId,
+      endpoint: 'auth-unified',
+      method: event.httpMethod,
+    });
+    return errorResponse(500, 'Authentication service error', requestId, origin);
   }
 };
