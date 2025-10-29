@@ -44,7 +44,7 @@ interface TestSuite {
 }
 
 export default function NWCIntegrationTest() {
-  const { user } = useAuth();
+  const { user, sessionToken } = useAuth();
   const userRole = user?.federationRole || 'private';
   const {
     connections,
@@ -143,15 +143,22 @@ export default function NWCIntegrationTest() {
 
   // Run individual test
   const runTest = async (suiteIndex: number, testIndex: number): Promise<boolean> => {
-    const suite = testSuites[suiteIndex];
-    const test = suite.tests[testIndex];
+    let suite: TestSuite | undefined;
+    let test: TestResult | undefined;
 
-    // Update test status to running
+    // Update test status to running and capture current state
     setTestSuites(prev => {
       const updated = [...prev];
+      suite = updated[suiteIndex];
+      test = suite.tests[testIndex];
       updated[suiteIndex].tests[testIndex].status = 'running';
       return updated;
     });
+
+    // Ensure we have valid references before proceeding
+    if (!suite || !test) {
+      return false;
+    }
 
     const startTime = Date.now();
     let passed = false;
@@ -161,8 +168,8 @@ export default function NWCIntegrationTest() {
       // Simulate test execution based on test name
       switch (test.name) {
         case 'useNWCWallet hook loads':
-          passed = typeof useNWCWallet === 'function';
-          message = passed ? 'Hook loaded successfully' : 'Hook not available';
+          passed = connections !== undefined && typeof getBalance === 'function' && typeof makeInvoice === 'function';
+          message = passed ? 'Hook returned valid API' : 'Hook API incomplete';
           break;
 
         case 'Connection state management':
@@ -187,13 +194,8 @@ export default function NWCIntegrationTest() {
           break;
 
         case 'Role-based spending limits':
-          if (userRole === 'offspring') {
-            passed = true; // Would check actual limits in production
-            message = 'Offspring limits enforced';
-          } else {
-            passed = true;
-            message = 'Unlimited access for sovereign roles';
-          }
+          passed = false;
+          message = 'TODO: Implement actual limit validation';
           break;
 
         case 'Dashboard NWC display':
@@ -205,11 +207,15 @@ export default function NWCIntegrationTest() {
 
         case 'NWC wallet operations API':
           try {
+            // Note: This requires user to be authenticated
             const response = await fetch('/.netlify/functions/api/wallet/nostr-wallet-connect', {
-              method: 'OPTIONS'
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${sessionToken || ''}`,
+              },
             });
-            passed = response.ok;
-            message = passed ? 'API endpoint accessible' : 'API endpoint not accessible';
+            passed = response.status !== 404 && response.status !== 500;
+            message = passed ? `API endpoint accessible (${response.status})` : `API endpoint error (${response.status})`;
           } catch (error) {
             passed = false;
             message = 'API endpoint unreachable';
@@ -246,7 +252,7 @@ export default function NWCIntegrationTest() {
     setTestSuites(prev => {
       const updated = [...prev];
       updated[suiteIndex].tests[testIndex] = {
-        ...test,
+        name: test!.name,
         status: passed ? 'passed' : 'failed',
         message,
         duration,
@@ -262,8 +268,11 @@ export default function NWCIntegrationTest() {
     setIsRunning(true);
     setOverallStatus('running');
 
-    for (let suiteIndex = 0; suiteIndex < testSuites.length; suiteIndex++) {
-      const suite = testSuites[suiteIndex];
+    // Capture current test suites at start to avoid stale state
+    const suitesToRun = testSuites;
+
+    for (let suiteIndex = 0; suiteIndex < suitesToRun.length; suiteIndex++) {
+      const suite = suitesToRun[suiteIndex];
 
       for (let testIndex = 0; testIndex < suite.tests.length; testIndex++) {
         await runTest(suiteIndex, testIndex);

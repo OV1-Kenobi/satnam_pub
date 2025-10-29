@@ -202,7 +202,6 @@ export class UnifiedFederatedSigningService {
   /**
    * Create SSS signing request
    * @private
-   */
   private async createSSSSigningRequest(
     request: UnifiedSigningRequest
   ): Promise<UnifiedSigningResult> {
@@ -220,9 +219,8 @@ export class UnifiedFederatedSigningService {
         threshold: request.threshold,
         createdBy: request.createdBy,
         eventType: request.eventType,
+        messageHash: request.messageHash,
       });
-
-      if (!result.success) {
         return {
           success: false,
           method: "sss",
@@ -306,10 +304,17 @@ export class UnifiedFederatedSigningService {
             data: frostResult.data,
           };
         }
+        // If method is explicitly "frost", don't try SSS
+        if (method === "frost") {
+          return {
+            success: false,
+            error: frostResult.error || "Session not found in FROST",
+          };
+        }
       }
 
-      // Try SSS if FROST failed or method is SSS
-      if (!method || method === "sss") {
+      // Try SSS if method is SSS or not specified (FROST failed)
+      if (method === "sss" || !method) {
         const { data: sssRequest, error } = await createSupabaseClient
           .from("sss_signing_requests")
           .select("*")
@@ -369,17 +374,10 @@ export class UnifiedFederatedSigningService {
         };
       }
 
-      // Get event template
-      let eventTemplate: any;
-      if (actualMethod === "frost") {
-        eventTemplate = sessionData.event_template
-          ? JSON.parse(sessionData.event_template)
-          : null;
-      } else {
-        eventTemplate = sessionData.event_template
-          ? JSON.parse(sessionData.event_template)
-          : null;
-      }
+      // Get event template (same for both methods)
+      const eventTemplate = sessionData.event_template
+        ? JSON.parse(sessionData.event_template)
+        : null;
 
       if (!eventTemplate) {
         return {
@@ -388,31 +386,31 @@ export class UnifiedFederatedSigningService {
         };
       }
 
-      // Get final signature
-      let finalSignature: any;
-      if (actualMethod === "frost") {
-        finalSignature = sessionData.final_signature;
-      } else {
-        // For SSS, the event should already be signed
-        finalSignature = sessionData.final_event_id;
-      }
-
-      if (!finalSignature) {
-        return {
-          success: false,
-          error: "No final signature found",
-        };
-      }
-
       // Publish via CEPS (use singleton instance directly)
       const ceps = CEPS;
 
       // For FROST, we need to construct the signed event
       if (actualMethod === "frost") {
+        const finalSignature = sessionData.final_signature;
+        if (!finalSignature) {
+          return {
+            success: false,
+            error: "No final signature found",
+          };
+        }
+
+        // Validate required fields before constructing signed event
+        if (!sessionData.final_event_id || !finalSignature.s) {
+          return {
+            success: false,
+            error: "Missing event ID or signature component",
+          };
+        }
+
         const signedEvent: Event = {
           ...eventTemplate,
-          id: sessionData.final_event_id || "",
-          sig: finalSignature.s || "",
+          id: sessionData.final_event_id,
+          sig: finalSignature.s,
         };
 
         const eventId = await ceps.publishEvent(signedEvent);
@@ -425,10 +423,18 @@ export class UnifiedFederatedSigningService {
           eventId,
         };
       } else {
-        // For SSS, event is already published
+        // For SSS, event should already be published
+        const eventId = sessionData.final_event_id;
+        if (!eventId) {
+          return {
+            success: false,
+            error: "No final event ID found for SSS session",
+          };
+        }
+
         return {
           success: true,
-          eventId: finalSignature,
+          eventId,
         };
       }
     } catch (error) {
@@ -496,10 +502,17 @@ export class UnifiedFederatedSigningService {
             status: "failed",
           };
         }
+        // If method is explicitly "frost", don't try SSS
+        if (method === "frost") {
+          return {
+            success: false,
+            error: "Failed to mark FROST session as failed",
+          };
+        }
       }
 
-      // Try SSS if FROST failed or method is SSS
-      if (!method || method === "sss") {
+      // Try SSS if method is SSS or not specified (FROST failed)
+      if (method === "sss" || !method) {
         const { error } = await createSupabaseClient
           .from("sss_signing_requests")
           .update({
@@ -560,7 +573,14 @@ export class UnifiedFederatedSigningService {
         .in("status", ["pending", "partial"])
         .select("request_id");
 
-      const sssCleaned = expiredSSS?.length || 0;
+      if (sssError) {
+        console.error(
+          "[UnifiedService] Error cleaning SSS sessions:",
+          sssError
+        );
+      }
+
+      const sssCleaned = !sssError && expiredSSS ? expiredSSS.length : 0;
 
       return {
         success: true,

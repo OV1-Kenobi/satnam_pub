@@ -13,30 +13,26 @@ import { getRequestClient } from "../functions/supabase.js";
 import type { ShareType } from "../functions/utils/frost-card-integration.ts";
 import { enableCardSigning } from "../functions/utils/frost-card-integration.ts";
 import { syncBoltcardDbAfterProgramming } from "../functions/utils/nfc-card-programmer.ts";
-import { allowRequest } from "../functions/utils/rate-limiter.js";
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.js";
 
 const FEATURE_ENABLED =
   (process.env.VITE_LNBITS_INTEGRATION_ENABLED || "").toLowerCase() === "true";
-
-function json(statusCode: number, body: unknown) {
-  return {
-    statusCode,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  };
-}
-
-function clientIpFrom(event: any): string {
-  const xfwd =
-    event.headers?.["x-forwarded-for"] ||
-    event.headers?.["X-Forwarded-For"] ||
-    "";
-  return (
-    (Array.isArray(xfwd) ? xfwd[0] : xfwd).split(",")[0]?.trim() ||
-    (event.headers?.["x-real-ip"] as string) ||
-    "unknown"
-  );
-}
 
 function isValidShareType(x: string): x is ShareType {
   return x === "individual" || x === "family" || x === "federation";
@@ -57,18 +53,44 @@ function parseBody(body: string | null): any {
 }
 
 export const handler: Handler = async (event) => {
-  try {
-    if (!FEATURE_ENABLED)
-      return json(503, {
-        success: false,
-        error: "LNbits integration disabled",
-      });
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    (event.headers || {}) as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-    const ip = clientIpFrom(event);
-    if (!allowRequest(ip, 8, 60_000))
-      return json(429, { success: false, error: "Too many attempts" });
+  console.log("🚀 NFC enable signing handler started:", {
+    requestId,
+    method: event.httpMethod,
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    // CORS preflight
+    if (event.httpMethod === "OPTIONS") {
+      return preflightResponse(requestOrigin);
+    }
+
+    if (!FEATURE_ENABLED)
+      return errorResponse(503, "LNbits integration disabled", requestOrigin);
+
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.NFC_OPERATIONS
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "nfc-enable-signing",
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     if (event.httpMethod !== "POST")
-      return json(405, { success: false, error: "Method not allowed" });
+      return errorResponse(405, "Method not allowed", requestOrigin);
 
     const token = (
       event.headers?.authorization ||
@@ -76,12 +98,12 @@ export const handler: Handler = async (event) => {
       ""
     ).replace(/^Bearer\s+/i, "");
     if (!token)
-      return json(401, { success: false, error: "Missing Authorization" });
+      return errorResponse(401, "Missing Authorization", requestOrigin);
 
     const supabase = getRequestClient(token);
     const { data: me, error: meErr } = await supabase.auth.getUser();
     if (meErr || !me?.user?.id)
-      return json(401, { success: false, error: "Unauthorized" });
+      return errorResponse(401, "Unauthorized", requestOrigin);
     const user_duid: string = me.user.id;
 
     const body = parseBody(event.body);
@@ -95,11 +117,24 @@ export const handler: Handler = async (event) => {
       typeof body?.nip05 === "string" ? body.nip05 : undefined;
     const encryptedShard: any = body?.encryptedShard;
 
-    if (!cardId) return json(400, { success: false, error: "Missing cardId" });
+    if (!cardId)
+      return createValidationErrorResponse(
+        "Missing cardId",
+        requestId,
+        requestOrigin
+      );
     if (!shareTypeInput || !isValidShareType(shareTypeInput))
-      return json(400, { success: false, error: "Invalid shareType" });
+      return createValidationErrorResponse(
+        "Invalid shareType",
+        requestId,
+        requestOrigin
+      );
     if (!signingTypeInput || !isValidSigningType(signingTypeInput))
-      return json(400, { success: false, error: "Invalid signingType" });
+      return createValidationErrorResponse(
+        "Invalid signingType",
+        requestId,
+        requestOrigin
+      );
 
     let shareId: string | undefined;
     let nostrEnabled = false;
@@ -108,7 +143,11 @@ export const handler: Handler = async (event) => {
     // FROST linking if requested
     if (signingTypeInput === "frost" || signingTypeInput === "both") {
       if (!encryptedShard || typeof encryptedShard !== "object") {
-        return json(400, { success: false, error: "Invalid encryptedShard" });
+        return createValidationErrorResponse(
+          "Invalid encryptedShard",
+          requestId,
+          requestOrigin
+        );
       }
       const requiredFields = [
         "encrypted_shard_data",
@@ -122,38 +161,42 @@ export const handler: Handler = async (event) => {
       ];
       for (const f of requiredFields) {
         if (!(f in encryptedShard) || typeof encryptedShard[f] !== "string") {
-          return json(400, {
-            success: false,
-            error: `encryptedShard.${String(f)} required`,
-          });
+          return createValidationErrorResponse(
+            `encryptedShard.${String(f)} required`,
+            requestId,
+            requestOrigin
+          );
         }
       }
       if (
         encryptedShard.shard_index != null &&
         typeof encryptedShard.shard_index !== "number"
       ) {
-        return json(400, {
-          success: false,
-          error: "encryptedShard.shard_index must be number",
-        });
+        return createValidationErrorResponse(
+          "encryptedShard.shard_index must be number",
+          requestId,
+          requestOrigin
+        );
       }
       if (
         encryptedShard.threshold_required != null &&
         typeof encryptedShard.threshold_required !== "number"
       ) {
-        return json(400, {
-          success: false,
-          error: "encryptedShard.threshold_required must be number",
-        });
+        return createValidationErrorResponse(
+          "encryptedShard.threshold_required must be number",
+          requestId,
+          requestOrigin
+        );
       }
       if (
         encryptedShard.expires_at != null &&
         typeof encryptedShard.expires_at !== "string"
       ) {
-        return json(400, {
-          success: false,
-          error: "encryptedShard.expires_at must be ISO string",
-        });
+        return createValidationErrorResponse(
+          "encryptedShard.expires_at must be ISO string",
+          requestId,
+          requestOrigin
+        );
       }
 
       const result = await enableCardSigning(
@@ -168,10 +211,16 @@ export const handler: Handler = async (event) => {
           ?.toLowerCase()
           .includes("card not found");
         const code = isOwnershipError ? 400 : 500;
-        return json(code, {
-          success: false,
-          error: result.error || "Failed to enable FROST signing",
+        logError(new Error(result.error || "Failed to enable FROST signing"), {
+          requestId,
+          endpoint: "nfc-enable-signing",
+          action: "frost-signing",
         });
+        return errorResponse(
+          code,
+          result.error || "Failed to enable FROST signing",
+          requestOrigin
+        );
       }
       // Ensure undefined instead of null for optional string type
       shareId = (result as any).shareId ?? undefined;
@@ -194,10 +243,11 @@ export const handler: Handler = async (event) => {
     // Nostr signing enablement if requested
     if (signingTypeInput === "nostr" || signingTypeInput === "both") {
       if (!nip05)
-        return json(400, {
-          success: false,
-          error: "Missing nip05 for Nostr signing",
-        });
+        return createValidationErrorResponse(
+          "Missing nip05 for Nostr signing",
+          requestId,
+          requestOrigin
+        );
 
       // Validate the authenticated user's NIP-05
       const { data: ident, error: identErr } = await supabase
@@ -206,15 +256,21 @@ export const handler: Handler = async (event) => {
         .eq("id", user_duid)
         .single();
       if (identErr || !ident?.nip05_identifier) {
-        return json(400, { success: false, error: "User identity not found" });
+        logError(identErr || new Error("User identity not found"), {
+          requestId,
+          endpoint: "nfc-enable-signing",
+          action: "nostr-signing",
+        });
+        return errorResponse(400, "User identity not found", requestOrigin);
       }
       if (
         String(ident.nip05_identifier).toLowerCase() !== nip05.toLowerCase()
       ) {
-        return json(400, {
-          success: false,
-          error: "NIP-05 mismatch for authenticated user",
-        });
+        return errorResponse(
+          400,
+          "NIP-05 mismatch for authenticated user",
+          requestOrigin
+        );
       }
 
       // Ensure the card belongs to the authenticated user
@@ -225,7 +281,12 @@ export const handler: Handler = async (event) => {
         .eq("card_id", String(cardId))
         .single();
       if (cardErr || !card?.id) {
-        return json(400, { success: false, error: "Card not found for user" });
+        logError(cardErr || new Error("Card not found for user"), {
+          requestId,
+          endpoint: "nfc-enable-signing",
+          action: "nostr-signing",
+        });
+        return errorResponse(400, "Card not found for user", requestOrigin);
       }
 
       // Append 'nostr_signing' via centralized helper and persist nip05
@@ -236,30 +297,52 @@ export const handler: Handler = async (event) => {
         ["nostr_signing"]
       );
       if (!syncRes.success) {
-        return json(500, {
-          success: false,
-          error: syncRes.error || "Failed to enable Nostr signing",
+        logError(new Error(syncRes.error || "Failed to enable Nostr signing"), {
+          requestId,
+          endpoint: "nfc-enable-signing",
+          action: "nostr-sync",
         });
+        return errorResponse(
+          500,
+          syncRes.error || "Failed to enable Nostr signing",
+          requestOrigin
+        );
       }
       const { error: upErr } = await (supabase as any)
         .from("lnbits_boltcards")
         .update({ nostr_nip05: nip05 })
         .eq("id", card.id);
-      if (upErr)
-        return json(500, {
-          success: false,
-          error: "Failed to update Nostr identifier",
+      if (upErr) {
+        logError(upErr, {
+          requestId,
+          endpoint: "nfc-enable-signing",
+          action: "nostr-update",
         });
+        return errorResponse(
+          500,
+          "Failed to update Nostr identifier",
+          requestOrigin
+        );
+      }
       nostrEnabled = true;
     }
 
-    return json(200, {
-      success: true,
-      shareId,
-      nostrEnabled,
-      warning: warnings[0],
+    return {
+      statusCode: 200,
+      headers: getSecurityHeaders(requestOrigin),
+      body: JSON.stringify({
+        success: true,
+        shareId,
+        nostrEnabled,
+        warning: warnings[0],
+      }),
+    };
+  } catch (error) {
+    logError(error, {
+      requestId,
+      endpoint: "nfc-enable-signing",
+      method: event.httpMethod,
     });
-  } catch (e: any) {
-    return json(500, { success: false, error: e?.message || "Server error" });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

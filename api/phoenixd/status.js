@@ -3,51 +3,59 @@
  * GET /api/phoenixd/status - Get PhoenixD daemon status
  */
 
-// Handle CORS
-function setCorsHeaders(req, res) {
-  const allowedOrigins = process.env.NODE_ENV === "production"
-    ? [process.env.FRONTEND_URL || "https://satnam.pub"]
-    : ["http://localhost:3000", "http://localhost:5173", "http://localhost:3002"];
+import { RATE_LIMITS, checkRateLimit, createRateLimitIdentifier, getClientIP } from '../../netlify/functions_active/utils/enhanced-rate-limiter.js';
+import { createRateLimitErrorResponse, generateRequestId, logError } from '../../netlify/functions_active/utils/error-handler.js';
+import { errorResponse, getSecurityHeaders, preflightResponse } from '../../netlify/functions_active/utils/security-headers.js';
 
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+// Security utilities (Phase 2 hardening)
 
 export default async function handler(req, res) {
-  // Set CORS headers
-  setCorsHeaders(req, res);
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(req.headers || {});
+  const requestOrigin = req.headers?.origin || req.headers?.Origin;
 
-  // Handle preflight requests
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
-  }
+  console.log('🚀 PhoenixD status handler started:', {
+    requestId,
+    method: req.method,
+    path: '/api/phoenixd/status',
+    timestamp: new Date().toISOString(),
+  });
 
-  if (req.method !== "GET") {
-    res.setHeader("Allow", ["GET"]);
-    res.status(405).json({
-      success: false,
-      error: "Method not allowed",
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-    return;
+  // Handle CORS preflight
+  if ((req.method || 'GET').toUpperCase() === 'OPTIONS') {
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.WALLET_OPERATIONS
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error('Rate limit exceeded'), {
+        requestId,
+        endpoint: 'phoenixd-status',
+        method: req.method,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    // Only allow GET requests
+    if (req.method !== "GET") {
+      return errorResponse(
+        405,
+        'Method not allowed',
+        requestId,
+        requestOrigin
+      );
+    }
     // In production, this would connect to actual PhoenixD daemon
     // const phoenixdClient = await connectToPhoenixd(process.env.PHOENIXD_URL);
     // const daemonInfo = await phoenixdClient.getInfo();
-    
+
     // Mock PhoenixD daemon status for demo
     const phoenixdStatus = {
       status: "running",
@@ -93,6 +101,11 @@ export default async function handler(req, res) {
       },
     };
 
+    res.setHeader('Content-Type', 'application/json');
+    Object.entries(getSecurityHeaders(requestOrigin)).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
+
     res.status(200).json({
       success: true,
       data: phoenixdStatus,
@@ -102,7 +115,16 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error("PhoenixD status error:", error);
+    logError(error, {
+      requestId,
+      endpoint: 'phoenixd-status',
+      method: req.method,
+    });
+
+    res.setHeader('Content-Type', 'application/json');
+    Object.entries(getSecurityHeaders(requestOrigin)).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
 
     res.status(500).json({
       success: false,

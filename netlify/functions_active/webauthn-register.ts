@@ -2,11 +2,11 @@
  * Netlify Function: /api/webauthn/register
  * Purpose: WebAuthn registration flow (create credential)
  * Methods: POST
- * 
+ *
  * Actions:
  * - start: Generate challenge for registration
  * - complete: Verify attestation and store credential
- * 
+ *
  * Supports:
  * - Hardware security keys (YubiKey, Titan, Feitian)
  * - Platform authenticators (Windows Hello, Touch ID, Face ID)
@@ -14,17 +14,28 @@
 
 import { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
-import { allowRequest } from "./utils/rate-limiter.js";
-import { getEnvVar } from "./utils/env.js";
 import crypto from "node:crypto";
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import { getEnvVar } from "./utils/env.js";
+import {
+  createAuthErrorResponse,
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.js";
 
-// CORS headers
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Content-Type": "application/json",
-};
+// Security utilities (Phase 2 hardening)
 
 // Initialize Supabase client
 const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
@@ -87,40 +98,63 @@ function validateToken(authHeader: string | undefined): TokenPayload | null {
 }
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    (event.headers || {}) as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 WebAuthn register handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   // Handle CORS preflight
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders };
+  if ((event.httpMethod || "GET").toUpperCase() === "OPTIONS") {
+    return preflightResponse(requestOrigin);
   }
 
   try {
-    // Rate limiting
-    const clientIp =
-      event.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
-    if (!allowRequest(clientIp, 30, 60000)) {
-      return {
-        statusCode: 429,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "Rate limit exceeded" }),
-      };
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.AUTH_REGISTER
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "webauthn-register",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Validate authentication
-    const authHeader = event.headers.authorization || event.headers.Authorization;
+    const authHeader =
+      event.headers.authorization || event.headers.Authorization;
     const tokenPayload = validateToken(authHeader);
 
     if (!tokenPayload) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "Unauthorized" }),
-      };
+      return createAuthErrorResponse("Unauthorized", requestId, requestOrigin);
     }
 
     const userDuid = tokenPayload.userId;
     const body: WebAuthnRegisterRequest = JSON.parse(event.body || "{}");
 
+    if (!body.action) {
+      return createValidationErrorResponse(
+        "action required",
+        requestId,
+        requestOrigin
+      );
+    }
+
     if (body.action === "start") {
-      return await handleRegistrationStart(userDuid, corsHeaders);
+      return await handleRegistrationStart(userDuid, requestId, requestOrigin);
     } else if (body.action === "complete") {
       return await handleRegistrationComplete(
         userDuid,
@@ -128,33 +162,32 @@ export const handler: Handler = async (event) => {
         body.deviceType || "roaming",
         body.attestationObject || "",
         body.clientDataJSON || "",
-        clientIp,
+        clientIP,
         event.headers["user-agent"] || "unknown",
-        corsHeaders
+        requestId,
+        requestOrigin
       );
     }
 
-    return {
-      statusCode: 400,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Invalid action" }),
-    };
+    return createValidationErrorResponse(
+      "Invalid action",
+      requestId,
+      requestOrigin
+    );
   } catch (error) {
-    console.error("WebAuthn register error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Internal server error",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "webauthn-register",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
 async function handleRegistrationStart(
   userDuid: string,
-  corsHeaders: any
+  requestId: string,
+  requestOrigin: string | undefined
 ): Promise<any> {
   try {
     // Generate challenge (32 bytes)
@@ -174,20 +207,17 @@ async function handleRegistrationStart(
       .single();
 
     if (error) {
-      console.error("Challenge storage error:", error);
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to generate challenge",
-        }),
-      };
+      logError(error, {
+        requestId,
+        endpoint: "webauthn-register",
+        action: "start",
+      });
+      return errorResponse(500, "Failed to generate challenge", requestOrigin);
     }
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: getSecurityHeaders(requestOrigin),
       body: JSON.stringify({
         success: true,
         challenge: challengeBase64,
@@ -214,15 +244,12 @@ async function handleRegistrationStart(
       }),
     };
   } catch (error) {
-    console.error("Registration start error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to start registration",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "webauthn-register",
+      action: "start",
+    });
+    return errorResponse(500, "Failed to start registration", requestOrigin);
   }
 }
 
@@ -234,21 +261,19 @@ async function handleRegistrationComplete(
   clientDataJSON: string,
   ipAddress: string,
   userAgent: string,
-  corsHeaders: any
+  requestId: string,
+  requestOrigin: string | undefined
 ): Promise<any> {
   try {
     // In production, verify attestation using @simplewebauthn/server
     // For now, store the credential with basic validation
 
     if (!attestationObject || !clientDataJSON) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Missing attestation data",
-        }),
-      };
+      return createValidationErrorResponse(
+        "Missing attestation data",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Generate credential ID
@@ -280,15 +305,12 @@ async function handleRegistrationComplete(
       .single();
 
     if (error) {
-      console.error("Credential storage error:", error);
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to store credential",
-        }),
-      };
+      logError(error, {
+        requestId,
+        endpoint: "webauthn-register",
+        action: "complete",
+      });
+      return errorResponse(500, "Failed to store credential", requestOrigin);
     }
 
     // Log to audit trail
@@ -306,7 +328,7 @@ async function handleRegistrationComplete(
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: getSecurityHeaders(requestOrigin),
       body: JSON.stringify({
         success: true,
         message: `${deviceName} registered successfully`,
@@ -319,15 +341,11 @@ async function handleRegistrationComplete(
       }),
     };
   } catch (error) {
-    console.error("Registration complete error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to complete registration",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "webauthn-register",
+      action: "complete",
+    });
+    return errorResponse(500, "Failed to complete registration", requestOrigin);
   }
 }
-

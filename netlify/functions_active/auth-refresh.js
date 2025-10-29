@@ -2,58 +2,93 @@
 // ESM-only Netlify Function
 // Provides POST /api/auth/refresh compatible with SecureTokenManager expectations
 
-export const handler = async (event, context) => {
-  const cors = buildCors(event);
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    createRateLimitIdentifier,
+    getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+    createRateLimitErrorResponse,
+    generateRequestId,
+    logError
+} from "./utils/error-handler.js";
+import {
+    errorResponse,
+    getSecurityHeaders,
+    jsonResponse,
+    preflightResponse
+} from "./utils/security-headers.js";
 
-  const method = (event.httpMethod || 'GET').toUpperCase();
-  if (method === 'OPTIONS') {
-    return { statusCode: 204, headers: cors, body: '' };
+export const handler = async (event, context) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers);
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 Token refresh handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  const cors = buildSecurityHeaders(requestOrigin);
+
+  const method = (event.httpMethod || "GET").toUpperCase();
+  if (method === "OPTIONS") {
+    return preflightResponse(requestOrigin);
   }
-  if (method !== 'POST') {
-    return { statusCode: 405, headers: cors, body: JSON.stringify({ success:false, error:'Method not allowed' }) };
+  if (method !== "POST") {
+    return errorResponse(405, "Method not allowed", requestId, requestOrigin);
   }
 
   try {
     const cookies = parseCookies(event.headers?.cookie);
-    const refreshToken = cookies['satnam_refresh_token'];
+    const refreshToken = cookies["satnam_refresh_token"];
     if (!refreshToken) {
       // Clear cookie defensively
-      return {
-        statusCode: 401,
-        headers: { ...cors, 'Set-Cookie': clearRefreshCookie() },
-        body: JSON.stringify({ success:false, error:'No refresh token' })
-      };
+      const response = errorResponse(401, "No refresh token", requestId, requestOrigin);
+      response.headers["Set-Cookie"] = clearRefreshCookie();
+      return response;
     }
 
-    const { getJwtSecret } = await import('./utils/jwt-secret.js');
+    const { getJwtSecret } = await import("./utils/jwt-secret.js");
     const jwtSecret = getJwtSecret();
-    const jwt = (await import('jsonwebtoken')).default;
+    const jwt = (await import("jsonwebtoken")).default;
 
     // Verify refresh token
     let payload = jwt.verify(refreshToken, jwtSecret, {
-      algorithms: ['HS256'],
-      issuer: 'satnam.pub',
-      audience: 'satnam.pub-users'
+      algorithms: ["HS256"],
+      issuer: "satnam.pub",
+      audience: "satnam.pub-users",
     });
-    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
-    if (payload.type !== 'refresh') {
-      return {
-        statusCode: 401,
-        headers: { ...cors, 'Set-Cookie': clearRefreshCookie() },
-        body: JSON.stringify({ success:false, error:'Invalid refresh token' })
-      };
+    payload = typeof payload === "string" ? JSON.parse(payload) : payload;
+    if (payload.type !== "refresh") {
+      const response = errorResponse(401, "Invalid refresh token", requestId, requestOrigin);
+      response.headers["Set-Cookie"] = clearRefreshCookie();
+      return response;
     }
 
-    // Basic refresh rate-limit (per token): require at least 60s since iat
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (payload.iat && nowSec - payload.iat < 60) {
-      return { statusCode: 429, headers: cors, body: JSON.stringify({ success:false, error:'Too frequent refresh' }) };
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(payload.userId, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.AUTH_REFRESH
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "auth-refresh",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Mint new access+refresh
     const duidSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
     if (!duidSecret) {
-      return { statusCode: 500, headers: cors, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+      return errorResponse(500, "Server configuration error", requestId, requestOrigin);
     }
 
     const { createHmac, randomUUID } = await import('node:crypto');
@@ -76,16 +111,16 @@ export const handler = async (event, context) => {
       userId: payload.userId, // may be undefined for some flows; tolerated
       hashedId: protectedSubject,
       nip05: payload.nip05,
-      type: 'access',
-      sessionId
+      type: "access",
+      sessionId,
     }, ACCESS);
 
     const newRefresh = sign({
       userId: payload.userId,
       hashedId: protectedSubject,
       nip05: payload.nip05,
-      type: 'refresh',
-      sessionId
+      type: "refresh",
+      sessionId,
     }, REFRESH);
 
     const expiryMs = Date.now() + ACCESS * 1000;
@@ -100,39 +135,34 @@ export const handler = async (event, context) => {
       // refreshToken intentionally omitted; handled via HttpOnly cookie
     };
 
-    return { statusCode: 200, headers: { ...cors, 'Set-Cookie': cookie }, body: JSON.stringify(body) };
+    const response = jsonResponse(200, body, requestOrigin);
+    response.headers["Set-Cookie"] = cookie;
+    return response;
   } catch (error) {
-    console.error('auth-refresh error:', error && error.message ? error.message : String(error));
-    return {
-      statusCode: 500,
-      headers: { ...buildCors(event), 'Set-Cookie': clearRefreshCookie() },
-      body: JSON.stringify({ success:false, error:'Token refresh failed' })
-    };
+    logError(error, {
+      requestId,
+      endpoint: "auth-refresh",
+      method: event.httpMethod,
+    });
+    const response = errorResponse(500, "Token refresh failed", requestId, requestOrigin);
+    response.headers["Set-Cookie"] = clearRefreshCookie();
+    return response;
   }
 };
 
 function parseCookies(header) {
   if (!header) return {};
-  return header.split(';').reduce((acc, c) => {
-    const [n, ...r] = c.trim().split('=');
-    acc[n] = r.join('=');
+  return header.split(";").reduce((acc, c) => {
+    const [n, ...r] = c.trim().split("=");
+    acc[n] = r.join("=");
     return acc;
   }, {});
 }
 
-function buildCors(event) {
-  const origin = event.headers?.origin || event.headers?.Origin;
-  const isProd = process.env.NODE_ENV === 'production';
-  const allowedOrigin = isProd ? (process.env.FRONTEND_URL || 'https://www.satnam.pub') : (origin || '*');
-  const allowCreds = allowedOrigin !== '*';
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Credentials': String(allowCreds),
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Content-Type': 'application/json'
-  };
+function buildSecurityHeaders(origin) {
+  return getSecurityHeaders(origin, {
+    cspPolicy: "default-src 'none'; frame-ancestors 'none'",
+  });
 }
 
 function setRefreshCookie(token, maxAgeSec) {

@@ -1,10 +1,10 @@
 /**
  * Nostr Wallet Connect (NWC) API - Master Context Compliant Netlify Functions Handler
- * 
+ *
  * This endpoint implements the proper NWC protocol (NIP-47) for remote wallet operations
  * such as payments, invoices, balance queries, and transaction history. This replaces
  * the incorrect usage of NWC as an authentication protocol.
- * 
+ *
  * MASTER CONTEXT COMPLIANCE:
  * - Netlify Functions handler pattern with proper event/context signature
  * - Individual Wallet Sovereignty enforcement (unlimited authority for Adults/Stewards/Guardians)
@@ -14,7 +14,7 @@
  * - Comprehensive JSDoc type definitions for complete type safety
  * - Web Crypto API usage for secure connection string handling
  * - No exposure of wallet connection strings, private keys, or financial data in logs
- * 
+ *
  * NWC PROTOCOL COMPLIANCE (NIP-47):
  * - Proper Nostr Wallet Connect protocol for remote wallet operations (NOT authentication)
  * - Wallet operation support: pay_invoice, get_balance, make_invoice, lookup_invoice
@@ -23,6 +23,12 @@
  * - Nostr protocol compliance with proper event handling for wallet communication
  * - Session-based security without exposing sensitive wallet data
  */
+
+import { RATE_LIMITS, checkRateLimit, createRateLimitIdentifier, getClientIP } from '../../netlify/functions_active/utils/enhanced-rate-limiter.js';
+import { createRateLimitErrorResponse, createValidationErrorResponse, generateRequestId, logError } from '../../netlify/functions_active/utils/error-handler.js';
+import { errorResponse, getSecurityHeaders, preflightResponse } from '../../netlify/functions_active/utils/security-headers.js';
+
+// Security utilities (Phase 2 hardening)
 
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
@@ -421,10 +427,37 @@ async function lookupInvoice(params, connectionData) {
  * @param {Object} connectionData - NWC connection data
  * @returns {Promise<Object[]>} Transaction list
  */
+/**
+ * @typedef {Object} Transaction
+ * @property {string} payment_hash - Payment hash
+ * @property {number} amount - Amount in sats
+ * @property {string} type - Transaction type (incoming/outgoing)
+ * @property {number} timestamp - Transaction timestamp
+ * @property {string} description - Transaction description
+ * @property {boolean} paid - Whether transaction is paid
+ */
+
+/**
+ * @typedef {Object} TransactionList
+ * @property {Transaction[]} transactions - List of transactions
+ * @property {number} total - Total transaction count
+ * @property {number} limit - Limit used
+ * @property {number} offset - Offset used
+ */
+
+/**
+ * List transactions for a wallet
+ * @param {Object} params - Query parameters
+ * @param {number} params.limit - Limit
+ * @param {number} params.offset - Offset
+ * @param {Object} connectionData - Connection data
+ * @returns {Promise<TransactionList>} Transaction list
+ */
 async function listTransactions(params, connectionData) {
   const { limit = 10, offset = 0 } = params;
 
   // Mock implementation - in production, this would fetch actual transactions
+  /** @type {Transaction[]} */
   const mockTransactions = [];
   for (let i = 0; i < Math.min(limit, 5); i++) {
     mockTransactions.push({
@@ -454,32 +487,49 @@ async function listTransactions(params, connectionData) {
  * @returns {Promise<Object>} Netlify Functions response object
  */
 export default async function handler(event, context) {
-  // CORS headers for browser compatibility
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Handle preflight requests
-  if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: "",
-    };
-  }
+  console.log('🚀 NWC wallet handler started:', {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
 
-  // Only allow POST requests
-  if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: "Method not allowed" }),
-    };
+  // Handle CORS preflight
+  if ((event.httpMethod || 'GET').toUpperCase() === 'OPTIONS') {
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.WALLET_OPERATIONS
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error('Rate limit exceeded'), {
+        requestId,
+        endpoint: 'nostr-wallet-connect',
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    // Only allow POST requests
+    if (event.httpMethod !== "POST") {
+      return errorResponse(
+        405,
+        'Method not allowed',
+        requestId,
+        requestOrigin
+      );
+    }
+
     // Parse request body
     const requestBody = JSON.parse(event.body || '{}');
 
@@ -487,14 +537,11 @@ export default async function handler(event, context) {
     const validation = validateWalletRequest(requestBody);
 
     if (!validation.valid) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: validation.error
-        }),
-      };
+      return createValidationErrorResponse(
+        validation.error,
+        requestId,
+        requestOrigin
+      );
     }
 
     // Extract amount for sovereignty validation (if applicable)
@@ -509,16 +556,12 @@ export default async function handler(event, context) {
     const sovereigntyValidation = validateNWCWalletSovereignty(validation.userRole, validation.method, amount);
 
     if (!sovereigntyValidation.authorized) {
-      return {
-        statusCode: 403,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: sovereigntyValidation.message,
-          requiresApproval: sovereigntyValidation.requiresApproval,
-          spendingLimit: sovereigntyValidation.spendingLimit,
-        }),
-      };
+      return errorResponse(
+        403,
+        sovereigntyValidation.message,
+        requestId,
+        requestOrigin
+      );
     }
 
     // Validate connection string if provided
@@ -526,14 +569,11 @@ export default async function handler(event, context) {
     if (validation.connectionString) {
       const connectionValidation = validateNWCConnectionString(validation.connectionString);
       if (!connectionValidation.valid) {
-        return {
-          statusCode: 400,
-          headers: corsHeaders,
-          body: JSON.stringify({
-            success: false,
-            error: connectionValidation.error
-          }),
-        };
+        return createValidationErrorResponse(
+          connectionValidation.error,
+          requestId,
+          requestOrigin
+        );
       }
       connectionData = connectionValidation;
     } else {
@@ -574,19 +614,21 @@ export default async function handler(event, context) {
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: getSecurityHeaders(requestOrigin),
       body: JSON.stringify(response),
     };
   } catch (error) {
-    // PRIVACY: No sensitive error data logging
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "Wallet operation failed",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: 'nostr-wallet-connect',
+      method: event.httpMethod,
+    });
+    return errorResponse(
+      500,
+      'Wallet operation failed',
+      requestId,
+      requestOrigin
+    );
   }
 }
 

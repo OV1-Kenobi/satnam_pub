@@ -16,17 +16,27 @@ import { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
 import { getEnvVar } from "./utils/env.js";
-import { allowRequest } from "./utils/rate-limiter.js";
+import {
+  createAuthErrorResponse,
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
 
-// CORS headers
-const corsHeaders = {
-  "Access-Control-Allow-Origin":
-    process.env.ALLOWED_ORIGIN || "https://yourdomain.com",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Content-Type": "application/json",
-};
+// Security utilities (Phase 2 hardening)
 
 // Initialize Supabase client
 const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
@@ -53,32 +63,46 @@ interface AdminDashboardRequest {
 }
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    (event.headers || {}) as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 Admin dashboard handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   // Handle CORS preflight
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders };
+  if ((event.httpMethod || "GET").toUpperCase() === "OPTIONS") {
+    return preflightResponse(requestOrigin);
   }
 
   try {
-    // Rate limiting
-    const clientIp =
-      event.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
-    if (!allowRequest(clientIp, 30, 60000)) {
-      return {
-        statusCode: 429,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "Rate limit exceeded" }),
-      };
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.ADMIN_DASHBOARD
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "admin-dashboard",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Validate authentication
     const authHeader =
       event.headers.authorization || event.headers.Authorization;
     if (!authHeader?.startsWith("Bearer ")) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "Unauthorized" }),
-      };
+      return createAuthErrorResponse("Unauthorized", requestId, requestOrigin);
     }
 
     // Extract and verify JWT token with signature verification
@@ -86,36 +110,26 @@ export const handler: Handler = async (event) => {
     const jwtSecret = getEnvVar("JWT_SECRET");
 
     if (!jwtSecret) {
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Server configuration error",
-        }),
-      };
+      return errorResponse(500, "Server configuration error", requestOrigin);
     }
 
     let payload: any;
     try {
       payload = jwt.verify(token, jwtSecret) as any;
     } catch {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Invalid or expired token",
-        }),
-      };
+      return createAuthErrorResponse(
+        "Invalid or expired token",
+        requestId,
+        requestOrigin
+      );
     }
 
     if (!payload.nip05) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "Invalid session" }),
-      };
+      return createAuthErrorResponse(
+        "Invalid session",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Get user DUID from nip05
@@ -126,11 +140,7 @@ export const handler: Handler = async (event) => {
       .single();
 
     if (userError || !user) {
-      return {
-        statusCode: 404,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "User not found" }),
-      };
+      return errorResponse(404, "User not found", requestOrigin);
     }
 
     const userDuid = user.id;
@@ -140,69 +150,66 @@ export const handler: Handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Invalid JSON in request body",
-        }),
-      };
+      return createValidationErrorResponse(
+        "Invalid JSON in request body",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Route to appropriate handler
     switch (body.action) {
       case "get_dashboard":
-        return await handleGetDashboard(userDuid, corsHeaders);
+        return await handleGetDashboard(userDuid, requestOrigin);
       case "get_subordinates":
         return await handleGetSubordinates(
           userDuid,
           body.targetUserDuid,
-          corsHeaders
+          requestOrigin
         );
       case "generate_bypass_code":
         return await handleGenerateBypassCode(
           userDuid,
           body.targetUserDuid,
-          corsHeaders
+          requestOrigin
         );
       case "generate_recovery_codes":
-        return await handleGenerateRecoveryCodes(userDuid, corsHeaders);
+        return await handleGenerateRecoveryCodes(userDuid, requestOrigin);
       case "revoke_code":
         return await handleRevokeCode(
           userDuid,
           body.codeType,
           body.targetUserDuid,
-          corsHeaders
+          requestOrigin
         );
       case "get_audit_log":
         return await handleGetAuditLog(
           userDuid,
           body.limit || 50,
           body.offset || 0,
-          corsHeaders
+          requestOrigin
         );
       default:
-        return {
-          statusCode: 400,
-          headers: corsHeaders,
-          body: JSON.stringify({ success: false, error: "Invalid action" }),
-        };
+        return createValidationErrorResponse(
+          "Invalid action",
+          requestId,
+          requestOrigin
+        );
     }
   } catch (error) {
-    console.error("Admin dashboard error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Internal server error",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "admin-dashboard",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
-async function handleGetDashboard(userDuid: string, corsHeaders: any) {
+async function handleGetDashboard(
+  userDuid: string,
+  requestOrigin: string | undefined
+) {
   // Get user's admin role
   const { data: adminRole, error: roleError } = await supabase
     .from("admin_roles")
@@ -211,11 +218,7 @@ async function handleGetDashboard(userDuid: string, corsHeaders: any) {
     .single();
 
   if (roleError || !adminRole) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Not an admin" }),
-    };
+    return errorResponse(403, "Not an admin", requestOrigin);
   }
 
   // Get subordinates
@@ -234,7 +237,7 @@ async function handleGetDashboard(userDuid: string, corsHeaders: any) {
 
   return {
     statusCode: 200,
-    headers: corsHeaders,
+    headers: getSecurityHeaders(requestOrigin),
     body: JSON.stringify({
       success: true,
       dashboard: {
@@ -254,17 +257,14 @@ async function handleGetDashboard(userDuid: string, corsHeaders: any) {
 async function handleGetSubordinates(
   userDuid: string,
   targetUserDuid: string | undefined,
-  corsHeaders: any
+  requestOrigin: string | undefined
 ) {
   if (!targetUserDuid) {
-    return {
-      statusCode: 400,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "targetUserDuid required",
-      }),
-    };
+    return createValidationErrorResponse(
+      "targetUserDuid required",
+      undefined,
+      requestOrigin
+    );
   }
 
   // Verify caller is an admin
@@ -275,11 +275,7 @@ async function handleGetSubordinates(
     .single();
 
   if (!adminRole) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Not an admin" }),
-    };
+    return errorResponse(403, "Not an admin", requestOrigin);
   }
 
   // Verify caller has permission over target user
@@ -290,14 +286,7 @@ async function handleGetSubordinates(
     .single();
 
   if (!targetRole || targetRole.parent_admin_duid !== userDuid) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "Not authorized for this user",
-      }),
-    };
+    return errorResponse(403, "Not authorized for this user", requestOrigin);
   }
 
   // Get subordinates of target user
@@ -308,7 +297,7 @@ async function handleGetSubordinates(
 
   return {
     statusCode: 200,
-    headers: corsHeaders,
+    headers: getSecurityHeaders(requestOrigin),
     body: JSON.stringify({
       success: true,
       subordinates: subordinates || [],
@@ -319,17 +308,14 @@ async function handleGetSubordinates(
 async function handleGenerateBypassCode(
   adminDuid: string,
   targetUserDuid: string | undefined,
-  corsHeaders: any
+  requestOrigin: string | undefined
 ) {
   if (!targetUserDuid) {
-    return {
-      statusCode: 400,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "targetUserDuid required",
-      }),
-    };
+    return createValidationErrorResponse(
+      "targetUserDuid required",
+      undefined,
+      requestOrigin
+    );
   }
 
   // Verify admin has permission over target user
@@ -340,11 +326,7 @@ async function handleGenerateBypassCode(
     .single();
 
   if (!adminRole) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Not an admin" }),
-    };
+    return errorResponse(403, "Not an admin", requestOrigin);
   }
 
   // Verify target is subordinate to admin
@@ -355,14 +337,7 @@ async function handleGenerateBypassCode(
     .single();
 
   if (!targetRole || targetRole.parent_admin_duid !== adminDuid) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "Not authorized for this user",
-      }),
-    };
+    return errorResponse(403, "Not authorized for this user", requestOrigin);
   }
 
   // Generate bypass code (18 characters, hex)
@@ -388,11 +363,7 @@ async function handleGenerateBypassCode(
     .single();
 
   if (error) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: error.message }),
-    };
+    return errorResponse(500, error.message, requestOrigin);
   }
 
   // Log action
@@ -407,7 +378,7 @@ async function handleGenerateBypassCode(
 
   return {
     statusCode: 200,
-    headers: corsHeaders,
+    headers: getSecurityHeaders(requestOrigin),
     body: JSON.stringify({
       success: true,
       bypassCode: bypassCode, // Only shown once
@@ -416,7 +387,10 @@ async function handleGenerateBypassCode(
   };
 }
 
-async function handleGenerateRecoveryCodes(userDuid: string, corsHeaders: any) {
+async function handleGenerateRecoveryCodes(
+  userDuid: string,
+  requestOrigin: string | undefined
+) {
   // Verify user is an admin
   const { data: adminRole } = await supabase
     .from("admin_roles")
@@ -425,11 +399,7 @@ async function handleGenerateRecoveryCodes(userDuid: string, corsHeaders: any) {
     .single();
 
   if (!adminRole) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Not an admin" }),
-    };
+    return errorResponse(403, "Not an admin", requestOrigin);
   }
 
   // Generate 10 recovery codes
@@ -456,11 +426,7 @@ async function handleGenerateRecoveryCodes(userDuid: string, corsHeaders: any) {
   const { error } = await supabase.from("recovery_codes").insert(codeRecords);
 
   if (error) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: error.message }),
-    };
+    return errorResponse(500, error.message, requestOrigin);
   }
 
   // Log action
@@ -474,7 +440,7 @@ async function handleGenerateRecoveryCodes(userDuid: string, corsHeaders: any) {
 
   return {
     statusCode: 200,
-    headers: corsHeaders,
+    headers: getSecurityHeaders(requestOrigin),
     body: JSON.stringify({
       success: true,
       recoveryCodes: codes, // Only shown once
@@ -487,17 +453,14 @@ async function handleRevokeCode(
   userDuid: string,
   codeType: string | undefined,
   targetUserDuid: string | undefined,
-  corsHeaders: any
+  requestOrigin: string | undefined
 ) {
   if (!codeType || !targetUserDuid) {
-    return {
-      statusCode: 400,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "codeType and targetUserDuid required",
-      }),
-    };
+    return createValidationErrorResponse(
+      "codeType and targetUserDuid required",
+      undefined,
+      requestOrigin
+    );
   }
 
   // Verify caller is an admin
@@ -508,11 +471,7 @@ async function handleRevokeCode(
     .single();
 
   if (!adminRole) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Not an admin" }),
-    };
+    return errorResponse(403, "Not an admin", requestOrigin);
   }
 
   // Verify admin has permission over target user
@@ -523,14 +482,7 @@ async function handleRevokeCode(
     .single();
 
   if (!targetRole || targetRole.parent_admin_duid !== userDuid) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "Not authorized for this user",
-      }),
-    };
+    return errorResponse(403, "Not authorized for this user", requestOrigin);
   }
 
   const table = codeType === "bypass" ? "bypass_codes" : "recovery_codes";
@@ -543,11 +495,7 @@ async function handleRevokeCode(
     .eq("used", false);
 
   if (error) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: error.message }),
-    };
+    return errorResponse(500, error.message, requestOrigin);
   }
 
   // Log action
@@ -560,7 +508,7 @@ async function handleRevokeCode(
 
   return {
     statusCode: 200,
-    headers: corsHeaders,
+    headers: getSecurityHeaders(requestOrigin),
     body: JSON.stringify({ success: true, message: "Codes revoked" }),
   };
 }
@@ -569,7 +517,7 @@ async function handleGetAuditLog(
   userDuid: string,
   limit: number,
   offset: number,
-  corsHeaders: any
+  requestOrigin: string | undefined
 ) {
   // Verify user is an admin
   const { data: adminRole } = await supabase
@@ -579,11 +527,7 @@ async function handleGetAuditLog(
     .single();
 
   if (!adminRole) {
-    return {
-      statusCode: 403,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Not an admin" }),
-    };
+    return errorResponse(403, "Not an admin", requestOrigin);
   }
 
   // Validate and cap pagination parameters
@@ -599,16 +543,12 @@ async function handleGetAuditLog(
     .range(cappedOffset, cappedOffset + cappedLimit - 1);
 
   if (error) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: error.message }),
-    };
+    return errorResponse(500, error.message, requestOrigin);
   }
 
   return {
     statusCode: 200,
-    headers: corsHeaders,
+    headers: getSecurityHeaders(requestOrigin),
     body: JSON.stringify({
       success: true,
       auditLog: auditLog || [],

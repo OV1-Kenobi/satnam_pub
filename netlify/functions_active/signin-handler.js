@@ -5,6 +5,24 @@
 
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    createRateLimitIdentifier,
+    getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+    createAuthErrorResponse,
+    createRateLimitErrorResponse,
+    createValidationErrorResponse,
+    generateRequestId,
+    logError,
+} from "./utils/error-handler.ts";
+import {
+    errorResponse,
+    jsonResponse,
+    preflightResponse,
+} from "./utils/security-headers.ts";
 
 // Import Netlify Functions utilities
 const pbkdf2 = promisify(crypto.pbkdf2);
@@ -82,29 +100,41 @@ async function createSecureJWT(payload) {
   }
 }
 
-const handler = async (event, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Max-Age': '86400'
-  };
+const handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers);
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 Sign-in handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
 
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers: corsHeaders,
-      body: ''
-    };
+    return preflightResponse(requestOrigin);
   }
 
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: 'Method not allowed' })
-    };
+    return errorResponse(405, 'Method not allowed', requestId, requestOrigin);
+  }
+
+  // Database-backed rate limiting
+  const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitKey,
+    RATE_LIMITS.AUTH_SIGNIN
+  );
+
+  if (!rateLimitAllowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "signin-handler",
+      method: event.httpMethod,
+    });
+    return createRateLimitErrorResponse(requestId, requestOrigin);
   }
 
   try {
@@ -115,14 +145,11 @@ const handler = async (event, context) => {
 
     // Validate input
     if (!nip05 || !password) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'NIP-05 and password are required'
-        })
-      };
+      return createValidationErrorResponse(
+        'NIP-05 and password are required',
+        requestId,
+        requestOrigin
+      );
     }
 
     // Generate DUID for user lookup
@@ -157,15 +184,7 @@ const handler = async (event, context) => {
 
     if (userError || !user) {
       console.log('❌ User not found for NIP-05 identifier');
-      return {
-        statusCode: 404,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'User not found',
-          registerEndpoint: '/identity-forge'
-        })
-      };
+      return errorResponse(404, 'User not found', requestId, requestOrigin);
     }
 
     // Verify password
@@ -177,14 +196,11 @@ const handler = async (event, context) => {
 
     if (!isValidPassword) {
       console.log('❌ Invalid password for user:', nip05);
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Invalid credentials'
-        })
-      };
+      return createAuthErrorResponse(
+        'Invalid credentials',
+        requestId,
+        requestOrigin
+      );
     }
 
     // Create secure JWT token with UNIFIED FORMAT compatible with frontend SecureTokenManager
@@ -212,39 +228,28 @@ const handler = async (event, context) => {
 
     console.log('✅ Sign-in successful:', { username: user.username, role: user.role });
 
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: true,
-        message: 'Authentication successful',
-        user: {
-          id: user.id,
-          username: user.username,
-          nip05: user.nip05,
-          role: user.role
-        },
-        session: {
-          token,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-        }
-      })
-    };
+    return jsonResponse(200, {
+      success: true,
+      message: 'Authentication successful',
+      user: {
+        id: user.id,
+        username: user.username,
+        nip05: user.nip05,
+        role: user.role
+      },
+      session: {
+        token,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      }
+    }, requestOrigin);
 
   } catch (error) {
-    console.error('❌ Sign-in error:', error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: 'Authentication service temporarily unavailable',
-        debug: {
-          message: error.message,
-          timestamp: new Date().toISOString()
-        }
-      })
-    };
+    logError(error, {
+      requestId,
+      endpoint: "signin-handler",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, 'Authentication service temporarily unavailable', requestId, requestOrigin);
   }
 }
 

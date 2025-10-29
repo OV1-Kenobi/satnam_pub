@@ -4,65 +4,106 @@
 
 import { SecureSessionManager } from '../functions/security/session-manager.js';
 import { performNwcOperationOverNostr } from '../functions/utils/nwc-client.js';
+import { RATE_LIMITS, checkRateLimit, createRateLimitIdentifier, getClientIP } from './utils/enhanced-rate-limiter.ts';
+import { createAuthErrorResponse, createRateLimitErrorResponse, createValidationErrorResponse, generateRequestId, logError } from './utils/error-handler.ts';
+import { errorResponse, getSecurityHeaders, preflightResponse } from './utils/security-headers.ts';
 
+// Security utilities (Phase 2 hardening)
 
-export const handler = async (event, context) => {
-  const cors = buildCorsHeaders(event);
+export const handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // CORS preflight
+  console.log('🚀 Individual wallet handler started:', {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if ((event.httpMethod || 'GET').toUpperCase() === 'OPTIONS') {
-    return { statusCode: 204, headers: cors, body: '' };
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.WALLET_OPERATIONS
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error('Rate limit exceeded'), {
+        requestId,
+        endpoint: 'individual-wallet-unified',
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     const method = (event.httpMethod || 'GET').toUpperCase();
     const path = (event.path || '').toLowerCase();
 
     // Route resolution for individual wallet operations (inline handlers)
     const target = resolveIndividualWalletRoute(path, method);
     if (!target) {
-      return {
-        statusCode: 404,
-        headers: cors,
-        body: JSON.stringify({ success: false, error: 'Individual wallet endpoint not found', path, method })
-      };
+      return errorResponse(
+        404,
+        'Individual wallet endpoint not found',
+        requestId,
+        requestOrigin
+      );
     }
 
     let response;
     switch (target.route) {
       case 'lightning':
-        response = await handleLightningWalletInline(event, cors);
+        response = await handleLightningWalletInline(event, requestId, requestOrigin);
         break;
       case 'cashu':
-        response = await handleCashuWalletInline(event, cors);
+        response = await handleCashuWalletInline(event, requestId, requestOrigin);
         break;
       case 'unified':
-        response = await handleUnifiedWalletInline(event, cors);
+        response = await handleUnifiedWalletInline(event, requestId, requestOrigin);
         break;
       case 'nwc':
-        response = await handleNwcConnectionsInline(event, cors);
+        response = await handleNwcConnectionsInline(event, requestId, requestOrigin);
         break;
       case 'nwc_ops':
-        response = await handleNwcOperationsInline(event, cors);
+        response = await handleNwcOperationsInline(event, requestId, requestOrigin);
         break;
       default:
-        return { statusCode: 404, headers: cors, body: JSON.stringify({ success: false, error: 'Route not handled' }) };
+        return errorResponse(
+          404,
+          'Route not handled',
+          requestId,
+          requestOrigin
+        );
     }
 
     // Ensure CORS headers are present in response
+    const securityHeaders = getSecurityHeaders(requestOrigin);
     if (response && typeof response === 'object') {
-      return { ...response, headers: { ...(response.headers || {}), ...cors } };
+      return { ...response, headers: { ...(response.headers || {}), ...securityHeaders } };
     }
 
-    return { statusCode: 200, headers: cors, body: typeof response === 'string' ? response : JSON.stringify(response) };
+    return { statusCode: 200, headers: securityHeaders, body: typeof response === 'string' ? response : JSON.stringify(response) };
 
   } catch (error) {
-    console.error('Unified individual wallet handler error:', error);
-    return {
-      statusCode: 500,
-      headers: cors,
-      body: JSON.stringify({ success: false, error: 'Individual wallet service error' })
-    };
+    logError(error, {
+      requestId,
+      endpoint: 'individual-wallet-unified',
+      method: event.httpMethod,
+    });
+    return errorResponse(
+      500,
+      'Individual wallet service temporarily unavailable',
+      requestId,
+      requestOrigin
+    );
   }
 };
 
@@ -104,22 +145,30 @@ function resolveIndividualWalletRoute(path, method) {
 }
 
 // Inline: Lightning wallet handler (GET)
-async function handleLightningWalletInline(event, corsHeaders) {
+async function handleLightningWalletInline(event, requestId, requestOrigin) {
   if ((event.httpMethod || 'GET').toUpperCase() !== 'GET') {
-    return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+    return errorResponse(405, 'Method not allowed', requestId, requestOrigin);
   }
 
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
   const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
   const isAuthed = !!(session && (session.isAuthenticated === true || session?.userId || session?.npub));
   if (!isAuthed) {
-    return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication required' }) };
+    return createAuthErrorResponse(
+      'Authentication required',
+      requestId,
+      requestOrigin
+    );
   }
 
   const qs = event.queryStringParameters || {};
   const rawMemberId = typeof qs.memberId === 'string' ? qs.memberId : '';
   if (!rawMemberId) {
-    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Member ID is required' }) };
+    return createValidationErrorResponse(
+      'Member ID is required',
+      requestId,
+      requestOrigin
+    );
   }
   const memberId = rawMemberId === 'current-user' ? (session?.userId || session?.npub || 'current-user') : rawMemberId;
   const role = (qs.userRole || session?.federationRole || session?.role || 'private');
@@ -159,26 +208,34 @@ async function handleLightningWalletInline(event, corsHeaders) {
     meta: { timestamp: new Date().toISOString(), demo: true }
   };
 
-  return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(body) };
+  return { statusCode: 200, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify(body) };
 }
 
 // Inline: Cashu wallet handler (GET)
-async function handleCashuWalletInline(event, corsHeaders) {
+async function handleCashuWalletInline(event, requestId, requestOrigin) {
   if ((event.httpMethod || 'GET').toUpperCase() !== 'GET') {
-    return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+    return errorResponse(405, 'Method not allowed', requestId, requestOrigin);
   }
 
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
   const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
   const isAuthed = !!(session && (session.isAuthenticated === true || session?.userId || session?.npub));
   if (!isAuthed) {
-    return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication required' }) };
+    return createAuthErrorResponse(
+      'Authentication required',
+      requestId,
+      requestOrigin
+    );
   }
 
   const qs = event.queryStringParameters || {};
   const rawMemberId = typeof qs.memberId === 'string' ? qs.memberId : '';
   if (!rawMemberId) {
-    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Member ID is required' }) };
+    return createValidationErrorResponse(
+      'Member ID is required',
+      requestId,
+      requestOrigin
+    );
   }
   const memberId = rawMemberId === 'current-user' ? (session?.userId || session?.npub || 'current-user') : rawMemberId;
   const role = (qs.userRole || session?.federationRole || session?.role || 'private');
@@ -206,38 +263,46 @@ async function handleCashuWalletInline(event, corsHeaders) {
     meta: { timestamp: new Date().toISOString(), mockImplementation: true, mintUrl: process.env.CASHU_MINT_URL || 'https://mint.satnam.pub' }
   };
 
-  return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(body) };
+  return { statusCode: 200, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify(body) };
 }
 
 // Inline: Unified wallet (GET/POST)
-async function handleUnifiedWalletInline(event, corsHeaders) {
+async function handleUnifiedWalletInline(event, requestId, requestOrigin) {
   const method = (event.httpMethod || 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'POST') {
-    return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET, POST' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+    return errorResponse(405, 'Method not allowed', requestId, requestOrigin);
   }
 
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
   const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
   const isAuthed = !!(session && (session.isAuthenticated === true || session?.userId || session?.npub));
   if (!isAuthed) {
-    return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication required' }) };
+    return createAuthErrorResponse(
+      'Authentication required',
+      requestId,
+      requestOrigin
+    );
   }
 
   const qs = event.queryStringParameters || {};
   const rawMemberId = typeof qs.memberId === 'string' ? qs.memberId : '';
   if (!rawMemberId) {
-    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Member ID is required' }) };
+    return createValidationErrorResponse(
+      'Member ID is required',
+      requestId,
+      requestOrigin
+    );
   }
   const memberId = rawMemberId === 'current-user' ? session.userId : rawMemberId;
 
   if (method === 'POST') {
     // Accept privacy settings updates (no-op mock to maintain API compatibility)
-    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, updated: true }) };
+    return { statusCode: 200, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify({ success: true, updated: true }) };
   }
 
   // For GET, assemble a concise unified summary
-  const lightning = await JSON.parse((await handleLightningWalletInline({ ...event, httpMethod: 'GET', queryStringParameters: { ...qs, memberId } }, corsHeaders)).body);
-  const cashu = await JSON.parse((await handleCashuWalletInline({ ...event, httpMethod: 'GET', queryStringParameters: { ...qs, memberId } }, corsHeaders)).body);
+  const lightning = await JSON.parse((await handleLightningWalletInline({ ...event, httpMethod: 'GET', queryStringParameters: { ...qs, memberId } }, requestId, requestOrigin)).body);
+  const cashu = await JSON.parse((await handleCashuWalletInline({ ...event, httpMethod: 'GET', queryStringParameters: { ...qs, memberId } }, requestId, requestOrigin)).body);
 
   const body = {
     memberId,
@@ -253,18 +318,22 @@ async function handleUnifiedWalletInline(event, corsHeaders) {
     privacySettings: { defaultRouting: 'lightning', lnproxyEnabled: false, guardianProtected: false }
   };
 
-  return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(body) };
+  return { statusCode: 200, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify(body) };
 }
 
 // Inline: NWC connections (GET/POST)
-async function handleNwcConnectionsInline(event, corsHeaders) {
+async function handleNwcConnectionsInline(event, requestId, requestOrigin) {
   const method = (event.httpMethod || 'GET').toUpperCase();
 
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
   const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
   const isAuthed = !!(session && (session.isAuthenticated === true || session?.userId || session?.npub));
   if (!isAuthed) {
-    return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication required' }) };
+    return createAuthErrorResponse(
+      'Authentication required',
+      requestId,
+      requestOrigin
+    );
   }
 
   // Lazy import Supabase per request (singleton factory)
@@ -292,24 +361,32 @@ async function handleNwcConnectionsInline(event, corsHeaders) {
 
     if (error) {
       console.error('Failed to fetch NWC connections:', error);
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Failed to fetch connections' }) };
+      return errorResponse(500, 'Failed to fetch connections', requestId, requestOrigin);
     }
 
-    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, connections: data || [] }) };
+    return { statusCode: 200, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify({ success: true, connections: data || [] }) };
   }
 
   if (method === 'POST') {
     // Add new NWC connection (store encrypted connection string)
     let payload = {};
     try { payload = JSON.parse(event.body || '{}'); } catch {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Invalid JSON body' }) };
+      return createValidationErrorResponse(
+        'Invalid JSON body',
+        requestId,
+        requestOrigin
+      );
     }
 
     const { connectionString = '', walletName = 'NWC Wallet', provider = 'other', userRole = 'adult', setPrimary = true } = payload || {};
 
     // Basic validation of NWC connection string
     if (typeof connectionString !== 'string' || !connectionString.startsWith('nostr+walletconnect://')) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Invalid NWC connection string' }) };
+      return createValidationErrorResponse(
+        'Invalid NWC connection string',
+        requestId,
+        requestOrigin
+      );
     }
 
     // Parse pubkey, relay
@@ -320,7 +397,11 @@ async function handleNwcConnectionsInline(event, corsHeaders) {
       relay = String(u.searchParams.get('relay') || '');
     } catch {}
     if (!pubkey || pubkey.length !== 64 || !relay.startsWith('ws')) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Malformed NWC URL' }) };
+      return createValidationErrorResponse(
+        'Malformed NWC URL',
+        requestId,
+        requestOrigin
+      );
     }
 
     // Generate connection_id (privacy-preserving)
@@ -357,7 +438,7 @@ async function handleNwcConnectionsInline(event, corsHeaders) {
     });
 
     if (rpcError) {
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Failed to save connection' }) };
+      return errorResponse(500, 'Failed to save connection', requestId, requestOrigin);
     }
 
     // Optionally set as primary
@@ -367,30 +448,38 @@ async function handleNwcConnectionsInline(event, corsHeaders) {
       } catch {}
     }
 
-    return { statusCode: 201, headers: corsHeaders, body: JSON.stringify({ success: true, data: { connection_id: connectionId, wallet_name: walletName, wallet_provider: provider, pubkey_preview: pubkeyPreview, relay_domain: relayDomain } }) };
+    return { statusCode: 201, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify({ success: true, data: { connection_id: connectionId, wallet_name: walletName, wallet_provider: provider, pubkey_preview: pubkeyPreview, relay_domain: relayDomain } }) };
   }
 
-  return { statusCode: 405, headers: { ...corsHeaders, Allow: 'GET, POST' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+  return errorResponse(405, 'Method not allowed', requestId, requestOrigin);
 }
 
 
 // Inline: NWC wallet operations (POST)
-async function handleNwcOperationsInline(event, corsHeaders) {
+async function handleNwcOperationsInline(event, requestId, requestOrigin) {
   const method = (event.httpMethod || 'GET').toUpperCase();
   if (method !== 'POST') {
-    return { statusCode: 405, headers: { ...corsHeaders, Allow: 'POST' }, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
+    return errorResponse(405, 'Method not allowed', requestId, requestOrigin);
   }
 
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
   const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
   const isAuthed = !!(session && (session.isAuthenticated === true || session?.userId || session?.npub));
   if (!isAuthed) {
-    return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Authentication required' }) };
+    return createAuthErrorResponse(
+      'Authentication required',
+      requestId,
+      requestOrigin
+    );
   }
 
   let payload = {};
   try { payload = JSON.parse(event.body || '{}'); } catch {
-    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Invalid JSON body' }) };
+    return createValidationErrorResponse(
+      'Invalid JSON body',
+      requestId,
+      requestOrigin
+    );
   }
 
   const op = typeof payload.method === 'string' ? payload.method : '';
@@ -431,12 +520,20 @@ async function handleNwcOperationsInline(event, corsHeaders) {
 
   try {
     if (!op) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'NWC method is required' }) };
+      return createValidationErrorResponse(
+        'NWC method is required',
+        requestId,
+        requestOrigin
+      );
     }
 
     // Ensure we have connection details
     if (!connectionInfo.pubkey || !connectionInfo.relay || !connectionInfo.secret) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Missing NWC connection details' }) };
+      return createValidationErrorResponse(
+        'Missing NWC connection details',
+        requestId,
+        requestOrigin
+      );
     }
 
     const resultRaw = await performNwcOperationOverNostr({
@@ -448,30 +545,9 @@ async function handleNwcOperationsInline(event, corsHeaders) {
 
     const result = (resultRaw && typeof resultRaw === 'object') ? { ...resultRaw, relay: connectionInfo.relay } : resultRaw;
 
-    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
+    return { statusCode: 200, headers: getSecurityHeaders(requestOrigin), body: JSON.stringify({ success: true, data: { method: op, connectionId, result } }) };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'NWC operation failed';
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: message }) };
+    return errorResponse(500, message, requestId, requestOrigin);
   }
-}
-
-/**
- * Build CORS headers with environment-aware configuration
- * @param {Object} event
- * @returns {Object}
- */
-function buildCorsHeaders(event) {
-  const origin = event.headers?.origin || event.headers?.Origin;
-  const isProd = process.env.NODE_ENV === 'production';
-  const allowedOrigin = isProd ? (process.env.FRONTEND_URL || 'https://www.satnam.pub') : (origin || '*');
-  const allowCredentials = allowedOrigin !== '*';
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Credentials': String(allowCredentials),
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
-    'Content-Type': 'application/json'
-  };
 }

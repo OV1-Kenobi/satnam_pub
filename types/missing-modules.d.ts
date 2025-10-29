@@ -5,6 +5,17 @@
 
 // Fix @noble/curves missing exports
 declare module "@noble/curves/secp256k1" {
+  export interface WeierstrassPoint {
+    add(other: WeierstrassPoint): WeierstrassPoint;
+    toHex(compressed?: boolean): string;
+    toRawBytes(compressed?: boolean): Uint8Array;
+  }
+
+  export interface WeierstrassPointConstructor {
+    fromHex(hex: string | Uint8Array): WeierstrassPoint;
+    BASE: WeierstrassPoint;
+  }
+
   export const secp256k1: {
     getPublicKey(
       privateKey: Uint8Array | string,
@@ -12,6 +23,10 @@ declare module "@noble/curves/secp256k1" {
     ): Uint8Array;
     sign(msgHash: Uint8Array, privateKey: Uint8Array): any;
     verify(signature: any, msgHash: Uint8Array, publicKey: Uint8Array): boolean;
+    Point: WeierstrassPointConstructor;
+    CURVE: {
+      n: bigint;
+    };
     utils: {
       randomPrivateKey(): Uint8Array;
     };

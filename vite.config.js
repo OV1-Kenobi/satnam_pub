@@ -232,10 +232,10 @@ export default defineConfig({
               return 'validation-vendor';
             }
 
-            // Sentry error tracking
-            if (id.includes('@sentry/')) {
-              return 'sentry-vendor';
-            }
+            // Sentry error tracking - Let Vite handle automatically to prevent empty chunks
+            // Sentry modules are small and conditionally loaded, so manual chunking creates
+            // empty chunks in development builds. Vite will bundle them efficiently.
+            // REMOVED: Manual sentry-vendor chunk to fix "Generated an empty chunk" warning
 
             // WebSocket and real-time libraries
             if (id.includes('websocket') || id.includes('ws')) {

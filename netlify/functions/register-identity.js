@@ -410,7 +410,7 @@ export const handler = async (event) => {
           hashed_npub: userDataForHashing.npub ? hashUserDataNode(userDataForHashing.npub, user_salt) : null,
           hashed_nip05: userDataForHashing.nip05 ? hashUserDataNode(userDataForHashing.nip05, user_salt) : null,
           hashed_lightning_address: userDataForHashing.lightningAddress ? hashUserDataNode(userDataForHashing.lightningAddress, user_salt) : null,
-          hashed_encrypted_nsec: userDataForHashing.encryptedNsec ? hashUserDataNode(userDataForHashing.encryptedNsec, user_salt) : null,
+          // DEPRECATED: hashed_encrypted_nsec removed - use encrypted_nsec instead
         };
       } catch (hashingError) {
         safeError('HASHING_FAIL', { msg: hashingError instanceof Error ? hashingError.message : String(hashingError) });
@@ -422,7 +422,6 @@ export const handler = async (event) => {
         hasHashedUsername: !!hashedUserData.hashed_username,
         hasHashedNpub: !!hashedUserData.hashed_npub,
         hasHashedNip05: !!hashedUserData.hashed_nip05,
-        hasHashedEncryptedNsec: !!hashedUserData.hashed_encrypted_nsec,
         allHashedKeys: Object.keys(hashedUserData)
       });
 
@@ -448,7 +447,7 @@ export const handler = async (event) => {
         hashed_npub: computeHashedNpub(userDataForHashing.npub), // Server-side HMAC
         hashed_nip05: hashedUserData.hashed_nip05, // ENCRYPTED: NIP-05 identifier
         hashed_lightning_address: hashedUserData.hashed_lightning_address, // ENCRYPTED: Lightning address
-        hashed_encrypted_nsec: hashedUserData.hashed_encrypted_nsec, // ENCRYPTED: Encrypted private key
+        // DEPRECATED: hashed_encrypted_nsec removed - use encrypted_nsec instead
 
         // Password-based signin compatibility
         password_hash: password_hash,
@@ -669,7 +668,7 @@ export const handler = async (event) => {
     // 5. Verify privacy compliance before response
     currentPhase = 'BEFORE_RESPONSE';
     console.log('🔍 Verifying privacy compliance...');
-    if (!hashedUserData.user_salt || !hashedUserData.hashed_npub || !hashedUserData.hashed_encrypted_nsec) {
+    if (!hashedUserData.user_salt || !hashedUserData.hashed_npub) {
       console.error('❌ PRIVACY VIOLATION: Critical data not properly hashed');
       throw new Error('Privacy compliance verification failed - missing hashed data');
     }

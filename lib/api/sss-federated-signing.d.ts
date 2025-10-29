@@ -78,7 +78,15 @@ export class SSSFederatedSigningAPI {
   ): Promise<SSSFederatedEvent[]>;
 }
 
-// Module declaration for the .js file import
+// Export types for direct import
+export {
+  GuardianSignature,
+  SSSFederatedEvent,
+  SSSFederatedSigningAPI,
+  SSSShare,
+};
+
+// Module declaration for .js file imports
 declare module "../api/sss-federated-signing.js" {
   export {
     GuardianSignature,

@@ -2,11 +2,11 @@
  * Netlify Function: /api/webauthn/authenticate
  * Purpose: WebAuthn authentication flow (verify credential)
  * Methods: POST
- * 
+ *
  * Actions:
  * - start: Generate challenge for authentication
  * - complete: Verify assertion and validate counter (cloning detection)
- * 
+ *
  * Features:
  * - Counter validation for cloning detection
  * - Support for multiple credentials per user
@@ -15,17 +15,27 @@
 
 import { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
-import { allowRequest } from "./utils/rate-limiter.js";
-import { getEnvVar } from "./utils/env.js";
 import crypto from "node:crypto";
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import { getEnvVar } from "./utils/env.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
 
-// CORS headers
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Content-Type": "application/json",
-};
+// Security utilities (Phase 2 hardening)
 
 // Initialize Supabase client
 const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
@@ -45,67 +55,96 @@ interface WebAuthnAuthRequest {
 }
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    (event.headers || {}) as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 WebAuthn authenticate handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   // Handle CORS preflight
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders };
+  if ((event.httpMethod || "GET").toUpperCase() === "OPTIONS") {
+    return preflightResponse(requestOrigin);
   }
 
   try {
-    // Rate limiting
-    const clientIp =
-      event.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
-    if (!allowRequest(clientIp, 30, 60000)) {
-      return {
-        statusCode: 429,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "Rate limit exceeded" }),
-      };
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.AUTH_SIGNIN
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "webauthn-authenticate",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     const body: WebAuthnAuthRequest = JSON.parse(event.body || "{}");
 
+    if (!body.action) {
+      return createValidationErrorResponse(
+        "action required",
+        requestId,
+        requestOrigin
+      );
+    }
+
     if (body.action === "start") {
-      return await handleAuthenticationStart(body.nip05 || "", corsHeaders);
+      return await handleAuthenticationStart(
+        body.nip05 || "",
+        requestId,
+        requestOrigin
+      );
     } else if (body.action === "complete") {
       return await handleAuthenticationComplete(
         body.nip05 || "",
         body.assertionObject || "",
         body.clientDataJSON || "",
-        clientIp,
+        clientIP,
         event.headers["user-agent"] || "unknown",
-        corsHeaders
+        requestId,
+        requestOrigin
       );
     }
 
-    return {
-      statusCode: 400,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: "Invalid action" }),
-    };
+    return createValidationErrorResponse(
+      "Invalid action",
+      requestId,
+      requestOrigin
+    );
   } catch (error) {
-    console.error("WebAuthn authenticate error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Internal server error",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "webauthn-authenticate",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
 async function handleAuthenticationStart(
   nip05: string,
-  corsHeaders: any
+  requestId: string,
+  requestOrigin: string | undefined
 ): Promise<any> {
   try {
     if (!nip05) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "nip05 required" }),
-      };
+      return createValidationErrorResponse(
+        "nip05 required",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Get user by NIP-05
@@ -116,11 +155,7 @@ async function handleAuthenticationStart(
       .single();
 
     if (userError || !user) {
-      return {
-        statusCode: 404,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "User not found" }),
-      };
+      return errorResponse(404, "User not found", requestOrigin);
     }
 
     // Get user's active WebAuthn credentials
@@ -131,15 +166,16 @@ async function handleAuthenticationStart(
       .eq("is_active", true);
 
     if (credError) {
-      console.error("Credential retrieval error:", credError);
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to retrieve credentials",
-        }),
-      };
+      logError(credError, {
+        requestId,
+        endpoint: "webauthn-authenticate",
+        action: "start",
+      });
+      return errorResponse(
+        500,
+        "Failed to retrieve credentials",
+        requestOrigin
+      );
     }
 
     // Generate challenge
@@ -157,20 +193,17 @@ async function handleAuthenticationStart(
       });
 
     if (challengeError) {
-      console.error("Challenge storage error:", challengeError);
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to generate challenge",
-        }),
-      };
+      logError(challengeError, {
+        requestId,
+        endpoint: "webauthn-authenticate",
+        action: "start",
+      });
+      return errorResponse(500, "Failed to generate challenge", requestOrigin);
     }
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: getSecurityHeaders(requestOrigin),
       body: JSON.stringify({
         success: true,
         challenge: challengeBase64,
@@ -185,15 +218,12 @@ async function handleAuthenticationStart(
       }),
     };
   } catch (error) {
-    console.error("Authentication start error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to start authentication",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "webauthn-authenticate",
+      action: "start",
+    });
+    return errorResponse(500, "Failed to start authentication", requestOrigin);
   }
 }
 
@@ -203,18 +233,16 @@ async function handleAuthenticationComplete(
   clientDataJSON: string,
   ipAddress: string,
   userAgent: string,
-  corsHeaders: any
+  requestId: string,
+  requestOrigin: string | undefined
 ): Promise<any> {
   try {
     if (!nip05 || !assertionObject || !clientDataJSON) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Missing authentication data",
-        }),
-      };
+      return createValidationErrorResponse(
+        "Missing authentication data",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Get user
@@ -225,11 +253,7 @@ async function handleAuthenticationComplete(
       .single();
 
     if (userError || !user) {
-      return {
-        statusCode: 404,
-        headers: corsHeaders,
-        body: JSON.stringify({ success: false, error: "User not found" }),
-      };
+      return errorResponse(404, "User not found", requestOrigin);
     }
 
     // In production, verify assertion using @simplewebauthn/server
@@ -248,14 +272,11 @@ async function handleAuthenticationComplete(
       .single();
 
     if (credError || !credential) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Credential not found or inactive",
-        }),
-      };
+      return errorResponse(
+        401,
+        "Credential not found or inactive",
+        requestOrigin
+      );
     }
 
     // Simulate counter validation (in production, extract from assertion)
@@ -279,14 +300,11 @@ async function handleAuthenticationComplete(
         },
       });
 
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Cloning detected - credential disabled",
-        }),
-      };
+      return errorResponse(
+        401,
+        "Cloning detected - credential disabled",
+        requestOrigin
+      );
     }
 
     // Update counter and last used timestamp
@@ -299,15 +317,12 @@ async function handleAuthenticationComplete(
       .eq("id", credential.id);
 
     if (updateError) {
-      console.error("Counter update error:", updateError);
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to update credential",
-        }),
-      };
+      logError(updateError, {
+        requestId,
+        endpoint: "webauthn-authenticate",
+        action: "complete",
+      });
+      return errorResponse(500, "Failed to update credential", requestOrigin);
     }
 
     // Log successful authentication
@@ -327,7 +342,7 @@ async function handleAuthenticationComplete(
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: getSecurityHeaders(requestOrigin),
       body: JSON.stringify({
         success: true,
         message: "Authentication successful",
@@ -339,15 +354,15 @@ async function handleAuthenticationComplete(
       }),
     };
   } catch (error) {
-    console.error("Authentication complete error:", error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to complete authentication",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "webauthn-authenticate",
+      action: "complete",
+    });
+    return errorResponse(
+      500,
+      "Failed to complete authentication",
+      requestOrigin
+    );
   }
 }
-

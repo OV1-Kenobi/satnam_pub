@@ -2,31 +2,58 @@
 // Consolidates family-cashu-wallet, family-lightning-wallet, and family-fedimint-wallet
 // Uses dynamic imports to load actual implementations only when called to reduce build memory usage
 
-export const handler = async (event, context) => {
-  const cors = buildCorsHeaders(event);
+import { RATE_LIMITS, checkRateLimit, createRateLimitIdentifier, getClientIP } from './utils/enhanced-rate-limiter.ts';
+import { createRateLimitErrorResponse, generateRequestId, logError } from './utils/error-handler.ts';
+import { errorResponse, getSecurityHeaders, preflightResponse } from './utils/security-headers.ts';
 
-  // CORS preflight
+// Security utilities (Phase 2 hardening)
+
+export const handler = async (event, context) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log('🚀 Family wallet handler started:', {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if ((event.httpMethod || 'GET').toUpperCase() === 'OPTIONS') {
-    return { statusCode: 204, headers: cors, body: '' };
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.WALLET_OPERATIONS
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error('Rate limit exceeded'), {
+        requestId,
+        endpoint: 'family-wallet-unified',
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     const method = (event.httpMethod || 'GET').toUpperCase();
     const path = event.path || '';
 
     // Route resolution for family wallet operations
     const target = resolveFamilyWalletRoute(path, method);
     if (!target) {
-      return { 
-        statusCode: 404, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Family wallet endpoint not found',
-          path: path,
-          method: method
-        }) 
-      };
+      return errorResponse(
+        404,
+        'Family wallet endpoint not found',
+        requestId,
+        requestOrigin
+      );
     }
 
     // MEMORY OPTIMIZATION: Use runtime dynamic import to prevent bundling heavy modules
@@ -36,59 +63,56 @@ export const handler = async (event, context) => {
       targetHandler = mod.handler || mod.default;
     } catch (importError) {
       console.error(`Failed to import family wallet module: ${target.module}`, importError);
-      return { 
-        statusCode: 500, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Family wallet service temporarily unavailable',
-          walletType: target.walletType
-        }) 
-      };
+      return errorResponse(
+        500,
+        'Family wallet service temporarily unavailable',
+        requestId,
+        requestOrigin
+      );
     }
 
     if (typeof targetHandler !== 'function') {
-      return { 
-        statusCode: 500, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Family wallet handler not available',
-          walletType: target.walletType
-        }) 
-      };
+      return errorResponse(
+        500,
+        'Family wallet handler not available',
+        requestId,
+        requestOrigin
+      );
     }
 
     // Delegate to target handler with context preservation
     const response = await targetHandler(event, context);
-    
+
     // Ensure CORS headers are present in response
+    const securityHeaders = getSecurityHeaders(requestOrigin);
     if (response && typeof response === 'object') {
-      return { 
-        ...response, 
-        headers: { 
-          ...(response.headers || {}), 
-          ...cors 
-        } 
+      return {
+        ...response,
+        headers: {
+          ...(response.headers || {}),
+          ...securityHeaders
+        }
       };
     }
 
-    return { 
-      statusCode: 200, 
-      headers: cors, 
-      body: typeof response === 'string' ? response : JSON.stringify(response) 
+    return {
+      statusCode: 200,
+      headers: securityHeaders,
+      body: typeof response === 'string' ? response : JSON.stringify(response)
     };
 
   } catch (error) {
-    console.error('Unified family wallet handler error:', error);
-    return { 
-      statusCode: 500, 
-      headers: cors, 
-      body: JSON.stringify({ 
-        success: false, 
-        error: 'Family wallet service error' 
-      }) 
-    };
+    logError(error, {
+      requestId,
+      endpoint: 'family-wallet-unified',
+      method: event.httpMethod,
+    });
+    return errorResponse(
+      500,
+      'Family wallet service error',
+      requestId,
+      requestOrigin
+    );
   }
 };
 
@@ -129,32 +153,4 @@ function resolveFamilyWalletRoute(path, method) {
 
   // No matching route found
   return null;
-}
-
-/**
- * Build CORS headers with environment-aware configuration
- * Uses established process.env pattern with fallback to primary production origin
- * @param {Object} event - Netlify function event
- * @returns {Object} CORS headers
- */
-function buildCorsHeaders(event) {
-  const origin = event.headers?.origin || event.headers?.Origin;
-  const isProd = process.env.NODE_ENV === 'production';
-  
-  // Use FRONTEND_URL with fallback to primary production origin per user preferences
-  const allowedOrigin = isProd 
-    ? (process.env.FRONTEND_URL || 'https://www.satnam.pub') 
-    : (origin || '*');
-  
-  const allowCredentials = allowedOrigin !== '*';
-
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Credentials': String(allowCredentials),
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
-    'Content-Type': 'application/json',
-  };
 }

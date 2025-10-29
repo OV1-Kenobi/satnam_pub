@@ -23,7 +23,6 @@ import {
   getRequestClient,
   supabaseAdmin,
 } from "./supabase.js";
-import { allowRequest } from "./utils/rate-limiter.js";
 import {
   getInvoiceKeyWithSafety,
   logDecryptAudit,
@@ -32,6 +31,25 @@ import {
 
 import { SecureSessionManager } from "./security/session-manager.js";
 import { resolvePlatformLightningDomainServer } from "./utils/domain.server.js";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "../functions_active/utils/enhanced-rate-limiter.ts";
+import {
+  createAuthErrorResponse,
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "../functions_active/utils/error-handler.ts";
+import {
+  errorResponse,
+  preflightResponse,
+} from "../functions_active/utils/security-headers.ts";
 
 const json = (statusCode: number, body: any) => ({
   statusCode,
@@ -281,24 +299,46 @@ async function resolvePerUserWalletKey(
 }
 
 export const handler = async (event: any) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 LNbits proxy handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
+  if (event.httpMethod === "OPTIONS") {
+    return preflightResponse(requestOrigin);
+  }
+
   try {
-    // Rate limit baseline
-    const xfwd =
-      event.headers?.["x-forwarded-for"] ||
-      event.headers?.["X-Forwarded-For"] ||
-      "";
-    const ip =
-      (Array.isArray(xfwd) ? xfwd[0] : xfwd).split(",")[0]?.trim() ||
-      event.headers?.["x-real-ip"] ||
-      "unknown";
-    if (!allowRequest(ip, 10, 60_000))
-      return json(429, { success: false, error: "Too Many Requests" });
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.WALLET_OPERATIONS
+    );
+
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "lnbits-proxy",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
 
     if (!FEATURE_ENABLED) {
-      return json(503, {
-        success: false,
-        error: "LNbits integration disabled",
-      });
+      return errorResponse(
+        503,
+        "LNbits integration disabled",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Support GET for public LNURL actions and POST for others
@@ -325,17 +365,21 @@ export const handler = async (event: any) => {
 
     // Method gate
     if (!isGet && event.httpMethod !== "POST") {
-      return json(405, { success: false, error: "Method Not Allowed" });
+      return errorResponse(405, "Method Not Allowed", requestId, requestOrigin);
     }
 
     if (!action || !(action in ACTIONS)) {
-      return json(400, { success: false, error: "Invalid or missing action" });
+      return createValidationErrorResponse(
+        "Invalid or missing action",
+        requestId,
+        requestOrigin
+      );
     }
 
     const scope = ACTIONS[action].scope;
 
     if (isGet && scope !== "public") {
-      return json(405, { success: false, error: "Method Not Allowed" });
+      return errorResponse(405, "Method Not Allowed", requestId, requestOrigin);
     }
 
     // Build payload
@@ -360,7 +404,11 @@ export const handler = async (event: any) => {
             typeof payload?.username === "string" ? payload.username : "";
           const username = usernameRaw.trim().toLowerCase();
           if (!username || !/^[a-z0-9._-]+$/i.test(username)) {
-            return json(400, { success: false, error: "Invalid username" });
+            return createValidationErrorResponse(
+              "Invalid username",
+              requestId,
+              requestOrigin
+            );
           }
           try {
             const { data, error } = await adminSupabase.rpc(
@@ -373,7 +421,12 @@ export const handler = async (event: any) => {
                 error: error.message || "RPC error",
               });
             if (!data)
-              return json(404, { success: false, error: "User not found" });
+              return errorResponse(
+                404,
+                "User not found",
+                requestId,
+                requestOrigin
+              );
 
             const domain = resolvePlatformLightningDomainServer();
             const origin =
@@ -416,9 +469,17 @@ export const handler = async (event: any) => {
           const comment =
             typeof payload?.comment === "string" ? payload.comment : undefined;
           if (!username || !/^[a-z0-9._-]+$/i.test(username))
-            return json(400, { success: false, error: "Invalid username" });
+            return createValidationErrorResponse(
+              "Invalid username",
+              requestId,
+              requestOrigin
+            );
           if (!Number.isFinite(amount) || amount <= 0)
-            return json(400, { success: false, error: "Invalid amount" });
+            return createValidationErrorResponse(
+              "Invalid amount",
+              requestId,
+              requestOrigin
+            );
 
           // Load external LN address for this username
           const { data, error } = await adminSupabase.rpc(
@@ -491,15 +552,24 @@ export const handler = async (event: any) => {
           const comment =
             typeof payload?.comment === "string" ? payload.comment : undefined;
           if (!username || !/^[a-z0-9._-]+$/i.test(username))
-            return json(400, { success: false, error: "Invalid username" });
+            return createValidationErrorResponse(
+              "Invalid username",
+              requestId,
+              requestOrigin
+            );
           if (!Number.isFinite(amountMsats) || amountMsats <= 0)
-            return json(400, { success: false, error: "Invalid amount" });
+            return createValidationErrorResponse(
+              "Invalid amount",
+              requestId,
+              requestOrigin
+            );
           // Reject fractional millisat amounts to remain LNURL-compliant
           if (!Number.isInteger(amountMsats) || amountMsats % 1000 !== 0)
-            return json(400, {
-              success: false,
-              error: "Amount must be a multiple of 1000 millisats",
-            });
+            return createValidationErrorResponse(
+              "Amount must be a multiple of 1000 millisats",
+              requestId,
+              requestOrigin
+            );
 
           const { data, error } = await adminSupabase.rpc(
             "public.get_ln_proxy_data",
@@ -511,7 +581,12 @@ export const handler = async (event: any) => {
               error: error.message || "RPC error",
             });
           if (!data)
-            return json(404, { success: false, error: "User not found" });
+            return errorResponse(
+              404,
+              "User not found",
+              requestId,
+              requestOrigin
+            );
 
           const walletId: string = String(
             data.lnbits_wallet_id || data.wallet_id || ""
@@ -524,16 +599,16 @@ export const handler = async (event: any) => {
               error: "Wallet not configured",
             });
 
-          const requestId = newRequestId();
+          const auditRequestId = newRequestId();
           // Log start of custody event (audit + rpc)
           try {
             await logDecryptAudit({
-              request_id: requestId,
+              request_id: auditRequestId,
               user_id: userId,
               wallet_id: walletId,
               caller: "lnurlpPlatform",
               operation: "lnurlp_invoice",
-              source_ip: ip,
+              source_ip: clientIP,
             });
           } catch {}
           try {
@@ -554,7 +629,7 @@ export const handler = async (event: any) => {
               "lnurlpPlatform",
               requestId,
               userId,
-              ip
+              clientIP
             );
             invoiceKey = res.key;
             release = res.release;
@@ -592,14 +667,23 @@ export const handler = async (event: any) => {
         }
         case "webhookPayment": {
           if (event.httpMethod !== "POST")
-            return json(405, { success: false, error: "Method not allowed" });
+            return errorResponse(
+              405,
+              "Method not allowed",
+              requestId,
+              requestOrigin
+            );
 
           const raw = event.body || "";
           let payload: any;
           try {
             payload = JSON.parse(raw);
           } catch {
-            return json(400, { success: false, error: "Invalid JSON" });
+            return createValidationErrorResponse(
+              "Invalid JSON",
+              requestId,
+              requestOrigin
+            );
           }
 
           // Optional HMAC verification (depends on LNbits config)
@@ -612,7 +696,11 @@ export const handler = async (event: any) => {
               .update(raw)
               .digest("hex");
             if (!sig || sig !== mac)
-              return json(401, { success: false, error: "Invalid signature" });
+              return createAuthErrorResponse(
+                "Invalid signature",
+                requestId,
+                requestOrigin
+              );
           }
 
           const paymentHash =
@@ -627,7 +715,11 @@ export const handler = async (event: any) => {
             payload?.payment?.lnurlp;
 
           if (!paymentHash || !amountMsat || !linkId)
-            return json(400, { success: false, error: "Missing fields" });
+            return createValidationErrorResponse(
+              "Missing fields",
+              requestId,
+              requestOrigin
+            );
 
           // Map linkId -> recipient user
           const { data: row, error: walletError } = await adminSupabase
@@ -637,7 +729,12 @@ export const handler = async (event: any) => {
             .maybeSingle();
           if (walletError) {
             console.error("lnbits wallet lookup failed", walletError);
-            return json(500, { success: false, error: "Wallet lookup failed" });
+            return errorResponse(
+              500,
+              "Wallet lookup failed",
+              requestId,
+              requestOrigin
+            );
           }
 
           if (row?.user_duid) {
@@ -697,7 +794,11 @@ export const handler = async (event: any) => {
 
     if (scope === "admin") {
       if (!ctx?.user) {
-        return json(401, { success: false, error: "Unauthorized" });
+        return createAuthErrorResponse(
+          "Unauthorized",
+          requestId,
+          requestOrigin
+        );
       }
       const { data: identity, error: identityErr } = await ctx.supa
         .from("user_identities")
@@ -706,7 +807,7 @@ export const handler = async (event: any) => {
         .single();
       const role = identity?.role as string | undefined;
       if (identityErr || !role || !["guardian", "admin"].includes(role)) {
-        return json(403, { success: false, error: "Forbidden" });
+        return errorResponse(403, "Forbidden", requestId, requestOrigin);
       }
       if (!ADMIN_KEY)
         return json(500, {
@@ -740,11 +841,16 @@ export const handler = async (event: any) => {
         );
         return json(200, { success: true, data: { user, wallet } });
       }
-      return json(400, { success: false, error: "Unsupported admin action" });
+      return createValidationErrorResponse(
+        "Unsupported admin action",
+        requestId,
+        requestOrigin
+      );
     }
 
     // wallet-scoped operations require logged-in user
-    if (!ctx?.user) return json(401, { success: false, error: "Unauthorized" });
+    if (!ctx?.user)
+      return createAuthErrorResponse("Unauthorized", requestId, requestOrigin);
 
     const { supa, user } = ctx;
     let apiKey: string | undefined;
@@ -757,7 +863,11 @@ export const handler = async (event: any) => {
       case "payInvoice": {
         const invoice = String(payload?.invoice || "").trim();
         if (!invoice)
-          return json(400, { success: false, error: "Missing invoice" });
+          return createValidationErrorResponse(
+            "Missing invoice",
+            requestId,
+            requestOrigin
+          );
         // Enforce Master Context limits (offspring)
         const amountSats = parseInvoiceAmountSats(invoice);
         if (amountSats === null)
@@ -797,7 +907,11 @@ export const handler = async (event: any) => {
         if (payload?.maxFeeSats != null)
           bodyPayload.max_fee = Number(payload.maxFeeSats);
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         const data = await lnbitsFetch("/api/v1/payments", apiKey, {
           method: "POST",
           body: JSON.stringify(bodyPayload),
@@ -808,7 +922,11 @@ export const handler = async (event: any) => {
         const limit = Number(payload?.limit ?? 50);
         const offset = Number(payload?.offset ?? 0);
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         const data = await lnbitsFetch(
           `/api/v1/payments?limit=${limit}&offset=${offset}`,
           apiKey
@@ -826,7 +944,11 @@ export const handler = async (event: any) => {
           if (walletRow?.wallet_id) {
             walletId = String(walletRow.wallet_id);
           } else {
-            return json(400, { success: false, error: "No wallet found" });
+            return createValidationErrorResponse(
+              "No wallet found",
+              requestId,
+              requestOrigin
+            );
           }
         }
         const base = LNBITS_BASE.replace(/\/$/, "");
@@ -1035,7 +1157,11 @@ export const handler = async (event: any) => {
           user.id
         );
         if (!walletId)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
 
         const domain = process.env.LNBITS_LNURLP_DOMAIN || "satnam.pub";
         const description =
@@ -1150,7 +1276,11 @@ export const handler = async (event: any) => {
           user.id
         );
         if (!walletId)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
 
         // Acquire idempotency lock row
         const nowIso = new Date().toISOString();
@@ -1327,7 +1457,11 @@ export const handler = async (event: any) => {
           user.id
         );
         if (!walletId)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
 
         const label =
           typeof payload?.label === "string" && payload.label.trim()
@@ -1431,7 +1565,11 @@ export const handler = async (event: any) => {
 
       case "nwcPermissions": {
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         try {
           const data = await lnbitsFetch(
             `/nwcprovider/api/v1/permissions`,
@@ -1449,7 +1587,11 @@ export const handler = async (event: any) => {
 
       case "nwcListConnections": {
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         const include_expired = Boolean(payload?.include_expired ?? true);
         const calculate_spent_budget = Boolean(
           payload?.calculate_spent_budget ?? true
@@ -1472,10 +1614,18 @@ export const handler = async (event: any) => {
 
       case "nwcGetConnection": {
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         const pubkey = String(payload?.pubkey || "").trim();
         if (!pubkey)
-          return json(400, { success: false, error: "Missing pubkey" });
+          return createValidationErrorResponse(
+            "Missing pubkey",
+            requestId,
+            requestOrigin
+          );
         const include_expired = Boolean(payload?.include_expired ?? true);
         try {
           const data = await lnbitsFetch(
@@ -1496,16 +1646,21 @@ export const handler = async (event: any) => {
 
       case "nwcCreateConnection": {
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         // Validate inputs
         const client_pubkey = String(payload?.client_pubkey || "").trim();
         const client_secret = String(payload?.client_secret || "").trim();
         const description = String(payload?.description || "Satnam NWC").trim();
         if (!client_pubkey || !client_secret)
-          return json(400, {
-            success: false,
-            error: "Missing client pubkey/secret",
-          });
+          return createValidationErrorResponse(
+            "Missing client pubkey/secret",
+            requestId,
+            requestOrigin
+          );
         const permissions =
           Array.isArray(payload?.permissions) && payload.permissions.length
             ? payload.permissions.map((p: any) => String(p))
@@ -1554,11 +1709,13 @@ export const handler = async (event: any) => {
           const msg = e?.message || "Failed to register NWC connection";
           // Common errors to surface clearly
           if (/already exists/i.test(msg))
-            return json(409, {
-              success: false,
-              error: "Connection already exists for pubkey",
-            });
-          return json(502, { success: false, error: msg });
+            return errorResponse(
+              409,
+              "Connection already exists for pubkey",
+              requestId,
+              requestOrigin
+            );
+          return errorResponse(502, msg, requestId, requestOrigin);
         }
 
         // Retrieve pairing URL (full NWC URI)
@@ -1604,7 +1761,11 @@ export const handler = async (event: any) => {
           authHeader
         );
         if (!session?.hashedId)
-          return json(401, { success: false, error: "Unauthorized" });
+          return createAuthErrorResponse(
+            "Unauthorized",
+            requestId,
+            requestOrigin
+          );
 
         // Set RLS context
         const reqClient = getRequestClient(
@@ -1731,11 +1892,19 @@ export const handler = async (event: any) => {
 
       case "nwcRevokeConnection": {
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         const pubkey = String(payload?.pubkey || "").trim();
         const connectionId = String(payload?.connection_id || "").trim();
         if (!pubkey)
-          return json(400, { success: false, error: "Missing pubkey" });
+          return createValidationErrorResponse(
+            "Missing pubkey",
+            requestId,
+            requestOrigin
+          );
         try {
           await lnbitsFetch(
             `/nwcprovider/api/v1/nwc/${encodeURIComponent(pubkey)}`,
@@ -1781,12 +1950,20 @@ export const handler = async (event: any) => {
 
       case "nwcUpdateConnection": {
         if (!apiKey)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
         // Implement as delete + create; client must provide new client_pubkey/secret
         const oldPubkey = String(payload?.old_pubkey || "").trim();
         const connectionId = String(payload?.connection_id || "").trim();
         if (!oldPubkey)
-          return json(400, { success: false, error: "Missing old pubkey" });
+          return createValidationErrorResponse(
+            "Missing old pubkey",
+            requestId,
+            requestOrigin
+          );
         try {
           await lnbitsFetch(
             `/nwcprovider/api/v1/nwc/${encodeURIComponent(oldPubkey)}`,
@@ -1807,13 +1984,23 @@ export const handler = async (event: any) => {
       }
 
       case "setBoltcardPin": {
-        if (!allowRequest(ip, 6, 60_000))
-          return json(429, { success: false, error: "Too many attempts" });
+        // Rate limit: 6 requests per 60 seconds for PIN setting
+        const pinSetLimitKey = `${user.id}:boltcard_pin_set`;
+        const pinSetAllowed = await checkRateLimit(pinSetLimitKey, {
+          limit: 6,
+          windowMs: 60 * 1000,
+        });
+        if (!pinSetAllowed)
+          return createRateLimitErrorResponse(requestId, requestOrigin);
         const cardId =
           typeof payload?.cardId === "string" ? payload.cardId : undefined;
         const pin = typeof payload?.pin === "string" ? payload.pin : undefined;
         if (!cardId || !pin || !isSixDigitPin(pin))
-          return json(400, { success: false, error: "Invalid parameters" });
+          return createValidationErrorResponse(
+            "Invalid parameters",
+            requestId,
+            requestOrigin
+          );
 
         const { data: row, error: rowErr } = await supa
           .from("lnbits_boltcards")
@@ -1822,7 +2009,7 @@ export const handler = async (event: any) => {
           .eq("card_id", cardId)
           .single();
         if (rowErr || !row)
-          return json(404, { success: false, error: "Card not found" });
+          return errorResponse(404, "Card not found", requestId, requestOrigin);
 
         const salt = randomBytes(16);
         const hash = hashPin(pin, salt);
@@ -1847,14 +2034,24 @@ export const handler = async (event: any) => {
       }
 
       case "validateBoltcardPin": {
-        if (!allowRequest(ip, 8, 60_000))
-          return json(429, { success: false, error: "Too many attempts" });
+        // Rate limit: 8 requests per 60 seconds for PIN validation
+        const pinValidateLimitKey = `${user.id}:boltcard_pin_validate`;
+        const pinValidateAllowed = await checkRateLimit(pinValidateLimitKey, {
+          limit: 8,
+          windowMs: 60 * 1000,
+        });
+        if (!pinValidateAllowed)
+          return createRateLimitErrorResponse(requestId, requestOrigin);
         const cardId =
           typeof payload?.cardId === "string" ? payload.cardId : undefined;
         const pin = typeof payload?.pin === "string" ? payload.pin : undefined;
 
         if (!cardId || !pin || !isSixDigitPin(pin))
-          return json(400, { success: false, error: "Invalid parameters" });
+          return createValidationErrorResponse(
+            "Invalid parameters",
+            requestId,
+            requestOrigin
+          );
 
         const { data: row, error: rowErr } = await supa
           .from("lnbits_boltcards")
@@ -1863,9 +2060,13 @@ export const handler = async (event: any) => {
           .eq("card_id", cardId)
           .single();
         if (rowErr || !row)
-          return json(404, { success: false, error: "Card not found" });
+          return errorResponse(404, "Card not found", requestId, requestOrigin);
         if (!row.pin_salt || !row.pin_hash_enc)
-          return json(400, { success: false, error: "PIN not set" });
+          return createValidationErrorResponse(
+            "PIN not set",
+            requestId,
+            requestOrigin
+          );
 
         const storedHash = await decryptB64Buf(String(row.pin_hash_enc));
         const saltRaw = row.pin_salt as string;
@@ -1876,10 +2077,19 @@ export const handler = async (event: any) => {
           try {
             timingSafeEqual(storedHash, padded);
           } catch {}
-          return json(401, { success: false, error: "Invalid PIN" });
+          return createAuthErrorResponse(
+            "Invalid PIN",
+            requestId,
+            requestOrigin
+          );
         }
         const ok = timingSafeEqual(storedHash, candidate);
-        if (!ok) return json(401, { success: false, error: "Invalid PIN" });
+        if (!ok)
+          return createAuthErrorResponse(
+            "Invalid PIN",
+            requestId,
+            requestOrigin
+          );
         return json(200, { success: true });
       }
 
@@ -1890,7 +2100,11 @@ export const handler = async (event: any) => {
           user.id
         );
         if (!walletId)
-          return json(400, { success: false, error: "No wallet found" });
+          return createValidationErrorResponse(
+            "No wallet found",
+            requestId,
+            requestOrigin
+          );
 
         const cards = await lnbitsFetch("/boltcards/api/v1/cards", apiKey, {
           method: "GET",
@@ -1960,12 +2174,22 @@ export const handler = async (event: any) => {
       }
     }
 
-    return json(400, { success: false, error: "Unsupported action" });
+    return createValidationErrorResponse(
+      "Unsupported action",
+      requestId,
+      requestOrigin
+    );
   } catch (error: any) {
-    console.error("[lnbits-proxy]", error);
-    return json(500, {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+    logError(error, {
+      requestId,
+      endpoint: "lnbits-proxy",
+      method: event.httpMethod,
     });
+    return errorResponse(
+      500,
+      "LNbits service temporarily unavailable",
+      requestId,
+      requestOrigin
+    );
   }
 };

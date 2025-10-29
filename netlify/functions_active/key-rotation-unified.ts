@@ -5,55 +5,29 @@
 import type { Handler } from "@netlify/functions";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getRequestClient } from "../functions/supabase.js";
-import { allowRequest } from "../functions/utils/rate-limiter.js";
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.js";
 
-// --- Shared utilities ---
-function buildCorsHeaders(): Record<string, string> {
-  const isProd = process.env.NODE_ENV === "production";
-  const allowedOrigin = isProd
-    ? process.env.FRONTEND_URL || "https://www.satnam.pub"
-    : "*";
-  const allowCredentials = allowedOrigin !== "*";
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Credentials": String(allowCredentials),
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Requested-With",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Max-Age": "86400",
-    "Content-Type": "application/json",
-  };
-}
-
-function json(
-  statusCode: number,
-  body: unknown,
-  headers?: Record<string, string>
-) {
-  return {
-    statusCode,
-    headers: { ...buildCorsHeaders(), ...(headers || {}) },
-    body: JSON.stringify(body),
-  };
-}
+// --- Shared utilities (Phase 2 hardening) ---
 
 function getLastPathSegment(path: string): string {
   const parts = (path || "").split("/").filter(Boolean);
   return (parts[parts.length - 1] || "").toLowerCase();
-}
-
-function clientIpFrom(event: {
-  headers?: Record<string, string | string[]>;
-}): string {
-  const xfwd =
-    event.headers?.["x-forwarded-for"] ||
-    event.headers?.["X-Forwarded-For"] ||
-    "";
-  return (
-    (Array.isArray(xfwd) ? xfwd[0] : xfwd).split(",")[0]?.trim() ||
-    (event.headers?.["x-real-ip"] as string) ||
-    "unknown"
-  );
 }
 
 function parseJson<T>(body: string | null | undefined): T | null {
@@ -110,24 +84,43 @@ interface RollbackBody {
 }
 
 // --- Route handlers ---
-async function handleStart(event: any) {
+async function handleStart(
+  event: any,
+  requestId: string,
+  requestOrigin: string | undefined,
+  clientIP: string
+) {
   if (event.httpMethod !== "POST")
-    return json(405, { success: false, error: "Method not allowed" });
-  const ip = clientIpFrom(event);
-  if (!allowRequest(ip, 1, 15 * 60 * 1000))
-    return json(429, { success: false, error: "Too many attempts" });
+    return errorResponse(405, "Method not allowed", requestOrigin);
+
+  // Database-backed rate limiting
+  const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitKey,
+    RATE_LIMITS.IDENTITY_PUBLISH
+  );
+
+  if (!rateLimitAllowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "start",
+    });
+    return createRateLimitErrorResponse(requestId, requestOrigin);
+  }
 
   const token = getBearerToken(event);
   if (!token || !isValidJwtStructure(token))
-    return json(401, {
-      success: false,
-      error: "Invalid or missing Authorization",
-    });
+    return errorResponse(
+      401,
+      "Invalid or missing Authorization",
+      requestOrigin
+    );
 
   const supabase = getRequestClient(token);
   const { data: me, error: meErr } = await supabase.auth.getUser();
   if (meErr || !me?.user?.id)
-    return json(401, { success: false, error: "Unauthorized" });
+    return errorResponse(401, "Unauthorized", requestOrigin);
   const user_duid: string = me.user.id;
 
   // Per-user rate limits
@@ -141,13 +134,20 @@ async function handleStart(event: any) {
       .eq("user_duid", user_duid)
       .gte("started_at", iso15)
       .limit(1);
-    if (error)
-      return json(500, { success: false, error: error.message || "DB error" });
-    if (recent && recent.length)
-      return json(429, {
-        success: false,
-        error: "Rotation recently initiated. Try later.",
+    if (error) {
+      logError(error, {
+        requestId,
+        endpoint: "key-rotation-unified",
+        action: "start",
       });
+      return errorResponse(500, "Database error", requestOrigin);
+    }
+    if (recent && recent.length)
+      return errorResponse(
+        429,
+        "Rotation recently initiated. Try later.",
+        requestOrigin
+      );
   }
   {
     const { count, error } = await supabase
@@ -155,13 +155,20 @@ async function handleStart(event: any) {
       .select("id", { count: "exact", head: true })
       .eq("user_duid", user_duid)
       .gte("started_at", isoDay);
-    if (error)
-      return json(500, { success: false, error: error.message || "DB error" });
-    if ((count ?? 0) >= 3)
-      return json(429, {
-        success: false,
-        error: "Daily key rotation limit reached",
+    if (error) {
+      logError(error, {
+        requestId,
+        endpoint: "key-rotation-unified",
+        action: "start",
       });
+      return errorResponse(500, "Database error", requestOrigin);
+    }
+    if ((count ?? 0) >= 3)
+      return errorResponse(
+        429,
+        "Daily key rotation limit reached",
+        requestOrigin
+      );
   }
 
   const body = parseJson<StartBody>(event.body);
@@ -210,46 +217,84 @@ async function handleStart(event: any) {
     started_at: new Date().toISOString(),
     status: "pending",
   });
-  if (insErr)
-    return json(500, {
-      success: false,
-      error: insErr.message || "Failed to create audit",
+  if (insErr) {
+    logError(insErr, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "start",
     });
+    return errorResponse(500, "Failed to create audit", requestOrigin);
+  }
 
   const domains = (process.env.NIP05_WHITELIST_DOMAINS || "")
     .split(",")
     .map((d) => d.trim().toLowerCase())
     .filter((d) => !!d);
-  return json(200, {
-    success: true,
-    rotationId,
-    current,
-    whitelists: { nip05Domains: domains },
-    deprecationDays,
-  });
+  return {
+    statusCode: 200,
+    headers: getSecurityHeaders(requestOrigin),
+    body: JSON.stringify({
+      success: true,
+      rotationId,
+      current,
+      whitelists: { nip05Domains: domains },
+      deprecationDays,
+    }),
+  };
 }
 
-async function handleComplete(event: any) {
+async function handleComplete(
+  event: any,
+  requestId: string,
+  requestOrigin: string | undefined,
+  clientIP: string
+) {
   if (event.httpMethod !== "POST")
-    return json(405, { success: false, error: "Method not allowed" });
-  const ip = clientIpFrom(event);
-  if (!allowRequest(ip, 1, 15 * 60 * 1000))
-    return json(429, { success: false, error: "Too many attempts" });
+    return errorResponse(405, "Method not allowed", requestOrigin);
+
+  // Database-backed rate limiting
+  const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitKey,
+    RATE_LIMITS.IDENTITY_PUBLISH
+  );
+
+  if (!rateLimitAllowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "complete",
+    });
+    return createRateLimitErrorResponse(requestId, requestOrigin);
+  }
 
   const token = getBearerToken(event);
   if (!token || !isValidJwtStructure(token))
-    return json(401, {
-      success: false,
-      error: "Invalid or missing Authorization",
-    });
+    return errorResponse(
+      401,
+      "Invalid or missing Authorization",
+      requestOrigin
+    );
 
   const body = parseJson<CompleteBody>(event.body);
   if (!body || !body.rotationId)
-    return json(400, { success: false, error: "rotationId required" });
+    return createValidationErrorResponse(
+      "rotationId required",
+      requestId,
+      requestOrigin
+    );
   if (!body.oldNpub)
-    return json(400, { success: false, error: "oldNpub required" });
+    return createValidationErrorResponse(
+      "oldNpub required",
+      requestId,
+      requestOrigin
+    );
   if (!body.newNpub)
-    return json(400, { success: false, error: "newNpub required" });
+    return createValidationErrorResponse(
+      "newNpub required",
+      requestId,
+      requestOrigin
+    );
 
   // NIP-05 whitelist enforcement
   const nip05Strategy = body.nip05?.strategy === "create" ? "create" : "keep";
@@ -257,14 +302,18 @@ async function handleComplete(event: any) {
   if (nip05Strategy === "create" && nip05Identifier) {
     const parts = nip05Identifier.split("@");
     if (parts.length !== 2)
-      return json(400, { success: false, error: "Invalid NIP-05 format" });
+      return createValidationErrorResponse(
+        "Invalid NIP-05 format",
+        requestId,
+        requestOrigin
+      );
     const domain = parts[1].toLowerCase();
     const allowed = (process.env.NIP05_WHITELIST_DOMAINS || "")
       .split(",")
       .map((d) => d.trim().toLowerCase())
       .filter((d) => !!d);
     if (allowed.length && !allowed.includes(domain))
-      return json(403, { success: false, error: "NIP-05 domain not allowed" });
+      return errorResponse(403, "NIP-05 domain not allowed", requestOrigin);
   }
   const lightningStrategy =
     body.lightning?.strategy === "create" ? "create" : "keep";
@@ -273,7 +322,7 @@ async function handleComplete(event: any) {
   const supabase = getRequestClient(token);
   const { data: me, error: meErr } = await supabase.auth.getUser();
   if (meErr || !me?.user?.id)
-    return json(401, { success: false, error: "Unauthorized" });
+    return errorResponse(401, "Unauthorized", requestOrigin);
   const user_duid: string = me.user.id;
 
   const { data: rot, error: rotErr } = await supabase
@@ -284,14 +333,24 @@ async function handleComplete(event: any) {
     .eq("user_duid", user_duid)
     .eq("rotation_id", body.rotationId)
     .maybeSingle();
-  if (rotErr)
-    return json(500, { success: false, error: rotErr.message || "DB error" });
-  if (!rot) return json(404, { success: false, error: "Rotation not found" });
+  if (rotErr) {
+    logError(rotErr, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "complete",
+    });
+    return errorResponse(500, "Database error", requestOrigin);
+  }
+  if (!rot) return errorResponse(404, "Rotation not found", requestOrigin);
   if (rot.status !== "pending")
-    return json(400, { success: false, error: "Rotation already finalized" });
+    return errorResponse(400, "Rotation already finalized", requestOrigin);
 
   if (!constantTimeEq(body.oldNpub, rot.old_npub || ""))
-    return json(400, { success: false, error: "oldNpub mismatch" });
+    return createValidationErrorResponse(
+      "oldNpub mismatch",
+      requestId,
+      requestOrigin
+    );
 
   // Snapshot previous values
   let prevNip05: string | null = null;
@@ -337,44 +396,79 @@ async function handleComplete(event: any) {
   );
 
   if (rpcErr) {
-    return json(500, {
-      success: false,
-      error: rpcErr.message || "Failed to complete key rotation atomically",
+    logError(rpcErr, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "complete",
     });
+    return errorResponse(
+      500,
+      "Failed to complete key rotation atomically",
+      requestOrigin
+    );
   }
 
   if (!result?.success) {
-    return json(500, {
-      success: false,
-      error: result?.error || "Key rotation completion failed",
+    logError(new Error(result?.error || "Key rotation completion failed"), {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "complete",
     });
+    return errorResponse(500, "Key rotation completion failed", requestOrigin);
   }
 
-  return json(200, { success: true });
+  return {
+    statusCode: 200,
+    headers: getSecurityHeaders(requestOrigin),
+    body: JSON.stringify({ success: true }),
+  };
 }
 
-async function handleStatus(event: any) {
+async function handleStatus(
+  event: any,
+  requestId: string,
+  requestOrigin: string | undefined,
+  clientIP: string
+) {
   if (event.httpMethod !== "GET")
-    return json(405, { success: false, error: "Method not allowed" });
-  const ip = clientIpFrom(event);
-  if (!allowRequest(ip, 10, 15 * 60 * 1000))
-    return json(429, { success: false, error: "Too many attempts" });
+    return errorResponse(405, "Method not allowed", requestOrigin);
+
+  // Database-backed rate limiting
+  const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitKey,
+    RATE_LIMITS.IDENTITY_VERIFY
+  );
+
+  if (!rateLimitAllowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "status",
+    });
+    return createRateLimitErrorResponse(requestId, requestOrigin);
+  }
 
   const token = getBearerToken(event);
   if (!token || !isValidJwtStructure(token))
-    return json(401, {
-      success: false,
-      error: "Invalid or missing Authorization",
-    });
+    return errorResponse(
+      401,
+      "Invalid or missing Authorization",
+      requestOrigin
+    );
 
   const rotationId = event.queryStringParameters?.rotationId || "";
   if (!rotationId)
-    return json(400, { success: false, error: "rotationId required" });
+    return createValidationErrorResponse(
+      "rotationId required",
+      requestId,
+      requestOrigin
+    );
 
   const supabase = getRequestClient(token);
   const { data: me, error: meErr } = await supabase.auth.getUser();
   if (meErr || !me?.user?.id)
-    return json(401, { success: false, error: "Unauthorized" });
+    return errorResponse(401, "Unauthorized", requestOrigin);
   const user_duid: string = me.user.id;
 
   const { data, error } = await supabase
@@ -385,35 +479,68 @@ async function handleStatus(event: any) {
     .eq("user_duid", user_duid)
     .eq("rotation_id", rotationId)
     .maybeSingle();
-  if (error)
-    return json(500, { success: false, error: error.message || "DB error" });
-  if (!data) return json(404, { success: false, error: "Rotation not found" });
+  if (error) {
+    logError(error, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "status",
+    });
+    return errorResponse(500, "Database error", requestOrigin);
+  }
+  if (!data) return errorResponse(404, "Rotation not found", requestOrigin);
 
-  return json(200, { success: true, rotation: data });
+  return {
+    statusCode: 200,
+    headers: getSecurityHeaders(requestOrigin),
+    body: JSON.stringify({ success: true, rotation: data }),
+  };
 }
 
-async function handleRollback(event: any) {
+async function handleRollback(
+  event: any,
+  requestId: string,
+  requestOrigin: string | undefined,
+  clientIP: string
+) {
   if (event.httpMethod !== "POST")
-    return json(405, { success: false, error: "Method not allowed" });
-  const ip = clientIpFrom(event);
-  if (!allowRequest(ip, 1, 15 * 60 * 1000))
-    return json(429, { success: false, error: "Too many attempts" });
+    return errorResponse(405, "Method not allowed", requestOrigin);
+
+  // Database-backed rate limiting
+  const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitKey,
+    RATE_LIMITS.IDENTITY_PUBLISH
+  );
+
+  if (!rateLimitAllowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "rollback",
+    });
+    return createRateLimitErrorResponse(requestId, requestOrigin);
+  }
 
   const token = getBearerToken(event);
   if (!token || !isValidJwtStructure(token))
-    return json(401, {
-      success: false,
-      error: "Invalid or missing Authorization",
-    });
+    return errorResponse(
+      401,
+      "Invalid or missing Authorization",
+      requestOrigin
+    );
 
   const body = parseJson<RollbackBody>(event.body);
   if (!body || !body.rotationId)
-    return json(400, { success: false, error: "rotationId required" });
+    return createValidationErrorResponse(
+      "rotationId required",
+      requestId,
+      requestOrigin
+    );
 
   const supabase = getRequestClient(token);
   const { data: me, error: meErr } = await supabase.auth.getUser();
   if (meErr || !me?.user?.id)
-    return json(401, { success: false, error: "Unauthorized" });
+    return errorResponse(401, "Unauthorized", requestOrigin);
   const user_duid: string = me.user.id;
 
   const { data: rot, error: rotErr } = await supabase
@@ -424,11 +551,17 @@ async function handleRollback(event: any) {
     .eq("user_duid", user_duid)
     .eq("rotation_id", body.rotationId)
     .maybeSingle();
-  if (rotErr)
-    return json(500, { success: false, error: rotErr.message || "DB error" });
-  if (!rot) return json(404, { success: false, error: "Rotation not found" });
+  if (rotErr) {
+    logError(rotErr, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "rollback",
+    });
+    return errorResponse(500, "Database error", requestOrigin);
+  }
+  if (!rot) return errorResponse(404, "Rotation not found", requestOrigin);
   if (rot.status !== "completed")
-    return json(400, { success: false, error: "Rotation not completed" });
+    return errorResponse(400, "Rotation not completed", requestOrigin);
 
   const completedAt = rot.completed_at ? new Date(rot.completed_at) : null;
   const days = Number(process.env.KEY_DEPRECATION_DAYS || 30) || 30;
@@ -436,7 +569,7 @@ async function handleRollback(event: any) {
     !completedAt ||
     Date.now() - completedAt.getTime() > days * 24 * 60 * 60 * 1000
   ) {
-    return json(403, { success: false, error: "Deprecation window expired" });
+    return errorResponse(403, "Deprecation window expired", requestOrigin);
   }
 
   // Recover previous values from audit JSON
@@ -476,47 +609,74 @@ async function handleRollback(event: any) {
   );
 
   if (rpcErr) {
-    return json(500, {
-      success: false,
-      error: rpcErr.message || "Failed to rollback key rotation atomically",
+    logError(rpcErr, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "rollback",
     });
+    return errorResponse(
+      500,
+      "Failed to rollback key rotation atomically",
+      requestOrigin
+    );
   }
 
   if (!result?.success) {
-    return json(500, {
-      success: false,
-      error: result?.error || "Key rotation rollback failed",
+    logError(new Error(result?.error || "Key rotation rollback failed"), {
+      requestId,
+      endpoint: "key-rotation-unified",
+      action: "rollback",
     });
+    return errorResponse(500, "Key rotation rollback failed", requestOrigin);
   }
 
-  return json(200, { success: true });
+  return {
+    statusCode: 200,
+    headers: getSecurityHeaders(requestOrigin),
+    body: JSON.stringify({ success: true }),
+  };
 }
 
 // --- Dispatcher ---
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    (event.headers || {}) as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 Key rotation handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   try {
     // CORS preflight
     if (event.httpMethod === "OPTIONS") {
-      return { statusCode: 204, headers: buildCorsHeaders(), body: "" };
+      return preflightResponse(requestOrigin);
     }
 
     const segment = getLastPathSegment(event.path || "");
     switch (segment) {
       case "start":
-        return await handleStart(event);
+        return await handleStart(event, requestId, requestOrigin, clientIP);
       case "complete":
-        return await handleComplete(event);
+        return await handleComplete(event, requestId, requestOrigin, clientIP);
       case "status":
-        return await handleStatus(event);
+        return await handleStatus(event, requestId, requestOrigin, clientIP);
       case "rollback":
-        return await handleRollback(event);
+        return await handleRollback(event, requestId, requestOrigin, clientIP);
       default:
-        return json(404, { success: false, error: "Route not found" });
+        return errorResponse(404, "Route not found", requestOrigin);
     }
   } catch (error) {
-    return json(500, {
-      success: false,
-      error: error instanceof Error ? error.message : "Server error",
+    logError(error, {
+      requestId,
+      endpoint: "key-rotation-unified",
+      method: event.httpMethod,
     });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

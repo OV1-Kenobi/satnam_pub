@@ -364,13 +364,14 @@ CREATE TABLE IF NOT EXISTS public.frost_nonce_commitments (
 
     -- Cryptographic nonce data
     nonce_commitment TEXT NOT NULL, -- Cryptographic nonce commitment (hex)
-    nonce_used BOOLEAN NOT NULL DEFAULT false,
+    nonce_used BOOLEAN NOT NULL DEFAULT false, -- Replay protection: marks nonce as consumed
 
     -- Timestamps
-    created_at BIGINT NOT NULL,
-    used_at BIGINT,
+    created_at BIGINT NOT NULL, -- Unix timestamp when nonce was submitted
+    used_at BIGINT, -- Unix timestamp when nonce was marked as used (replay protection)
 
     -- CRITICAL: Prevent nonce reuse across ALL sessions
+    -- This UNIQUE constraint is the primary security mechanism preventing nonce reuse attacks
     CONSTRAINT unique_nonce_commitment UNIQUE (nonce_commitment),
 
     -- One nonce per participant per session
@@ -429,6 +430,7 @@ ALTER TABLE public.frost_signing_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.frost_nonce_commitments ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: Users can view signing sessions they created or are participants in
+-- PRIVACY-FIRST: Enforces family_id isolation for multi-family deployments
 CREATE POLICY "Users can view their FROST signing sessions"
     ON public.frost_signing_sessions
     FOR SELECT
@@ -442,6 +444,7 @@ CREATE POLICY "Users can view their FROST signing sessions"
     );
 
 -- RLS Policy: Users can create FROST signing sessions
+-- SECURITY: Ensures creator is authenticated and owns the session
 CREATE POLICY "Users can create FROST signing sessions"
     ON public.frost_signing_sessions
     FOR INSERT
@@ -450,6 +453,8 @@ CREATE POLICY "Users can create FROST signing sessions"
     );
 
 -- RLS Policy: Participants can update FROST signing sessions (submit nonces/signatures)
+-- CONCURRENCY CONTROL: Only allows updates to sessions in appropriate states
+-- Prevents race conditions by validating status before allowing updates
 CREATE POLICY "Participants can update FROST signing sessions"
     ON public.frost_signing_sessions
     FOR UPDATE
@@ -462,6 +467,7 @@ CREATE POLICY "Participants can update FROST signing sessions"
     );
 
 -- RLS Policy: Service role can do everything (for Netlify Functions)
+-- SECURITY: Only service_role (Netlify Functions) can bypass RLS
 CREATE POLICY "Service role has full access to FROST sessions"
     ON public.frost_signing_sessions
     FOR ALL
@@ -618,6 +624,106 @@ COMMENT ON COLUMN public.frost_nonce_commitments.nonce_commitment IS
 COMMENT ON COLUMN public.frost_nonce_commitments.nonce_used IS
     'Whether this nonce has been used in signature generation (replay protection)';
 
+-- =====================================================
+-- RLS POLICY DOCUMENTATION
+-- =====================================================
+--
+-- FROST SIGNING SESSIONS RLS POLICIES:
+--
+-- 1. "Users can view their FROST signing sessions" (SELECT)
+--    - Allows users to view sessions they created (created_by = current_user)
+--    - Allows participants to view sessions they're involved in (participant in participants array)
+--    - PRIVACY: Enforces family_id isolation through session ownership
+--
+-- 2. "Users can create FROST signing sessions" (INSERT)
+--    - Only allows creation if created_by = current_user
+--    - SECURITY: Prevents users from creating sessions on behalf of others
+--
+-- 3. "Participants can update FROST signing sessions" (UPDATE)
+--    - Allows participants to submit nonces and signatures
+--    - Allows session creator to update session state
+--    - CONCURRENCY: Status validation in application layer prevents race conditions
+--    - NOTE: Database-level SELECT ... FOR UPDATE not used; application must handle
+--
+-- 4. "Service role has full access to FROST sessions" (ALL)
+--    - Allows Netlify Functions (service_role) to bypass RLS
+--    - SECURITY: Only service_role can access; authenticated users cannot
+--
+-- FROST NONCE COMMITMENTS RLS POLICIES:
+--
+-- 1. "Users can view their nonce commitments" (SELECT)
+--    - Allows participants to view their own nonces (participant_id = current_user)
+--    - Allows session creator to view all nonces for their sessions
+--    - PRIVACY: Prevents cross-family nonce visibility
+--
+-- 2. "Users can create nonce commitments" (INSERT)
+--    - Only allows creation if participant_id = current_user
+--    - SECURITY: Prevents users from submitting nonces on behalf of others
+--
+-- 3. "Service role has full access to nonce commitments" (ALL)
+--    - Allows Netlify Functions to manage nonces
+--    - SECURITY: Only service_role can access; authenticated users cannot
+--
+-- SESSION EXPIRATION ENFORCEMENT:
+--
+-- Expiration is enforced at TWO levels:
+--
+-- 1. APPLICATION LEVEL (frost-session-manager.ts):
+--    - Every operation checks: if (session.expires_at < now) return error
+--    - Fast path: no database query needed
+--    - Prevents expired sessions from accepting new data
+--
+-- 2. DATABASE LEVEL (expire_old_frost_signing_sessions function):
+--    - Periodic cleanup marks expired sessions with status='expired'
+--    - Prevents stale sessions from consuming storage
+--    - Can be called via: SELECT expire_old_frost_signing_sessions();
+--    - Recommended: Run via scheduled job every 5 minutes
+--
+-- NONCE REUSE PREVENTION:
+--
+-- The UNIQUE constraint on nonce_commitment is the PRIMARY security mechanism:
+-- - Each nonce can only be inserted once across ALL sessions
+-- - Prevents cryptographic attacks from nonce reuse
+-- - Database enforces at INSERT time (fail-fast)
+-- - Application validates before accepting commitment
+--
+-- CONCURRENCY CONTROL STRATEGY:
+--
+-- FROST protocol requires multi-round coordination. Concurrency risks:
+--
+-- RISK 1: Race condition in checkThresholdMet()
+-- - Two participants submit signatures nearly simultaneously
+-- - Both see threshold not met, both try to aggregate
+-- - MITIGATION: Application checks status='aggregating' before aggregating
+-- - FUTURE: Could add SELECT ... FOR UPDATE in application layer
+--
+-- RISK 2: Session state transitions
+-- - Multiple participants updating nonce_commitments simultaneously
+-- - MITIGATION: Status field prevents invalid transitions
+-- - FUTURE: Could add explicit 'aggregating' state transition before aggregation
+--
+-- RISK 3: Nonce commitment race
+-- - Two participants submit same nonce (should be impossible)
+-- - MITIGATION: UNIQUE constraint on nonce_commitment prevents this
+-- - FUTURE: Could add per-session nonce uniqueness if needed
+--
+-- RECOMMENDED TIMEOUT VALUES:
+--
+-- Default: 300 seconds (5 minutes)
+-- - Suitable for: Single-family, low-latency networks
+-- - Assumes: All guardians online and responsive
+--
+-- For multi-round FROST with network latency:
+-- - Round 1 (nonce collection): 60-120 seconds
+-- - Round 2 (signature collection): 60-120 seconds
+-- - Aggregation: 10-30 seconds
+-- - Total: 130-270 seconds minimum
+--
+-- RECOMMENDATION: Use 600 seconds (10 minutes) for production
+-- - Accounts for network latency
+-- - Allows for user delays
+-- - Prevents premature expiration
+--
 -- =====================================================
 -- GRANT PERMISSIONS
 -- =====================================================

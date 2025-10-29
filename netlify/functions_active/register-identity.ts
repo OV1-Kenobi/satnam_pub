@@ -21,6 +21,26 @@ import { promisify } from "node:util";
 import { supabase, supabaseKeyType } from "../../netlify/functions/supabase.js";
 import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.server.js";
 
+// Import centralized security utilities
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  jsonResponse,
+  preflightResponse,
+} from "./utils/security-headers.js";
+
 // ---- Type definitions for strict TypeScript mode ----
 export type Role = "private" | "offspring" | "adult" | "steward" | "guardian";
 
@@ -828,11 +848,16 @@ async function createUserIdentity(
  * @returns {Promise<Object>} Netlify Functions response object
  */
 export const handler: Handler = async (event, context) => {
+  // Generate request ID for tracking and client IP for rate limiting
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    (event.headers || {}) as Record<string, string | string[]>
+  );
+
   console.log("🚀 Registration handler started:", {
+    requestId,
     method: event.httpMethod,
     path: event.path,
-    headers: Object.keys(event.headers || {}),
-    bodyLength: event.body?.length || 0,
     timestamp: new Date().toISOString(),
   });
 
@@ -847,54 +872,23 @@ export const handler: Handler = async (event, context) => {
     nodeEnv: process.env.NODE_ENV,
   });
 
-  // CORS headers for browser compatibility (env-aware)
-  function getAllowedOrigin(origin: string | undefined): string {
-    const isProd = process.env.NODE_ENV === "production";
-    if (isProd) return "https://satnam.pub";
-    if (!origin) return "*";
-    try {
-      const u = new URL(origin);
-      if (
-        (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
-        u.protocol === "http:"
-      ) {
-        return origin;
-      }
-    } catch {}
-    return "*";
+  // Use centralized security headers utility for CORS and security headers
+  function buildSecurityHeaders(origin: string | undefined) {
+    return getSecurityHeaders(origin, {
+      cspPolicy: "default-src 'none'; frame-ancestors 'none'",
+    });
   }
   const requestOrigin = event.headers?.origin || event.headers?.Origin;
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": getAllowedOrigin(requestOrigin),
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
+  const corsHeaders = buildSecurityHeaders(requestOrigin);
+  corsHeaders["Content-Type"] = "application/json";
 
   // Handle preflight requests
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: "",
-    };
+    return preflightResponse(requestOrigin);
   }
 
   if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      headers: {
-        ...corsHeaders,
-        Allow: "POST",
-      },
-      body: JSON.stringify({
-        success: false,
-        error: "Method not allowed",
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      }),
-    };
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
 
   // Track reserved NIP-05 reservation for cleanup across try/catch scope
@@ -908,124 +902,50 @@ export const handler: Handler = async (event, context) => {
       userData =
         typeof event.body === "string" ? JSON.parse(event.body) : event.body;
     } catch (parseError) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Invalid JSON in request body",
-          meta: {
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      };
+      logError(parseError, {
+        requestId,
+        endpoint: "register-identity",
+        method: event.httpMethod,
+      });
+      return createValidationErrorResponse(
+        "Invalid JSON in request body",
+        requestId,
+        requestOrigin
+      );
     }
 
-    // Extract client information for security
-    // Environment-aware rate limiting for registration attempts
-    try {
-      const xfwd =
-        event.headers?.["x-forwarded-for"] ||
-        event.headers?.["X-Forwarded-For"];
-      const clientIp = Array.isArray(xfwd)
-        ? xfwd[0]
-        : (xfwd || "").split(",")[0]?.trim() || "unknown";
+    // Use centralized database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitAllowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.AUTH_REGISTER
+    );
 
-      // Adjust rate limits based on environment
-      const isDevelopment = process.env.NODE_ENV !== "production";
-      const windowSec = isDevelopment ? 300 : 60; // 5 minutes in dev, 1 minute in prod
-      const maxAttempts = isDevelopment ? 50 : 5; // 50 attempts in dev, 5 in prod
-
-      console.log(
-        `🔒 Rate limiting: ${maxAttempts} attempts per ${windowSec}s (${
-          isDevelopment ? "development" : "production"
-        } mode)`
-      );
-
-      const windowStart = new Date(
-        Math.floor(Date.now() / (windowSec * 1000)) * (windowSec * 1000)
-      ).toISOString();
-      const { supabase: rateLimitSupabase } = await import(
-        "../../netlify/functions/supabase.js"
-      );
-      const { data, error } = await rateLimitSupabase.rpc(
-        "increment_auth_rate",
-        {
-          p_identifier: clientIp,
-          p_scope: "ip",
-          p_window_start: windowStart,
-          p_limit: maxAttempts,
-        }
-      );
-
-      const limited = Array.isArray(data) ? data?.[0]?.limited : data?.limited;
-      if (error) {
-        console.error("Rate limiting error:", error);
-        // In development, don't block on rate limiting errors
-        if (isDevelopment) {
-          console.warn(
-            "⚠️ Rate limiting error in development - allowing request"
-          );
-        } else {
-          return {
-            statusCode: 429,
-            headers: corsHeaders,
-            body: JSON.stringify({
-              success: false,
-              error: "Rate limiting service unavailable",
-            }),
-          };
-        }
-      }
-
-      if (limited) {
-        console.warn(`🚫 Rate limit exceeded for IP: ${clientIp}`);
-        return {
-          statusCode: 429,
-          headers: corsHeaders,
-          body: JSON.stringify({
-            success: false,
-            error: `Too many registration attempts. Please wait ${windowSec} seconds before trying again.`,
-          }),
-        };
-      }
-
-      console.log(`✅ Rate limit check passed for IP: ${clientIp}`);
-    } catch (rateLimitError) {
-      console.error("Rate limiting exception:", rateLimitError);
-      // In development, don't block on rate limiting exceptions
-      const isDevelopment = process.env.NODE_ENV !== "production";
-      if (isDevelopment) {
-        console.warn(
-          "⚠️ Rate limiting exception in development - allowing request"
-        );
-      } else {
-        return {
-          statusCode: 429,
-          headers: corsHeaders,
-          body: JSON.stringify({
-            success: false,
-            error: "Too many registration attempts",
-          }),
-        };
-      }
+    if (!rateLimitAllowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "register-identity",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
+
+    console.log(`✅ Rate limit check passed for IP: ${clientIP}`);
 
     // Validate request data
     const validationResult = validateRegistrationData(userData);
     if (!validationResult.success) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: "Invalid registration data",
-          details: validationResult.errors,
-          meta: {
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      };
+      logError(new Error("Validation failed"), {
+        requestId,
+        endpoint: "register-identity",
+        method: event.httpMethod,
+        details: validationResult.errors,
+      });
+      return createValidationErrorResponse(
+        "Invalid registration data",
+        requestId,
+        requestOrigin
+      );
     }
 
     const validatedData = (validationResult as ValidationSuccess).data;
@@ -1348,13 +1268,13 @@ export const handler: Handler = async (event, context) => {
       responseData.postAuthAction = "show_invitation_modal";
     }
 
-    return {
-      statusCode: 201,
-      headers: corsHeaders,
-      body: JSON.stringify(responseData),
-    };
+    return jsonResponse(201, responseData, requestOrigin);
   } catch (error) {
-    console.error("Registration error:", error);
+    logError(error, {
+      requestId,
+      endpoint: "register-identity",
+      method: event.httpMethod,
+    });
 
     // Cleanup reserved NIP-05 if user creation failed after reservation
     try {
@@ -1370,16 +1290,6 @@ export const handler: Handler = async (event, context) => {
       console.error("⚠️ Failed to cleanup reserved NIP-05:", cleanupError);
     }
 
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: "Registration failed",
-        meta: {
-          timestamp: new Date().toISOString(),
-        },
-      }),
-    };
+    return errorResponse(500, "Registration failed", requestOrigin);
   }
 };

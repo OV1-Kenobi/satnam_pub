@@ -28,15 +28,15 @@ const FamilyFoundryLandingPage: React.FC<FamilyFoundryLandingPageProps> = ({
           content="Run the Family Like a Business - But Govern It Like a Kingdom. Create your family federation with charter, RBAC, and multigenerational wealth stewardship."
         />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://www.satnam.pub/family-foundry" />
-        <meta property="og:image" content="https://www.satnam.pub/family-foundry-og.jpg" />
+        <meta property="og:url" content={`${typeof window !== 'undefined' ? window.location.origin : 'https://www.satnam.pub'}/family-foundry`} />
+        <meta property="og:image" content={`${typeof window !== 'undefined' ? window.location.origin : 'https://www.satnam.pub'}/family-foundry-og.jpg`} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Family Foundry - Build Your Dynastic Sovereignty" />
         <meta
           name="twitter:description"
           content="Run the Family Like a Business - But Govern It Like a Kingdom. Create your family federation on Satnam.pub."
         />
-        <meta name="twitter:image" content="https://www.satnam.pub/family-foundry-og.jpg" />
+        <meta name="twitter:image" content={`${typeof window !== 'undefined' ? window.location.origin : 'https://www.satnam.pub'}/family-foundry-og.jpg`} />
       </Helmet>
 
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-800 relative">
@@ -53,7 +53,7 @@ const FamilyFoundryLandingPage: React.FC<FamilyFoundryLandingPageProps> = ({
               {/* Satnam Logo as Seal */}
               <div className="inline-flex items-center justify-center mb-6">
                 <img
-                  src="/SatNam.Pub large transparency logo.png"
+                  src="/SatNam.Pub-large-transparency-logo.png"
                   alt="Satnam.pub - Family Foundry Seal"
                   className="w-40 h-40 md:w-48 md:h-48 drop-shadow-2xl"
                 />
@@ -107,7 +107,7 @@ const FamilyFoundryLandingPage: React.FC<FamilyFoundryLandingPageProps> = ({
           {/* Tetrahedron Image */}
           <div className="flex justify-center mb-12">
             <img
-              src="/Tetrahedron of Control, satnam.png"
+              src="/Tetrahedron-of-Control-satnam.png"
               alt="Dynastic Governance Tetrahedron - Four interconnected faces of family rule"
               className="max-w-md w-full rounded-xl shadow-2xl border border-white/20"
             />
@@ -118,7 +118,7 @@ const FamilyFoundryLandingPage: React.FC<FamilyFoundryLandingPageProps> = ({
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-300">
               <div className="flex justify-center mb-6">
                 <img
-                  src="/SatNam.Pub large transparency logo.png"
+                  src="/SatNam.Pub-large-transparency-logo.png"
                   alt="Satnam Seal"
                   className="w-16 h-16 object-contain"
                 />
@@ -148,7 +148,7 @@ const FamilyFoundryLandingPage: React.FC<FamilyFoundryLandingPageProps> = ({
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-300">
               <div className="flex justify-center mb-6">
                 <img
-                  src="/Dynastic App.png"
+                  src="/Dynastic-App.png"
                   alt="Dynastic Kingdom"
                   className="w-16 h-16 object-contain"
                 />

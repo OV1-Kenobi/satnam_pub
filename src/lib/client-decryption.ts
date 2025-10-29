@@ -29,7 +29,7 @@ export interface EncryptedUserData {
   hashed_npub: string;
   hashed_nip05: string;
   hashed_lightning_address: string;
-  hashed_encrypted_nsec: string;
+  encrypted_nsec?: string; // Use encrypted_nsec directly instead of hashed version
   spending_limits?: string;
   privacy_settings?: string;
 }
@@ -138,26 +138,26 @@ async function decryptField(
       if (computedHash === hashedValue) {
         return knownValue;
       } else {
-        console.warn(
-          `Hash mismatch for ${fieldName} - known value may be incorrect`
+        console.error(
+          `Hash verification failed for ${fieldName} - known value is incorrect`
         );
-        return knownValue; // Return anyway, but log warning
+        throw new Error(`Hash verification failed for ${fieldName}`);
       }
     } catch (error) {
       console.error(`Failed to verify hash for ${fieldName}:`, error);
-      return knownValue;
+      throw error;
     }
   }
 
   // CRITICAL: Hashed data cannot be decrypted without the original value
-  // Return empty string for display purposes
+  // Throw error instead of returning empty string
   // The application should maintain known values in session state
-  console.warn(
+  console.error(
     `Cannot decrypt hashed field ${fieldName} without known value. ` +
       `Hashed data is one-way and requires the original value from user input.`
   );
 
-  return ""; // Return empty string - UI should handle gracefully
+  throw new Error(`Cannot decrypt hashed field ${fieldName}`);
 }
 
 /**
@@ -239,11 +239,8 @@ export async function decryptUserProfile(
         encryptedData.user_salt,
         knownValues?.lightning_address
       ),
-      decryptField(
-        "hashed_encrypted_nsec",
-        encryptedData.hashed_encrypted_nsec,
-        encryptedData.user_salt
-      ),
+      // Use encrypted_nsec directly (already properly encrypted with Noble V2)
+      Promise.resolve(encryptedData.encrypted_nsec || ""),
     ]);
 
     // Parse JSON fields

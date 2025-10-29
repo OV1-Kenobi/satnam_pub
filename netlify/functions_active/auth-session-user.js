@@ -9,7 +9,22 @@ import jwt from "jsonwebtoken";
 import { generateDUIDFromNIP05 } from "../../lib/security/duid-generator.js";
 import { SecureSessionManager } from "./security/session-manager.js";
 import { supabase } from "./supabase.js";
-import { allowRequest } from "./utils/rate-limiter.js";
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    createRateLimitIdentifier,
+    getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+    createRateLimitErrorResponse,
+    generateRequestId,
+    logError,
+} from "./utils/error-handler.js";
+import {
+    errorResponse,
+    jsonResponse,
+    preflightResponse,
+} from "./utils/security-headers.js";
 
 function parseCookies(cookieHeader) {
   if (!cookieHeader) return {};
@@ -20,35 +35,39 @@ function parseCookies(cookieHeader) {
   }, {});
 }
 
-function corsHeaders(origin) {
-  // In production you may restrict this further to https://www.satnam.pub
-  const allowed = process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()) || ["*"]; 
-  const corsOrigin = allowed.includes("*") ? origin || "*" : (allowed.includes(origin || "") ? origin : allowed[0] || "*");
-  return {
-    "Access-Control-Allow-Origin": corsOrigin || "*",
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Content-Type": "application/json",
-    Vary: "Origin",
-  };
-}
-
 export const handler = async (event) => {
-  const origin = event.headers?.origin || event.headers?.Origin || "*";
-  const headers = corsHeaders(origin);
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers);
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Rate limit by IP (best-effort)
-  const clientIP = String(
-    event.headers?.["x-forwarded-for"] || event.headers?.["x-real-ip"] || "unknown"
+  console.log("🚀 Session user handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Database-backed rate limiting
+  const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitKey,
+    RATE_LIMITS.AUTH_SESSION
   );
-  if (!allowRequest(clientIP, 30, 60_000)) {
-    return { statusCode: 429, headers, body: JSON.stringify({ success: false, error: "Too many attempts" }) };
-    }
 
-  if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers, body: "" };
+  if (!rateLimitAllowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "auth-session-user",
+      method: event.httpMethod,
+    });
+    return createRateLimitErrorResponse(requestId, requestOrigin);
+  }
+
+  if (event.httpMethod === "OPTIONS") {
+    return preflightResponse(requestOrigin);
+  }
   if (event.httpMethod !== "GET") {
-    return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
+    return errorResponse(405, "Method not allowed", requestId, requestOrigin);
   }
 
   try {
@@ -67,26 +86,34 @@ export const handler = async (event) => {
       const cookies = parseCookies(event.headers?.cookie);
       const refresh = cookies?.["satnam_refresh_token"];
       if (!refresh) {
-        return { statusCode: 401, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn' }, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
+        const response = errorResponse(401, "Unauthorized", requestId, requestOrigin);
+        response.headers["X-Auth-Handler"] = "auth-session-user-fn";
+        return response;
       }
       try {
         const { getJwtSecret } = await import("./utils/jwt-secret.js");
         const secret = getJwtSecret();
         const payload = jwt.verify(refresh, secret, {
-          algorithms: ["HS256"], issuer: "satnam.pub", audience: "satnam.pub-users",
+          algorithms: ["HS256"],
+          issuer: "satnam.pub",
+          audience: "satnam.pub-users",
         });
         const obj = typeof payload === "string" ? JSON.parse(payload) : payload;
         if (obj?.type !== "refresh" || !obj?.nip05) {
-          return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Invalid token" }) };
+          return errorResponse(401, "Invalid token", requestId, requestOrigin);
         }
         nip05 = obj.nip05;
       } catch {
-        return { statusCode: 401, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn' }, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
+        const response = errorResponse(401, "Unauthorized", requestId, requestOrigin);
+        response.headers["X-Auth-Handler"] = "auth-session-user-fn";
+        return response;
       }
     }
 
     if (!nip05) {
-      return { statusCode: 401, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn' }, body: JSON.stringify({ success: false, error: "Unauthorized" }) };
+      const response = errorResponse(401, "Unauthorized", requestId, requestOrigin);
+      response.headers["X-Auth-Handler"] = "auth-session-user-fn";
+      return response;
     }
 
     // 3) Look up user by DUID derived from nip05 (server-side)
@@ -111,7 +138,7 @@ export const handler = async (event) => {
 
     if (userError || !user) {
       const code = status === 406 ? 404 : 500;
-      return { statusCode: code, headers, body: JSON.stringify({ success: false, error: "User not found" }) };
+      return errorResponse(code, "User not found", requestId, requestOrigin);
     }
 
     // CRITICAL FIX: Map privacy-first schema fields correctly
@@ -130,10 +157,19 @@ export const handler = async (event) => {
       hashed_nip05: user.hashed_nip05 || null,
     };
 
-    return { statusCode: 200, headers: { ...headers, 'X-Auth-Handler': 'auth-session-user-fn', 'X-Has-Encrypted': userPayload.encrypted_nsec ? '1' : '0', 'X-Has-Salt': userPayload.user_salt ? '1' : '0', 'X-Has-Encrypted-IV': userPayload.encrypted_nsec_iv ? '1' : '0' }, body: JSON.stringify({ success: true, data: { user: userPayload } }) };
+    const response = jsonResponse(200, { success: true, data: { user: userPayload } }, requestOrigin);
+    response.headers["X-Auth-Handler"] = "auth-session-user-fn";
+    response.headers["X-Has-Encrypted"] = userPayload.encrypted_nsec ? "1" : "0";
+    response.headers["X-Has-Salt"] = userPayload.user_salt ? "1" : "0";
+    response.headers["X-Has-Encrypted-IV"] = userPayload.encrypted_nsec_iv ? "1" : "0";
+    return response;
   } catch (error) {
-    console.error("auth-session-user error:", error);
-    return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Internal server error" }) };
+    logError(error, {
+      requestId,
+      endpoint: "auth-session-user",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestId, requestOrigin);
   }
 };
 

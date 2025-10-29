@@ -1,0 +1,242 @@
+================================================================================
+FROST SIGNATURE VERIFICATION & CEPS INTEGRATION - IMPLEMENTATION PLAN
+================================================================================
+
+PREPARED FOR: User Review & Approval
+DATE: 2025-10-28
+STATUS: Ready for Implementation
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+This plan outlines the implementation of two critical methods that complete the
+FROST signature system:
+
+1. verifyAggregatedSignature() - Cryptographically verify FROST signatures
+2. publishSignedEvent() - Publish signed events to Nostr relays via CEPS
+
+Both methods will be added to lib/frost/frost-session-manager.ts following
+established code patterns and security standards.
+
+================================================================================
+TASK 1: SIGNATURE VERIFICATION
+================================================================================
+
+METHOD: verifyAggregatedSignature(sessionId, messageHash, publicKey)
+
+PURPOSE: Verify that a FROST signature (R, s) is cryptographically valid
+
+IMPLEMENTATION:
+  Step 1: Retrieve completed FROST session from database
+  Step 2: Extract signature components (R: 66 hex, s: 64 hex)
+  Step 3: Convert inputs to Uint8Array format
+  Step 4: Reconstruct signature as elliptic curve point + scalar
+  Step 5: Call secp256k1.verify() to verify signature
+
+RETURNS:
+  Success: { success: true, valid: true/false }
+  Error:   { success: false, error: "..." }
+
+ERROR CASES: 8 specific error messages for debugging
+
+================================================================================
+TASK 2: CEPS INTEGRATION
+================================================================================
+
+METHOD: publishSignedEvent(sessionId)
+
+PURPOSE: Publish FROST-signed Nostr events to relays via CEPS
+
+IMPLEMENTATION:
+  Step 1: Retrieve completed FROST session with event_template
+  Step 2: Parse event template as JSON
+  Step 3: Add signature components to event
+  Step 4: Call CEPS.publishEvent() to publish to relays
+  Step 5: Update session with final_event_id (optimistic locking)
+
+RETURNS:
+  Success: { success: true, eventId: "..." }
+  Error:   { success: false, error: "..." }
+
+ERROR CASES: 7 specific error messages for debugging
+
+================================================================================
+TECHNICAL SPECIFICATIONS
+================================================================================
+
+CRYPTOGRAPHY:
+  - Library: @noble/curves/secp256k1 (audited, production-ready)
+  - Signature Format: (R, s) where R is point, s is scalar
+  - Verification: secp256k1.verify(signature, messageHash, publicKey)
+
+DATABASE:
+  - Table: frost_signing_sessions
+  - Queries: SELECT by session_id, UPDATE with optimistic locking
+  - Concurrency: Handled via updated_at timestamp validation
+
+CEPS INTEGRATION:
+  - Import: import { central_event_publishing_service as CEPS }
+  - Method: CEPS.publishEvent(event, relays)
+  - Relays: Family-specific or default (wss://relay.satnam.pub)
+
+================================================================================
+CODE ORGANIZATION
+================================================================================
+
+FILE: lib/frost/frost-session-manager.ts
+
+  Lines 1-100:      Imports and type definitions (existing)
+  Lines 100-500:    Session creation and management (existing)
+  Lines 500-700:    Nonce collection (existing)
+  Lines 700-850:    Signature aggregation (existing - COMPLETED)
+  Lines 850-900:    Helper methods (existing)
+  
+  Lines 900-1050:   ✨ NEW: verifyAggregatedSignature() method
+  Lines 1050-1150:  ✨ NEW: publishSignedEvent() method
+
+TYPE UPDATES: types/missing-modules.d.ts
+  - Add secp256k1.verify() signature
+
+================================================================================
+QUALITY STANDARDS
+================================================================================
+
+✅ Type Safety
+   - Full TypeScript types for all parameters
+   - No 'any' types (except Point from @noble/curves)
+   - Proper return type definitions
+
+✅ Error Handling
+   - Try-catch blocks for all operations
+   - 13+ specific error messages
+   - Graceful error propagation
+
+✅ Security
+   - Zero-knowledge architecture maintained
+   - No sensitive data in logs
+   - Proper memory handling
+   - Constant-time operations
+
+✅ Documentation
+   - JSDoc comments for both methods
+   - Inline comments for complex logic
+   - Clear parameter descriptions
+
+✅ Patterns
+   - Follows existing frost-session-manager.ts style
+   - Consistent with CEPS integration patterns
+   - Matches error handling conventions
+
+================================================================================
+CONSTRAINTS & ASSUMPTIONS
+================================================================================
+
+CONSTRAINTS:
+  ✅ Do NOT modify aggregateSignatures() method
+  ✅ Maintain zero-knowledge architecture
+  ✅ ESM-only patterns (static imports)
+  ✅ No dynamic imports in these methods
+  ✅ Follow existing code patterns
+
+ASSUMPTIONS:
+  ✅ CEPS is already initialized and available
+  ✅ Database schema includes final_event_id field
+  ✅ Event template is valid JSON Nostr event
+  ✅ secp256k1 library is properly imported
+
+================================================================================
+DELIVERABLES
+================================================================================
+
+Upon approval and implementation:
+
+1. verifyAggregatedSignature() method
+   - Full implementation with error handling
+   - Comprehensive documentation
+   - Type-safe with TypeScript
+
+2. publishSignedEvent() method
+   - Full implementation with CEPS integration
+   - Optimistic locking for database updates
+   - Feature gate for event_template
+
+3. Type Declarations
+   - Updated types/missing-modules.d.ts
+   - Added secp256k1.verify() signature
+
+4. Documentation
+   - JSDoc comments for both methods
+   - Inline comments for complex logic
+   - Error handling documentation
+
+================================================================================
+IMPLEMENTATION CHECKLIST
+================================================================================
+
+- [ ] Plan reviewed and understood
+- [ ] Technical approach approved
+- [ ] Error handling strategy approved
+- [ ] CEPS integration approach approved
+- [ ] Type safety approach approved
+- [ ] Ready to proceed with implementation
+
+================================================================================
+DOCUMENTATION REFERENCES
+================================================================================
+
+Detailed Plans Available:
+  1. docs/FROST_VERIFICATION_CEPS_INTEGRATION_PLAN.md
+     - Step-by-step implementation details
+     - Parameter specifications
+     - Error handling strategy
+
+  2. docs/FROST_IMPLEMENTATION_CODE_STRUCTURE.md
+     - Code structure preview
+     - Method signatures
+     - Integration points
+
+  3. docs/IMPLEMENTATION_PLAN_SUMMARY.md
+     - Executive summary
+     - Technical specifications
+     - Quality standards
+
+  4. docs/DETAILED_IMPLEMENTATION_PLAN.md
+     - Complete implementation guide
+     - All 5 steps for each method
+     - Return types and error cases
+
+External References:
+  - FROST Spec: https://eprint.iacr.org/2020/852.pdf
+  - @noble/curves: https://github.com/paulmillr/noble-curves
+  - secp256k1: https://en.bitcoin.it/wiki/Secp256k1
+  - Schnorr Signatures: https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
+
+================================================================================
+APPROVAL STATUS
+================================================================================
+
+✅ Plan Complete and Ready for Review
+✅ All Requirements Documented
+✅ Technical Approach Established
+✅ Code Patterns Identified
+✅ Error Handling Strategy Defined
+✅ Type Safety Verified
+✅ Security Considerations Addressed
+
+READY FOR IMPLEMENTATION: YES
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Review this plan and supporting documentation
+2. Approve implementation approach
+3. Proceed with implementation of both methods
+4. Run TypeScript diagnostics (expect 0 errors)
+5. Test with sample FROST sessions
+6. Verify all error cases handled
+7. Update documentation
+
+================================================================================
+

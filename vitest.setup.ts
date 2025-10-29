@@ -4,7 +4,6 @@
  * Global configuration and setup for all Vitest tests
  */
 
-import "@testing-library/jest-dom/vitest";
 import { afterAll, beforeAll, vi } from "vitest";
 import { globalTestCleanup } from "./lib/__tests__/test-setup";
 
