@@ -183,8 +183,8 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase
-            if (id.includes('@supabase/supabase-js')) {
+            // Supabase (bundle all @supabase/* libs together to avoid eval-order issues)
+            if (id.includes('@supabase/')) {
               return 'supabase-vendor';
             }
 
