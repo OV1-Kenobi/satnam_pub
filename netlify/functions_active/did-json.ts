@@ -6,47 +6,67 @@
  */
 
 import type { Handler } from "@netlify/functions";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 import { buildDidDocument } from "../../src/lib/vc/jwk-did.ts";
-import { allowRequest } from "./utils/rate-limiter.js";
-
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function badRequest(body: unknown, status = 400) {
-  return {
-    statusCode: status,
-    headers: { "Content-Type": "application/json", ...corsHeaders() },
-    body: JSON.stringify(body),
-  };
-}
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 DID JSON handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: { ...corsHeaders() } };
-  }
-  if (event.httpMethod !== "GET") {
-    return badRequest({ error: "Method not allowed" }, 405);
+    return preflightResponse(requestOrigin);
   }
 
-  // Rate limit per IP
-  const xfwd =
-    event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
-  const clientIp = Array.isArray(xfwd)
-    ? xfwd[0]
-    : (xfwd || "").split(",")[0]?.trim() || "unknown";
-  if (!allowRequest(clientIp, 60, 60_000))
-    return badRequest({ error: "Too many requests" }, 429);
+  if (event.httpMethod !== "GET") {
+    return errorResponse(405, "Method not allowed", requestOrigin);
+  }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "did-json",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     // Config from env; all public
     const nip05 = process.env.DIDJSON_NIP05;
     const jwkX = process.env.DIDJSON_JWK_X;
@@ -54,12 +74,10 @@ export const handler: Handler = async (event) => {
     const mirrorsCsv = process.env.DIDJSON_MIRRORS || "https://www.satnam.pub";
 
     if (!nip05 || !jwkX || !jwkY) {
-      return badRequest(
-        {
-          error:
-            "Server not configured: DIDJSON_NIP05, DIDJSON_JWK_X, DIDJSON_JWK_Y required",
-        },
-        500
+      return errorResponse(
+        500,
+        "Server not configured: DIDJSON_NIP05, DIDJSON_JWK_X, DIDJSON_JWK_Y required",
+        requestOrigin
       );
     }
 
@@ -73,13 +91,19 @@ export const handler: Handler = async (event) => {
 
     const didDoc = await buildDidDocument({ nip05, jwk, mirrors });
 
+    // Return success response with security headers
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json", ...corsHeaders() },
+      headers,
       body: JSON.stringify(didDoc),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return badRequest({ error: message }, 500);
+    logError(error, {
+      requestId,
+      endpoint: "did-json",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

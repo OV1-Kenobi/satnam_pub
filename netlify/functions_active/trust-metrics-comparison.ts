@@ -8,8 +8,23 @@
  * - Export comparison data (JSON/CSV)
  */
 
-import { Handler, HandlerContext, HandlerEvent } from "@netlify/functions";
+import { Handler, HandlerEvent } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+
+// Security utilities (Phase 3 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
+
 import { getEnvVar } from "./utils/env.js";
 
 interface TrustMetrics {
@@ -52,36 +67,51 @@ interface HistoryResponse {
   total: number;
 }
 
-const handler: Handler = async (
-  event: HandlerEvent,
-  context: HandlerContext
-) => {
-  // CORS headers
-  const headers = {
-    "Access-Control-Allow-Origin":
-      process.env.VITE_CORS_ORIGIN || "https://www.satnam.pub",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Content-Type": "application/json",
-  };
+const handler: Handler = async (event: HandlerEvent) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Handle CORS preflight
+  console.log("🚀 Trust metrics comparison handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "trust-metrics-comparison",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     // Initialize Supabase client
     const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
     const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("Missing Supabase environment variables");
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: "Server configuration error" }),
-      };
+      logError(new Error("Missing Supabase environment variables"), {
+        requestId,
+        endpoint: "trust-metrics-comparison",
+      });
+      return errorResponse(500, "Server configuration error", requestOrigin);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -91,11 +121,7 @@ const handler: Handler = async (
     const token = authHeader.replace("Bearer ", "").trim();
 
     if (!token || token === "Bearer") {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      };
+      return errorResponse(401, "Unauthorized", requestOrigin);
     }
 
     // Verify JWT and get user
@@ -106,49 +132,59 @@ const handler: Handler = async (
         error: authError,
       } = await supabase.auth.getUser(token);
       if (authError || !authUser) {
-        return {
-          statusCode: 401,
-          headers,
-          body: JSON.stringify({ error: "Invalid token" }),
-        };
+        return errorResponse(401, "Invalid token", requestOrigin);
       }
       user = authUser;
     } catch (authError) {
-      console.error("Auth verification error:", authError);
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: "Invalid token" }),
-      };
+      logError(authError, {
+        requestId,
+        endpoint: "trust-metrics-comparison",
+        operation: "auth verification",
+      });
+      return errorResponse(401, "Invalid token", requestOrigin);
     }
 
     const userId = user.id;
 
     // Route handlers
     if (event.httpMethod === "POST" && event.path.includes("/compare")) {
-      return handleCompareMetrics(supabase, userId, event, headers);
+      return handleCompareMetrics(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
     if (event.httpMethod === "GET" && event.path.includes("/history")) {
-      return handleGetHistory(supabase, userId, event, headers);
+      return handleGetHistory(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
     if (event.httpMethod === "GET" && event.path.includes("/export")) {
-      return handleExportComparison(supabase, userId, event, headers);
+      return handleExportComparison(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
-    return {
-      statusCode: 404,
-      headers,
-      body: JSON.stringify({ error: "Endpoint not found" }),
-    };
+    return errorResponse(404, "Endpoint not found", requestOrigin);
   } catch (error) {
-    console.error("Error in trust-metrics-comparison:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Internal server error" }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "trust-metrics-comparison",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
@@ -167,26 +203,23 @@ async function handleCompareMetrics(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const body = JSON.parse(event.body || "{}");
     const { contactIds } = body;
 
     if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "contactIds array is required" }),
-      };
+      return errorResponse(400, "contactIds array is required", requestOrigin);
     }
 
     if (contactIds.length > 10) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "Maximum 10 contacts can be compared" }),
-      };
+      return errorResponse(
+        400,
+        "Maximum 10 contacts can be compared",
+        requestOrigin
+      );
     }
 
     // Get metrics for each contact
@@ -255,18 +288,27 @@ async function handleCompareMetrics(
       comparison,
     };
 
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin":
+        requestOrigin ||
+        process.env.VITE_CORS_ORIGIN ||
+        "https://www.satnam.pub",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error comparing metrics:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to compare metrics" }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "trust-metrics-comparison/compare",
+    });
+    return errorResponse(500, "Failed to compare metrics", requestOrigin);
   }
 }
 
@@ -274,7 +316,8 @@ async function handleGetHistory(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const contactId = event.queryStringParameters?.contactId;
@@ -283,11 +326,7 @@ async function handleGetHistory(
     const days = parseInt(event.queryStringParameters?.days || "90");
 
     if (!contactId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "contactId is required" }),
-      };
+      return errorResponse(400, "contactId is required", requestOrigin);
     }
 
     const offset = (page - 1) * pageSize;
@@ -338,18 +377,27 @@ async function handleGetHistory(
       total: count || 0,
     };
 
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin":
+        requestOrigin ||
+        process.env.VITE_CORS_ORIGIN ||
+        "https://www.satnam.pub",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error getting history:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to get history" }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "trust-metrics-comparison/history",
+    });
+    return errorResponse(500, "Failed to get history", requestOrigin);
   }
 }
 
@@ -357,7 +405,8 @@ async function handleExportComparison(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const format = event.queryStringParameters?.format || "json";
@@ -365,11 +414,7 @@ async function handleExportComparison(
       event.queryStringParameters?.contactIds?.split(",") || [];
 
     if (contactIds.length === 0) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "contactIds are required" }),
-      };
+      return errorResponse(400, "contactIds are required", requestOrigin);
     }
 
     // Get metrics
@@ -381,11 +426,21 @@ async function handleExportComparison(
       .order("timestamp", { ascending: false })
       .limit(contactIds.length);
 
+    const headers = {
+      "Content-Type": format === "csv" ? "text/csv" : "application/json",
+      "Access-Control-Allow-Origin":
+        requestOrigin ||
+        process.env.VITE_CORS_ORIGIN ||
+        "https://www.satnam.pub",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
     if (format === "csv") {
       const csv = convertToCSV(metricsData || []);
       return {
         statusCode: 200,
-        headers: { ...headers, "Content-Type": "text/csv" },
+        headers,
         body: csv,
       };
     }
@@ -396,12 +451,11 @@ async function handleExportComparison(
       body: JSON.stringify(metricsData),
     };
   } catch (error) {
-    console.error("Error exporting comparison:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to export comparison" }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "trust-metrics-comparison/export",
+    });
+    return errorResponse(500, "Failed to export comparison", requestOrigin);
   }
 }
 

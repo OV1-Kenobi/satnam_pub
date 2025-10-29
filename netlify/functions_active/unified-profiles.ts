@@ -15,9 +15,26 @@
 import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { jwtDecode } from "jwt-decode";
-import { allowRequest } from "./utils/rate-limiter.js";
 
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 const FEATURE_ENABLED =
   ((process.env.VITE_PUBLIC_PROFILES_ENABLED as string) || "false")
     .toString()
@@ -45,36 +62,6 @@ type ActionName = keyof typeof ACTIONS;
 // ============================================================================
 // Shared Helper Functions
 // ============================================================================
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-function badRequest(body: unknown, status = 400) {
-  return json(status, body);
-}
 
 function extractToken(authHeader: string | undefined): string | null {
   if (!authHeader) return null;
@@ -119,6 +106,23 @@ function getSupabaseClient(token?: string) {
   }
 
   return createClient(supabaseUrl, supabaseKey, config);
+}
+
+// Response helper functions
+function json(statusCode: number, body: any, requestOrigin?: string) {
+  return {
+    statusCode,
+    headers: getSecurityHeaders(requestOrigin),
+    body: JSON.stringify(body),
+  };
+}
+
+function badRequest(
+  body: any,
+  statusCode: number = 400,
+  requestOrigin?: string
+) {
+  return json(statusCode, body, requestOrigin);
 }
 
 // ============================================================================
@@ -983,32 +987,47 @@ async function handleGetAnalytics(event: any, userId: string) {
 // ============================================================================
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 Unified profiles handler started:", {
+    requestId,
+    method: event.httpMethod,
+    timestamp: new Date().toISOString(),
+  });
+
   // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: { ...corsHeaders() } };
+    return preflightResponse(requestOrigin);
   }
 
   try {
     // Feature flag check
     if (!FEATURE_ENABLED) {
-      return json(503, {
-        success: false,
-        error: "Public profiles feature is disabled",
-      });
+      return errorResponse(
+        503,
+        "Public profiles feature is disabled",
+        requestOrigin
+      );
     }
 
-    // Rate limiting
-    const clientIp =
-      event.headers["client-ip"] ||
-      event.headers["x-forwarded-for"] ||
-      "unknown";
-    const allowed = allowRequest("unified-profiles", clientIp, 100, 3600);
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
 
-    if (!allowed) {
-      return json(429, {
-        success: false,
-        error: "Rate limit exceeded. Maximum 100 requests per hour.",
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "unified-profiles",
+        method: event.httpMethod,
       });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Extract action from query params or request body
@@ -1028,10 +1047,11 @@ export const handler: Handler = async (event) => {
     }
 
     if (!action || !(action in ACTIONS)) {
-      return json(400, {
-        success: false,
-        error: "Invalid or missing action parameter",
-      });
+      return createValidationErrorResponse(
+        "Invalid or missing action parameter",
+        requestId,
+        requestOrigin
+      );
     }
 
     const scope = ACTIONS[action].scope;
@@ -1043,10 +1063,11 @@ export const handler: Handler = async (event) => {
       action === "getAnalytics"
     ) {
       if (event.httpMethod !== "GET") {
-        return json(405, {
-          success: false,
-          error: "Method not allowed. Use GET for this action.",
-        });
+        return errorResponse(
+          405,
+          "Method not allowed. Use GET for this action.",
+          requestOrigin
+        );
       }
     } else if (
       action === "updateVisibility" ||
@@ -1055,17 +1076,19 @@ export const handler: Handler = async (event) => {
       action === "updateSocialLinks"
     ) {
       if (event.httpMethod !== "PATCH") {
-        return json(405, {
-          success: false,
-          error: "Method not allowed. Use PATCH for this action.",
-        });
+        return errorResponse(
+          405,
+          "Method not allowed. Use PATCH for this action.",
+          requestOrigin
+        );
       }
     } else if (action === "trackView") {
       if (event.httpMethod !== "POST") {
-        return json(405, {
-          success: false,
-          error: "Method not allowed. Use POST for this action.",
-        });
+        return errorResponse(
+          405,
+          "Method not allowed. Use POST for this action.",
+          requestOrigin
+        );
       }
     }
 
@@ -1073,9 +1096,10 @@ export const handler: Handler = async (event) => {
     if (scope === "user") {
       const token = extractToken(event.headers.authorization);
       if (!token) {
-        return badRequest(
-          { error: "Missing or invalid authorization header" },
-          401
+        return errorResponse(
+          401,
+          "Missing or invalid authorization header",
+          requestOrigin
         );
       }
 
@@ -1084,10 +1108,14 @@ export const handler: Handler = async (event) => {
         const decoded = jwtDecode<{ sub: string }>(token);
         userId = decoded.sub;
         if (!userId) {
-          return badRequest({ error: "Invalid token: missing user ID" }, 401);
+          return errorResponse(
+            401,
+            "Invalid token: missing user ID",
+            requestOrigin
+          );
         }
       } catch (err) {
-        return badRequest({ error: "Invalid token" }, 401);
+        return errorResponse(401, "Invalid token", requestOrigin);
       }
 
       // Route to user-scoped handlers
@@ -1103,10 +1131,7 @@ export const handler: Handler = async (event) => {
         case "updateSocialLinks":
           return await handleUpdateSocialLinks(event, userId);
         default:
-          return json(400, {
-            success: false,
-            error: "Unsupported user action",
-          });
+          return errorResponse(400, "Unsupported user action", requestOrigin);
       }
     }
 
@@ -1120,22 +1145,17 @@ export const handler: Handler = async (event) => {
         case "trackView":
           return await handleTrackView(event);
         default:
-          return json(400, {
-            success: false,
-            error: "Unsupported public action",
-          });
+          return errorResponse(400, "Unsupported public action", requestOrigin);
       }
     }
 
-    return json(400, {
-      success: false,
-      error: "Invalid action scope",
-    });
+    return errorResponse(400, "Invalid action scope", requestOrigin);
   } catch (error) {
-    console.error("Unified profiles error:", error);
-    return badRequest(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      500
-    );
+    logError(error, {
+      requestId,
+      endpoint: "unified-profiles",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

@@ -9,8 +9,28 @@
  * - Update existing rating
  */
 
-import { Handler, HandlerContext, HandlerEvent } from "@netlify/functions";
+import { Handler, HandlerEvent } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+
+// Security utilities (Phase 4 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.js";
+
 import { getEnvVar } from "./utils/env.js";
 
 interface ProviderRating {
@@ -44,36 +64,46 @@ interface UserRatingResponse {
   hasRated: boolean;
 }
 
-const handler: Handler = async (
-  event: HandlerEvent,
-  context: HandlerContext
-) => {
-  // CORS headers
-  const headers = {
-    "Access-Control-Allow-Origin":
-      process.env.VITE_CORS_ORIGIN || "https://www.satnam.pub",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Content-Type": "application/json",
-  };
+const handler: Handler = async (event: HandlerEvent) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Handle CORS preflight
+  console.log("🚀 Trust provider ratings handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!rateLimitResult.allowed) {
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     // Initialize Supabase client
     const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
     const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("Missing Supabase environment variables");
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: "Server configuration error" }),
-      };
+      logError(new Error("Missing Supabase environment variables"), {
+        requestId,
+        endpoint: "trust-provider-ratings",
+      });
+      return errorResponse(500, "Server configuration error", requestOrigin);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -83,11 +113,7 @@ const handler: Handler = async (
     const token = authHeader.replace("Bearer ", "").trim();
 
     if (!token || token === "Bearer") {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      };
+      return errorResponse(401, "Unauthorized", requestOrigin);
     }
 
     // Verify JWT and get user
@@ -98,60 +124,74 @@ const handler: Handler = async (
         error: authError,
       } = await supabase.auth.getUser(token);
       if (authError || !authUser) {
-        return {
-          statusCode: 401,
-          headers,
-          body: JSON.stringify({ error: "Invalid token" }),
-        };
+        return errorResponse(401, "Invalid token", requestOrigin);
       }
       user = authUser;
     } catch (authError) {
-      console.error("Auth verification error:", authError);
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: "Invalid token" }),
-      };
+      logError(
+        authError instanceof Error ? authError : new Error(String(authError)),
+        {
+          requestId,
+          endpoint: "trust-provider-ratings",
+          operation: "auth verification",
+        }
+      );
+      return errorResponse(401, "Invalid token", requestOrigin);
     }
 
     const userId = user.id;
 
     // Route handlers
     if (event.httpMethod === "GET" && event.path.includes("/list")) {
-      return handleGetRatings(supabase, event, headers);
+      return handleGetRatings(supabase, event, requestId, requestOrigin);
     }
 
     if (event.httpMethod === "GET" && event.path.includes("/user-rating")) {
-      return handleGetUserRating(supabase, userId, event, headers);
+      return handleGetUserRating(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
     if (event.httpMethod === "POST" && event.path.includes("/submit")) {
-      return handleSubmitRating(supabase, userId, event, headers);
+      return handleSubmitRating(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
     if (event.httpMethod === "PUT" && event.path.includes("/update")) {
-      return handleUpdateRating(supabase, userId, event, headers);
+      return handleUpdateRating(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
-    return {
-      statusCode: 404,
-      headers,
-      body: JSON.stringify({ error: "Endpoint not found" }),
-    };
+    return errorResponse(404, "Endpoint not found", requestOrigin);
   } catch (error) {
-    console.error("Error in trust-provider-ratings:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Internal server error" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-ratings",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
 async function handleGetRatings(
   supabase: any,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const providerId = event.queryStringParameters?.providerId;
@@ -159,11 +199,11 @@ async function handleGetRatings(
     const pageSize = parseInt(event.queryStringParameters?.pageSize || "10");
 
     if (!providerId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId is required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId is required",
+        requestId,
+        requestOrigin
+      );
     }
 
     const offset = (page - 1) * pageSize;
@@ -202,18 +242,18 @@ async function handleGetRatings(
       pageSize,
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error getting ratings:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to get ratings" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-ratings/list",
+    });
+    return errorResponse(500, "Failed to get ratings", requestOrigin);
   }
 }
 
@@ -221,17 +261,18 @@ async function handleGetUserRating(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const providerId = event.queryStringParameters?.providerId;
 
     if (!providerId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId is required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId is required",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Get user's rating
@@ -249,18 +290,18 @@ async function handleGetUserRating(
       hasRated: !!rating,
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error getting user rating:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to get user rating" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-ratings/user-rating",
+    });
+    return errorResponse(500, "Failed to get user rating", requestOrigin);
   }
 }
 
@@ -268,7 +309,8 @@ async function handleSubmitRating(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const body = JSON.parse(event.body || "{}");
@@ -276,19 +318,19 @@ async function handleSubmitRating(
 
     // Validate input
     if (!providerId || rating === undefined) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId and rating are required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId and rating are required",
+        requestId,
+        requestOrigin
+      );
     }
 
     if (rating < 1 || rating > 5) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "rating must be between 1 and 5" }),
-      };
+      return createValidationErrorResponse(
+        "rating must be between 1 and 5",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Check if user already rated
@@ -300,11 +342,11 @@ async function handleSubmitRating(
       .single();
 
     if (existingRating) {
-      return {
-        statusCode: 409,
-        headers,
-        body: JSON.stringify({ error: "You have already rated this provider" }),
-      };
+      return errorResponse(
+        409,
+        "You have already rated this provider",
+        requestOrigin
+      );
     }
 
     // Create rating
@@ -331,18 +373,18 @@ async function handleSubmitRating(
       message: "Rating submitted successfully",
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 201,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error submitting rating:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to submit rating" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-ratings/submit",
+    });
+    return errorResponse(500, "Failed to submit rating", requestOrigin);
   }
 }
 
@@ -350,26 +392,27 @@ async function handleUpdateRating(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const body = JSON.parse(event.body || "{}");
     const { providerId, rating, review } = body;
 
     if (!providerId || rating === undefined) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId and rating are required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId and rating are required",
+        requestId,
+        requestOrigin
+      );
     }
 
     if (rating < 1 || rating > 5) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "rating must be between 1 and 5" }),
-      };
+      return createValidationErrorResponse(
+        "rating must be between 1 and 5",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Update rating
@@ -385,6 +428,7 @@ async function handleUpdateRating(
 
     if (error) throw error;
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
@@ -394,12 +438,11 @@ async function handleUpdateRating(
       }),
     };
   } catch (error) {
-    console.error("Error updating rating:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to update rating" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-ratings/update",
+    });
+    return errorResponse(500, "Failed to update rating", requestOrigin);
   }
 }
 

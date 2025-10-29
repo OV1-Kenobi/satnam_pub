@@ -19,7 +19,25 @@ import {
   retryWithBackoff,
   type PkarrError,
 } from "./utils/pkarr-error-handler.js";
-import { allowRequest } from "./utils/rate-limiter.js";
+
+// Security utilities (Phase 2 hardening)
+import {
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+  RATE_LIMITS,
+} from "../functions_active/utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "../functions_active/utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "../functions_active/utils/security-headers.js";
 
 const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
 const MAX_BATCH_SIZE = 50;
@@ -176,31 +194,7 @@ async function setRlsContext(client: any, ownerHash: string): Promise<boolean> {
   return ok;
 }
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
+// Old helper functions removed - using centralized security utilities
 
 /**
  * Calculate time range in seconds based on period
@@ -269,7 +263,9 @@ async function hasAdminRole(session: any): Promise<boolean> {
 async function handleVerifyContact(
   _event: any,
   payload: any,
-  userContext: any
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
 ) {
   const startTime = Date.now();
   const { session, client } = userContext;
@@ -277,30 +273,32 @@ async function handleVerifyContact(
   // Validate required fields
   const { contact_hash, nip05, pubkey } = payload;
   if (!contact_hash || !nip05 || !pubkey) {
-    return json(400, {
-      success: false,
-      error: "Missing required fields: contact_hash, nip05, pubkey",
-    });
+    return createValidationErrorResponse(
+      "Missing required fields: contact_hash, nip05, pubkey",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Validate NIP-05 format
   if (!nip05.includes("@")) {
-    return json(400, {
-      success: false,
-      error: "Invalid NIP-05 format (must contain @)",
-    });
+    return createValidationErrorResponse(
+      "Invalid NIP-05 format (must contain @)",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Set RLS context
   const rlsOk = await setRlsContext(client, session.hashedId);
   if (!rlsOk) {
-    console.error("RLS context setup failed for verify_contact", {
+    logError(new Error("RLS context setup failed"), {
+      requestId,
+      endpoint: "pkarr-proxy",
+      action: "verify_contact",
       ownerHash: session.hashedId,
     });
-    return json(500, {
-      success: false,
-      error: "RLS context setup failed",
-    });
+    return errorResponse(500, "RLS context setup failed", requestOrigin);
   }
 
   // Find contact by owner_hash + contact_hash
@@ -313,22 +311,31 @@ async function handleVerifyContact(
     .maybeSingle();
 
   if (findErr) {
-    console.error("Error finding contact:", findErr);
-    return json(500, { success: false, error: "Database error" });
+    logError(findErr, {
+      requestId,
+      endpoint: "pkarr-proxy",
+      action: "verify_contact",
+    });
+    return errorResponse(500, "Database error", requestOrigin);
   }
 
   if (!contact) {
-    return json(404, { success: false, error: "Contact not found" });
+    return errorResponse(404, "Contact not found", requestOrigin);
   }
 
   // If already verified, return current status
   if (contact.pkarr_verified) {
-    return json(200, {
-      success: true,
-      verified: true,
-      verification_level: contact.verification_level || "basic",
-      response_time_ms: Date.now() - startTime,
-    });
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        verified: true,
+        verification_level: contact.verification_level || "basic",
+        response_time_ms: Date.now() - startTime,
+      }),
+    };
   }
 
   // Check cache first
@@ -336,11 +343,16 @@ async function handleVerifyContact(
   const cachedResult = getCachedResult(cacheKey);
 
   if (cachedResult) {
-    return json(200, {
-      ...cachedResult,
-      cached: true,
-      response_time_ms: Date.now() - startTime,
-    });
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        ...cachedResult,
+        cached: true,
+        response_time_ms: Date.now() - startTime,
+      }),
+    };
   }
 
   // Request deduplication
@@ -348,12 +360,17 @@ async function handleVerifyContact(
   if (existingRequest) {
     try {
       const result = await existingRequest;
-      return json(200, {
-        ...result,
-        cached: false,
-        deduplicated: true,
-        response_time_ms: Date.now() - startTime,
-      });
+      const headers = getSecurityHeaders(requestOrigin);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          ...result,
+          cached: false,
+          deduplicated: true,
+          response_time_ms: Date.now() - startTime,
+        }),
+      };
     } catch (error) {
       deduplicationCache.delete(cacheKey);
     }
@@ -468,11 +485,16 @@ async function handleVerifyContact(
   deduplicationCache.set(cacheKey, verificationPromise);
   const result = await verificationPromise;
 
-  return json(200, {
-    ...result,
-    cached: false,
-    response_time_ms: Date.now() - startTime,
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      ...result,
+      cached: false,
+      response_time_ms: Date.now() - startTime,
+    }),
+  };
 }
 
 /**
@@ -589,53 +611,63 @@ async function verifySingleContact(
  * Action: verify_batch
  * Verifies multiple contacts in parallel via PKARR resolution
  */
-async function handleVerifyBatch(_event: any, payload: any, userContext: any) {
+async function handleVerifyBatch(
+  _event: any,
+  payload: any,
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
+) {
   const startTime = Date.now();
   const { session, client } = userContext;
 
   // Validate contacts array
   const { contacts } = payload;
   if (!Array.isArray(contacts) || contacts.length === 0) {
-    return json(400, {
-      success: false,
-      error: "contacts must be a non-empty array",
-    });
+    return createValidationErrorResponse(
+      "contacts must be a non-empty array",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Enforce max batch size
   if (contacts.length > MAX_BATCH_SIZE) {
-    return json(400, {
-      success: false,
-      error: `Batch size exceeds maximum of ${MAX_BATCH_SIZE} contacts`,
-    });
+    return createValidationErrorResponse(
+      `Batch size exceeds maximum of ${MAX_BATCH_SIZE} contacts`,
+      requestId,
+      requestOrigin
+    );
   }
 
   // Validate each contact
   for (const contact of contacts) {
     if (!contact.contact_hash || !contact.nip05 || !contact.pubkey) {
-      return json(400, {
-        success: false,
-        error: "Each contact must have contact_hash, nip05, and pubkey",
-      });
+      return createValidationErrorResponse(
+        "Each contact must have contact_hash, nip05, and pubkey",
+        requestId,
+        requestOrigin
+      );
     }
     if (!contact.nip05.includes("@")) {
-      return json(400, {
-        success: false,
-        error: `Invalid NIP-05 format for ${contact.contact_hash} (must contain @)`,
-      });
+      return createValidationErrorResponse(
+        `Invalid NIP-05 format for ${contact.contact_hash} (must contain @)`,
+        requestId,
+        requestOrigin
+      );
     }
   }
 
   // Set RLS context
   const rlsOk = await setRlsContext(client, session.hashedId);
   if (!rlsOk) {
-    console.error("RLS context setup failed for verify_batch", {
+    logError(new Error("RLS context setup failed"), {
+      requestId,
+      endpoint: "pkarr-proxy",
+      action: "verify_batch",
       ownerHash: session.hashedId,
     });
-    return json(500, {
-      success: false,
-      error: "RLS context setup failed",
-    });
+    return errorResponse(500, "RLS context setup failed", requestOrigin);
   }
 
   // Verify all contacts in parallel
@@ -665,21 +697,32 @@ async function handleVerifyBatch(_event: any, payload: any, userContext: any) {
   const totalVerified = results.filter((r) => r.verified).length;
   const totalFailed = results.filter((r) => !r.verified).length;
 
-  return json(200, {
-    success: true,
-    results,
-    total_processed: totalProcessed,
-    total_verified: totalVerified,
-    total_failed: totalFailed,
-    response_time_ms: Date.now() - startTime,
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      results,
+      total_processed: totalProcessed,
+      total_verified: totalVerified,
+      total_failed: totalFailed,
+      response_time_ms: Date.now() - startTime,
+    }),
+  };
 }
 
 /**
  * Action: get_analytics
  * Retrieves PKARR analytics data
  */
-async function handleGetAnalytics(_event: any, payload: any, userContext: any) {
+async function handleGetAnalytics(
+  _event: any,
+  payload: any,
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
+) {
   const startTime = Date.now();
   const { client } = userContext;
 
@@ -693,18 +736,20 @@ async function handleGetAnalytics(_event: any, payload: any, userContext: any) {
 
   // Validate period
   if (!["24h", "7d", "30d"].includes(period)) {
-    return json(400, {
-      success: false,
-      error: "Invalid period. Must be one of: 24h, 7d, 30d",
-    });
+    return createValidationErrorResponse(
+      "Invalid period. Must be one of: 24h, 7d, 30d",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Validate error period
   if (includeErrorMetrics && !["1h", "24h", "7d"].includes(errorPeriod)) {
-    return json(400, {
-      success: false,
-      error: "Invalid error_period. Must be one of: 1h, 24h, 7d",
-    });
+    return createValidationErrorResponse(
+      "Invalid error_period. Must be one of: 1h, 24h, 7d",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Get time range
@@ -720,11 +765,16 @@ async function handleGetAnalytics(_event: any, payload: any, userContext: any) {
   );
 
   if (statsError) {
-    console.error("Error fetching verification stats:", statsError);
-    return json(500, {
-      success: false,
-      error: "Failed to fetch verification statistics",
+    logError(statsError, {
+      requestId,
+      endpoint: "pkarr-proxy",
+      action: "get_analytics",
     });
+    return errorResponse(
+      500,
+      "Failed to fetch verification statistics",
+      requestOrigin
+    );
   }
 
   const verificationStats =
@@ -850,11 +900,16 @@ async function handleGetAnalytics(_event: any, payload: any, userContext: any) {
     }
   }
 
-  return json(200, {
-    success: true,
-    data: responseData,
-    response_time_ms: Date.now() - startTime,
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      data: responseData,
+      response_time_ms: Date.now() - startTime,
+    }),
+  };
 }
 
 /**
@@ -864,32 +919,40 @@ async function handleGetAnalytics(_event: any, payload: any, userContext: any) {
 async function handleResetCircuitBreaker(
   _event: any,
   _payload: any,
-  userContext: any
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
 ) {
   const { session } = userContext;
 
   // Verify admin role
   const isAdmin = await hasAdminRole(session);
   if (!isAdmin) {
-    return json(403, {
-      success: false,
-      error: "Admin access required (guardian/steward role)",
-    });
+    return errorResponse(
+      403,
+      "Admin access required (guardian/steward role)",
+      requestOrigin
+    );
   }
 
   const previousState = pkarrCircuitBreaker.getState();
   pkarrCircuitBreaker.reset();
   const newState = pkarrCircuitBreaker.getState();
 
-  return json(200, {
-    success: true,
-    action: "reset_circuit_breaker",
-    result: {
-      previous_state: previousState,
-      new_state: newState,
-      reset_at: Date.now(),
-    },
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      action: "reset_circuit_breaker",
+      result: {
+        previous_state: previousState,
+        new_state: newState,
+        reset_at: Date.now(),
+      },
+    }),
+  };
 }
 
 /**
@@ -899,31 +962,39 @@ async function handleResetCircuitBreaker(
 async function handleGetCircuitBreakerState(
   _event: any,
   _payload: any,
-  userContext: any
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
 ) {
   const { session } = userContext;
 
   // Verify admin role
   const isAdmin = await hasAdminRole(session);
   if (!isAdmin) {
-    return json(403, {
-      success: false,
-      error: "Admin access required (guardian/steward role)",
-    });
+    return errorResponse(
+      403,
+      "Admin access required (guardian/steward role)",
+      requestOrigin
+    );
   }
 
   const state = pkarrCircuitBreaker.getState();
   const metrics = errorMetrics.getMetrics();
 
-  return json(200, {
-    success: true,
-    action: "get_circuit_breaker_state",
-    result: {
-      state,
-      metrics,
-      timestamp: Date.now(),
-    },
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      action: "get_circuit_breaker_state",
+      result: {
+        state,
+        metrics,
+        timestamp: Date.now(),
+      },
+    }),
+  };
 }
 
 /**
@@ -933,17 +1004,20 @@ async function handleGetCircuitBreakerState(
 async function handleForceOpenCircuitBreaker(
   _event: any,
   _payload: any,
-  userContext: any
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
 ) {
   const { session } = userContext;
 
   // Verify admin role
   const isAdmin = await hasAdminRole(session);
   if (!isAdmin) {
-    return json(403, {
-      success: false,
-      error: "Admin access required (guardian/steward role)",
-    });
+    return errorResponse(
+      403,
+      "Admin access required (guardian/steward role)",
+      requestOrigin
+    );
   }
 
   const previousState = pkarrCircuitBreaker.getState();
@@ -953,17 +1027,22 @@ async function handleForceOpenCircuitBreaker(
   }
   const newState = pkarrCircuitBreaker.getState();
 
-  return json(200, {
-    success: true,
-    action: "force_open_circuit_breaker",
-    result: {
-      previous_state: previousState,
-      new_state: newState,
-      forced_at: Date.now(),
-      warning:
-        "This is for testing only. Use reset_circuit_breaker to restore.",
-    },
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      action: "force_open_circuit_breaker",
+      result: {
+        previous_state: previousState,
+        new_state: newState,
+        forced_at: Date.now(),
+        warning:
+          "This is for testing only. Use reset_circuit_breaker to restore.",
+      },
+    }),
+  };
 }
 
 /**
@@ -973,33 +1052,41 @@ async function handleForceOpenCircuitBreaker(
 async function handleForceCloseCircuitBreaker(
   _event: any,
   _payload: any,
-  userContext: any
+  userContext: any,
+  requestId: string,
+  requestOrigin?: string
 ) {
   const { session } = userContext;
 
   // Verify admin role
   const isAdmin = await hasAdminRole(session);
   if (!isAdmin) {
-    return json(403, {
-      success: false,
-      error: "Admin access required (guardian/steward role)",
-    });
+    return errorResponse(
+      403,
+      "Admin access required (guardian/steward role)",
+      requestOrigin
+    );
   }
 
   const previousState = pkarrCircuitBreaker.getState();
   pkarrCircuitBreaker.reset();
   const newState = pkarrCircuitBreaker.getState();
 
-  return json(200, {
-    success: true,
-    action: "force_close_circuit_breaker",
-    result: {
-      previous_state: previousState,
-      new_state: newState,
-      forced_at: Date.now(),
-      warning: "Emergency action. Monitor system closely.",
-    },
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      action: "force_close_circuit_breaker",
+      result: {
+        previous_state: previousState,
+        new_state: newState,
+        forced_at: Date.now(),
+        warning: "Emergency action. Monitor system closely.",
+      },
+    }),
+  };
 }
 
 // ============================================================================
@@ -1007,28 +1094,20 @@ async function handleForceCloseCircuitBreaker(
 // ============================================================================
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
   // Lazy cleanup on each invocation (serverless-friendly)
   cleanupCache();
 
   try {
     // Handle CORS preflight
     if (event.httpMethod === "OPTIONS") {
-      return {
-        statusCode: 204,
-        headers: corsHeaders(),
-        body: "",
-      };
+      return preflightResponse(requestOrigin);
     }
-
-    // Rate limit baseline (10 requests per minute)
-    const xfwd =
-      event.headers?.["x-forwarded-for"] ||
-      event.headers?.["X-Forwarded-For"] ||
-      "";
-    const ip =
-      (Array.isArray(xfwd) ? xfwd[0] : xfwd).split(",")[0]?.trim() ||
-      event.headers?.["x-real-ip"] ||
-      "unknown";
 
     // Determine action
     const isGet = event.httpMethod === "GET";
@@ -1047,89 +1126,132 @@ export const handler: Handler = async (event) => {
         action = body?.action as ActionName;
         payload = body?.payload || body;
       } catch (parseError) {
-        return json(400, {
-          success: false,
-          error: "Invalid JSON in request body",
-        });
+        return createValidationErrorResponse(
+          "Invalid JSON in request body",
+          requestId,
+          requestOrigin
+        );
       }
     } else {
-      return json(405, { success: false, error: "Method Not Allowed" });
+      return errorResponse(405, "Method Not Allowed", requestOrigin);
     }
 
     if (!action || !(action in ACTIONS)) {
-      return json(400, { success: false, error: "Invalid or missing action" });
+      return createValidationErrorResponse(
+        "Invalid or missing action",
+        requestId,
+        requestOrigin
+      );
     }
 
     const scope = ACTIONS[action].scope;
 
-    // Apply action-specific rate limiting
-    if (action === "verify_contact") {
-      // 60 requests/hour for single contact verification
-      if (!allowRequest(String(ip), 60, 3600_000)) {
-        return json(429, { success: false, error: "Rate limit exceeded" });
-      }
-    } else if (action === "verify_batch") {
-      // 10 requests/hour for batch verification
-      if (!allowRequest(String(ip), 10, 3600_000)) {
-        return json(429, { success: false, error: "Rate limit exceeded" });
-      }
-    } else {
-      // Default rate limiting for other actions (60 requests/hour)
-      if (!allowRequest(String(ip), 60, 3600_000)) {
-        return json(429, { success: false, error: "Rate limit exceeded" });
-      }
+    // Database-backed rate limiting with action-specific limits
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitConfig =
+      action === "verify_contact"
+        ? RATE_LIMITS.IDENTITY_VERIFY // 50 req/hr
+        : action === "verify_batch"
+        ? RATE_LIMITS.IDENTITY_PUBLISH // 10 req/hr (stricter for batch)
+        : scope === "admin"
+        ? RATE_LIMITS.ADMIN_ACTIONS // 5 req/min for admin actions
+        : RATE_LIMITS.IDENTITY_VERIFY; // Default: 50 req/hr
+
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      rateLimitConfig
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "pkarr-proxy",
+        action,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Handle user-scoped and admin-scoped actions (require authentication)
     if (scope === "user" || scope === "admin") {
       const userContext = await getUserContext(event);
       if (!userContext) {
-        return json(401, { success: false, error: "Unauthorized" });
+        return errorResponse(401, "Unauthorized", requestOrigin);
       }
 
       // Route to appropriate handler
       switch (action) {
         case "verify_contact":
-          return await handleVerifyContact(event, payload, userContext);
+          return await handleVerifyContact(
+            event,
+            payload,
+            userContext,
+            requestId,
+            requestOrigin
+          );
 
         case "verify_batch":
-          return await handleVerifyBatch(event, payload, userContext);
+          return await handleVerifyBatch(
+            event,
+            payload,
+            userContext,
+            requestId,
+            requestOrigin
+          );
 
         case "get_analytics":
-          return await handleGetAnalytics(event, payload, userContext);
+          return await handleGetAnalytics(
+            event,
+            payload,
+            userContext,
+            requestId,
+            requestOrigin
+          );
 
         case "reset_circuit_breaker":
-          return await handleResetCircuitBreaker(event, payload, userContext);
+          return await handleResetCircuitBreaker(
+            event,
+            payload,
+            userContext,
+            requestId,
+            requestOrigin
+          );
 
         case "get_circuit_breaker_state":
           return await handleGetCircuitBreakerState(
             event,
             payload,
-            userContext
+            userContext,
+            requestId,
+            requestOrigin
           );
 
         case "force_open_circuit_breaker":
           return await handleForceOpenCircuitBreaker(
             event,
             payload,
-            userContext
+            userContext,
+            requestId,
+            requestOrigin
           );
 
         case "force_close_circuit_breaker":
           return await handleForceCloseCircuitBreaker(
             event,
             payload,
-            userContext
+            userContext,
+            requestId,
+            requestOrigin
           );
       }
     }
 
-    return json(400, { success: false, error: "Unsupported action" });
+    return errorResponse(400, "Unsupported action", requestOrigin);
   } catch (error: any) {
-    console.error("[pkarr-proxy]", error);
-    return json(500, {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+    logError(error, {
+      requestId,
+      endpoint: "pkarr-proxy",
+      method: event.httpMethod,
     });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

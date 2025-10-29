@@ -11,11 +11,28 @@
  */
 
 import type { Handler } from "@netlify/functions";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 import { getRequestClient } from "./supabase.js";
 import { getEnvVar } from "./utils/env.js";
-import { allowRequest } from "./utils/rate-limiter.js";
-
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
 
 /**
  * Verify PKARR signature using Ed25519
@@ -57,36 +74,6 @@ async function verifyPkarrSignature(
   }
 }
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-function badRequest(body: unknown, status = 400) {
-  return json(status, body);
-}
-
 interface PkarrPublishRequest {
   public_key: string;
   records: Array<{
@@ -101,49 +88,81 @@ interface PkarrPublishRequest {
 }
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 PKARR publish handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: { ...corsHeaders() } };
+    return preflightResponse(requestOrigin);
   }
+
   if (event.httpMethod !== "POST") {
-    return badRequest({ error: "Method not allowed" }, 405);
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
-
-  // Check if PKARR is enabled
-  const pkarrEnabled = getEnvVar("VITE_PKARR_ENABLED") === "true";
-  if (!pkarrEnabled) {
-    return badRequest({ error: "PKARR integration is not enabled" }, 503);
-  }
-
-  // Rate limit per IP
-  const xfwd =
-    event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
-  const clientIp = Array.isArray(xfwd)
-    ? xfwd[0]
-    : (xfwd || "").split(",")[0]?.trim() || "unknown";
-  if (!allowRequest(clientIp, 30, 60_000))
-    return badRequest({ error: "Too many requests" }, 429);
 
   try {
+    // Check if PKARR is enabled
+    const pkarrEnabled = getEnvVar("VITE_PKARR_ENABLED") === "true";
+    if (!pkarrEnabled) {
+      return errorResponse(
+        503,
+        "PKARR integration is not enabled",
+        requestOrigin
+      );
+    }
+
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_PUBLISH
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "pkarr-publish",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     // Parse request body
     let payload: PkarrPublishRequest;
     try {
       payload = JSON.parse(event.body || "{}");
     } catch {
-      return badRequest({ error: "Invalid JSON in request body" }, 400);
+      return createValidationErrorResponse(
+        "Invalid JSON in request body",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Validate required fields
     if (!payload.public_key || !Array.isArray(payload.records)) {
-      return badRequest(
-        { error: "Missing required fields: public_key, records" },
-        400
+      return createValidationErrorResponse(
+        "Missing required fields: public_key, records",
+        requestId,
+        requestOrigin
       );
     }
 
     if (!payload.signature || payload.timestamp === undefined) {
-      return badRequest(
-        { error: "Missing required fields: signature, timestamp" },
-        400
+      return createValidationErrorResponse(
+        "Missing required fields: signature, timestamp",
+        requestId,
+        requestOrigin
       );
     }
 
@@ -152,12 +171,17 @@ export const handler: Handler = async (event) => {
       payload.sequence === undefined ||
       typeof payload.sequence !== "number"
     ) {
-      return badRequest({ error: "sequence must be a number" }, 400);
+      return createValidationErrorResponse(
+        "sequence must be a number",
+        requestId,
+        requestOrigin
+      );
     }
     if (payload.sequence < 0 || !Number.isInteger(payload.sequence)) {
-      return badRequest(
-        { error: "sequence must be a non-negative integer" },
-        400
+      return createValidationErrorResponse(
+        "sequence must be a non-negative integer",
+        requestId,
+        requestOrigin
       );
     }
 
@@ -166,41 +190,53 @@ export const handler: Handler = async (event) => {
       typeof payload.timestamp !== "number" ||
       !Number.isInteger(payload.timestamp)
     ) {
-      return badRequest({ error: "timestamp must be an integer" }, 400);
+      return createValidationErrorResponse(
+        "timestamp must be an integer",
+        requestId,
+        requestOrigin
+      );
     }
     const now = Math.floor(Date.now() / 1000);
     if (payload.timestamp < now - 3600 || payload.timestamp > now + 300) {
-      return badRequest(
-        {
-          error:
-            "timestamp must be within reasonable range (±1 hour past, ±5 min future)",
-        },
-        400
+      return createValidationErrorResponse(
+        "timestamp must be within reasonable range (±1 hour past, ±5 min future)",
+        requestId,
+        requestOrigin
       );
     }
 
     // Validate public key format (64 hex chars)
     if (!/^[0-9a-fA-F]{64}$/.test(payload.public_key)) {
-      return badRequest({ error: "Invalid public key format" }, 400);
+      return createValidationErrorResponse(
+        "Invalid public key format",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Validate signature format (128 hex chars)
     if (!/^[0-9a-fA-F]{128}$/.test(payload.signature)) {
-      return badRequest({ error: "Invalid signature format" }, 400);
+      return createValidationErrorResponse(
+        "Invalid signature format",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Validate records
     for (const record of payload.records) {
       if (!record.name || !record.type || !record.value) {
-        return badRequest(
-          { error: "Each record must have name, type, and value" },
-          400
+        return createValidationErrorResponse(
+          "Each record must have name, type, and value",
+          requestId,
+          requestOrigin
         );
       }
       if (record.ttl && (record.ttl < 60 || record.ttl > 86400)) {
-        return badRequest(
-          { error: "Record TTL must be between 60 and 86400 seconds" },
-          400
+        return createValidationErrorResponse(
+          "Record TTL must be between 60 and 86400 seconds",
+          requestId,
+          requestOrigin
         );
       }
     }
@@ -222,7 +258,7 @@ export const handler: Handler = async (event) => {
           16
         )}...`
       );
-      return badRequest({ error: "Invalid signature" }, 401);
+      return errorResponse(401, "Invalid signature", requestOrigin);
     }
 
     // Store PKARR record in database
@@ -237,12 +273,10 @@ export const handler: Handler = async (event) => {
 
     // Validate sequence number (must be greater than existing)
     if (existing && payload.sequence <= existing.sequence) {
-      return badRequest(
-        {
-          error: "Sequence number must be greater than existing record",
-          currentSequence: existing.sequence,
-        },
-        409
+      return errorResponse(
+        409,
+        `Sequence number must be greater than existing record (current: ${existing.sequence})`,
+        requestOrigin
       );
     }
 
@@ -268,8 +302,12 @@ export const handler: Handler = async (event) => {
       .single();
 
     if (dbError) {
-      console.error("Database error:", dbError);
-      return badRequest({ error: "Failed to store PKARR record" }, 500);
+      logError(dbError, {
+        requestId,
+        endpoint: "pkarr-publish",
+        operation: "database_upsert",
+      });
+      return errorResponse(500, "Failed to store PKARR record", requestOrigin);
     }
 
     // Optional: Create SimpleProof timestamp for blockchain verification
@@ -346,14 +384,15 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    // Cache for 5 minutes
-    const cacheHeaders = {
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-    };
-
-    return json(
-      201,
-      {
+    // Return success response with security headers
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 201,
+      headers: {
+        ...headers,
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+      },
+      body: JSON.stringify({
         success: true,
         data: {
           id: insertedRecord.id,
@@ -363,12 +402,14 @@ export const handler: Handler = async (event) => {
           simpleproof_timestamp_id: simpleproofTimestampId,
           simpleproof_enabled: simpleproofEnabled,
         },
-      },
-      cacheHeaders
-    );
+      }),
+    };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("PKARR publish error:", message);
-    return badRequest({ error: message }, 500);
+    logError(error, {
+      requestId,
+      endpoint: "pkarr-publish",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

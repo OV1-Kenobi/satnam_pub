@@ -30,6 +30,15 @@ import {
 } from "../functions/utils/pkarr-error-handler.js";
 import { supabase } from "./supabase.js";
 
+// Security utilities (centralized)
+import { getClientIP } from "./utils/enhanced-rate-limiter.ts";
+import { generateRequestId, logError } from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
 
 // Configuration constants
@@ -38,25 +47,7 @@ const STALE_THRESHOLD_HOURS = 18; // 75% of 24-hour TTL
 const DHT_PUBLISH_TIMEOUT_MS = 5000; // 5 seconds per relay
 const MAX_RETRY_ATTEMPTS = 3; // Max retries per record
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-  } as const;
-}
-
-function json(status: number, body: unknown) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-    },
-    body: JSON.stringify(body),
-  };
-}
+// Old corsHeaders() and json() helpers removed - now using centralized security utilities
 
 /**
  * Metrics collector for republishing operations
@@ -172,25 +163,14 @@ async function publishToDHT(
 
       publishedRelays.push(relay);
       metrics.successfulRelayPublishes++;
-      console.log(
-        `✅ Published to ${relay} (public_key: ${record.public_key.substring(
-          0,
-          16
-        )}...)`
-      );
+      // Privacy-safe: no logging of public keys or sensitive data
     } catch (error) {
       metrics.failedRelayPublishes++;
 
       // Classify error for metrics
       const pkarrError = classifyError(error);
       recordError(metrics, pkarrError.code);
-
-      console.warn(
-        `⚠️ Failed to publish to ${relay} (public_key: ${record.public_key.substring(
-          0,
-          16
-        )}...): ${pkarrError.message}`
-      );
+      // Privacy-safe: errors tracked in metrics only
     }
   }
 
@@ -211,30 +191,35 @@ export const handler: Handler = async (
   event: HandlerEvent,
   context: HandlerContext
 ) => {
-  console.log("🔄 Starting scheduled PKARR republishing job...");
-  console.log(
-    `⏰ Scheduled at: ${new Date().toISOString()} (Netlify timeout: 60s)`
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
   );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
   // Initialize metrics
   const metrics = initMetrics();
 
   // CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return json(200, { message: "OK" });
+    return preflightResponse(requestOrigin);
   }
 
   try {
     // Check if PKARR is enabled
     const pkarrEnabled = process.env.VITE_PKARR_ENABLED === "true";
     if (!pkarrEnabled) {
-      console.log("⏭️ PKARR disabled, skipping republishing");
-      return json(200, {
-        success: true,
-        message: "PKARR disabled",
-        recordsProcessed: 0,
-        metrics: null,
-      });
+      const headers = getSecurityHeaders(requestOrigin);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: "PKARR disabled",
+          recordsProcessed: 0,
+          metrics: null,
+        }),
+      };
     }
 
     // Use database function to find stale records efficiently
@@ -248,44 +233,34 @@ export const handler: Handler = async (
     );
 
     if (queryError) {
-      console.error("❌ Database query error:", queryError);
-      recordError(metrics, PkarrErrorCode.UNKNOWN_ERROR);
-      return json(500, {
-        success: false,
-        error: "Database query failed",
-        details: queryError.message,
-        metrics: null,
+      logError(queryError, {
+        requestId,
+        endpoint: "scheduled-pkarr-republish",
+        context: "Database query error",
       });
+      recordError(metrics, PkarrErrorCode.UNKNOWN_ERROR);
+      return errorResponse(500, "Database query failed", requestOrigin);
     }
 
     if (!staleRecords || staleRecords.length === 0) {
-      console.log("✅ No stale records to republish");
       metrics.endTime = Date.now();
-      return json(200, {
-        success: true,
-        message: "No stale records found",
-        recordsProcessed: 0,
-        metrics: {
-          durationMs: metrics.endTime - metrics.startTime,
-          totalRecords: 0,
-        },
-      });
+      const headers = getSecurityHeaders(requestOrigin);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: "No stale records found",
+          recordsProcessed: 0,
+          metrics: {
+            durationMs: metrics.endTime - metrics.startTime,
+            totalRecords: 0,
+          },
+        }),
+      };
     }
 
-    console.log(
-      `📋 Found ${staleRecords.length} stale records to republish (threshold: ${STALE_THRESHOLD_HOURS}h)`
-    );
-    console.log(
-      `   - Never published: ${
-        staleRecords.filter((r: any) => !r.last_published_at).length
-      }`
-    );
-    console.log(
-      `   - Oldest: ${Math.max(
-        ...staleRecords.map((r: any) => r.hours_since_publish || 0)
-      )}h ago`
-    );
-
+    // Privacy-safe logging: only high-level counts, no PII
     metrics.totalRecords = staleRecords.length;
 
     // Process each record with comprehensive error handling
@@ -325,13 +300,11 @@ export const handler: Handler = async (
           );
 
           if (updateError) {
-            console.error(
-              `❌ Failed to update metrics for ${record.public_key.substring(
-                0,
-                16
-              )}...:`,
-              updateError
-            );
+            logError(updateError, {
+              requestId,
+              endpoint: "scheduled-pkarr-republish",
+              context: "Failed to update metrics",
+            });
             recordError(metrics, PkarrErrorCode.UNKNOWN_ERROR);
           } else {
             metrics.successfulPublishes++;
@@ -345,15 +318,7 @@ export const handler: Handler = async (
               response_time_ms: publishResult.publishTimeMs,
               attempt_number: 1,
             });
-
-            console.log(
-              `✅ Republished ${record.public_key.substring(
-                0,
-                16
-              )}... (seq: ${newSequence}, relays: ${
-                publishResult.relays.length
-              }, time: ${publishResult.publishTimeMs}ms)`
-            );
+            // Privacy-safe: no logging of public keys
           }
         } else {
           // Failed to publish to any relay
@@ -380,12 +345,7 @@ export const handler: Handler = async (
           });
 
           recordError(metrics, PkarrErrorCode.DHT_UNAVAILABLE);
-          console.warn(
-            `⚠️ Failed to republish ${record.public_key.substring(
-              0,
-              16
-            )}... (no relays succeeded)`
-          );
+          // Privacy-safe: no logging of public keys
         }
       } catch (error) {
         metrics.failedPublishes++;
@@ -393,10 +353,11 @@ export const handler: Handler = async (
         const pkarrError = classifyError(error);
         recordError(metrics, pkarrError.code);
 
-        console.error(
-          `❌ Error processing ${record.public_key.substring(0, 16)}...:`,
-          pkarrError.message
-        );
+        logError(error, {
+          requestId,
+          endpoint: "scheduled-pkarr-republish",
+          context: "Error processing record",
+        });
 
         // Update failure metrics even on exception
         try {
@@ -408,7 +369,11 @@ export const handler: Handler = async (
             p_relay_urls: [],
           });
         } catch (updateError) {
-          console.error("Failed to update failure metrics:", updateError);
+          logError(updateError, {
+            requestId,
+            endpoint: "scheduled-pkarr-republish",
+            context: "Failed to update failure metrics",
+          });
         }
       }
     }
@@ -431,53 +396,42 @@ export const handler: Handler = async (
           )
         : "0.00";
 
-    console.log(`✅ Republishing job complete in ${durationMs}ms`);
-    console.log(
-      `   - Success: ${metrics.successfulPublishes}/${metrics.totalRecords} (${successRate}%)`
-    );
-    console.log(
-      `   - Relay publishes: ${metrics.successfulRelayPublishes}/${metrics.totalRelayAttempts}`
-    );
-    console.log(`   - Avg publish time: ${metrics.averagePublishTimeMs}ms`);
-    if (metrics.errors.length > 0) {
-      console.log(`   - Errors: ${JSON.stringify(metrics.errors)}`);
-    }
+    // Privacy-safe: only high-level metrics, no PII
 
-    return json(200, {
-      success: true,
-      message: "Republishing job complete",
-      results: {
-        totalRecords: metrics.totalRecords,
-        successfulPublishes: metrics.successfulPublishes,
-        failedPublishes: metrics.failedPublishes,
-        successRate: parseFloat(successRate),
-        durationMs,
-        averagePublishTimeMs: metrics.averagePublishTimeMs,
-        relayStats: {
-          totalAttempts: metrics.totalRelayAttempts,
-          successful: metrics.successfulRelayPublishes,
-          failed: metrics.failedRelayPublishes,
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        message: "Republishing job complete",
+        results: {
+          totalRecords: metrics.totalRecords,
+          successfulPublishes: metrics.successfulPublishes,
+          failedPublishes: metrics.failedPublishes,
+          successRate: parseFloat(successRate),
+          durationMs,
+          averagePublishTimeMs: metrics.averagePublishTimeMs,
+          relayStats: {
+            totalAttempts: metrics.totalRelayAttempts,
+            successful: metrics.successfulRelayPublishes,
+            failed: metrics.failedRelayPublishes,
+          },
+          errors: metrics.errors.slice(0, 10), // Limit to 10 most common errors
         },
-        errors: metrics.errors.slice(0, 10), // Limit to 10 most common errors
-      },
-    });
+      }),
+    };
   } catch (error) {
     metrics.endTime = Date.now();
     const pkarrError = classifyError(error);
     recordError(metrics, pkarrError.code);
 
-    console.error("❌ Scheduled republishing job failed:", pkarrError.message);
-
-    return json(500, {
-      success: false,
-      error: "Republishing job failed",
-      details: pkarrError.message,
-      errorCode: pkarrError.code,
-      metrics: {
-        durationMs: metrics.endTime - metrics.startTime,
-        recordsProcessed: metrics.successfulPublishes + metrics.failedPublishes,
-        errors: metrics.errors,
-      },
+    logError(error, {
+      requestId,
+      endpoint: "scheduled-pkarr-republish",
+      method: event.httpMethod,
     });
+
+    return errorResponse(500, "Republishing job failed", requestOrigin);
   }
 };

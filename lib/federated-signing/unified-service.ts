@@ -139,7 +139,7 @@ export class UnifiedFederatedSigningService {
       if (method === "frost") {
         return await this.createFrostSigningRequest(request);
       } else {
-        return await this.createSSSSigningRequest(request);
+        return await this.createShamirSigningRequest(request);
       }
     } catch (error) {
       console.error("[UnifiedService] Error creating signing request:", error);

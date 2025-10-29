@@ -9,6 +9,11 @@
  *      - otherwise => messages
  */
 
+// Security utilities (Phase 2 hardening)
+import { RATE_LIMITS, checkRateLimit, createRateLimitIdentifier, getClientIP } from './utils/enhanced-rate-limiter.ts';
+import { createRateLimitErrorResponse, generateRequestId, logError } from './utils/error-handler.ts';
+import { errorResponse, getSecurityHeaders, preflightResponse } from './utils/security-headers.ts';
+
 // Statically import service modules so esbuild bundles them into this function
 import getContactsHandler from "../../api/communications/get-contacts.js";
 import giftwrappedHandler from "../../api/communications/giftwrapped.js";
@@ -17,26 +22,6 @@ import messagesHandler from "../../api/communications/messages.js";
 // Local utilities and services for consolidated groups handling
 import { SecureSessionManager } from "./security/session-manager.js";
 import { supabase } from "./supabase.js";
-
-
-// Simple CORS header builder
-function buildCorsHeaders(origin, methods) {
-  const allowed = new Set([
-    "http://localhost:8888",
-    "http://localhost:5173",
-    "https://www.satnam.pub",
-  ]);
-  const allowOrigin = allowed.has(origin || "") ? origin : "https://www.satnam.pub";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    Vary: "Origin",
-    "Access-Control-Allow-Methods": methods,
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": "86400",
-    "Cache-Control": "no-store",
-    "Content-Type": "application/json",
-  };
-}
 
 // Create Node-like req/res facades for API route style handlers
 function callApiRouteHandler(event, headers, defaultPath, endpoint) {
@@ -100,99 +85,119 @@ function detectTarget(event) {
 }
 
 export const handler = async (event) => {
-  const origin = event?.headers?.origin || event?.headers?.Origin || "";
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event?.headers?.origin || event?.headers?.Origin || "";
   const method = event?.httpMethod || "GET";
 
-  // CORS preflight
+  console.log('🚀 Unified communications handler started:', {
+    requestId,
+    method,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if (method === "OPTIONS") {
-    const headers = buildCorsHeaders(origin, "GET, POST, OPTIONS");
-    return { statusCode: 200, headers, body: "" };
+    return preflightResponse(requestOrigin);
   }
 
-  // Debug logging for routing
   try {
-
-    console.info("[unified-communications] incoming:", {
-      method,
-      path: event?.path,
-      endpoint: event?.queryStringParameters?.endpoint,
-      origin,
-    });
-  } catch {}
-
-  const target = detectTarget(event);
-  try { console.info("[unified-communications] resolved target:", target); } catch {}
-
-
-  // Route: messages (GET)
-  if (target === "messages") {
-    const headers = buildCorsHeaders(origin, "GET, OPTIONS");
-    if (method !== "GET") return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
-    return callApiRouteHandler(
-      event,
-      headers,
-      "/api/communications/messages",
-      "messages"
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_PUBLISH
     );
-  }
 
-  // Route: get-contacts (GET)
-  if (target === "get-contacts") {
-    const headers = buildCorsHeaders(origin, "GET, OPTIONS");
-    if (method !== "GET") return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
-    return callApiRouteHandler(
-      event,
-      headers,
-      "/api/communications/get-contacts",
-      "get-contacts"
-    );
-  }
+    if (!rateLimitResult.allowed) {
+      logError(new Error('Rate limit exceeded'), {
+        requestId,
+        endpoint: 'unified-communications',
+        method,
+      });
+      return createRateLimitErrorResponse(rateLimitResult, requestId, requestOrigin);
+    }
 
-  // Route: giftwrapped (POST)
-  if (target === "giftwrapped") {
-    const headers = buildCorsHeaders(origin, "POST, OPTIONS");
-    if (method !== "POST") return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
+    const target = detectTarget(event);
+    console.info("[unified-communications] resolved target:", target);
 
-    try {
-      const mod = await import("../../api/communications/giftwrapped.js");
-      const fn = mod.default || giftwrappedHandler;
-      const resp = await Promise.resolve(fn(event));
 
-      const statusCode = (resp && typeof resp.statusCode === "number") ? resp.statusCode : 200;
-      const respHeaders = {
-        ...headers,
-        ...(resp && typeof resp === "object" && resp.headers ? resp.headers : {}),
-      };
-      const body = (resp && typeof resp === "object" && "body" in resp)
-        ? (typeof resp.body === "string" ? resp.body : JSON.stringify(resp.body))
-        : JSON.stringify({ success: true });
-
-      return { statusCode, headers: respHeaders, body };
-    } catch (e) {
-      return {
-        statusCode: 500,
+    // Route: messages (GET)
+    if (target === "messages") {
+      const headers = getSecurityHeaders({ origin: requestOrigin });
+      if (method !== "GET") {
+        return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+      }
+      return callApiRouteHandler(
+        event,
         headers,
-        body: JSON.stringify({ success: false, error: (e && e.message) || "Internal error" })
-      };
+        "/api/communications/messages",
+        "messages"
+      );
     }
-  }
 
-  // Route: groups (GET/POST)
-  if (target === "groups") {
-    const headers = buildCorsHeaders(origin, "GET, POST, OPTIONS");
-    // Validate session via SecureSessionManager
-    const authHeader = event.headers?.authorization || event.headers?.Authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Authentication required" }) };
+    // Route: get-contacts (GET)
+    if (target === "get-contacts") {
+      const headers = getSecurityHeaders({ origin: requestOrigin });
+      if (method !== "GET") {
+        return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+      }
+      return callApiRouteHandler(
+        event,
+        headers,
+        "/api/communications/get-contacts",
+        "get-contacts"
+      );
     }
-    let session;
-    try { session = await SecureSessionManager.validateSessionFromHeader(authHeader); } catch (e) {
-      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: "Session validation failed" }) };
+
+    // Route: giftwrapped (POST)
+    if (target === "giftwrapped") {
+      const headers = getSecurityHeaders({ origin: requestOrigin });
+      if (method !== "POST") {
+        return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+      }
+
+      try {
+        const mod = await import("../../api/communications/giftwrapped.js");
+        const fn = mod.default || giftwrappedHandler;
+        const resp = await Promise.resolve(fn(event));
+
+        const statusCode = (resp && typeof resp.statusCode === "number") ? resp.statusCode : 200;
+        const respHeaders = {
+          ...headers,
+          ...(resp && typeof resp === "object" && resp.headers ? resp.headers : {}),
+        };
+        const body = (resp && typeof resp === "object" && "body" in resp)
+          ? (typeof resp.body === "string" ? resp.body : JSON.stringify(resp.body))
+          : JSON.stringify({ success: true });
+
+        return { statusCode, headers: respHeaders, body };
+      } catch (e) {
+        logError(e, { requestId, endpoint: 'unified-communications', route: 'giftwrapped' });
+        return errorResponse(500, "Internal error", requestId, requestOrigin);
+      }
     }
-    if (!session?.hashedId) {
-      return { statusCode: 401, headers, body: JSON.stringify({ success: false, error: "Invalid token" }) };
-    }
-    const userHash = session.hashedId;
+
+    // Route: groups (GET/POST)
+    if (target === "groups") {
+      const headers = getSecurityHeaders({ origin: requestOrigin });
+      // Validate session via SecureSessionManager
+      const authHeader = event.headers?.authorization || event.headers?.Authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return errorResponse(401, "Authentication required", requestId, requestOrigin);
+      }
+      let session;
+      try {
+        session = await SecureSessionManager.validateSessionFromHeader(authHeader);
+      } catch (e) {
+        logError(e, { requestId, endpoint: 'unified-communications', route: 'groups' });
+        return errorResponse(500, "Session validation failed", requestId, requestOrigin);
+      }
+      if (!session?.hashedId) {
+        return errorResponse(401, "Invalid token", requestId, requestOrigin);
+      }
+      const userHash = session.hashedId;
 
     if (method === "GET") {
       // Try selecting with muted column; if it fails (column missing), fallback without it
@@ -508,14 +513,19 @@ export const handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { group, members: memRows || [], details } }) };
     }
 
-    return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: "Method not allowed" }) };
-  }
+      return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+    }
 
-  // Fallback 404
-  return {
-    statusCode: 404,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ success: false, error: "Not Found" })
-  };
+    // Fallback 404
+    return errorResponse(404, "Not Found", requestId, requestOrigin);
+  } catch (error) {
+    logError(error, {
+      requestId,
+      endpoint: 'unified-communications',
+      method,
+      path: event.path,
+    });
+    return errorResponse(500, "Internal server error", requestId, requestOrigin);
+  }
 };
 

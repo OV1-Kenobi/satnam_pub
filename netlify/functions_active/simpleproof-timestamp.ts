@@ -13,11 +13,25 @@
 
 import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+
+// Security utilities (Phase 3 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
+
 import {
   createLogger,
   logApiCall,
   logDatabaseOperation,
-  logRateLimitEvent,
 } from "../functions/utils/logging.js";
 import {
   addSimpleProofBreadcrumb,
@@ -25,7 +39,6 @@ import {
   initializeSentry,
 } from "../functions/utils/sentry.server.js";
 import { getEnvVar } from "./utils/env.js";
-import { allowRequest } from "./utils/rate-limiter.js";
 
 // Security: Input validation patterns
 const UUID_PATTERN =
@@ -55,62 +68,7 @@ interface SimpleProofApiResponse {
   timestamp?: number;
 }
 
-// Security: Whitelist of allowed origins for CORS
-const ALLOWED_ORIGINS = [
-  "https://www.satnam.pub",
-  "https://satnam.pub",
-  "https://app.satnam.pub",
-];
-
-// Add localhost for development
-if (process.env.NODE_ENV === "development") {
-  ALLOWED_ORIGINS.push("http://localhost:5173", "http://localhost:3000");
-}
-
-function corsHeaders(origin?: string) {
-  // Validate origin against whitelist
-  const allowedOrigin =
-    origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": "86400", // 24 hours
-    Vary: "Origin",
-    // Security headers
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "X-XSS-Protection": "1; mode=block",
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-function badRequest(message: string, status = 400) {
-  return json(status, { error: message });
-}
-
-function serverError(message: string) {
-  return json(500, { error: message });
-}
+// Old helper functions removed - now using centralized security utilities
 
 async function callSimpleProofApi(
   data: string,
@@ -183,49 +141,43 @@ initializeSentry();
 
 export const handler: Handler = async (event) => {
   const startTime = Date.now();
-  const origin = event.headers.origin || event.headers.Origin;
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Handle CORS preflight
+  logger.info("🚀 SimpleProof timestamp handler started");
+
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 204,
-      headers: corsHeaders(origin),
-    };
+    return preflightResponse(requestOrigin);
   }
 
-  // Only allow POST
   if (event.httpMethod !== "POST") {
     logger.warn("Method not allowed", {
-      metadata: { method: event.httpMethod },
+      metadata: { method: event.httpMethod, requestId },
     });
-    return badRequest("Method not allowed", 405);
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
 
   try {
-    // Rate limiting: use x-forwarded-for or fallback to generic key
-    const clientIp =
-      event.headers["x-forwarded-for"]?.split(",")[0].trim() || "anonymous";
-    const rateLimitKey = `simpleproof:${clientIp}`;
-
-    // 10 requests per hour (3600000 ms) for timestamp creation
-    // 100 requests per hour for other actions
-    const action = JSON.parse(event.body || "{}").action || "create";
-    const rateLimit = action === "create" ? 10 : 100;
-
-    const allowed = allowRequest(rateLimitKey, rateLimit, 3600000);
-    logRateLimitEvent(allowed, rateLimitKey, rateLimit, rateLimit, {
-      component: "simpleproof-timestamp",
-      action,
-    });
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const allowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_PUBLISH
+    );
 
     if (!allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "simpleproof-timestamp",
+        method: event.httpMethod,
+      });
       logger.warn("Rate limit exceeded", {
-        action,
-        metadata: { clientIp, limit: rateLimit },
+        metadata: { clientIP, requestId },
       });
-      return json(429, {
-        error: `Rate limit exceeded: ${rateLimit} requests per hour`,
-      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Parse request body
@@ -234,7 +186,7 @@ export const handler: Handler = async (event) => {
       body = JSON.parse(event.body || "{}");
     } catch {
       logger.error("Invalid JSON in request body");
-      return badRequest("Invalid JSON in request body");
+      return errorResponse(400, "Invalid JSON in request body", requestOrigin);
     }
 
     // Route based on action (default: "create" for backward compatibility)
@@ -253,7 +205,7 @@ export const handler: Handler = async (event) => {
 
     switch (requestAction) {
       case "create":
-        const result = await handleCreateTimestamp(body);
+        const result = await handleCreateTimestamp(body, requestOrigin);
         const duration = Date.now() - startTime;
         logger.info("Request completed", {
           action: requestAction,
@@ -273,29 +225,36 @@ export const handler: Handler = async (event) => {
           action: requestAction,
           metadata: { requestedAction: requestAction },
         });
-        return badRequest(`Unknown action: ${requestAction}`);
+        return errorResponse(
+          400,
+          `Unknown action: ${requestAction}`,
+          requestOrigin
+        );
     }
   } catch (error) {
     const duration = Date.now() - startTime;
-    const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    logger.error("Handler error", {
-      metadata: { error: errorMsg, duration },
+    logError(error, {
+      requestId,
+      endpoint: "simpleproof-timestamp",
+      method: event.httpMethod,
+      duration,
     });
 
     // Capture error in Sentry
     captureSimpleProofError(
-      error instanceof Error ? error : new Error(errorMsg),
+      error instanceof Error ? error : new Error(String(error)),
       {
         component: "simpleproof-timestamp",
         action: "handler",
         metadata: {
           duration,
           httpMethod: event.httpMethod,
+          requestId,
         },
       }
     );
 
-    return serverError("Internal server error");
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
@@ -303,28 +262,43 @@ export const handler: Handler = async (event) => {
 // ACTION HANDLERS
 // ============================================================================
 
-async function handleCreateTimestamp(body: SimpleProofRequest) {
+async function handleCreateTimestamp(
+  body: SimpleProofRequest,
+  requestOrigin?: string
+) {
   // Security: Validate input
   if (!body.data || typeof body.data !== "string") {
-    return badRequest("Missing or invalid required field: data (string)");
+    return errorResponse(
+      400,
+      "Missing or invalid required field: data (string)",
+      requestOrigin
+    );
   }
 
   // Security: Prevent DoS via large payloads
   if (body.data.length > MAX_DATA_LENGTH) {
-    return badRequest(
-      `Data field exceeds maximum length of ${MAX_DATA_LENGTH} characters`
+    return errorResponse(
+      400,
+      `Data field exceeds maximum length of ${MAX_DATA_LENGTH} characters`,
+      requestOrigin
     );
   }
 
   if (!body.verification_id || typeof body.verification_id !== "string") {
-    return badRequest(
-      "Missing or invalid required field: verification_id (UUID)"
+    return errorResponse(
+      400,
+      "Missing or invalid required field: verification_id (UUID)",
+      requestOrigin
     );
   }
 
   // Security: Validate UUID format to prevent injection attacks
   if (!UUID_PATTERN.test(body.verification_id)) {
-    return badRequest("Invalid verification_id format (must be valid UUID)");
+    return errorResponse(
+      400,
+      "Invalid verification_id format (must be valid UUID)",
+      requestOrigin
+    );
   }
 
   // Get API credentials
@@ -334,7 +308,11 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
 
   if (!apiKey) {
     logger.error("SimpleProof API key not configured");
-    return serverError("SimpleProof service not configured");
+    return errorResponse(
+      500,
+      "SimpleProof service not configured",
+      requestOrigin
+    );
   }
 
   // Call SimpleProof API
@@ -378,9 +356,17 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
 
     // Graceful degradation: return error but don't crash
     if (errorMsg.includes("abort")) {
-      return serverError("SimpleProof API timeout (>10s)");
+      return errorResponse(
+        500,
+        "SimpleProof API timeout (>10s)",
+        requestOrigin
+      );
     }
-    return serverError(`SimpleProof API error: ${errorMsg}`);
+    return errorResponse(
+      500,
+      `SimpleProof API error: ${errorMsg}`,
+      requestOrigin
+    );
   }
 
   // Validate API response
@@ -389,7 +375,11 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
       action: "create",
       verificationId: body.verification_id,
     });
-    return serverError("Invalid response from SimpleProof API");
+    return errorResponse(
+      500,
+      "Invalid response from SimpleProof API",
+      requestOrigin
+    );
   }
 
   // Store in database
@@ -401,7 +391,7 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
       action: "create",
       verificationId: body.verification_id,
     });
-    return serverError("Database configuration error");
+    return errorResponse(500, "Database configuration error", requestOrigin);
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -442,7 +432,7 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
       verificationId: body.verification_id,
       metadata: { error: errorMsg },
     });
-    return serverError(`Database error: ${errorMsg}`);
+    return errorResponse(500, `Database error: ${errorMsg}`, requestOrigin);
   }
 
   // Return success response
@@ -462,7 +452,18 @@ async function handleCreateTimestamp(body: SimpleProofRequest) {
     },
   });
 
-  return json(200, response, {
+  const headers = {
+    "Content-Type": "application/json",
     "Cache-Control": "no-cache, no-store, must-revalidate",
-  });
+    "Access-Control-Allow-Origin":
+      requestOrigin || process.env.VITE_CORS_ORIGIN || "https://www.satnam.pub",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify(response),
+  };
 }

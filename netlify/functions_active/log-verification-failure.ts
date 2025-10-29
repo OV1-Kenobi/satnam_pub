@@ -18,6 +18,25 @@ import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "node:crypto";
 
+// Security utilities (centralized)
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.js";
+
 interface LogFailureRequest {
   failureType: string;
   identifierHash: string;
@@ -123,34 +142,27 @@ function hashIpAddress(ip: string): string {
   return crypto.createHash("sha256").update(ip).digest("hex");
 }
 
-/**
- * Get client IP from request
- */
-function getClientIp(event: any): string {
-  const headers = event.headers || {};
-  return (
-    headers["x-forwarded-for"]?.split(",")[0].trim() ||
-    headers["x-real-ip"] ||
-    headers["client-ip"] ||
-    "unknown"
-  );
-}
+// Old getClientIp() function removed - now using getClientIP() from enhanced-rate-limiter
 
 /**
  * Main handler
  */
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
   try {
+    // Handle CORS preflight
+    if (event.httpMethod === "OPTIONS") {
+      return preflightResponse(requestOrigin);
+    }
+
     // Only allow POST requests
     if (event.httpMethod !== "POST") {
-      return {
-        statusCode: 405,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          success: false,
-          error: "Method not allowed. Use POST.",
-        }),
-      };
+      return errorResponse(405, "Method not allowed", requestOrigin);
     }
 
     // Parse request body
@@ -158,34 +170,42 @@ export const handler: Handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch (error) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          success: false,
-          error: "Invalid JSON in request body",
-        }),
-      };
+      return createValidationErrorResponse(
+        "Invalid JSON in request body",
+        requestId,
+        requestOrigin
+      );
+    }
+
+    // Database-backed rate limiting (50 req/hr for verification logging)
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const allowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "log-verification-failure",
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Validate request
     const validation = validateRequest(body);
     if (!validation.valid) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          success: false,
-          error: validation.error,
-        }),
-      };
+      return createValidationErrorResponse(
+        validation.error || "Validation failed",
+        requestId,
+        requestOrigin
+      );
     }
 
     const data = validation.data!;
 
     // Get and hash client IP
-    const clientIp = getClientIp(event);
-    const ipAddressHash = data.ipAddressHash || hashIpAddress(clientIp);
+    const ipAddressHash = data.ipAddressHash || hashIpAddress(clientIP);
 
     // Insert failure record into database
     const { data: insertedData, error: insertError } = await supabase
@@ -203,43 +223,37 @@ export const handler: Handler = async (event) => {
       .single();
 
     if (insertError) {
-      console.error("Error logging verification failure:", insertError);
-      return {
-        statusCode: 500,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          success: false,
-          error: "Failed to log verification failure",
-        }),
-      };
+      logError(insertError, {
+        requestId,
+        endpoint: "log-verification-failure",
+        context: "Database insert error",
+      });
+      return errorResponse(
+        500,
+        "Failed to log verification failure",
+        requestOrigin
+      );
     }
 
-    // Log to console for monitoring
-    console.log(`📊 Verification failure logged: ${data.failureType}`, {
-      method: data.verificationMethod,
-      responseTime: data.responseTimeMs,
-      user: data.userDuid ? "authenticated" : "anonymous",
-    });
+    // Privacy-safe: no logging of sensitive data
 
     const response: LogFailureResponse = {
       success: true,
       failureId: insertedData?.id,
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Verification failure logging error:", error);
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "log-verification-failure",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

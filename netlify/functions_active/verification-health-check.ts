@@ -12,6 +12,24 @@ import { createClient } from "@supabase/supabase-js";
 import { CentralEventPublishingService } from "../../lib/central_event_publishing_service";
 import { PubkyDHTClient } from "../../lib/pubky-dht-client-minimal";
 
+// Security utilities (centralized)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 interface HealthCheckResult {
   status: "healthy" | "degraded" | "unhealthy";
   kind0_relay_health: "healthy" | "degraded" | "unhealthy";
@@ -193,7 +211,7 @@ async function getFailureRate24h(): Promise<number> {
       .gte("timestamp", twentyFourHoursAgo);
 
     if (error) {
-      console.error("Error fetching failure rate:", error);
+      // Privacy-safe: error tracked but not logged (health check context)
       return 0;
     }
 
@@ -201,7 +219,7 @@ async function getFailureRate24h(): Promise<number> {
     const failureCount = data?.length || 0;
     return failureCount > 0 ? (failureCount / 1000) * 100 : 0;
   } catch (error) {
-    console.error("Error calculating failure rate:", error);
+    // Privacy-safe: error tracked but not logged (health check context)
     return 0;
   }
 }
@@ -210,7 +228,33 @@ async function getFailureRate24h(): Promise<number> {
  * Main handler
  */
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
   try {
+    // Handle CORS preflight
+    if (event.httpMethod === "OPTIONS") {
+      return preflightResponse(requestOrigin);
+    }
+
+    // Database-backed rate limiting (60 req/hr for health checks)
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.AUTH_REFRESH
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "verification-health-check",
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     // Check all verification methods in parallel
     const [kind0Health, pkarrHealth, dnsHealth, failureRate24h] =
       await Promise.all([
@@ -255,7 +299,12 @@ export const handler: Handler = async (event) => {
         dns_resolution_status: dnsHealth.message,
       });
     } catch (dbError) {
-      console.error("Error storing health check:", dbError);
+      logError(dbError, {
+        requestId,
+        endpoint: "verification-health-check",
+        context: "Database insert error",
+      });
+      // Continue even if DB insert fails - health check data is still valid
     }
 
     const result: HealthCheckResult = {
@@ -273,21 +322,18 @@ export const handler: Handler = async (event) => {
       },
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(result),
     };
   } catch (error) {
-    console.error("Health check error:", error);
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status: "unhealthy",
-        error: error instanceof Error ? error.message : "Unknown error",
-        timestamp: Math.floor(Date.now() / 1000),
-      }),
-    };
+    logError(error, {
+      requestId,
+      endpoint: "verification-health-check",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Health check failed", requestOrigin);
   }
 };

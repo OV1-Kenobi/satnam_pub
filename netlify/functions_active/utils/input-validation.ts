@@ -65,6 +65,12 @@ export const VALIDATION_PATTERNS = {
   // NIP-05 identifier: username@domain format
   NIP05: /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
 
+  // DUID: SHA-256 hash (64 hex characters)
+  DUID: /^[0-9a-f]{64}$/i,
+
+  // Iroh node ID: base32 encoded, 52 characters
+  IROH_NODE_ID: /^[a-z2-7]{52}$/,
+
   // Numeric only
   NUMERIC: /^[0-9]+$/,
 
@@ -166,6 +172,32 @@ export function validateNIP05(nip05: unknown): nip05 is string {
   if (typeof nip05 !== "string") return false;
   if (nip05.length > MAX_LENGTHS.NIP05) return false;
   return VALIDATION_PATTERNS.NIP05.test(nip05);
+}
+
+/**
+ * Validate DUID (Decentralized User ID) format
+ * DUID is a SHA-256 hash (64 hex characters)
+ *
+ * @param duid - DUID to validate
+ * @returns true if valid DUID format
+ */
+export function validateDUID(duid: unknown): duid is string {
+  if (typeof duid !== "string") return false;
+  if (duid.length !== 64) return false;
+  return VALIDATION_PATTERNS.DUID.test(duid);
+}
+
+/**
+ * Validate Iroh node ID format
+ * Iroh node IDs are base32 encoded, 52 characters
+ *
+ * @param nodeId - Iroh node ID to validate
+ * @returns true if valid Iroh node ID format
+ */
+export function validateIrohNodeId(nodeId: unknown): nodeId is string {
+  if (typeof nodeId !== "string") return false;
+  if (nodeId.length !== 52) return false;
+  return VALIDATION_PATTERNS.IROH_NODE_ID.test(nodeId);
 }
 
 /**
@@ -300,4 +332,3 @@ export function validateRequired(value: unknown): boolean {
     return Object.keys(value).length > 0;
   return false;
 }
-

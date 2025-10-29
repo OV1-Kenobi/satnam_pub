@@ -21,9 +21,27 @@
  */
 
 import { Handler } from "@netlify/functions";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { getEnvVar } from "./utils/env.js";
-import { allowRequest } from "./utils/rate-limiter.js";
+
+// Security utilities (Phase 2 hardening)
+import {
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+  RATE_LIMITS,
+} from "../functions_active/utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "../functions_active/utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "../functions_active/utils/security-headers.js";
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -100,30 +118,7 @@ setInterval(() => {
 // HELPER FUNCTIONS
 // ============================================================================
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
+// Old corsHeaders() and json() helpers removed - now using centralized security utilities
 
 function isValidUuid(uuid: string): boolean {
   const uuidRegex =
@@ -235,7 +230,7 @@ async function verifyIrohNodeReachability(
 // ============================================================================
 
 async function storeDiscoveryResult(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   verificationId: string,
   nodeId: string,
   relayUrl: string | null,
@@ -259,7 +254,7 @@ async function storeDiscoveryResult(
 }
 
 async function getNodeInfo(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   verificationId: string
 ): Promise<any> {
   const { data, error } = await supabase.rpc("get_iroh_discovery", {
@@ -275,7 +270,7 @@ async function getNodeInfo(
 }
 
 async function updateNodeReachability(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   nodeId: string,
   isReachable: boolean
 ): Promise<number> {
@@ -300,28 +295,35 @@ async function updateNodeReachability(
  * Action: discover_node
  * Discovers Iroh nodes via DHT lookup and stores discovery results
  */
-async function handleDiscoverNode(payload: DiscoverNodePayload): Promise<any> {
+async function handleDiscoverNode(
+  payload: DiscoverNodePayload,
+  requestId: string,
+  requestOrigin?: string
+): Promise<any> {
   // Validate required fields
   if (!payload.verification_id) {
-    return json(400, {
-      success: false,
-      error: "Missing required field: verification_id",
-    });
+    return createValidationErrorResponse(
+      "Missing required field: verification_id",
+      requestId,
+      requestOrigin
+    );
   }
 
   if (!isValidUuid(payload.verification_id)) {
-    return json(400, {
-      success: false,
-      error: "Invalid verification_id format (must be UUID)",
-    });
+    return createValidationErrorResponse(
+      "Invalid verification_id format (must be UUID)",
+      requestId,
+      requestOrigin
+    );
   }
 
   // If node_id provided, validate format
   if (payload.node_id && !isValidNodeId(payload.node_id)) {
-    return json(400, {
-      success: false,
-      error: "Invalid node_id format (must be 52-char base32)",
-    });
+    return createValidationErrorResponse(
+      "Invalid node_id format (must be 52-char base32)",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Initialize Supabase client
@@ -329,8 +331,12 @@ async function handleDiscoverNode(payload: DiscoverNodePayload): Promise<any> {
   const supabaseKey = getEnvVar("VITE_SUPABASE_ANON_KEY");
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase credentials");
-    return json(500, { success: false, error: "Configuration error" });
+    logError(new Error("Missing Supabase credentials"), {
+      requestId,
+      endpoint: "iroh-proxy",
+      action: "discover_node",
+    });
+    return errorResponse(500, "Configuration error", requestOrigin);
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -368,45 +374,58 @@ async function handleDiscoverNode(payload: DiscoverNodePayload): Promise<any> {
       discoveryResult.is_reachable || false
     );
   } catch (error) {
-    console.error(
-      "Database error:",
-      error instanceof Error ? error.message : "Unknown error"
-    );
-    return json(500, {
-      success: false,
-      error: "Failed to store discovery result",
+    logError(error, {
+      requestId,
+      endpoint: "iroh-proxy",
+      action: "discover_node",
     });
+    return errorResponse(
+      500,
+      "Failed to store discovery result",
+      requestOrigin
+    );
   }
 
   // Return discovery result
-  return json(200, {
-    success: true,
-    node_id: discoveryResult.node_id,
-    relay_url: discoveryResult.relay_url || null,
-    direct_addresses: discoveryResult.direct_addresses || null,
-    is_reachable: discoveryResult.is_reachable || false,
-    discovered_at: Math.floor(Date.now() / 1000),
-  });
+  const headers = getSecurityHeaders(requestOrigin);
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      node_id: discoveryResult.node_id,
+      relay_url: discoveryResult.relay_url || null,
+      direct_addresses: discoveryResult.direct_addresses || null,
+      is_reachable: discoveryResult.is_reachable || false,
+      discovered_at: Math.floor(Date.now() / 1000),
+    }),
+  };
 }
 
 /**
  * Action: verify_node
  * Verifies Iroh node reachability and caches results
  */
-async function handleVerifyNode(payload: VerifyNodePayload): Promise<any> {
+async function handleVerifyNode(
+  payload: VerifyNodePayload,
+  requestId: string,
+  requestOrigin?: string
+): Promise<any> {
   // Validate required fields
   if (!payload.node_id) {
-    return json(400, {
-      success: false,
-      error: "Missing required field: node_id",
-    });
+    return createValidationErrorResponse(
+      "Missing required field: node_id",
+      requestId,
+      requestOrigin
+    );
   }
 
   if (!isValidNodeId(payload.node_id)) {
-    return json(400, {
-      success: false,
-      error: "Invalid node_id format (must be 52-char base32)",
-    });
+    return createValidationErrorResponse(
+      "Invalid node_id format (must be 52-char base32)",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Check cache first
@@ -414,15 +433,19 @@ async function handleVerifyNode(payload: VerifyNodePayload): Promise<any> {
   const cachedResult = getCachedResult(cacheKey);
 
   if (cachedResult) {
-    return json(
-      200,
-      {
+    const headers = {
+      ...getSecurityHeaders(requestOrigin),
+      "X-Cache": "HIT",
+    };
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
         success: true,
         ...cachedResult,
         cached: true,
-      },
-      { "X-Cache": "HIT" }
-    );
+      }),
+    };
   }
 
   // Verify node reachability via DHT
@@ -457,35 +480,45 @@ async function handleVerifyNode(payload: VerifyNodePayload): Promise<any> {
   // Cache the result
   setCachedResult(cacheKey, response);
 
-  return json(
-    200,
-    {
+  const headers = {
+    ...getSecurityHeaders(requestOrigin),
+    "X-Cache": "MISS",
+  };
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
       success: true,
       ...response,
       cached: false,
-    },
-    { "X-Cache": "MISS" }
-  );
+    }),
+  };
 }
 
 /**
  * Action: get_node_info
  * Retrieves stored node information from database
  */
-async function handleGetNodeInfo(payload: GetNodeInfoPayload): Promise<any> {
+async function handleGetNodeInfo(
+  payload: GetNodeInfoPayload,
+  requestId: string,
+  requestOrigin?: string
+): Promise<any> {
   // Validate required fields
   if (!payload.verification_id) {
-    return json(400, {
-      success: false,
-      error: "Missing required field: verification_id",
-    });
+    return createValidationErrorResponse(
+      "Missing required field: verification_id",
+      requestId,
+      requestOrigin
+    );
   }
 
   if (!isValidUuid(payload.verification_id)) {
-    return json(400, {
-      success: false,
-      error: "Invalid verification_id format (must be UUID)",
-    });
+    return createValidationErrorResponse(
+      "Invalid verification_id format (must be UUID)",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Initialize Supabase client
@@ -493,8 +526,12 @@ async function handleGetNodeInfo(payload: GetNodeInfoPayload): Promise<any> {
   const supabaseKey = getEnvVar("VITE_SUPABASE_ANON_KEY");
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase credentials");
-    return json(500, { success: false, error: "Configuration error" });
+    logError(new Error("Missing Supabase credentials"), {
+      requestId,
+      endpoint: "iroh-proxy",
+      action: "get_node_info",
+    });
+    return errorResponse(500, "Configuration error", requestOrigin);
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -503,19 +540,26 @@ async function handleGetNodeInfo(payload: GetNodeInfoPayload): Promise<any> {
   try {
     const nodeInfo = await getNodeInfo(supabase, payload.verification_id);
 
-    return json(200, {
-      success: true,
-      nodes: nodeInfo || [],
-    });
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        nodes: nodeInfo || [],
+      }),
+    };
   } catch (error) {
-    console.error(
-      "Database error:",
-      error instanceof Error ? error.message : "Unknown error"
-    );
-    return json(500, {
-      success: false,
-      error: "Failed to retrieve node information",
+    logError(error, {
+      requestId,
+      endpoint: "iroh-proxy",
+      action: "get_node_info",
     });
+    return errorResponse(
+      500,
+      "Failed to retrieve node information",
+      requestOrigin
+    );
   }
 }
 
@@ -524,28 +568,33 @@ async function handleGetNodeInfo(payload: GetNodeInfoPayload): Promise<any> {
  * Updates node reachability status (admin only)
  */
 async function handleUpdateNodeStatus(
-  payload: UpdateNodeStatusPayload
+  payload: UpdateNodeStatusPayload,
+  requestId: string,
+  requestOrigin?: string
 ): Promise<any> {
   // Validate required fields
   if (!payload.node_id) {
-    return json(400, {
-      success: false,
-      error: "Missing required field: node_id",
-    });
+    return createValidationErrorResponse(
+      "Missing required field: node_id",
+      requestId,
+      requestOrigin
+    );
   }
 
   if (!isValidNodeId(payload.node_id)) {
-    return json(400, {
-      success: false,
-      error: "Invalid node_id format (must be 52-char base32)",
-    });
+    return createValidationErrorResponse(
+      "Invalid node_id format (must be 52-char base32)",
+      requestId,
+      requestOrigin
+    );
   }
 
   if (typeof payload.is_reachable !== "boolean") {
-    return json(400, {
-      success: false,
-      error: "Missing or invalid field: is_reachable (must be boolean)",
-    });
+    return createValidationErrorResponse(
+      "Missing or invalid field: is_reachable (must be boolean)",
+      requestId,
+      requestOrigin
+    );
   }
 
   // Initialize Supabase client
@@ -553,8 +602,12 @@ async function handleUpdateNodeStatus(
   const supabaseKey = getEnvVar("VITE_SUPABASE_ANON_KEY");
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase credentials");
-    return json(500, { success: false, error: "Configuration error" });
+    logError(new Error("Missing Supabase credentials"), {
+      requestId,
+      endpoint: "iroh-proxy",
+      action: "update_node_status",
+    });
+    return errorResponse(500, "Configuration error", requestOrigin);
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -571,20 +624,27 @@ async function handleUpdateNodeStatus(
     const cacheKey = getCacheKey(payload.node_id);
     verificationCache.delete(cacheKey);
 
-    return json(200, {
-      success: true,
-      updated_count: updatedCount,
-      message: `Updated ${updatedCount} node(s)`,
-    });
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        updated_count: updatedCount,
+        message: `Updated ${updatedCount} node(s)`,
+      }),
+    };
   } catch (error) {
-    console.error(
-      "Database error:",
-      error instanceof Error ? error.message : "Unknown error"
-    );
-    return json(500, {
-      success: false,
-      error: "Failed to update node reachability",
+    logError(error, {
+      requestId,
+      endpoint: "iroh-proxy",
+      action: "update_node_status",
     });
+    return errorResponse(
+      500,
+      "Failed to update node reachability",
+      requestOrigin
+    );
   }
 }
 
@@ -593,15 +653,21 @@ async function handleUpdateNodeStatus(
 // ============================================================================
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
   try {
     // Handle CORS preflight
     if (event.httpMethod === "OPTIONS") {
-      return json(200, {}, { "Access-Control-Max-Age": "86400" });
+      return preflightResponse(requestOrigin);
     }
 
     // Only allow POST
     if (event.httpMethod !== "POST") {
-      return json(405, { success: false, error: "Method not allowed" });
+      return errorResponse(405, "Method not allowed", requestOrigin);
     }
 
     // Parse request body
@@ -609,10 +675,11 @@ export const handler: Handler = async (event) => {
     try {
       body = event.body ? JSON.parse(event.body) : {};
     } catch {
-      return json(400, {
-        success: false,
-        error: "Invalid JSON in request body",
-      });
+      return createValidationErrorResponse(
+        "Invalid JSON in request body",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Extract action and payload
@@ -621,66 +688,62 @@ export const handler: Handler = async (event) => {
 
     // Validate action
     if (!action || !(action in ACTIONS)) {
-      return json(400, { success: false, error: "Invalid or missing action" });
+      return createValidationErrorResponse(
+        "Invalid or missing action",
+        requestId,
+        requestOrigin
+      );
     }
 
     const scope = ACTIONS[action].scope;
-    const ip = event.headers["x-forwarded-for"] || "unknown";
 
-    // Apply action-specific rate limiting
-    if (action === "discover_node") {
-      const rateLimitKey = `iroh-discover:${ip}`;
-      if (!allowRequest(rateLimitKey, 20, 3600000)) {
-        return json(429, {
-          success: false,
-          error: "Rate limit exceeded (20 requests/hour)",
-        });
-      }
-    } else if (action === "verify_node") {
-      const rateLimitKey = `iroh-verify:${ip}`;
-      if (!allowRequest(rateLimitKey, 50, 3600000)) {
-        return json(429, {
-          success: false,
-          error: "Rate limit exceeded (50 requests/hour)",
-        });
-      }
-    } else if (action === "get_node_info") {
-      const rateLimitKey = `iroh-info:${ip}`;
-      if (!allowRequest(rateLimitKey, 60, 3600000)) {
-        return json(429, {
-          success: false,
-          error: "Rate limit exceeded (60 requests/hour)",
-        });
-      }
-    } else if (action === "update_node_status") {
-      const rateLimitKey = `iroh-update:${ip}`;
-      if (!allowRequest(rateLimitKey, 60, 3600000)) {
-        return json(429, {
-          success: false,
-          error: "Rate limit exceeded (60 requests/hour)",
-        });
-      }
+    // Database-backed rate limiting with action-specific limits
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitConfig =
+      action === "discover_node"
+        ? RATE_LIMITS.NFC_OPERATIONS // 20 req/hr
+        : action === "verify_node"
+        ? RATE_LIMITS.IDENTITY_VERIFY // 50 req/hr
+        : RATE_LIMITS.AUTH_REFRESH; // 60 req/hr for get_node_info and update_node_status
+
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      rateLimitConfig
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "iroh-proxy",
+        action,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Route to appropriate handler based on action
     switch (action) {
       case "discover_node":
-        return await handleDiscoverNode(payload);
+        return await handleDiscoverNode(payload, requestId, requestOrigin);
       case "verify_node":
-        return await handleVerifyNode(payload);
+        return await handleVerifyNode(payload, requestId, requestOrigin);
       case "get_node_info":
-        return await handleGetNodeInfo(payload);
+        return await handleGetNodeInfo(payload, requestId, requestOrigin);
       case "update_node_status":
-        return await handleUpdateNodeStatus(payload);
+        return await handleUpdateNodeStatus(payload, requestId, requestOrigin);
       default:
-        return json(400, { success: false, error: "Unsupported action" });
+        return createValidationErrorResponse(
+          "Unsupported action",
+          requestId,
+          requestOrigin
+        );
     }
   } catch (error: any) {
-    console.error("[iroh-proxy]", error);
-    return json(500, {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+    logError(error, {
+      requestId,
+      endpoint: "iroh-proxy",
+      method: event.httpMethod,
     });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 

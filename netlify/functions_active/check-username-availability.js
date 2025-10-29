@@ -1,110 +1,35 @@
 /**
- * RESTORED: Secure Username Availability Check with Database-Based Rate Limiting
+ * Secure Username Availability Check with Centralized Rate Limiting
  *
  * This Netlify Function implements secure username availability checking with:
- * - Database-based rate limiting that persists across serverless function invocations
+ * - Centralized database-backed rate limiting
  * - RLS-compatible implementation using anon key permissions
  * - Protection against enumeration attacks
  * - Proper error handling and security fallbacks
  *
- * SECURITY FEATURES RESTORED:
- * - Persistent rate limiting using Supabase rate_limits table
- * - Client isolation and tracking
- * - DUID-based privacy-preserving username checks
- * - Comprehensive logging for security monitoring
+ * Phase 3 Security Hardening:
+ * - Uses centralized enhanced-rate-limiter utility
+ * - Standardized security headers
+ * - Consistent error handling
  */
 
 import { supabase } from '../../netlify/functions/supabase.js';
 
+// Security utilities (Phase 3 hardening)
+import {
+    RATE_LIMITS,
+    checkRateLimit,
+    createRateLimitIdentifier,
+    getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+    createRateLimitErrorResponse,
+    generateRequestId,
+    logError,
+} from "./utils/error-handler.ts";
+import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
+
 console.log('🔒 Secure username availability function initialized (shared Supabase client)');
-/**
- * RESTORED: Secure database-based rate limiting for serverless environment
- * Uses Supabase with RLS policies to maintain persistence across function invocations
- * This prevents security vulnerabilities from in-memory rate limiting that resets on cold starts
- */
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute (security-focused)
-
-async function checkRateLimit(clientIP) {
-  const now = Date.now();
-  const clientKey = clientIP || 'unknown';
-  const endpoint = 'check-username-availability';
-
-  try {
-    console.log('🔒 Checking database-based rate limit for client:', clientKey);
-
-    // Query existing rate limit record
-    const { data, error } = await supabase
-      .from('rate_limits')
-      .select('count, reset_time')
-      .eq('client_key', clientKey)
-      .eq('endpoint', endpoint)
-      .single();
-
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-      console.error('Rate limit check error:', error);
-      // SECURITY: Allow request on database error to avoid blocking legitimate users
-      // but log the error for monitoring
-      return true;
-    }
-
-    if (!data || now > data.reset_time) {
-      // Create or reset rate limit record
-      console.log('🔒 Creating/resetting rate limit for client:', clientKey);
-
-      const { error: upsertError } = await supabase
-        .from('rate_limits')
-        .upsert({
-          client_key: clientKey,
-          endpoint: endpoint,
-          count: 1,
-          reset_time: now + RATE_LIMIT_WINDOW,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'client_key,endpoint'
-        });
-
-      if (upsertError) {
-        console.error('Rate limit upsert error:', upsertError);
-        // SECURITY: Allow request on database error but log for monitoring
-        return true;
-      }
-
-      return true;
-    }
-
-    if (data.count >= RATE_LIMIT_MAX_REQUESTS) {
-      console.warn('🚫 Rate limit exceeded for client:', clientKey, 'count:', data.count);
-      return false;
-    }
-
-    // Increment count
-    console.log('🔒 Incrementing rate limit count for client:', clientKey, 'current:', data.count);
-
-    const { error: updateError } = await supabase
-      .from('rate_limits')
-      .update({
-        count: data.count + 1,
-        updated_at: new Date().toISOString()
-      })
-      .eq('client_key', clientKey)
-      .eq('endpoint', endpoint);
-
-    if (updateError) {
-      console.error('Rate limit update error:', updateError);
-      // SECURITY: Allow request on database error but log for monitoring
-      return true;
-    }
-
-    return true;
-
-  } catch (error) {
-    console.error('Rate limiting system error:', error);
-    // SECURITY: Allow request on system error to avoid blocking legitimate users
-    // but log the error for monitoring
-    return true;
-  }
-}
 
 /**
  * Check username availability using secure DUID architecture
@@ -233,93 +158,73 @@ async function generateUsernameSuggestion(baseUsername) {
 }
 
 /**
- * RESTORED: Main Netlify Function handler with secure database-based rate limiting
+ * Main Netlify Function handler with centralized rate limiting
  * @param {Object} event - Netlify event object
  * @returns {Promise<Object>} Netlify response object
  */
 export const handler = async (event, context) => {
-  // CORS headers
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json'
-  };
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
   // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: ''
-    };
+    return preflightResponse(requestOrigin);
   }
 
   // Allow both POST and GET requests
   if (event.httpMethod !== 'POST' && event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: 'Method not allowed'
-      })
-    };
+    return errorResponse(405, 'Method not allowed', requestOrigin);
   }
 
   try {
-    // RESTORED: Secure database-based rate limiting
-    const clientIP = event.headers['x-forwarded-for'] || event.headers['x-real-ip'] || 'unknown';
-    if (!(await checkRateLimit(clientIP))) {
-      return {
-        statusCode: 429,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Too many requests. Please try again later.'
-        })
-      };
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const allowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "check-username-availability",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
-    // Parse request data based on HTTP method
-    let requestData;
+    // Extract username from request
+    let username;
     if (event.httpMethod === 'POST') {
       try {
-        requestData = JSON.parse(event.body || '{}');
-      } catch (parseError) {
-        return {
-          statusCode: 400,
-          headers: corsHeaders,
-          body: JSON.stringify({
-            success: false,
-            error: 'Invalid JSON in request body'
-          })
-        };
+        const body = JSON.parse(event.body || '{}');
+        username = body.username;
+      } catch {
+        return errorResponse(400, 'Invalid JSON in request body', requestOrigin);
       }
     } else {
-      // For GET requests, extract from query parameters
-      requestData = event.queryStringParameters || {};
+      username = event.queryStringParameters?.username;
     }
 
-    const { username } = requestData;
-
-    if (!username || typeof username !== 'string') {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Username is required and must be a string'
-        })
-      };
+    if (!username) {
+      return errorResponse(400, 'Username parameter is required', requestOrigin);
     }
 
     // Check username availability
     const result = await checkUsernameAvailability(username);
 
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin":
+        requestOrigin || "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers,
       body: JSON.stringify({
         success: true,
         available: result.available,
@@ -330,13 +235,11 @@ export const handler = async (event, context) => {
 
   } catch (error) {
     console.error('Username availability check handler error:', error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: 'Internal server error'
-      })
-    };
+    logError(error, {
+      requestId,
+      endpoint: "check-username-availability",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, 'Internal server error', requestOrigin);
   }
 };

@@ -4,87 +4,107 @@
 import type { Handler } from "@netlify/functions";
 import { TOTP_CONFIG, verifyTOTP } from "../../utils/crypto";
 import { supabase } from "./supabase.js";
-import { allowRequest } from "./utils/rate-limiter.js";
 
-function parseJSON(body: string | null): any {
-  if (!body) return {};
-  try {
-    return JSON.parse(body);
-  } catch {
-    return {};
-  }
-}
+// Security utilities (Phase 4 hardening)
+import {
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+  RATE_LIMITS,
+} from "../functions_active/utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "../functions_active/utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "../functions_active/utils/security-headers.js";
 
-function corsHeaders(origin?: string) {
-  return {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  } as Record<string, string>;
-}
+// Old helper functions removed - using centralized security utilities
 
 // Maintain a minimal in-memory replay cache as additional defense (per instance)
 const recentCodes = new Map<string, { code: string; ts: number }[]>(); // key: sessionId
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 auth-migration-otp-verify handler started:", {
+    requestId,
+    method: event.httpMethod,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: corsHeaders(event.headers.origin),
-      body: "",
-    };
+    return preflightResponse(requestOrigin);
   }
+
+  // Only allow POST
   if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      headers: corsHeaders(event.headers.origin),
-      body: JSON.stringify({ success: false, error: "Method not allowed" }),
-    };
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
 
-  const headers = corsHeaders(event.headers.origin);
+  // Database-backed rate limiting: 20 requests/hour for OTP verification
+  const rateLimitId = createRateLimitIdentifier(undefined, clientIP);
+  const rateLimitAllowed = await checkRateLimit(
+    rateLimitId,
+    RATE_LIMITS.AUTH_REFRESH // 60 req/hr - using closest available config
+  );
 
-  // Basic IP-based rate limit
-  const xForwardedFor = event.headers["x-forwarded-for"];
-  const ip = xForwardedFor
-    ? xForwardedFor.split(",")[0].trim()
-    : event.headers["client-ip"] || "unknown";
-  if (!allowRequest(`ver:${ip}`, 20, 60_000)) {
-    return {
-      statusCode: 429,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: "Rate limit exceeded. Please wait and try again.",
-      }),
-    };
+  if (!rateLimitAllowed) {
+    return createRateLimitErrorResponse(requestId, requestOrigin);
   }
 
-  const { sessionId, npub, code } = parseJSON(event.body || null);
+  // Parse request body
+  let sessionId: string;
+  let npub: string;
+  let code: string;
+  try {
+    const body =
+      typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+    sessionId = body?.sessionId;
+    npub = body?.npub;
+    code = body?.code;
+  } catch (e) {
+    return createValidationErrorResponse(
+      "Invalid JSON payload",
+      requestId,
+      requestOrigin
+    );
+  }
+  // Validate sessionId
   if (!sessionId || typeof sessionId !== "string") {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ success: false, error: "Missing sessionId" }),
-    };
+    return createValidationErrorResponse(
+      "Missing sessionId",
+      requestId,
+      requestOrigin
+    );
   }
+
+  // Validate npub
   if (!npub || typeof npub !== "string" || !npub.startsWith("npub1")) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: "Invalid or missing npub",
-      }),
-    };
+    return createValidationErrorResponse(
+      "Invalid or missing npub",
+      requestId,
+      requestOrigin
+    );
   }
+
+  // Validate code
   if (!code || typeof code !== "string" || code.length !== TOTP_CONFIG.DIGITS) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ success: false, error: "Invalid code" }),
-    };
+    return createValidationErrorResponse(
+      "Invalid code",
+      requestId,
+      requestOrigin
+    );
   }
 
   try {
@@ -99,16 +119,18 @@ export const handler: Handler = async (event) => {
       .single();
 
     if (error || !session) {
-      return {
-        statusCode: 404,
-        headers,
-        body: JSON.stringify({ success: false, error: "Session not found" }),
-      };
+      logError(error || new Error("Session not found"), {
+        requestId,
+        endpoint: "auth-migration-otp-verify",
+        action: "load_session",
+      });
+      return errorResponse(404, "Session not found", requestOrigin);
     }
 
     const now = Date.now();
     const exp = Date.parse(session.expires_at);
     if (isNaN(exp) || now > exp) {
+      const headers = getSecurityHeaders(requestOrigin);
       return {
         statusCode: 400,
         headers,
@@ -127,14 +149,7 @@ export const handler: Handler = async (event) => {
     const withinWindow = now - 15 * 60 * 1000 < (lastAttempt || 0);
     const attempts = Number(session.attempt_count) || 0;
     if (attempts >= 3 && withinWindow) {
-      return {
-        statusCode: 429,
-        headers,
-        body: JSON.stringify({
-          success: false,
-          error: "Too many attempts. Please wait 15 minutes.",
-        }),
-      };
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Replay protection (DB + in-memory)
@@ -143,6 +158,7 @@ export const handler: Handler = async (event) => {
         (e) => now - e.ts <= 5 * 60 * 1000
       );
       if (recentForSession.some((e) => e.code === code)) {
+        const headers = getSecurityHeaders(requestOrigin);
         return {
           statusCode: 400,
           headers,
@@ -166,11 +182,7 @@ export const handler: Handler = async (event) => {
           last_attempt_at: new Date().toISOString(),
         })
         .eq("session_id", sessionId);
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ success: false, error: "Invalid code" }),
-      };
+      return errorResponse(401, "Invalid code", requestOrigin);
     }
 
     // Mark code as used (replay blacklist) and optionally shorten session expiry
@@ -202,6 +214,7 @@ export const handler: Handler = async (event) => {
     arr.push({ code, ts: now });
     recentCodes.set(sessionId, arr);
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
@@ -212,12 +225,16 @@ export const handler: Handler = async (event) => {
       }),
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Internal error";
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ success: false, error: msg }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "auth-migration-otp-verify",
+      action: "handler_error",
+    });
+    return errorResponse(
+      500,
+      error instanceof Error ? error.message : "Internal error",
+      requestOrigin
+    );
   }
 };
 

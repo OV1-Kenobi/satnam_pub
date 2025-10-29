@@ -10,28 +10,26 @@
 
 import type { Handler } from "@netlify/functions";
 import * as crypto from "node:crypto";
-import { getRequestClient } from "../functions/supabase.js";
-import { allowRequest } from "../functions/utils/rate-limiter.js";
 
-function json(statusCode: number, body: unknown) {
-  return {
-    statusCode,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  };
-}
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
 
-function clientIpFrom(event: any): string {
-  const xfwd =
-    event.headers?.["x-forwarded-for"] ||
-    event.headers?.["X-Forwarded-For"] ||
-    "";
-  return (
-    (Array.isArray(xfwd) ? xfwd[0] : xfwd).split(",")[0]?.trim() ||
-    (event.headers?.["x-real-ip"] as string) ||
-    "unknown"
-  );
-}
+import { getRequestClient } from "./supabase.js";
 
 function sha256Hex(input: string | Buffer): string {
   const h = crypto.createHash("sha256");
@@ -114,26 +112,58 @@ async function verifySunWithProvider(
 }
 
 export const handler: Handler = async (event) => {
-  try {
-    if (event.httpMethod !== "POST")
-      return json(405, { success: false, error: "Method not allowed" });
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-    const ip = clientIpFrom(event);
-    if (!allowRequest(ip, 12, 60_000))
-      return json(429, { success: false, error: "Too many attempts" });
+  console.log("🚀 NFC verify contact handler started:", {
+    requestId,
+    method: event.httpMethod,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
+  if (event.httpMethod === "OPTIONS") {
+    return preflightResponse(requestOrigin);
+  }
+
+  try {
+    if (event.httpMethod !== "POST") {
+      return errorResponse(405, "Method not allowed", requestOrigin);
+    }
+
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.NFC_OPERATIONS
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "nfc-verify-contact",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
 
     const token = (
       event.headers?.authorization ||
       event.headers?.Authorization ||
       ""
     ).replace(/^Bearer\s+/i, "");
-    if (!token)
-      return json(401, { success: false, error: "Missing Authorization" });
+    if (!token) {
+      return errorResponse(401, "Missing Authorization", requestOrigin);
+    }
 
     const supabase = getRequestClient(token);
     const { data: me, error: meErr } = await supabase.auth.getUser();
-    if (meErr || !me?.user?.id)
-      return json(401, { success: false, error: "Unauthorized" });
+    if (meErr || !me?.user?.id) {
+      return errorResponse(401, "Unauthorized", requestOrigin);
+    }
     const owner_duid: string = me.user.id; // tapper's user id
 
     const body = parseBody(event.body);
@@ -155,9 +185,12 @@ export const handler: Handler = async (event) => {
           }
         : undefined;
 
-    if (!cardUid)
-      return json(400, { success: false, error: "Missing cardUid" });
-    if (!nip05) return json(400, { success: false, error: "Missing nip05" });
+    if (!cardUid) {
+      return errorResponse(400, "Missing cardUid", requestOrigin);
+    }
+    if (!nip05) {
+      return errorResponse(400, "Missing nip05", requestOrigin);
+    }
 
     // Find the contact (card owner) by NIP-05 and obtain their user_salt
     const { data: ident, error: identErr } = await (supabase as any)
@@ -166,7 +199,7 @@ export const handler: Handler = async (event) => {
       .eq("nip05_identifier", nip05)
       .single();
     if (identErr || !ident?.id || !ident?.user_salt) {
-      return json(400, { success: false, error: "Contact identity not found" });
+      return errorResponse(400, "Contact identity not found", requestOrigin);
     }
     const contact_duid: string = String(ident.id);
 
@@ -186,10 +219,11 @@ export const handler: Handler = async (event) => {
       .eq("card_uid_hash", card_uid_hash)
       .single();
     if (cardErr || !card?.id) {
-      return json(400, {
-        success: false,
-        error: "Card not registered to provided NIP-05",
-      });
+      return errorResponse(
+        400,
+        "Card not registered to provided NIP-05",
+        requestOrigin
+      );
     }
 
     // If SUN parameters provided, require SUN verification to pass
@@ -201,13 +235,14 @@ export const handler: Handler = async (event) => {
         sunParams.cmac
       );
       if (!res.supported) {
-        return json(400, {
-          success: false,
-          error: "SUN verification not available for this card",
-        });
+        return errorResponse(
+          400,
+          "SUN verification not available for this card",
+          requestOrigin
+        );
       }
       if (!res.ok) {
-        return json(400, { success: false, error: "SUN verification failed" });
+        return errorResponse(400, "SUN verification failed", requestOrigin);
       }
       sunVerified = true;
     }
@@ -225,20 +260,36 @@ export const handler: Handler = async (event) => {
       // If unique violation, treat as success (already added)
       const msg = String(insErr.message || "").toLowerCase();
       if (!msg.includes("duplicate") && !msg.includes("unique")) {
-        return json(500, {
-          success: false,
-          error: "Failed to save validated contact",
+        logError(insErr, {
+          requestId,
+          endpoint: "nfc-verify-contact",
+          operation: "insert",
         });
+        return errorResponse(
+          500,
+          "Failed to save validated contact",
+          requestOrigin
+        );
       }
     }
 
-    return json(200, {
-      success: true,
-      contactDuid: contact_duid,
-      contactNip05: nip05,
-      sunVerified,
-    });
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        contactDuid: contact_duid,
+        contactNip05: nip05,
+        sunVerified,
+      }),
+    };
   } catch (e: any) {
-    return json(500, { success: false, error: e?.message || "Server error" });
+    logError(e, {
+      requestId,
+      endpoint: "nfc-verify-contact",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

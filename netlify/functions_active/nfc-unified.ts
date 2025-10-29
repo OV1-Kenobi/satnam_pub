@@ -14,11 +14,24 @@
 
 // Netlify ESM: export const handler
 // Use .js extensions for local imports (even from TS) per repo guideline
+import type { Handler } from "@netlify/functions";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
+
 import { SecureSessionManager } from "./security/session-manager.js";
 import { getRequestClient } from "./supabase.js";
-import { allowRequest } from "./utils/rate-limiter.js";
-
-import type { Handler } from "@netlify/functions";
 
 // Optional external hardware bridge base URL (e.g., https://bridge.example.com)
 const BRIDGE_URL =
@@ -187,11 +200,6 @@ async function handleVerify(event: any) {
     return json(405, { success: false, error: "Method not allowed" });
   }
 
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 10, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
-  }
-
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
     return json(401, { success: false, error: "Unauthorized" });
@@ -341,11 +349,6 @@ async function handleStatus(event: any) {
     return json(405, { success: false, error: "Method not allowed" });
   }
 
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 10, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
-  }
-
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
     return json(401, { success: false, error: "Unauthorized" });
@@ -402,11 +405,6 @@ async function handleStatus(event: any) {
 async function handleInitialize(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
-  }
-
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 3, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
   }
 
   const session = await requireSession(event);
@@ -480,11 +478,6 @@ async function handleInitialize(event: any) {
 async function handleRegister(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
-  }
-
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 6, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
   }
 
   const session = await requireSession(event);
@@ -586,11 +579,6 @@ async function handleRegister(event: any) {
 async function handleLogin(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
-  }
-
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 6, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
   }
 
   const body = parseJSON<{
@@ -740,10 +728,6 @@ async function handleLogin(event: any) {
 
 async function handlePreferences(event: any) {
   const method = (event.httpMethod || "GET").toUpperCase();
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 30, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
-  }
 
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
@@ -849,10 +833,6 @@ async function handleRead(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
   }
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 15, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
-  }
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
     return json(401, { success: false, error: "Unauthorized" });
@@ -887,10 +867,6 @@ async function handleRead(event: any) {
 async function handleProgram(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
-  }
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 5, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
   }
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
@@ -953,10 +929,6 @@ async function handleVerifyTag(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
   }
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 10, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
-  }
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
     return json(401, { success: false, error: "Unauthorized" });
@@ -982,10 +954,6 @@ async function handleVerifyTag(event: any) {
 async function handleErase(event: any) {
   if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
     return json(405, { success: false, error: "Method not allowed" });
-  }
-  const ip = clientIpFromEvent(event);
-  if (!allowRequest(ip, 3, 60_000)) {
-    return json(429, { success: false, error: "Too many attempts" });
   }
   const session = await requireSession(event);
   if (!session || !session.hashedId) {
@@ -1053,12 +1021,42 @@ async function handleErase(event: any) {
 }
 
 export const handler: Handler = async (event, _context) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 NFC unified handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if ((event.httpMethod || "").toUpperCase() === "OPTIONS") {
-    return { statusCode: 204, headers: buildCorsHeaders(), body: "" };
+    return preflightResponse(requestOrigin);
   }
 
-  const op = getLastPathSegment(event.path || "");
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.NFC_OPERATIONS
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "nfc-unified",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    const op = getLastPathSegment(event.path || "");
     switch (op) {
       case "verify":
         return await handleVerify(event);
@@ -1081,13 +1079,14 @@ export const handler: Handler = async (event, _context) => {
       case "erase":
         return await handleErase(event);
       default:
-        return json(404, { success: false, error: "Not found" });
+        return errorResponse(404, "Not found", requestOrigin);
     }
   } catch (e) {
-    return json(500, {
-      success: false,
-      error: "Internal server error",
-      meta: { message: e instanceof Error ? e.message : "Unknown error" },
+    logError(e, {
+      requestId,
+      endpoint: "nfc-unified",
+      method: event.httpMethod,
     });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

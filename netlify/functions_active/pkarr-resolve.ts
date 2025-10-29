@@ -8,76 +8,97 @@
  */
 
 import type { Handler } from "@netlify/functions";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 import { getRequestClient } from "./supabase.js";
-import { allowRequest } from "./utils/rate-limiter.js";
 import { getEnvVar } from "./utils/env.js";
 
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-function badRequest(body: unknown, status = 400) {
-  return json(status, body);
-}
-
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 PKARR resolve handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: { ...corsHeaders() } };
+    return preflightResponse(requestOrigin);
   }
+
   if (event.httpMethod !== "GET") {
-    return badRequest({ error: "Method not allowed" }, 405);
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
-
-  // Check if PKARR is enabled
-  const pkarrEnabled = getEnvVar("VITE_PKARR_ENABLED") === "true";
-  if (!pkarrEnabled) {
-    return badRequest({ error: "PKARR integration is not enabled" }, 503);
-  }
-
-  const publicKey = (event.queryStringParameters?.public_key || "").trim();
-  if (!publicKey) {
-    return badRequest({ error: "Missing public_key query parameter" }, 422);
-  }
-
-  // Validate public key format (64 hex chars)
-  if (!/^[0-9a-fA-F]{64}$/.test(publicKey)) {
-    return badRequest({ error: "Invalid public key format" }, 400);
-  }
-
-  // Rate limit per IP
-  const xfwd =
-    event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
-  const clientIp = Array.isArray(xfwd)
-    ? xfwd[0]
-    : (xfwd || "").split(",")[0]?.trim() || "unknown";
-  if (!allowRequest(clientIp, 60, 60_000))
-    return badRequest({ error: "Too many requests" }, 429);
 
   try {
+    // Check if PKARR is enabled
+    const pkarrEnabled = getEnvVar("VITE_PKARR_ENABLED") === "true";
+    if (!pkarrEnabled) {
+      return errorResponse(
+        503,
+        "PKARR integration is not enabled",
+        requestOrigin
+      );
+    }
+
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "pkarr-resolve",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    const publicKey = (event.queryStringParameters?.public_key || "").trim();
+    if (!publicKey) {
+      return createValidationErrorResponse(
+        "Missing public_key query parameter",
+        requestId,
+        requestOrigin
+      );
+    }
+
+    // Validate public key format (64 hex chars)
+    if (!/^[0-9a-fA-F]{64}$/.test(publicKey)) {
+      return createValidationErrorResponse(
+        "Invalid public key format",
+        requestId,
+        requestOrigin
+      );
+    }
+
     const supabase = getRequestClient(undefined);
 
     // Try to get from cache first
@@ -88,14 +109,19 @@ export const handler: Handler = async (event) => {
       .maybeSingle();
 
     if (cacheError) {
-      console.error("Database error:", cacheError);
-      return badRequest({ error: "Failed to query PKARR records" }, 500);
+      logError(cacheError, {
+        requestId,
+        endpoint: "pkarr-resolve",
+        operation: "database_query",
+      });
+      return errorResponse(500, "Failed to query PKARR records", requestOrigin);
     }
 
     if (!cachedRecord) {
-      return badRequest(
-        { error: "PKARR record not found for this public key" },
-        404
+      return errorResponse(
+        404,
+        "PKARR record not found for this public key",
+        requestOrigin
       );
     }
 
@@ -103,16 +129,19 @@ export const handler: Handler = async (event) => {
     const now = Math.floor(Date.now() / 1000);
     const cacheExpired = cachedRecord.cache_expires_at < now;
 
-    // Cache for 5 minutes
-    const cacheHeaders = {
-      "Cache-Control": cacheExpired
-        ? "public, max-age=60, stale-while-revalidate=300"
-        : "public, max-age=300, stale-while-revalidate=600",
-    };
+    // Return success response with security headers
+    const headers = getSecurityHeaders(requestOrigin);
+    const cacheControl = cacheExpired
+      ? "public, max-age=60, stale-while-revalidate=300"
+      : "public, max-age=300, stale-while-revalidate=600";
 
-    return json(
-      200,
-      {
+    return {
+      statusCode: 200,
+      headers: {
+        ...headers,
+        "Cache-Control": cacheControl,
+      },
+      body: JSON.stringify({
         success: true,
         data: {
           public_key: cachedRecord.public_key,
@@ -125,13 +154,14 @@ export const handler: Handler = async (event) => {
           cacheExpiresAt: cachedRecord.cache_expires_at,
           lastPublished: cachedRecord.last_published_at,
         },
-      },
-      cacheHeaders
-    );
+      }),
+    };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("PKARR resolve error:", message);
-    return badRequest({ error: message }, 500);
+    logError(error, {
+      requestId,
+      endpoint: "pkarr-resolve",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
-

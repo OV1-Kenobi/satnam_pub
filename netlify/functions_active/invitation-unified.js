@@ -1,16 +1,48 @@
-// Unified Invitation Handler - Netlify Function (CommonJS)
+// Unified Invitation Handler - Netlify Function (ESM)
 // Consolidates authenticated-generate-peer-invite and authenticated-process-signed-invitation
 // Uses dynamic imports to load actual implementations only when called to reduce build memory usage
 
+// Security utilities (Phase 3 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
+
 const handler = async (event, context) => {
-  const cors = buildCorsHeaders(event);
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(event.headers || {});
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
   // CORS preflight
   if ((event.httpMethod || 'GET').toUpperCase() === 'OPTIONS') {
-    return { statusCode: 204, headers: cors, body: '' };
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const allowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_PUBLISH
+    );
+
+    if (!allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "invitation-unified",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     const method = (event.httpMethod || 'GET').toUpperCase();
     // Get path from multiple sources (Netlify redirects may not preserve event.path)
     const path = event.path || event.rawUrl || event.headers?.['x-forwarded-for-path'] || '';
@@ -20,28 +52,20 @@ const handler = async (event, context) => {
       eventPath: event.path,
       rawUrl: event.rawUrl,
       referer: referer.substring(0, 100),
-      headers: Object.keys(event.headers || {}).join(', ')
+      headers: Object.keys(event.headers || {}).join(', '),
+      requestId,
     });
 
     // Route resolution for invitation operations
     const target = resolveInvitationRoute(path, method);
     if (!target) {
-      return { 
-        statusCode: 404, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Invitation endpoint not found',
-          path: path,
-          method: method
-        }) 
-      };
+      return errorResponse(404, 'Invitation endpoint not found', requestOrigin);
     }
 
     // Handle inline implementations (for critical invitation endpoints)
     if (target.inline && target.operation === 'generate-peer-invite') {
       console.log('🔍 Using inline peer invitation implementation');
-      return await handlePeerInviteInline(event, context, cors);
+      return await handlePeerInviteInline(event, context, requestOrigin);
     }
 
     // MEMORY OPTIMIZATION: Use runtime dynamic import to prevent bundling heavy modules
@@ -51,59 +75,62 @@ const handler = async (event, context) => {
       targetHandler = mod.handler || mod.default;
     } catch (importError) {
       console.error(`Failed to import invitation module: ${target.module}`, importError);
-      return { 
-        statusCode: 500, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Invitation service temporarily unavailable',
-          operation: target.operation
-        }) 
-      };
+      logError(importError, {
+        requestId,
+        endpoint: "invitation-unified",
+        operation: target.operation,
+      });
+      return errorResponse(500, 'Invitation service temporarily unavailable', requestOrigin);
     }
 
     if (typeof targetHandler !== 'function') {
-      return { 
-        statusCode: 500, 
-        headers: cors, 
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Invitation handler not available',
-          operation: target.operation
-        }) 
-      };
+      return errorResponse(500, 'Invitation handler not available', requestOrigin);
     }
 
     // Delegate to target handler with context preservation
     const response = await targetHandler(event, context);
-    
+
     // Ensure CORS headers are present in response
     if (response && typeof response === 'object') {
-      return { 
-        ...response, 
-        headers: { 
-          ...(response.headers || {}), 
-          ...cors 
-        } 
+      const headers = {
+        ...(response.headers || {}),
+        "Access-Control-Allow-Origin":
+          requestOrigin ||
+          process.env.VITE_CORS_ORIGIN ||
+          "https://www.satnam.pub",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      };
+      return {
+        ...response,
+        headers
       };
     }
 
-    return { 
-      statusCode: 200, 
-      headers: cors, 
-      body: typeof response === 'string' ? response : JSON.stringify(response) 
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin":
+        requestOrigin ||
+        process.env.VITE_CORS_ORIGIN ||
+        "https://www.satnam.pub",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
+    return {
+      statusCode: 200,
+      headers,
+      body: typeof response === 'string' ? response : JSON.stringify(response)
     };
 
   } catch (error) {
     console.error('Unified invitation handler error:', error);
-    return { 
-      statusCode: 500, 
-      headers: cors, 
-      body: JSON.stringify({ 
-        success: false, 
-        error: 'Invitation service error' 
-      }) 
-    };
+    logError(error, {
+      requestId,
+      endpoint: "invitation-unified",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, 'Invitation service error', requestOrigin);
   }
 };
 
@@ -141,33 +168,7 @@ function resolveInvitationRoute(path, method) {
   return null;
 }
 
-/**
- * Build CORS headers with environment-aware configuration
- * Uses established process.env pattern with fallback to primary production origin
- * @param {Object} event - Netlify function event
- * @returns {Object} CORS headers
- */
-function buildCorsHeaders(event) {
-  const origin = event.headers?.origin || event.headers?.Origin;
-  const isProd = process.env.NODE_ENV === 'production';
-  
-  // Use FRONTEND_URL with fallback to primary production origin per user preferences
-  const allowedOrigin = isProd 
-    ? (process.env.FRONTEND_URL || 'https://www.satnam.pub') 
-    : (origin || '*');
-  
-  const allowCredentials = allowedOrigin !== '*';
-
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Credentials': String(allowCredentials),
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
-    'Content-Type': 'application/json',
-  };
-}
+// Old buildCorsHeaders function removed - now using centralized security utilities
 
 // SECURE JWT VERIFICATION FUNCTION
 async function verifyJWT(token) {
@@ -251,43 +252,25 @@ async function verifyJWT(token) {
 }
 
 // Inline peer invitation implementation for reliability
-async function handlePeerInviteInline(event, context, corsHeaders) {
+async function handlePeerInviteInline(event, context, requestOrigin) {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: corsHeaders,
-      body: JSON.stringify({ success: false, error: 'Method not allowed' })
-    };
+    return errorResponse(405, 'Method not allowed', requestOrigin);
   }
 
   try {
     // Extract JWT token from Authorization header (case-insensitive)
-    const headers = event.headers || {};
-    const authHeader = headers.authorization || headers.Authorization ||
-                      headers['authorization'] || headers['Authorization'];
+    const eventHeaders = event.headers || {};
+    const authHeader = eventHeaders.authorization || eventHeaders.Authorization ||
+                      eventHeaders['authorization'] || eventHeaders['Authorization'];
 
     if (!authHeader) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Authorization token required'
-        })
-      };
+      return errorResponse(401, 'Authorization token required', requestOrigin);
     }
 
     // Support case-insensitive "Bearer" token detection
     const bearerMatch = authHeader.match(/^bearer\s+(.+)$/i);
     if (!bearerMatch) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Invalid authorization format. Expected: Bearer <token>'
-        })
-      };
+      return errorResponse(401, 'Invalid authorization format. Expected: Bearer <token>', requestOrigin);
     }
 
     const token = bearerMatch[1];
@@ -298,15 +281,7 @@ async function handlePeerInviteInline(event, context, corsHeaders) {
       payload = await verifyJWT(token);
     } catch (jwtError) {
       console.error('❌ JWT verification failed:', jwtError.message);
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Invalid or expired token',
-          debug: process.env.NODE_ENV === 'development' ? jwtError.message : undefined
-        })
-      };
+      return errorResponse(401, 'Invalid or expired token', requestOrigin);
     }
 
     // Parse request body
@@ -357,9 +332,19 @@ async function handlePeerInviteInline(event, context, corsHeaders) {
       expiresAt
     });
 
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin":
+        requestOrigin ||
+        process.env.VITE_CORS_ORIGIN ||
+        "https://www.satnam.pub",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers,
       body: JSON.stringify({
         success: true,
         message: 'Peer invitation generated successfully',
@@ -381,20 +366,10 @@ async function handlePeerInviteInline(event, context, corsHeaders) {
 
   } catch (error) {
     console.error('❌ Peer invitation generation error:', error);
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: 'Failed to generate peer invitation',
-        debug: {
-          message: error.message,
-          timestamp: new Date().toISOString()
-        }
-      })
-    };
+    return errorResponse(500, 'Failed to generate peer invitation', requestOrigin);
   }
 }
 
 // ESM export - FIXED: Use proper ESM syntax for "type": "module" compliance
 export { handler };
+

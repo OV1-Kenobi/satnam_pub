@@ -16,7 +16,6 @@ import {
   createLogger,
   logApiCall,
   logCacheEvent,
-  logRateLimitEvent,
 } from "../functions/utils/logging.js";
 import {
   addSimpleProofBreadcrumb,
@@ -24,7 +23,20 @@ import {
   initializeSentry,
 } from "../functions/utils/sentry.server.js";
 import { getEnvVar } from "./utils/env.js";
-import { allowRequest } from "./utils/rate-limiter.js";
+
+// Security utilities (Phase 3 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
 
 // Security: Input validation patterns
 const MAX_OTS_PROOF_LENGTH = 100000; // 100KB max for OTS proof
@@ -56,62 +68,7 @@ const verificationCache = new Map<
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Security: Whitelist of allowed origins for CORS
-const ALLOWED_ORIGINS = [
-  "https://www.satnam.pub",
-  "https://satnam.pub",
-  "https://app.satnam.pub",
-];
-
-// Add localhost for development
-if (process.env.NODE_ENV === "development") {
-  ALLOWED_ORIGINS.push("http://localhost:5173", "http://localhost:3000");
-}
-
-function corsHeaders(origin?: string) {
-  // Validate origin against whitelist
-  const allowedOrigin =
-    origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": "86400", // 24 hours
-    Vary: "Origin",
-    // Security headers
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "X-XSS-Protection": "1; mode=block",
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-function badRequest(message: string, status = 400) {
-  return json(status, { error: message });
-}
-
-function serverError(message: string) {
-  return json(500, { error: message });
-}
+// Old helper functions removed - now using centralized security utilities
 
 function getCacheKey(otsProof: string): string {
   // Use first 32 chars of proof as cache key (sufficient for uniqueness)
@@ -178,46 +135,41 @@ const logger = createLogger({ component: "simpleproof-verify" });
 
 export const handler: Handler = async (event) => {
   const startTime = Date.now();
-  const origin = event.headers.origin || event.headers.Origin;
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
   // Initialize Sentry for error tracking
   initializeSentry();
 
-  // Handle CORS preflight
+  logger.info("🚀 SimpleProof verify handler started");
+
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 204,
-      headers: corsHeaders(origin),
-    };
+    return preflightResponse(requestOrigin);
   }
 
-  // Only allow POST
   if (event.httpMethod !== "POST") {
-    logger.warn("Method not allowed", {
-      metadata: { method: event.httpMethod },
-    });
-    return badRequest("Method not allowed", 405);
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
 
   try {
-    // Rate limiting: use x-forwarded-for or fallback to generic key
-    const clientIp =
-      event.headers["x-forwarded-for"]?.split(",")[0].trim() || "anonymous";
-    const rateLimitKey = `simpleproof-verify:${clientIp}`;
-
-    // 100 requests per hour (3600000 ms) - verification is cheaper than creation
-    const allowed = allowRequest(rateLimitKey, 100, 3600000);
-    logRateLimitEvent(allowed, rateLimitKey, 100, 100, {
-      component: "simpleproof-verify",
-      action: "verify",
-    });
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const allowed = await checkRateLimit(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
 
     if (!allowed) {
-      logger.warn("Rate limit exceeded", {
-        action: "verify",
-        metadata: { clientIp, limit: 100 },
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "simpleproof-verify",
+        method: event.httpMethod,
       });
-      return json(429, { error: "Rate limit exceeded: 100 requests per hour" });
+      logger.warn("Rate limit exceeded");
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     // Parse request body
@@ -226,14 +178,16 @@ export const handler: Handler = async (event) => {
       body = JSON.parse(event.body || "{}");
     } catch {
       logger.error("Invalid JSON in request body");
-      return badRequest("Invalid JSON in request body");
+      return errorResponse(400, "Invalid JSON in request body", requestOrigin);
     }
 
     // Security: Validate input
     if (!body.ots_proof || typeof body.ots_proof !== "string") {
       logger.warn("Missing or invalid ots_proof field");
-      return badRequest(
-        "Missing or invalid required field: ots_proof (string)"
+      return errorResponse(
+        400,
+        "Missing or invalid required field: ots_proof (string)",
+        requestOrigin
       );
     }
 
@@ -242,8 +196,10 @@ export const handler: Handler = async (event) => {
       logger.warn("OTS proof exceeds maximum length", {
         metadata: { length: body.ots_proof.length, max: MAX_OTS_PROOF_LENGTH },
       });
-      return badRequest(
-        `OTS proof exceeds maximum length of ${MAX_OTS_PROOF_LENGTH} characters`
+      return errorResponse(
+        400,
+        `OTS proof exceeds maximum length of ${MAX_OTS_PROOF_LENGTH} characters`,
+        requestOrigin
       );
     }
 
@@ -279,10 +235,24 @@ export const handler: Handler = async (event) => {
         action: "verify",
         metadata: { duration, statusCode: 200, cached: true },
       });
-      return json(200, cachedResult, {
-        "Cache-Control": "public, max-age=86400", // 24 hours
+
+      const headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=86400",
         "X-Cache": "HIT",
-      });
+        "Access-Control-Allow-Origin":
+          requestOrigin ||
+          process.env.VITE_CORS_ORIGIN ||
+          "https://www.satnam.pub",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      };
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(cachedResult),
+      };
     }
 
     logCacheEvent(false, cacheKey, {
@@ -297,7 +267,11 @@ export const handler: Handler = async (event) => {
 
     if (!apiKey) {
       logger.error("SimpleProof API key not configured");
-      return serverError("SimpleProof service not configured");
+      return errorResponse(
+        500,
+        "SimpleProof service not configured",
+        requestOrigin
+      );
     }
 
     // Call SimpleProof API
@@ -338,9 +312,17 @@ export const handler: Handler = async (event) => {
       );
 
       if (errorMsg.includes("abort")) {
-        return serverError("SimpleProof API timeout (>10s)");
+        return errorResponse(
+          500,
+          "SimpleProof API timeout (>10s)",
+          requestOrigin
+        );
       }
-      return serverError(`SimpleProof API error: ${errorMsg}`);
+      return errorResponse(
+        500,
+        `SimpleProof API error: ${errorMsg}`,
+        requestOrigin
+      );
     }
 
     // Build response
@@ -379,30 +361,46 @@ export const handler: Handler = async (event) => {
       metadata: { duration, statusCode: 200, cached: false },
     });
 
-    return json(200, response, {
-      "Cache-Control": "public, max-age=86400", // 24 hours
+    const headers = {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=86400",
       "X-Cache": "MISS",
-    });
+      "Access-Control-Allow-Origin":
+        requestOrigin ||
+        process.env.VITE_CORS_ORIGIN ||
+        "https://www.satnam.pub",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(response),
+    };
   } catch (error) {
     const duration = Date.now() - startTime;
-    const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    logger.error("Handler error", {
-      metadata: { error: errorMsg, duration },
+    logError(error, {
+      requestId,
+      endpoint: "simpleproof-verify",
+      method: event.httpMethod,
+      duration,
     });
 
     // Capture error in Sentry
     captureSimpleProofError(
-      error instanceof Error ? error : new Error(errorMsg),
+      error instanceof Error ? error : new Error(String(error)),
       {
         component: "simpleproof-verify",
         action: "handler",
         metadata: {
           duration,
           httpMethod: event.httpMethod,
+          requestId,
         },
       }
     );
 
-    return serverError("Internal server error");
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

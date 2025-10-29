@@ -11,29 +11,28 @@
  */
 
 import type { Handler } from "@netlify/functions";
-import { allowRequest } from "./utils/rate-limiter.js";
-import { getRequestClient } from "./supabase.js";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 import { SecureSessionManager } from "./security/session-manager.js";
-
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function json(status: number, body: unknown) {
-  return {
-    statusCode: status,
-    headers: { "Content-Type": "application/json", ...corsHeaders() },
-    body: JSON.stringify(body),
-  };
-}
+import { getRequestClient } from "./supabase.js";
 
 function isStewardOrGuardian(role: string | undefined | null): boolean {
   return role === "steward" || role === "guardian";
@@ -48,122 +47,221 @@ function parseBody<T>(eventBody: string | null | undefined): T {
 }
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: { ...corsHeaders() }, body: "" };
-  }
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Minimal per-IP rate limiting
-  const xfwd = event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
-  const clientIp = Array.isArray(xfwd) ? xfwd[0] : (xfwd || "").split(",")[0]?.trim() || "unknown";
-  if (!allowRequest(clientIp, 180, 60_000)) return json(429, { success: false, error: "Too many requests" });
+  console.log("🚀 Issuer registry handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
+  if (event.httpMethod === "OPTIONS") {
+    return preflightResponse(requestOrigin);
+  }
 
   const method = (event.httpMethod || "GET").toUpperCase();
 
-  // Anonymous GET by issuer_did
-  if (method === "GET") {
-    const issuer_did = event.queryStringParameters?.issuer_did?.trim();
-    try {
+  try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_PUBLISH
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "issuer-registry",
+        method,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    // Anonymous GET by issuer_did
+    if (method === "GET") {
+      const issuer_did = event.queryStringParameters?.issuer_did?.trim();
       const supabase = getRequestClient(undefined);
       if (issuer_did) {
         const { data, error } = await supabase
           .from("issuer_registry")
-          .select("issuer_did, method, status, scid_format, scid_version, src_urls")
+          .select(
+            "issuer_did, method, status, scid_format, scid_version, src_urls"
+          )
           .eq("issuer_did", issuer_did)
           .maybeSingle();
-        if (error) return json(404, { success: false, error: "Not found" });
-        return json(200, { success: true, data: data || null });
+        if (error) {
+          return errorResponse(404, "Not found", requestOrigin);
+        }
+        const headers = getSecurityHeaders(requestOrigin);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, data: data || null }),
+        };
       }
 
       // Auth required for list
       const auth = event.headers?.authorization;
-      const session = await SecureSessionManager.validateSessionFromHeader(auth);
+      const session = await SecureSessionManager.validateSessionFromHeader(
+        auth
+      );
       if (!session || !isStewardOrGuardian(session.federationRole)) {
-        return json(401, { success: false, error: "Unauthorized" });
+        return errorResponse(401, "Unauthorized", requestOrigin);
       }
       const supAuthed = getRequestClient(auth?.slice(7));
       const { data, error } = await supAuthed
         .from("issuer_registry")
-        .select("issuer_did, method, status, scid_format, scid_version, src_urls")
+        .select(
+          "issuer_did, method, status, scid_format, scid_version, src_urls"
+        )
         .limit(100);
-      if (error) return json(500, { success: false, error: error.message });
-      return json(200, { success: true, data });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Unknown error";
-      return json(500, { success: false, error: message });
+      if (error) {
+        logError(error, {
+          requestId,
+          endpoint: "issuer-registry",
+          operation: "list",
+        });
+        return errorResponse(500, error.message, requestOrigin);
+      }
+      const headers = getSecurityHeaders(requestOrigin);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, data }),
+      };
     }
+
+    // POST (create) & PATCH (update) require steward/guardian
+    if (method === "POST" || method === "PATCH") {
+      const auth = event.headers?.authorization;
+      const session = await SecureSessionManager.validateSessionFromHeader(
+        auth
+      );
+      if (!session || !isStewardOrGuardian(session.federationRole)) {
+        return errorResponse(401, "Unauthorized", requestOrigin);
+      }
+      const supabase = getRequestClient(auth?.slice(7));
+
+      if (method === "POST") {
+        type CreateBody = {
+          issuer_did: string;
+          method: string; // expect 'did:scid' or 'did:web'
+          status?: string; // active|paused|revoked|pending
+          scid_format?: string | null;
+          scid_version?: number | null;
+          src_urls?: string[] | null;
+        };
+        const body = parseBody<CreateBody>(event.body);
+        if (!body.issuer_did || !body.method) {
+          return createValidationErrorResponse(
+            "issuer_did and method required",
+            requestId,
+            requestOrigin
+          );
+        }
+        if (!/^did:(scid|web):/i.test(body.method)) {
+          // method is column value (e.g., 'did:scid'), issuer_did is the DID value
+          // We allow did:web rows as well for completeness
+        }
+
+        const payload: any = {
+          issuer_did: body.issuer_did,
+          method: body.method,
+          status: body.status || "pending",
+          scid_format: body.scid_format ?? null,
+          scid_version:
+            typeof body.scid_version === "number" ? body.scid_version : null,
+          src_urls: Array.isArray(body.src_urls) ? body.src_urls : null,
+        };
+
+        const { error } = await supabase
+          .from("issuer_registry")
+          .insert(payload);
+        if (error) {
+          logError(error, {
+            requestId,
+            endpoint: "issuer-registry",
+            operation: "create",
+          });
+          return errorResponse(400, error.message, requestOrigin);
+        }
+        const headers = getSecurityHeaders(requestOrigin);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true }),
+        };
+      }
+
+      if (method === "PATCH") {
+        type UpdateBody = {
+          issuer_did: string; // required key
+          status?: string;
+          scid_format?: string | null;
+          scid_version?: number | null;
+          src_urls?: string[] | null;
+        };
+        const body = parseBody<UpdateBody>(event.body);
+        if (!body.issuer_did) {
+          return createValidationErrorResponse(
+            "issuer_did required",
+            requestId,
+            requestOrigin
+          );
+        }
+
+        const updates: any = {};
+        if (typeof body.status === "string") updates.status = body.status;
+        if (typeof body.scid_format === "string" || body.scid_format === null)
+          updates.scid_format = body.scid_format;
+        if (typeof body.scid_version === "number" || body.scid_version === null)
+          updates.scid_version = body.scid_version;
+        if (Array.isArray(body.src_urls) || body.src_urls === null)
+          updates.src_urls = body.src_urls;
+
+        if (Object.keys(updates).length === 0) {
+          return createValidationErrorResponse(
+            "No updatable fields provided",
+            requestId,
+            requestOrigin
+          );
+        }
+
+        const { error } = await supabase
+          .from("issuer_registry")
+          .update(updates)
+          .eq("issuer_did", body.issuer_did);
+        if (error) {
+          logError(error, {
+            requestId,
+            endpoint: "issuer-registry",
+            operation: "update",
+          });
+          return errorResponse(400, error.message, requestOrigin);
+        }
+        const headers = getSecurityHeaders(requestOrigin);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true }),
+        };
+      }
+    }
+
+    return errorResponse(405, "Method not allowed", requestOrigin);
+  } catch (error) {
+    logError(error, {
+      requestId,
+      endpoint: "issuer-registry",
+      method,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
-
-  // POST (create) & PATCH (update) require steward/guardian
-  if (method === "POST" || method === "PATCH") {
-    const auth = event.headers?.authorization;
-    const session = await SecureSessionManager.validateSessionFromHeader(auth);
-    if (!session || !isStewardOrGuardian(session.federationRole)) {
-      return json(401, { success: false, error: "Unauthorized" });
-    }
-    const supabase = getRequestClient(auth?.slice(7));
-
-    if (method === "POST") {
-      type CreateBody = {
-        issuer_did: string;
-        method: string; // expect 'did:scid' or 'did:web'
-        status?: string; // active|paused|revoked|pending
-        scid_format?: string | null;
-        scid_version?: number | null;
-        src_urls?: string[] | null;
-      };
-      const body = parseBody<CreateBody>(event.body);
-      if (!body.issuer_did || !body.method) {
-        return json(422, { success: false, error: "issuer_did and method required" });
-      }
-      if (!/^did:(scid|web):/i.test(body.method)) {
-        // method is column value (e.g., 'did:scid'), issuer_did is the DID value
-        // We allow did:web rows as well for completeness
-      }
-
-      const payload: any = {
-        issuer_did: body.issuer_did,
-        method: body.method,
-        status: body.status || "pending",
-        scid_format: body.scid_format ?? null,
-        scid_version: typeof body.scid_version === 'number' ? body.scid_version : null,
-        src_urls: Array.isArray(body.src_urls) ? body.src_urls : null,
-      };
-
-      const { error } = await supabase.from("issuer_registry").insert(payload);
-      if (error) return json(400, { success: false, error: error.message });
-      return json(200, { success: true });
-    }
-
-    if (method === "PATCH") {
-      type UpdateBody = {
-        issuer_did: string; // required key
-        status?: string;
-        scid_format?: string | null;
-        scid_version?: number | null;
-        src_urls?: string[] | null;
-      };
-      const body = parseBody<UpdateBody>(event.body);
-      if (!body.issuer_did) return json(422, { success: false, error: "issuer_did required" });
-
-      const updates: any = {};
-      if (typeof body.status === 'string') updates.status = body.status;
-      if (typeof body.scid_format === 'string' || body.scid_format === null) updates.scid_format = body.scid_format;
-      if (typeof body.scid_version === 'number' || body.scid_version === null) updates.scid_version = body.scid_version;
-      if (Array.isArray(body.src_urls) || body.src_urls === null) updates.src_urls = body.src_urls;
-
-      if (Object.keys(updates).length === 0) {
-        return json(422, { success: false, error: "No updatable fields provided" });
-      }
-
-      const { error } = await supabase
-        .from("issuer_registry")
-        .update(updates)
-        .eq("issuer_did", body.issuer_did);
-      if (error) return json(400, { success: false, error: error.message });
-      return json(200, { success: true });
-    }
-  }
-
-  return json(405, { success: false, error: "Method not allowed" });
 };
-

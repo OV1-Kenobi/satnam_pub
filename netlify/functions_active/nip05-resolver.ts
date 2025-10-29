@@ -10,41 +10,28 @@
  */
 
 import type { Handler } from "@netlify/functions";
+
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
+
 import { getRequestClient } from "./supabase.js";
 import { getEnvVar } from "./utils/env.js";
-import { allowRequest } from "./utils/rate-limiter.js";
-
-const CORS_ORIGIN = process.env.FRONTEND_URL || "https://www.satnam.pub";
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    Vary: "Origin",
-    "Content-Security-Policy": "default-src 'none'",
-  } as const;
-}
-
-function json(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {}
-) {
-  return {
-    statusCode: status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-function badRequest(body: unknown, status = 400) {
-  return json(status, body);
-}
 
 function parseNip05(nip05: string): { username: string; domain: string } {
   const parts = nip05.split("@");
@@ -64,40 +51,71 @@ function extractQueryParam(urlStr: string, key: string): string | null {
 }
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 NIP-05 resolver handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: { ...corsHeaders() } };
+    return preflightResponse(requestOrigin);
   }
+
   if (event.httpMethod !== "GET") {
-    return badRequest({ error: "Method not allowed" }, 405);
+    return errorResponse(405, "Method not allowed", requestOrigin);
   }
-
-  const nip05 = (event.queryStringParameters?.nip05 || "").trim();
-  if (!nip05)
-    return badRequest({ error: "Missing nip05 query parameter" }, 422);
-
-  // Phase 1: Check for hybrid verification request
-  const hybridEnabled = getEnvVar("VITE_HYBRID_IDENTITY_ENABLED") === "true";
-  const useHybrid =
-    hybridEnabled &&
-    (event.queryStringParameters?.hybrid || "").toLowerCase() === "true";
-  const pubkey = (event.queryStringParameters?.pubkey || "").trim();
-
-  // Rate limit per IP
-  const xfwd =
-    event.headers?.["x-forwarded-for"] || event.headers?.["X-Forwarded-For"];
-  const clientIp = Array.isArray(xfwd)
-    ? xfwd[0]
-    : (xfwd || "").split(",")[0]?.trim() || "unknown";
-  if (!allowRequest(clientIp, 60, 60_000))
-    return badRequest({ error: "Too many requests" }, 429);
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "nip05-resolver",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    const nip05 = (event.queryStringParameters?.nip05 || "").trim();
+    if (!nip05) {
+      return createValidationErrorResponse(
+        "Missing nip05 query parameter",
+        requestId,
+        requestOrigin
+      );
+    }
+
+    // Phase 1: Check for hybrid verification request
+    const hybridEnabled = getEnvVar("VITE_HYBRID_IDENTITY_ENABLED") === "true";
+    const useHybrid =
+      hybridEnabled &&
+      (event.queryStringParameters?.hybrid || "").toLowerCase() === "true";
+    const pubkey = (event.queryStringParameters?.pubkey || "").trim();
+
     const { username, domain } = parseNip05(nip05);
 
     const didJsonUrl = `https://${domain}/.well-known/did.json`;
     const didRes = await fetch(didJsonUrl, { method: "GET" });
     if (!didRes.ok) {
-      return badRequest({ error: `did.json not found at ${didJsonUrl}` }, 404);
+      return errorResponse(
+        404,
+        `did.json not found at ${didJsonUrl}`,
+        requestOrigin
+      );
     }
     const didDoc: {
       id?: string;
@@ -111,9 +129,10 @@ export const handler: Handler = async (event) => {
       (v) => typeof v === "string" && v.startsWith("acct:")
     );
     if (acctEntry !== `acct:${username}@${domain}`) {
-      return badRequest(
-        { error: "DID document acct entry does not match NIP-05" },
-        400
+      return createValidationErrorResponse(
+        "DID document acct entry does not match NIP-05",
+        requestId,
+        requestOrigin
       );
     }
 
@@ -121,7 +140,11 @@ export const handler: Handler = async (event) => {
       (v) => typeof v === "string" && v.startsWith("did:scid:")
     );
     if (!didScidEntry) {
-      return badRequest({ error: "did:scid not present in alsoKnownAs" }, 404);
+      return errorResponse(
+        404,
+        "did:scid not present in alsoKnownAs",
+        requestOrigin
+      );
     }
 
     const didScidCore = didScidEntry.split("?")[0];
@@ -151,11 +174,6 @@ export const handler: Handler = async (event) => {
       issuerRegistryStatus = null;
     }
 
-    // Cache for 5 minutes
-    const cacheHeaders = {
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-    };
-
     // Phase 1: Add hybrid verification metadata if requested
     const responseData: any = {
       nip05,
@@ -173,16 +191,25 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    return json(
-      200,
-      {
+    // Return success response with security headers
+    const headers = getSecurityHeaders(requestOrigin);
+    return {
+      statusCode: 200,
+      headers: {
+        ...headers,
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+      },
+      body: JSON.stringify({
         success: true,
         data: responseData,
-      },
-      cacheHeaders
-    );
+      }),
+    };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return badRequest({ error: message }, 500);
+    logError(error, {
+      requestId,
+      endpoint: "nip05-resolver",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

@@ -12,36 +12,26 @@
  */
 
 import type { Handler } from "@netlify/functions";
-import { allowRequest } from "./utils/rate-limiter.js";
 
-function corsHeaders(): Record<string, string> {
-  const isProd = process.env.NODE_ENV === "production";
-  const origin = isProd
-    ? process.env.FRONTEND_URL || "https://www.satnam.pub"
-    : "*";
-  const allowCredentials = origin !== "*";
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Credentials": String(allowCredentials),
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Requested-With",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Max-Age": "86400",
-    "Content-Type": "application/json",
-  };
-}
+// Security utilities (Phase 2 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.ts";
+import {
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.ts";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.ts";
 
-function json(
-  statusCode: number,
-  body: unknown,
-  extra?: Record<string, string>
-) {
-  return {
-    statusCode,
-    headers: { ...corsHeaders(), ...(extra || {}) },
-    body: JSON.stringify(body),
-  };
-}
+import { getRequestClient } from "./supabase.js";
 
 function lastSegment(path: string): string {
   const parts = (path || "").split("/").filter(Boolean);
@@ -100,59 +90,83 @@ async function fetchWithRetry(
 }
 
 export const handler: Handler = async (event) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+
+  console.log("🚀 NFC resolver handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Handle CORS preflight
   if ((event.httpMethod || "").toUpperCase() === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders(), body: "" };
+    return preflightResponse(requestOrigin);
   }
 
-  const ip =
-    (
-      event.headers?.["x-forwarded-for"] ||
-      event.headers?.["X-Forwarded-For"] ||
-      ""
-    )
-      .toString()
-      .split(",")[0]
-      ?.trim() || "unknown";
-  const op = lastSegment(event.path || "");
-
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.NFC_OPERATIONS
+    );
+
+    if (!rateLimitResult.allowed) {
+      logError(new Error("Rate limit exceeded"), {
+        requestId,
+        endpoint: "nfc-resolver",
+        method: event.httpMethod,
+      });
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
+    const op = lastSegment(event.path || "");
+
     if (op === "resolve") {
-      if (!allowRequest(ip, 60, 60_000))
-        return json(429, { success: false, error: "Too many requests" });
-      if ((event.httpMethod || "GET").toUpperCase() !== "GET")
-        return json(405, { success: false, error: "Method not allowed" });
+      if ((event.httpMethod || "GET").toUpperCase() !== "GET") {
+        return errorResponse(405, "Method not allowed", requestOrigin);
+      }
 
       const params = new URLSearchParams(
-        event.rawQuery ||
-          event.rawQueryString ||
-          (event.queryStringParameters as any)
+        (event.queryStringParameters as any) || ""
       );
       const duid = params.get("duid") || params.get("d") || "";
       const sdm = params.get("sdm") || "";
       const u = params.get("u") || ""; // NTAG UID echoed by SDM
 
-      if (!duid) return json(400, { success: false, error: "Missing duid" });
+      if (!duid) {
+        return errorResponse(400, "Missing duid", requestOrigin);
+      }
 
       // CONTRACT: Do minimal parsing here. Actual SUN verification happens via POST /sun-verify.
       // Respond with a next-step hint for the app to POST the SUN data if present.
-      return json(200, {
-        success: true,
-        data: {
-          duid,
-          hasSDM: Boolean(sdm && u),
-          next: Boolean(sdm && u)
-            ? "/.netlify/functions/nfc-resolver/sun-verify"
-            : null,
-          // UI can decide to auto-call sun-verify when SDM params are present
-        },
-      });
+      const headers = getSecurityHeaders(requestOrigin);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          data: {
+            duid,
+            hasSDM: Boolean(sdm && u),
+            next: Boolean(sdm && u)
+              ? "/.netlify/functions/nfc-resolver/sun-verify"
+              : null,
+            // UI can decide to auto-call sun-verify when SDM params are present
+          },
+        }),
+      };
     }
 
     if (op === "sun-verify") {
-      if (!allowRequest(ip, 20, 60_000))
-        return json(429, { success: false, error: "Too many requests" });
-      if ((event.httpMethod || "POST").toUpperCase() !== "POST")
-        return json(405, { success: false, error: "Method not allowed" });
+      if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+        return errorResponse(405, "Method not allowed", requestOrigin);
+      }
 
       const body = (() => {
         try {
@@ -167,7 +181,7 @@ export const handler: Handler = async (event) => {
       };
 
       if (!body.tagUID || !body.challengeData || !body.encryptedResponse) {
-        return json(400, { success: false, error: "Missing required fields" });
+        return errorResponse(400, "Missing required fields", requestOrigin);
       }
 
       // CONTRACT: Verify SUN CMAC using server-managed K0/K1 per tag.
@@ -184,10 +198,15 @@ export const handler: Handler = async (event) => {
           process.env.NTAG424_HARDWARE_BRIDGE_URL
       );
       if (!bridgeConfigured) {
-        return json(200, {
-          success: true,
-          data: { valid: true, hint: "not_enforced" },
-        });
+        const headers = getSecurityHeaders(requestOrigin);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            data: { valid: true, hint: "not_enforced" },
+          }),
+        };
       }
 
       // When implemented, forward to bridge and proxy result
@@ -195,18 +214,18 @@ export const handler: Handler = async (event) => {
       // const j = await res.json();
       // return json(res.ok ? 200 : 500, j);
 
-      return json(501, {
-        success: false,
-        error: "Hardware bridge integration not yet implemented",
-      });
+      return errorResponse(
+        501,
+        "Hardware bridge integration not yet implemented",
+        requestOrigin
+      );
     }
 
     // VP verification endpoint with retries and expanded issuer info
     if (op === "vp-verify") {
-      if (!allowRequest(ip, 60, 60_000))
-        return json(429, { success: false, error: "Too many requests" });
-      if ((event.httpMethod || "POST").toUpperCase() !== "POST")
-        return json(405, { success: false, error: "Method not allowed" });
+      if ((event.httpMethod || "POST").toUpperCase() !== "POST") {
+        return errorResponse(405, "Method not allowed", requestOrigin);
+      }
 
       type VpBody = {
         nip05?: string;
@@ -228,13 +247,16 @@ export const handler: Handler = async (event) => {
 
       const nip05 = (body.nip05 || "").trim().toLowerCase();
       const jwk = body.holderPublicJwk || {};
-      if (!nip05 || !nip05.includes("@"))
-        return json(400, { success: false, error: "Invalid nip05" });
-      if (jwk.kty !== "EC" || jwk.crv !== "secp256k1" || !jwk.x || !jwk.y)
-        return json(400, {
-          success: false,
-          error: "Invalid or missing JWK (EC/secp256k1 required)",
-        });
+      if (!nip05 || !nip05.includes("@")) {
+        return errorResponse(400, "Invalid nip05", requestOrigin);
+      }
+      if (jwk.kty !== "EC" || jwk.crv !== "secp256k1" || !jwk.x || !jwk.y) {
+        return errorResponse(
+          400,
+          "Invalid or missing JWK (EC/secp256k1 required)",
+          requestOrigin
+        );
+      }
 
       const [name, domain] = nip05.split("@");
       const primary = `https://${domain}/.well-known/did.json`;
@@ -350,25 +372,31 @@ export const handler: Handler = async (event) => {
         }
       } catch {}
 
-      return json(200, {
-        success: true,
-        data: {
-          nip05Verified,
-          didDocumentVerified,
-          mirrorsValidated,
-          issuerRegistryInfo,
-          issuerRegistryStatus,
-          didScid: didScid || null,
-        },
-      });
+      const headers = getSecurityHeaders(requestOrigin);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          data: {
+            nip05Verified,
+            didDocumentVerified,
+            mirrorsValidated,
+            issuerRegistryInfo,
+            issuerRegistryStatus,
+            didScid: didScid || null,
+          },
+        }),
+      };
     }
 
-    return json(404, { success: false, error: "Not found" });
+    return errorResponse(404, "Not found", requestOrigin);
   } catch (e) {
-    return json(500, {
-      success: false,
-      error: "Internal server error",
-      meta: { message: e instanceof Error ? e.message : "Unknown error" },
+    logError(e, {
+      requestId,
+      endpoint: "nfc-resolver",
+      method: event.httpMethod,
     });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };

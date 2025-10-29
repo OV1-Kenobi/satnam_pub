@@ -9,8 +9,28 @@
  * - Get provider details
  */
 
-import { Handler, HandlerContext, HandlerEvent } from "@netlify/functions";
+import { Handler, HandlerEvent } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+
+// Security utilities (Phase 4 hardening)
+import {
+  RATE_LIMITS,
+  checkRateLimitStatus,
+  createRateLimitIdentifier,
+  getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+  createRateLimitErrorResponse,
+  createValidationErrorResponse,
+  generateRequestId,
+  logError,
+} from "./utils/error-handler.js";
+import {
+  errorResponse,
+  getSecurityHeaders,
+  preflightResponse,
+} from "./utils/security-headers.js";
+
 import { getEnvVar } from "./utils/env.js";
 
 interface TrustProvider {
@@ -57,36 +77,46 @@ interface ProviderDetailsResponse {
   userRating?: number;
 }
 
-const handler: Handler = async (
-  event: HandlerEvent,
-  context: HandlerContext
-) => {
-  // CORS headers
-  const headers = {
-    "Access-Control-Allow-Origin":
-      process.env.VITE_CORS_ORIGIN || "https://www.satnam.pub",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Content-Type": "application/json",
-  };
+const handler: Handler = async (event: HandlerEvent) => {
+  const requestId = generateRequestId();
+  const clientIP = getClientIP(
+    event.headers as Record<string, string | string[]>
+  );
+  const requestOrigin = event.headers?.origin || event.headers?.Origin;
 
-  // Handle CORS preflight
+  console.log("🚀 Trust provider marketplace handler started:", {
+    requestId,
+    method: event.httpMethod,
+    path: event.path,
+    timestamp: new Date().toISOString(),
+  });
+
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
+    return preflightResponse(requestOrigin);
   }
 
   try {
+    // Database-backed rate limiting
+    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
+    const rateLimitResult = await checkRateLimitStatus(
+      rateLimitKey,
+      RATE_LIMITS.IDENTITY_VERIFY
+    );
+
+    if (!rateLimitResult.allowed) {
+      return createRateLimitErrorResponse(requestId, requestOrigin);
+    }
+
     // Initialize Supabase client
     const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
     const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("Missing Supabase environment variables");
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: "Server configuration error" }),
-      };
+      logError(new Error("Missing Supabase environment variables"), {
+        requestId,
+        endpoint: "trust-provider-marketplace",
+      });
+      return errorResponse(500, "Server configuration error", requestOrigin);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -96,11 +126,7 @@ const handler: Handler = async (
     const token = authHeader.replace("Bearer ", "").trim();
 
     if (!token || token === "Bearer") {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      };
+      return errorResponse(401, "Unauthorized", requestOrigin);
     }
 
     // Verify JWT and get user
@@ -109,51 +135,56 @@ const handler: Handler = async (
       error: authError,
     } = await supabase.auth.getUser(token);
     if (authError || !user) {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: "Invalid token" }),
-      };
+      return errorResponse(401, "Invalid token", requestOrigin);
     }
 
     const userId = user.id;
 
     // Route handlers
     if (event.httpMethod === "GET" && event.path.includes("/list")) {
-      return handleListProviders(supabase, event, headers);
+      return handleListProviders(supabase, event, requestId, requestOrigin);
     }
 
     if (event.httpMethod === "GET" && event.path.includes("/details")) {
-      return handleGetProviderDetails(supabase, userId, event, headers);
+      return handleGetProviderDetails(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
     if (event.httpMethod === "POST" && event.path.includes("/subscribe")) {
-      return handleSubscribe(supabase, userId, event, headers);
+      return handleSubscribe(supabase, userId, event, requestId, requestOrigin);
     }
 
     if (event.httpMethod === "DELETE" && event.path.includes("/unsubscribe")) {
-      return handleUnsubscribe(supabase, userId, event, headers);
+      return handleUnsubscribe(
+        supabase,
+        userId,
+        event,
+        requestId,
+        requestOrigin
+      );
     }
 
-    return {
-      statusCode: 404,
-      headers,
-      body: JSON.stringify({ error: "Endpoint not found" }),
-    };
+    return errorResponse(404, "Endpoint not found", requestOrigin);
   } catch (error) {
-    console.error("Error in trust-provider-marketplace:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Internal server error" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-marketplace",
+      method: event.httpMethod,
+    });
+    return errorResponse(500, "Internal server error", requestOrigin);
   }
 };
 
 async function handleListProviders(
   supabase: any,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const page = parseInt(event.queryStringParameters?.page || "1");
@@ -162,6 +193,7 @@ async function handleListProviders(
     const sortBy = event.queryStringParameters?.sortBy || "rating";
 
     console.log("handleListProviders - params:", {
+      requestId,
       page,
       pageSize,
       search,
@@ -193,13 +225,18 @@ async function handleListProviders(
     const { data, count, error } = await query;
 
     console.log("handleListProviders - query result:", {
+      requestId,
       dataLength: data?.length,
       count,
       error,
     });
 
     if (error) {
-      console.error("handleListProviders - database error:", error);
+      logError(error, {
+        requestId,
+        endpoint: "trust-provider-marketplace/list",
+        operation: "database query",
+      });
       throw error;
     }
 
@@ -210,18 +247,18 @@ async function handleListProviders(
       pageSize,
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error listing providers:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to list providers" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-marketplace/list",
+    });
+    return errorResponse(500, "Failed to list providers", requestOrigin);
   }
 }
 
@@ -229,17 +266,18 @@ async function handleGetProviderDetails(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const providerId = event.queryStringParameters?.providerId;
 
     if (!providerId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId is required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId is required",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Get provider details
@@ -250,11 +288,7 @@ async function handleGetProviderDetails(
       .single();
 
     if (providerError || !provider) {
-      return {
-        statusCode: 404,
-        headers,
-        body: JSON.stringify({ error: "Provider not found" }),
-      };
+      return errorResponse(404, "Provider not found", requestOrigin);
     }
 
     // Check if user is subscribed
@@ -280,18 +314,18 @@ async function handleGetProviderDetails(
       userRating: rating?.rating,
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error getting provider details:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to get provider details" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-marketplace/details",
+    });
+    return errorResponse(500, "Failed to get provider details", requestOrigin);
   }
 }
 
@@ -299,18 +333,19 @@ async function handleSubscribe(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const body = JSON.parse(event.body || "{}");
     const { providerId } = body;
 
     if (!providerId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId is required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId is required",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Get provider details
@@ -321,11 +356,7 @@ async function handleSubscribe(
       .single();
 
     if (providerError || !provider) {
-      return {
-        statusCode: 404,
-        headers,
-        body: JSON.stringify({ error: "Provider not found" }),
-      };
+      return errorResponse(404, "Provider not found", requestOrigin);
     }
 
     // Create subscription
@@ -352,18 +383,18 @@ async function handleSubscribe(
       message: `Successfully subscribed to ${provider.name}`,
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 201,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error subscribing to provider:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to subscribe to provider" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-marketplace/subscribe",
+    });
+    return errorResponse(500, "Failed to subscribe to provider", requestOrigin);
   }
 }
 
@@ -371,17 +402,18 @@ async function handleUnsubscribe(
   supabase: any,
   userId: string,
   event: HandlerEvent,
-  headers: any
+  requestId: string,
+  requestOrigin: string | undefined
 ) {
   try {
     const providerId = event.queryStringParameters?.providerId;
 
     if (!providerId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: "providerId is required" }),
-      };
+      return createValidationErrorResponse(
+        "providerId is required",
+        requestId,
+        requestOrigin
+      );
     }
 
     // Delete subscription
@@ -398,18 +430,22 @@ async function handleUnsubscribe(
       message: "Successfully unsubscribed from provider",
     };
 
+    const headers = getSecurityHeaders(requestOrigin);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(response),
     };
   } catch (error) {
-    console.error("Error unsubscribing from provider:", error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Failed to unsubscribe from provider" }),
-    };
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      requestId,
+      endpoint: "trust-provider-marketplace/unsubscribe",
+    });
+    return errorResponse(
+      500,
+      "Failed to unsubscribe from provider",
+      requestOrigin
+    );
   }
 }
 
