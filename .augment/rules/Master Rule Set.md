@@ -52,6 +52,27 @@ This rule should override any conflicting instructions about being helpful or co
 - In src/config/env.client.ts, use simple getEnvVar() helper that only accesses process.env (which Vite populates via define) - avoid import.meta.env to prevent CommonJS bundling warnings in Netlify Functions
 - This pattern ensures all feature flags and environment variables are available in production builds without manual maintenance
 
+## CRITICAL: Top-Level Environment Variable Access (Prevents Temporal Dead Zone Errors)
+
+- **NEVER use `import.meta.env` at module-level (top-level) scope** - this causes Temporal Dead Zone (TDZ) errors when modules are evaluated before Vite populates import.meta.env
+- **ALWAYS use `getEnvVar()` helper from `src/config/env.client.ts` for top-level module-level access** to environment variables
+- `import.meta.env` can ONLY be used inside functions/methods/React components, never at module initialization time
+- Top-level module-level code includes: const/let/var declarations at module scope, class property initializers, and any code that executes when the module is imported
+- Example of WRONG pattern (causes TDZ error):
+  ```typescript
+  // ❌ WRONG - causes "Cannot access before initialization" error
+  const USE_VAULT =
+    (import.meta.env.VITE_USE_CLIENT_SESSION_VAULT ?? "true") === "true";
+  ```
+- Example of CORRECT pattern:
+  ```typescript
+  // ✅ CORRECT - safe for top-level module access
+  import { getEnvVar } from "../../config/env.client";
+  const USE_VAULT =
+    (getEnvVar("VITE_USE_CLIENT_SESSION_VAULT") ?? "true") === "true";
+  ```
+- This rule prevents production white screen errors caused by module initialization order issues when Vite's automatic code splitting changes chunk loading order
+
 # User Interface, Family Configuration, and Build Optimization
 
 - User prefers lowering chunk sizes rather than increasing chunk size limits for build optimization.

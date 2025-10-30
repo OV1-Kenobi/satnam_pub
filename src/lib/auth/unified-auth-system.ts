@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getEnvVar } from "../../config/env.client";
 import {
   ClientSessionVault,
   hasVaultRecord,
@@ -27,7 +28,7 @@ import SecureTokenManager from "./secure-token-manager";
 import { AuthResult, UserIdentity } from "./user-identities-auth";
 
 const USE_VAULT =
-  (import.meta.env.VITE_USE_CLIENT_SESSION_VAULT ?? "true") === "true";
+  (getEnvVar("VITE_USE_CLIENT_SESSION_VAULT") ?? "true") === "true";
 
 // Local helper to read vault auto-prompt preference (opt-in)
 function shouldAutoPromptVault(): boolean {
