@@ -183,8 +183,8 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase: bundle ALL @supabase/* libs together to avoid cross-chunk eval/TDZ issues
-            if (id.includes('@supabase/')) {
+            // Supabase
+            if (id.includes('@supabase/supabase-js')) {
               return 'supabase-vendor';
             }
 
@@ -269,8 +269,11 @@ export default defineConfig({
           // Source code chunking - be more specific to avoid mixed imports
           // Priority order: most specific first to avoid conflicts
 
-          // Configuration: let Vite decide chunking to avoid forced early-load ordering
-          // Intentionally not forcing a separate 'config' chunk.
+          // Configuration - keep separate to avoid circular dependencies
+          // This must be loaded early and independently
+          if (id.includes('src/config/')) {
+            return 'config';
+          }
 
           // Core API client (base)
           if (id.includes('src/lib/api.ts') || id.includes('src/lib/api.js')) {
@@ -288,11 +291,25 @@ export default defineConfig({
           //   return 'database';
           // }
 
-          // Authentication: let Vite decide chunking to avoid potential circular-eval TDZ issues
-          // Intentionally not forcing a separate 'auth' chunk.
+          // Authentication - keep together (including recent auth-adapter changes)
+          if (id.includes('src/lib/auth/') ||
+              id.includes('src/hooks/useAuth') ||
+              id.includes('src/hooks/usePrivacyFirstAuth') ||
+              id.includes('src/hooks/useFamilyFederationAuth') ||
+              id.includes('src/utils/authManager') ||
+              id.includes('src/utils/secureSession')) {
+            return 'auth';
+          }
 
-          // Nostr/browser cryptography: do not mix app code into vendor chunks
-          // Let Vite handle these automatically to prevent cross-chunk cycles.
+          // Nostr functionality (browser-only) - merge with crypto-vendor since they're related
+          // IMPORTANT: Only include code under src/ (client). Exclude server files under lib/ and netlify/functions.
+          if (
+            id.includes('src/lib/nostr-browser') ||
+            id.includes('src/lib/nip05-verification') ||
+            (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))
+          ) {
+            return 'crypto-vendor';
+          }
 
           // Lightning and payments
           if (id.includes('src/lib/enhanced-family-coordinator') ||
@@ -375,6 +392,65 @@ export default defineConfig({
                 id.includes('FamilyWallet') ||
                 id.includes('LNBits')) {
               return 'wallet-components';
+            }
+
+            // Platform and ecosystem components - large feature area
+            if (id.includes('NostrEcosystem') ||
+                id.includes('DynasticSovereignty') ||
+                id.includes('EducationPlatform') ||
+                id.includes('SovereignFamilyBanking') ||
+                id.includes('SovereigntyEducation') ||
+                id.includes('FeaturesOverview') ||
+                id.includes('VisibilityModeExplainer') ||
+                id.includes('FamilyFedimintGovernance') ||
+                id.includes('FamilyLightningTreasury') ||
+                id.includes('UnifiedFamilyPayments') ||
+                id.includes('FamilyCoordination') ||
+                id.includes('FamilyOnboarding') ||
+                id.includes('PhoenixDFamilyManager') ||
+                id.includes('GuardianOnboardingGuide') ||
+                id.includes('NameTagCredentialingQuest')) {
+              return 'platform-components';
+            }
+
+            // Utility and shared UI components
+            if (id.includes('ErrorBoundary') ||
+                id.includes('ContactCard') ||
+                id.includes('ContactsList') ||
+                id.includes('TransactionHistory') ||
+                id.includes('Settings') ||
+                id.includes('CreditsBalance') ||
+                id.includes('CryptoPreloader') ||
+                id.includes('CryptoProvider') ||
+                id.includes('ContextualAvatar') ||
+                id.includes('OperationTypeBadge') ||
+                id.includes('ToastContainer') ||
+                id.includes('ProtectedRoute') ||
+                id.includes('FeatureGate') ||
+                id.includes('ApiStatus') ||
+                id.includes('ServerStatus') ||
+                id.includes('PrivacyControls') ||
+                id.includes('ProfileURLDisplay') ||
+                id.includes('ProfileVisibilitySettings') ||
+                id.includes('PublicProfilePage') ||
+                id.includes('SupabaseConfigModal') ||
+                id.includes('AtomicSwapModal') ||
+                id.includes('NWCModal') ||
+                id.includes('KeyImportForm') ||
+                id.includes('MaxPrivacyAuth') ||
+                id.includes('IndividualAuth') ||
+                id.includes('PrivacyFirstIdentityManager') ||
+                id.includes('PrivacyFirstMessaging') ||
+                id.includes('FrostSignaturePanel') ||
+                id.includes('PhoenixDNodeStatus') ||
+                id.includes('IndividualPaymentDashboard') ||
+                id.includes('PaymentAutomationCard') ||
+                id.includes('AddContactForm') ||
+                id.includes('EditContactForm') ||
+                id.includes('ContactsManagerModal') ||
+                id.includes('NotificationsTab') ||
+                id.includes('OTPVerificationPanel')) {
+              return 'ui-utils-components';
             }
 
             // Everything else stays in components

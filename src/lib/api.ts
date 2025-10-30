@@ -3,10 +3,11 @@
  * @description Centralized API client for communicating with the backend server
  */
 
+import { getEnvVar } from "../config/env.client";
 import { authManager } from "../utils/authManager.js";
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+const API_BASE_URL = getEnvVar("VITE_API_BASE_URL") || "/api";
 
 /**
  * API Response type

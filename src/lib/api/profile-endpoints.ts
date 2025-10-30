@@ -5,9 +5,10 @@
  * and privacy-first principles.
  */
 
+import { getEnvVar } from "../../config/env.client";
 import { ProfileVisibility, UserProfile } from "../services/profile-service";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/.netlify/functions";
+const API_BASE = getEnvVar("VITE_API_BASE_URL") || "/.netlify/functions";
 
 export interface ProfileAPIResponse<T> {
   success: boolean;
