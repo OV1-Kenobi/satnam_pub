@@ -183,7 +183,7 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase (bundle all @supabase/* libs together to avoid eval-order issues)
+            // Supabase: bundle ALL @supabase/* libs together to avoid cross-chunk eval/TDZ issues
             if (id.includes('@supabase/')) {
               return 'supabase-vendor';
             }
@@ -269,11 +269,8 @@ export default defineConfig({
           // Source code chunking - be more specific to avoid mixed imports
           // Priority order: most specific first to avoid conflicts
 
-          // Configuration - keep separate to avoid circular dependencies
-          // This must be loaded early and independently
-          if (id.includes('src/config/')) {
-            return 'config';
-          }
+          // Configuration: let Vite decide chunking to avoid forced early-load ordering
+          // Intentionally not forcing a separate 'config' chunk.
 
           // Core API client (base)
           if (id.includes('src/lib/api.ts') || id.includes('src/lib/api.js')) {
@@ -291,25 +288,11 @@ export default defineConfig({
           //   return 'database';
           // }
 
-          // Authentication - keep together (including recent auth-adapter changes)
-          if (id.includes('src/lib/auth/') ||
-              id.includes('src/hooks/useAuth') ||
-              id.includes('src/hooks/usePrivacyFirstAuth') ||
-              id.includes('src/hooks/useFamilyFederationAuth') ||
-              id.includes('src/utils/authManager') ||
-              id.includes('src/utils/secureSession')) {
-            return 'auth';
-          }
+          // Authentication: let Vite decide chunking to avoid potential circular-eval TDZ issues
+          // Intentionally not forcing a separate 'auth' chunk.
 
-          // Nostr functionality (browser-only) - merge with crypto-vendor since they're related
-          // IMPORTANT: Only include code under src/ (client). Exclude server files under lib/ and netlify/functions.
-          if (
-            id.includes('src/lib/nostr-browser') ||
-            id.includes('src/lib/nip05-verification') ||
-            (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))
-          ) {
-            return 'crypto-vendor';
-          }
+          // Nostr/browser cryptography: do not mix app code into vendor chunks
+          // Let Vite handle these automatically to prevent cross-chunk cycles.
 
           // Lightning and payments
           if (id.includes('src/lib/enhanced-family-coordinator') ||
