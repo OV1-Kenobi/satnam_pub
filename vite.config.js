@@ -9,12 +9,12 @@ function getEnvVar(key) {
   if (typeof import.meta !== "undefined" && import.meta.env) {
     return import.meta.env[key];
   }
-  
+
   // Fallback to process.env (Node.js context)
   if (typeof process !== "undefined" && process.env) {
     return process.env[key];
   }
-  
+
   return undefined;
 }
 
@@ -66,6 +66,10 @@ export default defineConfig({
       { find: "@/services", replacement: resolve("src/services") },
       { find: "@/types", replacement: resolve("src/types") },
       { find: "@/utils", replacement: resolve("src/utils") },
+      // Axios TDZ fix: force browser platform and prebundled browser build
+      { find: /axios\/lib\/platform\/node\/index\.js$/, replacement: "axios/lib/platform/browser/index.js" },
+      { find: /^axios$/, replacement: "axios/dist/browser/axios.cjs" },
+
       { find: "@", replacement: resolve("src") },
     ],
   },
@@ -183,9 +187,8 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase - bundle ALL @supabase/* packages together to prevent circular dependencies
-            // This includes @supabase/supabase-js, @supabase/postgrest-js, @supabase/realtime-js, etc.
-            if (id.includes('@supabase/')) {
+            // Supabase: bundle all @supabase/* packages into one vendor chunk
+            if (id.includes('node_modules/@supabase/')) {
               return 'supabase-vendor';
             }
 
@@ -203,6 +206,11 @@ export default defineConfig({
             // FROST and cryptographic signing
             if (id.includes('@cmdcode/frost') || id.includes('@frostr/bifrost')) {
               return 'frost-vendor';
+            }
+
+            // Axios: isolate to its own chunk to avoid TDZ from platform aggregator
+            if (id.includes('node_modules/axios/')) {
+              return 'axios-vendor';
             }
 
             // Phoenix and Lightning server libraries
@@ -286,14 +294,15 @@ export default defineConfig({
             return 'api-modules';
           }
 
-          // Supabase and database: allow Vite to chunk automatically to prevent evaluation-order issues
-          // CRITICAL: Do NOT create a separate 'database' chunk for src/lib/supabase.ts
-          // Supabase must be bundled with its dependencies (supabase-vendor) to avoid circular dependencies
-          // that cause TDZ errors. The supabase.ts module will be included in the main bundle or
-          // automatically chunked by Vite based on usage patterns.
-          // if (id.includes('src/lib/supabase')) {
-          //   return 'database';
-          // }
+          // Supabase wrapper: force into supabase-vendor to avoid split wrapper chunk
+          if (id.includes('src/lib/supabase')) {
+            return 'supabase-vendor';
+          }
+
+          // Netlify Functions supabase server client: unify with supabase-vendor to avoid extra wrapper chunk
+          if (id.includes('netlify/functions/supabase')) {
+            return 'supabase-vendor';
+          }
 
           // Authentication - keep together (including recent auth-adapter changes)
           if (id.includes('src/lib/auth/') ||
@@ -396,65 +405,6 @@ export default defineConfig({
                 id.includes('FamilyWallet') ||
                 id.includes('LNBits')) {
               return 'wallet-components';
-            }
-
-            // Platform and ecosystem components - large feature area
-            if (id.includes('NostrEcosystem') ||
-                id.includes('DynasticSovereignty') ||
-                id.includes('EducationPlatform') ||
-                id.includes('SovereignFamilyBanking') ||
-                id.includes('SovereigntyEducation') ||
-                id.includes('FeaturesOverview') ||
-                id.includes('VisibilityModeExplainer') ||
-                id.includes('FamilyFedimintGovernance') ||
-                id.includes('FamilyLightningTreasury') ||
-                id.includes('UnifiedFamilyPayments') ||
-                id.includes('FamilyCoordination') ||
-                id.includes('FamilyOnboarding') ||
-                id.includes('PhoenixDFamilyManager') ||
-                id.includes('GuardianOnboardingGuide') ||
-                id.includes('NameTagCredentialingQuest')) {
-              return 'platform-components';
-            }
-
-            // Utility and shared UI components
-            if (id.includes('ErrorBoundary') ||
-                id.includes('ContactCard') ||
-                id.includes('ContactsList') ||
-                id.includes('TransactionHistory') ||
-                id.includes('Settings') ||
-                id.includes('CreditsBalance') ||
-                id.includes('CryptoPreloader') ||
-                id.includes('CryptoProvider') ||
-                id.includes('ContextualAvatar') ||
-                id.includes('OperationTypeBadge') ||
-                id.includes('ToastContainer') ||
-                id.includes('ProtectedRoute') ||
-                id.includes('FeatureGate') ||
-                id.includes('ApiStatus') ||
-                id.includes('ServerStatus') ||
-                id.includes('PrivacyControls') ||
-                id.includes('ProfileURLDisplay') ||
-                id.includes('ProfileVisibilitySettings') ||
-                id.includes('PublicProfilePage') ||
-                id.includes('SupabaseConfigModal') ||
-                id.includes('AtomicSwapModal') ||
-                id.includes('NWCModal') ||
-                id.includes('KeyImportForm') ||
-                id.includes('MaxPrivacyAuth') ||
-                id.includes('IndividualAuth') ||
-                id.includes('PrivacyFirstIdentityManager') ||
-                id.includes('PrivacyFirstMessaging') ||
-                id.includes('FrostSignaturePanel') ||
-                id.includes('PhoenixDNodeStatus') ||
-                id.includes('IndividualPaymentDashboard') ||
-                id.includes('PaymentAutomationCard') ||
-                id.includes('AddContactForm') ||
-                id.includes('EditContactForm') ||
-                id.includes('ContactsManagerModal') ||
-                id.includes('NotificationsTab') ||
-                id.includes('OTPVerificationPanel')) {
-              return 'ui-utils-components';
             }
 
             // Everything else stays in components
