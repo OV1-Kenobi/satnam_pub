@@ -183,8 +183,9 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase
-            if (id.includes('@supabase/supabase-js')) {
+            // Supabase - bundle ALL @supabase/* packages together to prevent circular dependencies
+            // This includes @supabase/supabase-js, @supabase/postgrest-js, @supabase/realtime-js, etc.
+            if (id.includes('@supabase/')) {
               return 'supabase-vendor';
             }
 
@@ -286,7 +287,10 @@ export default defineConfig({
           }
 
           // Supabase and database: allow Vite to chunk automatically to prevent evaluation-order issues
-          // Intentionally do not force a separate 'database' chunk to avoid cross-chunk cycles
+          // CRITICAL: Do NOT create a separate 'database' chunk for src/lib/supabase.ts
+          // Supabase must be bundled with its dependencies (supabase-vendor) to avoid circular dependencies
+          // that cause TDZ errors. The supabase.ts module will be included in the main bundle or
+          // automatically chunked by Vite based on usage patterns.
           // if (id.includes('src/lib/supabase')) {
           //   return 'database';
           // }
