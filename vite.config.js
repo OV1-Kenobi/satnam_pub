@@ -131,57 +131,41 @@ export default defineConfig({
 
           // Node modules - split by size and usage
           if (id.includes('node_modules')) {
-            // React ecosystem - CRITICAL: must be separate to reduce main bundle
-            if (id.includes('react') && !id.includes('@')) {
-              return 'react-vendor';
-            }
-            if (id.includes('react-dom')) {
+            // React ecosystem
+            if (id.includes('react') || id.includes('react-dom')) {
               return 'react-vendor';
             }
 
-            // Sentry error tracking - large library, must be separate
-            if (id.includes('@sentry/')) {
-              return 'sentry-vendor';
-            }
-
-            // React Router - commonly used, should be separate
-            if (id.includes('react-router')) {
-              return 'router-vendor';
-            }
-
-            // Supabase - large library with many dependencies
-            if (id.includes('@supabase/')) {
-              return 'supabase-vendor';
-            }
-
-            // Nostr and crypto libraries - group together
+            // Crypto libraries - be more specific to ensure they're captured
             if (id.includes('nostr-tools') ||
-                id.includes('@noble/') ||
-                id.includes('@scure/') ||
-                id.includes('nip19') ||
+                id.includes('@noble/secp256k1') ||
+                id.includes('@noble/hashes') ||
+                id.includes('@scure/bip32') ||
+                id.includes('@scure/bip39') ||
+                id.includes('@scure/base') ||
                 id.includes('crypto-js')) {
               return 'crypto-vendor';
             }
 
-            // Lightning and payment libraries
-            if (id.includes('@getalby/') ||
-                id.includes('bolt11') ||
-                id.includes('lnurl') ||
-                id.includes('jose')) {
-              return 'lightning-vendor';
+            // PHASE 1: Heavy third-party dependencies
+            // Image editing library (react-easy-crop is ~100 kB)
+            if (id.includes('react-easy-crop')) {
+              return 'image-editor';
             }
 
-            // UI and icon libraries
-            if (id.includes('lucide-react') ||
-                id.includes('react-icons')) {
-              return 'icons-vendor';
+            // QR code libraries
+            if (id.includes('qrcode') || id.includes('qr-code')) {
+              return 'qr-code';
             }
 
-            // Form and validation
-            if (id.includes('react-hook-form') ||
-                id.includes('zod') ||
-                id.includes('yup')) {
-              return 'forms-vendor';
+            // Alby Lightning Tools (large library)
+            if (id.includes('@getalby/lightning-tools') || id.includes('@getalby/sdk')) {
+              return 'alby-vendor';
+            }
+
+            // JWT and payment libraries
+            if (id.includes('bolt11') || id.includes('jose') || id.includes('jsonwebtoken')) {
+              return 'jwt-vendor';
             }
 
             // Date utilities
@@ -189,143 +173,292 @@ export default defineConfig({
               return 'date-vendor';
             }
 
-            // SEO and meta
-            if (id.includes('react-helmet')) {
+            // Router and SEO
+            if (id.includes('react-router-dom') || id.includes('react-router')) {
+              return 'router-vendor';
+            }
+
+            // SEO and meta tags
+            if (id.includes('react-helmet-async') || id.includes('react-helmet')) {
               return 'seo-vendor';
             }
 
-            // Loading and skeleton UI
-            if (id.includes('react-loading-skeleton')) {
+            // Supabase
+            if (id.includes('@supabase/supabase-js')) {
+              return 'supabase-vendor';
+            }
+
+            // Capacitor (mobile)
+            if (id.includes('@capacitor/')) {
+              return 'capacitor-vendor';
+            }
+
+            // PHASE 3: Additional vendor splitting for better caching
+            // Chart libraries (if used)
+            if (id.includes('recharts')) {
+              return 'charts-vendor';
+            }
+
+            // FROST and cryptographic signing
+            if (id.includes('@cmdcode/frost') || id.includes('@frostr/bifrost')) {
+              return 'frost-vendor';
+            }
+
+            // Phoenix and Lightning server libraries
+            if (id.includes('phoenix-server-js')) {
+              return 'phoenix-vendor';
+            }
+
+            // Database libraries
+            if (id.includes('node_modules/pg') || id.includes('node_modules/redis')) {
+              return 'database-vendor';
+            }
+
+            // Shamirs secret sharing
+            if (id.includes('shamirs-secret-sharing') || id.includes('z32')) {
+              return 'shamir-vendor';
+            }
+
+            // UI libraries - only create chunks for libraries that are actually used
+            if (id.includes('lucide-react')) return 'icons-vendor';
+
+            // Skeleton loaders and UI utilities
+            if (id.includes('react-loading-skeleton') || id.includes('react-easy-crop')) {
               return 'ui-utils-vendor';
             }
 
-            // QR code
-            if (id.includes('qrcode')) {
-              return 'qr-code-vendor';
+            // Zod validation library (can be large)
+            if (id.includes('zod')) {
+              return 'validation-vendor';
             }
 
-            // Image editing
-            if (id.includes('react-easy-crop')) {
-              return 'image-vendor';
+            // Sentry error tracking - Let Vite handle automatically to prevent empty chunks
+            // Sentry modules are small and conditionally loaded, so manual chunking creates
+            // empty chunks in development builds. Vite will bundle them efficiently.
+            // REMOVED: Manual sentry-vendor chunk to fix "Generated an empty chunk" warning
+
+            // WebSocket and real-time libraries
+            if (id.includes('websocket') || id.includes('ws')) {
+              return 'websocket-vendor';
             }
 
-            // Everything else in node_modules goes to vendor
+            // Polyfills and compatibility libraries
+            if (id.includes('core-js') || id.includes('regenerator-runtime')) {
+              return 'polyfills-vendor';
+            }
+
+            // Utility libraries (lodash, ramda, etc.)
+            if (id.includes('lodash') || id.includes('ramda') || id.includes('underscore')) {
+              return 'utils-vendor';
+            }
+
+            // Form libraries
+            if (id.includes('formik') || id.includes('react-hook-form') || id.includes('yup')) {
+              return 'forms-vendor';
+            }
+
+            // Animation libraries
+            if (id.includes('framer-motion') || id.includes('react-spring')) {
+              return 'animation-vendor';
+            }
+
+            // Everything else
             return 'vendor';
           }
 
-          // Source code chunking - aggressive splitting to reduce main bundle
+          // Source code chunking - be more specific to avoid mixed imports
           // Priority order: most specific first to avoid conflicts
 
           // Configuration - keep separate to avoid circular dependencies
+          // This must be loaded early and independently
           if (id.includes('src/config/')) {
             return 'config';
           }
 
-          // Authentication - CRITICAL: large module, must be separate
-          if (id.includes('src/lib/auth/')) {
+          // Core API client (base)
+          if (id.includes('src/lib/api.ts') || id.includes('src/lib/api.js')) {
+            return 'api-core';
+          }
+
+          // Specific API modules
+          if (id.includes('src/lib/api/')) {
+            return 'api-modules';
+          }
+
+          // Supabase and database: allow Vite to chunk automatically to prevent evaluation-order issues
+          // Intentionally do not force a separate 'database' chunk to avoid cross-chunk cycles
+          // if (id.includes('src/lib/supabase')) {
+          //   return 'database';
+          // }
+
+          // Authentication - keep together (including recent auth-adapter changes)
+          if (id.includes('src/lib/auth/') ||
+              id.includes('src/hooks/useAuth') ||
+              id.includes('src/hooks/usePrivacyFirstAuth') ||
+              id.includes('src/hooks/useFamilyFederationAuth') ||
+              id.includes('src/utils/authManager') ||
+              id.includes('src/utils/secureSession')) {
             return 'auth';
           }
 
-          // API modules - split into separate chunk
-          if (id.includes('src/lib/api/') || id.includes('src/lib/api.ts')) {
-            return 'api';
-          }
-
-          // Supabase and database
-          if (id.includes('src/lib/supabase')) {
-            return 'database';
-          }
-
-          // Nostr and crypto functionality
-          if (id.includes('src/lib/nostr') ||
-              id.includes('src/lib/nip') ||
-              id.includes('src/lib/crypto') ||
-              id.includes('src/lib/privacy')) {
-            return 'nostr-crypto';
+          // Nostr functionality (browser-only) - merge with crypto-vendor since they're related
+          // IMPORTANT: Only include code under src/ (client). Exclude server files under lib/ and netlify/functions.
+          if (
+            id.includes('src/lib/nostr-browser') ||
+            id.includes('src/lib/nip05-verification') ||
+            (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))
+          ) {
+            return 'crypto-vendor';
           }
 
           // Lightning and payments
-          if (id.includes('src/lib/lightning') ||
-              id.includes('src/lib/payment') ||
-              id.includes('src/lib/liquidity') ||
-              id.includes('src/lib/family-liquidity')) {
-            return 'lightning-payments';
+          if (id.includes('src/lib/enhanced-family-coordinator') ||
+              id.includes('src/lib/family-liquidity-manager') ||
+              id.includes('src/lib/liquidity-intelligence') ||
+              id.includes('src/lib/internal-lightning-bridge') ||
+              id.includes('src/lib/payment-automation')) {
+            return 'lightning';
           }
 
-          // Messaging and communications
-          if (id.includes('src/lib/messaging') ||
-              id.includes('src/lib/giftwrapped')) {
-            return 'messaging';
+          // Privacy and security utilities
+          if (id.includes('src/lib/privacy/') ||
+              id.includes('src/lib/security/') ||
+              id.includes('src/lib/crypto/')) {
+            return 'security';
           }
 
-          // Components - split by feature
+          // PHASE 2: Components - split by feature and directory
           if (id.includes('src/components/')) {
-            // Dashboard components - large and feature-specific
-            if (id.includes('Dashboard') ||
-                id.includes('Financials') ||
-                id.includes('Liquidity')) {
-              return 'dashboard-components';
+            // Public landing pages (lazy-loaded)
+            if (id.includes('src/components/pages/')) {
+              return 'landing-pages';
             }
 
-            // Payment and wallet modals - large feature area
-            if (id.includes('PaymentModal') ||
-                id.includes('PaymentAutomation') ||
-                id.includes('PaymentCascade') ||
-                id.includes('SmartPayment') ||
-                id.includes('SimplePayment') ||
-                id.includes('LNBits') ||
-                id.includes('NWCWallet') ||
-                id.includes('Wallet')) {
-              return 'payment-modals';
-            }
-
-            // Family and federation modals
-            if (id.includes('FamilyFoundry') ||
-                id.includes('FamilyFederation') ||
-                id.includes('FamilyPayment')) {
-              return 'family-modals';
-            }
-
-            // Identity and auth modals
-            if (id.includes('IdentityForge') ||
-                id.includes('SignIn') ||
-                id.includes('NTAG424') ||
-                id.includes('NFC')) {
-              return 'identity-modals';
-            }
-
-            // Other modals
-            if (id.includes('Modal') || id.includes('Dialog')) {
-              return 'ui-modals';
-            }
-
-            // Auth components
-            if (id.includes('src/components/auth/')) {
-              return 'auth-components';
-            }
-
-            // Admin components
+            // Admin components (admin dashboard, analytics, etc.)
             if (id.includes('src/components/admin/')) {
               return 'admin-components';
             }
 
-            // Education components
+            // Education components (courses, progress, etc.)
             if (id.includes('src/components/education/')) {
               return 'education-components';
             }
 
-            // Messaging components
+            // Trust system components (trust scoring, providers, etc.)
+            if (id.includes('src/components/trust/')) {
+              return 'trust-components';
+            }
+
+            // Profile customization components (banner manager, etc.)
+            if (id.includes('src/components/profile/')) {
+              return 'profile-components';
+            }
+
+            // Dashboard components (all *Dashboard.tsx files)
+            if (id.includes('Dashboard.tsx') ||
+                id.includes('FamilyFinancials') ||
+                id.includes('IndividualFinances') ||
+                id.includes('EnhancedFamily') ||
+                id.includes('EnhancedLiquidity')) {
+              return 'dashboard-components';
+            }
+
+            // Modal components (remaining modals not in ui-modals)
+            if (id.includes('Modal') || id.includes('Dialog')) {
+              return 'ui-modals';
+            }
+
+            // Form components
+            if (id.includes('Form') || id.includes('Input')) {
+              return 'ui-forms';
+            }
+
+            // Messaging and communications
             if (id.includes('src/components/communications/') ||
-                id.includes('Messaging') ||
-                id.includes('Invitation')) {
+                id.includes('src/components/messaging/') ||
+                id.includes('src/components/privacy-messaging/')) {
               return 'messaging-components';
             }
 
-            // Everything else in components
+            // Payment components
+            if (id.includes('src/components/payments/') ||
+                id.includes('PaymentModal') ||
+                id.includes('PaymentAutomation')) {
+              return 'payment-components';
+            }
+
+            // Wallet components
+            if (id.includes('src/components/wallet/') ||
+                id.includes('FamilyWallet') ||
+                id.includes('LNBits')) {
+              return 'wallet-components';
+            }
+
+            // Platform and ecosystem components - large feature area
+            if (id.includes('NostrEcosystem') ||
+                id.includes('DynasticSovereignty') ||
+                id.includes('EducationPlatform') ||
+                id.includes('SovereignFamilyBanking') ||
+                id.includes('SovereigntyEducation') ||
+                id.includes('FeaturesOverview') ||
+                id.includes('VisibilityModeExplainer') ||
+                id.includes('FamilyFedimintGovernance') ||
+                id.includes('FamilyLightningTreasury') ||
+                id.includes('UnifiedFamilyPayments') ||
+                id.includes('FamilyCoordination') ||
+                id.includes('FamilyOnboarding') ||
+                id.includes('PhoenixDFamilyManager') ||
+                id.includes('GuardianOnboardingGuide') ||
+                id.includes('NameTagCredentialingQuest')) {
+              return 'platform-components';
+            }
+
+            // Utility and shared UI components
+            if (id.includes('ErrorBoundary') ||
+                id.includes('ContactCard') ||
+                id.includes('ContactsList') ||
+                id.includes('TransactionHistory') ||
+                id.includes('Settings') ||
+                id.includes('CreditsBalance') ||
+                id.includes('CryptoPreloader') ||
+                id.includes('CryptoProvider') ||
+                id.includes('ContextualAvatar') ||
+                id.includes('OperationTypeBadge') ||
+                id.includes('ToastContainer') ||
+                id.includes('ProtectedRoute') ||
+                id.includes('FeatureGate') ||
+                id.includes('ApiStatus') ||
+                id.includes('ServerStatus') ||
+                id.includes('PrivacyControls') ||
+                id.includes('ProfileURLDisplay') ||
+                id.includes('ProfileVisibilitySettings') ||
+                id.includes('PublicProfilePage') ||
+                id.includes('SupabaseConfigModal') ||
+                id.includes('AtomicSwapModal') ||
+                id.includes('NWCModal') ||
+                id.includes('KeyImportForm') ||
+                id.includes('MaxPrivacyAuth') ||
+                id.includes('IndividualAuth') ||
+                id.includes('PrivacyFirstIdentityManager') ||
+                id.includes('PrivacyFirstMessaging') ||
+                id.includes('FrostSignaturePanel') ||
+                id.includes('PhoenixDNodeStatus') ||
+                id.includes('IndividualPaymentDashboard') ||
+                id.includes('PaymentAutomationCard') ||
+                id.includes('AddContactForm') ||
+                id.includes('EditContactForm') ||
+                id.includes('ContactsManagerModal') ||
+                id.includes('NotificationsTab') ||
+                id.includes('OTPVerificationPanel')) {
+              return 'ui-utils-components';
+            }
+
+            // Everything else stays in components
             return 'components';
           }
 
-          // Services
+          // Services - keep together to avoid initialization order issues
+          // This includes verification services, toast service, etc.
           if (id.includes('src/services/')) {
             return 'services';
           }
@@ -340,12 +473,8 @@ export default defineConfig({
             return 'utils';
           }
 
-          // Contexts
-          if (id.includes('src/contexts/')) {
-            return 'contexts';
-          }
-
           // Fallback: return undefined to let Vite handle automatically
+          // This prevents empty chunks by not forcing modules into specific chunks
           return undefined;
         },
         chunkFileNames: "assets/[name]-[hash].js",
