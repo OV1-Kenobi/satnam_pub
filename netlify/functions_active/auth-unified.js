@@ -12,6 +12,7 @@
  */
 
 // Import centralized security utilities
+import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.server.js";
 import {
     getSecurityHeaders
 } from "./utils/security-headers.js";
@@ -812,7 +813,7 @@ async function handleCheckUsernameAvailabilityInline(event, context, corsHeaders
     if (username.length < 3 || username.length > 20) return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Username must be between 3 and 20 characters' }) };
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Username can only contain letters, numbers, underscores, and hyphens' }) };
 
-    const domain = 'satnam.pub';
+    const domain = resolvePlatformLightningDomainServer();
     const { createHmac } = await import('node:crypto');
     const secret = (process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY || '').trim();
     if (!secret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };

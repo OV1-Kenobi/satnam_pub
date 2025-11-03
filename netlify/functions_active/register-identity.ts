@@ -660,16 +660,70 @@ async function createUserIdentity(
     const passwordSalt = generatePasswordSalt();
     const passwordHash = await hashPassword(userData.password, passwordSalt);
 
-    // Note: Using standard hashed column format for maximum privacy protection
-    // MAXIMUM ENCRYPTION: Hash all sensitive user data with unique salt
+    // ENCRYPTION HELPER: Encrypt profile fields using Noble V2
+    async function encryptProfileField(
+      value: string | null,
+      salt: string
+    ): Promise<{ cipher: string; iv: string; tag: string } | null> {
+      if (!value) return null;
+      try {
+        const { encryptField } = await import(
+          "../functions/security/noble-encryption.js"
+        );
+        return await encryptField(value, salt);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error("Profile field encryption failed:", msg);
+        throw new Error("Failed to encrypt profile field: " + msg);
+      }
+    }
+
+    // ENCRYPT PROFILE FIELDS: Use Noble V2 encryption for displayable data
+    let encryptedUsername: { cipher: string; iv: string; tag: string } | null;
+    let encryptedBio: { cipher: string; iv: string; tag: string } | null;
+    let encryptedDisplayName: {
+      cipher: string;
+      iv: string;
+      tag: string;
+    } | null;
+    let encryptedNip05: { cipher: string; iv: string; tag: string } | null;
+    let encryptedLightningAddress: {
+      cipher: string;
+      iv: string;
+      tag: string;
+    } | null;
+
+    // HASH AUTHENTICATION FIELDS: Keep hashing for npub/nip05 (one-way, not displayable)
     let hashedUserData: {
       hashed_npub: string;
       hashed_nip05: string;
       [k: string]: any;
     };
-    let hashedUsername;
-    let hashedLightningAddress;
+
     try {
+      // Encrypt displayable profile fields
+      console.log("🔐 Encrypting profile fields with Noble V2...");
+      encryptedUsername = await encryptProfileField(
+        userData.username,
+        userSalt
+      );
+      encryptedBio = await encryptProfileField(userData.bio || null, userSalt);
+      encryptedDisplayName = await encryptProfileField(
+        userData.displayName || null,
+        userSalt
+      );
+      encryptedNip05 = await encryptProfileField(
+        userData.nip05 || null,
+        userSalt
+      );
+      encryptedLightningAddress = await encryptProfileField(
+        userData.lightningAddress || null,
+        userSalt
+      );
+      console.log("✅ Profile fields encrypted successfully");
+
+      // Hash authentication fields (npub, nip05 for lookups)
+      console.log("🔐 Hashing authentication fields...");
       hashedUserData = (await createHashedUserData(
         {
           npub: userData.npub,
@@ -679,17 +733,9 @@ async function createUserIdentity(
         },
         userSalt
       )) as { hashed_npub: string; hashed_nip05: string; [k: string]: any };
-
-      // Hash additional fields manually using hashUserData
-      const { hashUserData } = await import(
-        "../../lib/security/privacy-hashing.js"
-      );
-      hashedUsername = await hashUserData(userData.username, userSalt);
-      hashedLightningAddress = userData.lightningAddress
-        ? await hashUserData(userData.lightningAddress, userSalt)
-        : null;
-    } catch (hashError) {
-      console.error("Failed to hash user data:", hashError);
+      console.log("✅ Authentication fields hashed successfully");
+    } catch (encryptError) {
+      console.error("Failed to encrypt/hash user data:", encryptError);
       throw new Error("Failed to encrypt user data securely");
     }
 
@@ -701,19 +747,38 @@ async function createUserIdentity(
       // DECRYPTABLE NSEC: Store Noble V2 encrypted nsec for authentication flow
       encrypted_nsec: encryptedNsecNoble, // noble-v2.<salt>.<iv>.<cipher>
 
-      // HASHED COLUMNS ONLY - MAXIMUM ENCRYPTION COMPLIANCE
-      hashed_username: hashedUsername,
+      // ENCRYPTED PROFILE COLUMNS: Displayable user data encrypted with Noble V2
+      encrypted_username: encryptedUsername?.cipher || null,
+      encrypted_username_iv: encryptedUsername?.iv || null,
+      encrypted_username_tag: encryptedUsername?.tag || null,
+
+      encrypted_bio: encryptedBio?.cipher || null,
+      encrypted_bio_iv: encryptedBio?.iv || null,
+      encrypted_bio_tag: encryptedBio?.tag || null,
+
+      encrypted_display_name: encryptedDisplayName?.cipher || null,
+      encrypted_display_name_iv: encryptedDisplayName?.iv || null,
+      encrypted_display_name_tag: encryptedDisplayName?.tag || null,
+
+      encrypted_nip05: encryptedNip05?.cipher || null,
+      encrypted_nip05_iv: encryptedNip05?.iv || null,
+      encrypted_nip05_tag: encryptedNip05?.tag || null,
+
+      encrypted_lightning_address: encryptedLightningAddress?.cipher || null,
+      encrypted_lightning_address_iv: encryptedLightningAddress?.iv || null,
+      encrypted_lightning_address_tag: encryptedLightningAddress?.tag || null,
+
+      // HASHED COLUMNS: Authentication fields (one-way, not displayable)
       hashed_npub: hashedUserData.hashed_npub,
       hashed_nip05: hashedUserData.hashed_nip05,
-      hashed_lightning_address: hashedLightningAddress,
 
       // Metadata (non-sensitive)
       role: userData.role,
       spending_limits: spendingLimits,
       privacy_settings: {
-        privacy_level: "maximum", // Upgraded to maximum for hashed storage
+        privacy_level: "maximum", // Maximum privacy with encrypted storage
         zero_knowledge_enabled: true,
-        over_encryption: true, // Flag indicating hashed storage
+        over_encryption: true, // Flag indicating encrypted storage
         is_imported_account: userData.isImportedAccount || false,
         detected_profile_data: userData.detectedProfile || null,
       },
@@ -732,7 +797,7 @@ async function createUserIdentity(
 
     // Insert into user_identities table with error handling for missing columns
     console.log(
-      "🔄 Attempting to insert user identity with hashed columns...",
+      "🔄 Attempting to insert user identity with encrypted profile columns...",
       {
         keyType: "anon_preferred",
         supabaseKeyTypeHint:
@@ -743,6 +808,7 @@ async function createUserIdentity(
             : "unknown",
         profileDataKeys: Object.keys(profileData),
         hasId: !!profileData.id,
+        hasEncryptedUsername: !!profileData.encrypted_username,
         hasHashedNpub: !!profileData.hashed_npub,
         hasEncryptedNsec: !!profileData.encrypted_nsec,
       }
@@ -1151,20 +1217,378 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Optional: Publish PKARR record (non-blocking - Phase 2A Day 5)
-    const pkarrEnabled = process.env.VITE_PKARR_ENABLED === "true";
-    if (pkarrEnabled && validatedData.npub) {
-      // Fire-and-forget PKARR publishing (don't block registration)
-      publishPkarrRecordAsync(
-        validatedData.npub,
-        validatedData.username,
-        resolvePlatformLightningDomainServer()
-      ).catch((err) => {
-        console.warn(
-          "⚠️ PKARR publishing failed (non-blocking):",
-          err instanceof Error ? err.message : err
+    // ============================================================================
+    // PHASE 2 WEEK 3 DAY 8: NIP-03 ATTESTATION INTEGRATION
+    // ============================================================================
+    // Task 5: Feature flag gating for NIP-03 attestation flow
+    const nip03Enabled = process.env.VITE_NIP03_ENABLED === "true";
+    const nip03IdentityCreationEnabled =
+      process.env.VITE_NIP03_IDENTITY_CREATION === "true";
+    const simpleproofEnabled = process.env.VITE_SIMPLEPROOF_ENABLED === "true";
+
+    // If NIP-03 is enabled, proceed with attestation flow (Option B sequence)
+    if (
+      nip03Enabled &&
+      nip03IdentityCreationEnabled &&
+      simpleproofEnabled &&
+      validatedData.npub
+    ) {
+      try {
+        console.log(
+          "🔐 Starting NIP-03 attestation flow for identity creation"
         );
-      });
+
+        // ====================================================================
+        // Task 1: Create SimpleProof timestamp for Kind:0 event
+        // ====================================================================
+        let simpleproofTimestampId: string | null = null;
+        let otsProof: string | null = null;
+        let bitcoinBlock: number | null = null;
+        let bitcoinTx: string | null = null;
+
+        try {
+          console.log("⏱️ Creating SimpleProof timestamp for Kind:0 event...");
+
+          // Prepare data for SimpleProof: Public identifiers only (no internal IDs)
+          // SECURITY: Never expose DUID or internal database UUIDs in public attestations
+          const nip05Identifier = `${
+            validatedData.username
+          }@${resolvePlatformLightningDomainServer()}`;
+          const simpleproofData = JSON.stringify({
+            event_type: "identity_creation",
+            nip05: nip05Identifier,
+            npub: validatedData.npub,
+            timestamp: Math.floor(Date.now() / 1000),
+          });
+
+          // Retry logic: 3 attempts with exponential backoff (1s, 2s, 4s)
+          let lastError: Error | null = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const simpleproofResponse = await fetch(
+                `${
+                  process.env.FRONTEND_URL || "https://www.satnam.pub"
+                }/.netlify/functions/simpleproof-timestamp`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "create",
+                    data: simpleproofData,
+                    verification_id: profileResult.data!.id,
+                  }),
+                }
+              );
+
+              if (!simpleproofResponse.ok) {
+                throw new Error(
+                  `HTTP ${simpleproofResponse.status}: ${simpleproofResponse.statusText}`
+                );
+              }
+
+              const simpleproofResult = await simpleproofResponse.json();
+
+              if (!simpleproofResult.ots_proof) {
+                throw new Error("SimpleProof API returned no OTS proof");
+              }
+
+              otsProof = simpleproofResult.ots_proof;
+              bitcoinBlock = simpleproofResult.bitcoin_block || null;
+              bitcoinTx = simpleproofResult.bitcoin_tx || null;
+
+              // Store in simpleproof_timestamps table
+              const { data: timestampData, error: timestampError } =
+                await supabase
+                  .from("simpleproof_timestamps")
+                  .insert({
+                    verification_id: profileResult.data!.id,
+                    ots_proof: otsProof,
+                    bitcoin_block: bitcoinBlock,
+                    bitcoin_tx: bitcoinTx,
+                    verified_at: Math.floor(Date.now() / 1000),
+                    is_valid: true,
+                  })
+                  .select("id")
+                  .single();
+
+              if (timestampError) {
+                throw new Error(`Database error: ${timestampError.message}`);
+              }
+
+              simpleproofTimestampId = timestampData.id;
+              console.log(
+                `✅ SimpleProof timestamp created: ${simpleproofTimestampId}`
+              );
+              break; // Success, exit retry loop
+            } catch (error) {
+              lastError =
+                error instanceof Error ? error : new Error(String(error));
+              const delay = Math.pow(2, attempt - 1) * 1000; // Exponential backoff
+
+              if (attempt < 3) {
+                console.warn(
+                  `⚠️ SimpleProof attempt ${attempt} failed, retrying in ${delay}ms...`,
+                  lastError.message
+                );
+                await new Promise((resolve) => setTimeout(resolve, delay));
+              }
+            }
+          }
+
+          if (!simpleproofTimestampId) {
+            throw new Error(
+              `SimpleProof timestamp creation failed after 3 attempts: ${lastError?.message}`
+            );
+          }
+        } catch (simpleproofError) {
+          console.error(
+            "❌ SimpleProof timestamp creation failed:",
+            simpleproofError instanceof Error
+              ? simpleproofError.message
+              : simpleproofError
+          );
+          // Block registration on SimpleProof failure (critical for attestation)
+          return {
+            statusCode: 500,
+            headers: corsHeaders,
+            body: JSON.stringify({
+              success: false,
+              error:
+                "Attestation failed: SimpleProof timestamp creation failed",
+              details:
+                simpleproofError instanceof Error
+                  ? simpleproofError.message
+                  : "Unknown error",
+              meta: { timestamp: new Date().toISOString() },
+            }),
+          };
+        }
+
+        // ====================================================================
+        // Task 2: Create NIP-03 Kind:1040 event
+        // ====================================================================
+        let nip03EventId: string | null = null;
+
+        try {
+          console.log("📝 Creating NIP-03 Kind:1040 attestation event...");
+
+          // Import CEPS for event signing and publishing
+          const { central_event_publishing_service: CEPS } = await import(
+            "../../lib/central_event_publishing_service.js"
+          );
+
+          // Create unsigned Kind:1040 event
+          // SECURITY: Use public identifiers only (npub, not DUID)
+          // NOTE: kind0_event_id should be provided by client in registration request
+          // For now, use npub as the event reference (will be updated in Phase 2 Week 3 Day 9)
+          const unsignedNip03Event = {
+            kind: 1040, // NIP-03 attestation event
+            pubkey: validatedData.npub, // Will be replaced with hex by CEPS
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+              ["p", validatedData.npub], // Reference to user's npub (public identifier)
+            ],
+            content: otsProof || "", // OTS proof as content
+          };
+
+          // Sign event using CEPS (requires active session)
+          let signedNip03Event;
+          try {
+            signedNip03Event = await CEPS.signEventWithActiveSession(
+              unsignedNip03Event
+            );
+          } catch (signError) {
+            console.warn(
+              "⚠️ CEPS signing failed, attempting fallback...",
+              signError instanceof Error ? signError.message : signError
+            );
+            // Fallback: use server keys if available
+            try {
+              const serverKeys = await (CEPS as any).serverKeys?.();
+              if (!serverKeys?.nsec) {
+                throw new Error("No signing context available");
+              }
+              signedNip03Event = CEPS.signEvent(
+                unsignedNip03Event,
+                serverKeys.nsec
+              );
+            } catch (fallbackError) {
+              throw new Error(
+                `Event signing failed: ${
+                  fallbackError instanceof Error
+                    ? fallbackError.message
+                    : "Unknown error"
+                }`
+              );
+            }
+          }
+
+          // Publish to relays with retry logic
+          let lastPublishError: Error | null = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              nip03EventId = await CEPS.publishEvent(signedNip03Event, [
+                "wss://relay.satnam.pub",
+              ]);
+              console.log(`✅ NIP-03 event published: ${nip03EventId}`);
+              break; // Success, exit retry loop
+            } catch (publishError) {
+              lastPublishError =
+                publishError instanceof Error
+                  ? publishError
+                  : new Error(String(publishError));
+
+              if (attempt < 3) {
+                console.warn(
+                  `⚠️ NIP-03 publish attempt ${attempt} failed, retrying...`,
+                  lastPublishError.message
+                );
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            }
+          }
+
+          if (!nip03EventId) {
+            throw new Error(
+              `NIP-03 event publishing failed after 3 attempts: ${lastPublishError?.message}`
+            );
+          }
+        } catch (nip03Error) {
+          console.error(
+            "❌ NIP-03 event creation failed:",
+            nip03Error instanceof Error ? nip03Error.message : nip03Error
+          );
+          // Block registration on NIP-03 failure (critical for attestation)
+          return {
+            statusCode: 500,
+            headers: corsHeaders,
+            body: JSON.stringify({
+              success: false,
+              error: "Attestation failed: NIP-03 event creation failed",
+              details:
+                nip03Error instanceof Error
+                  ? nip03Error.message
+                  : "Unknown error",
+              meta: { timestamp: new Date().toISOString() },
+            }),
+          };
+        }
+
+        // ====================================================================
+        // Task 3: Store NIP-03 attestation in database
+        // ====================================================================
+        try {
+          console.log("💾 Storing NIP-03 attestation in database...");
+
+          // SECURITY: Use public identifiers only (NIP-05, npub)
+          // Never expose DUID or internal database UUIDs in metadata
+          const nip05Identifier = `${
+            validatedData.username
+          }@${resolvePlatformLightningDomainServer()}`;
+
+          const { error: attestationError } = await supabase
+            .from("nip03_attestations")
+            .insert({
+              attested_event_id: nip05Identifier, // Use NIP-05 as public identifier (not DUID)
+              attested_event_kind: 0, // Kind:0 profile event
+              nip03_event_id: nip03EventId,
+              nip03_event_kind: 1040, // NIP-03 attestation event
+              simpleproof_timestamp_id: simpleproofTimestampId,
+              ots_proof: otsProof,
+              bitcoin_block: bitcoinBlock,
+              bitcoin_tx: bitcoinTx,
+              event_type: "identity_creation",
+              user_duid: profileResult.data!.id, // Internal use only (RLS, queries)
+              relay_urls: ["wss://relay.satnam.pub"],
+              published_at: Math.floor(Date.now() / 1000),
+              verified_at: bitcoinBlock ? Math.floor(Date.now() / 1000) : null,
+              metadata: {
+                nip05: nip05Identifier, // Public identifier
+                npub: validatedData.npub, // Public identifier
+                // SECURITY: Do NOT include: user_duid, internal IDs, or private data
+              },
+            });
+
+          if (attestationError) {
+            throw new Error(`Database error: ${attestationError.message}`);
+          }
+
+          console.log(
+            `✅ NIP-03 attestation stored for user: ${profileResult.data!.id}`
+          );
+        } catch (attestationStorageError) {
+          console.error(
+            "❌ NIP-03 attestation storage failed:",
+            attestationStorageError instanceof Error
+              ? attestationStorageError.message
+              : attestationStorageError
+          );
+          // Don't block registration on storage failure (non-critical)
+          console.warn(
+            "⚠️ Continuing registration despite attestation storage failure"
+          );
+        }
+
+        // ====================================================================
+        // Task 4: Create PKARR record (non-blocking, fire-and-forget)
+        // ====================================================================
+        // Option B: Create PKARR AFTER NIP-03 is published
+        // This ensures PKARR address is linked to NIP-03 attestation
+        const pkarrEnabled = process.env.VITE_PKARR_ENABLED === "true";
+        if (pkarrEnabled && validatedData.npub) {
+          // Fire-and-forget PKARR publishing (don't block registration)
+          publishPkarrRecordAsync(
+            validatedData.npub,
+            validatedData.username,
+            resolvePlatformLightningDomainServer()
+          ).catch((err) => {
+            console.warn(
+              "⚠️ PKARR publishing failed (non-blocking):",
+              err instanceof Error ? err.message : err
+            );
+          });
+        }
+
+        console.log("✅ NIP-03 attestation flow completed successfully");
+      } catch (attestationFlowError) {
+        console.error(
+          "❌ NIP-03 attestation flow error:",
+          attestationFlowError instanceof Error
+            ? attestationFlowError.message
+            : attestationFlowError
+        );
+        // Attestation flow errors are already handled above with specific responses
+        // This catch is for unexpected errors
+        return {
+          statusCode: 500,
+          headers: corsHeaders,
+          body: JSON.stringify({
+            success: false,
+            error: "Attestation flow failed",
+            details:
+              attestationFlowError instanceof Error
+                ? attestationFlowError.message
+                : "Unknown error",
+            meta: { timestamp: new Date().toISOString() },
+          }),
+        };
+      }
+    } else {
+      // Feature flags disabled: proceed with basic PKARR publishing (legacy flow)
+      const pkarrEnabled = process.env.VITE_PKARR_ENABLED === "true";
+      if (pkarrEnabled && validatedData.npub) {
+        // Fire-and-forget PKARR publishing (don't block registration)
+        publishPkarrRecordAsync(
+          validatedData.npub,
+          validatedData.username,
+          resolvePlatformLightningDomainServer()
+        ).catch((err) => {
+          console.warn(
+            "⚠️ PKARR publishing failed (non-blocking):",
+            err instanceof Error ? err.message : err
+          );
+        });
+      }
     }
 
     // Create secure JWT token compatible with frontend SecureTokenManager expectations

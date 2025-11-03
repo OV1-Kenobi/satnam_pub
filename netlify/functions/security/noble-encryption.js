@@ -158,3 +158,79 @@ export async function decryptNsecSimple(serialized, userSalt) {
   }
 }
 
+/**
+ * Encrypt a profile field (username, bio, display_name, etc.) using Noble V2
+ * Returns separate cipher, iv, and tag for database storage
+ * @param {string} plaintext - The field value to encrypt
+ * @param {string} userSalt - User's unique salt for key derivation
+ * @returns {Promise<{cipher: string, iv: string, tag: string}>} Encrypted components
+ */
+export async function encryptField(plaintext, userSalt) {
+  try {
+    if (!plaintext || typeof plaintext !== 'string') {
+      throw new Error('encryptField: invalid plaintext');
+    }
+    if (!userSalt || typeof userSalt !== 'string') {
+      throw new Error('encryptField: invalid salt');
+    }
+    await ensureLibs();
+
+    // Generate 32-byte random salt (PBKDF2 salt)
+    const randomSalt = new Uint8Array(32);
+    const wc = nodeCrypto.webcrypto;
+    if (wc && wc.getRandomValues) wc.getRandomValues(randomSalt); else nodeCrypto.randomFillSync(randomSalt);
+
+    // Derive key via PBKDF2-SHA256 (100k, 32 bytes)
+    const key = await deriveKeyPBKDF2(userSalt, randomSalt);
+
+    // Encrypt
+    const iv = getRandomIv();
+    const aead = _gcm(key, iv);
+    const pt = utf8Bytes(plaintext);
+    const ct = aead.encrypt(pt);
+
+    // Return separate components for database storage
+    return {
+      cipher: b64urlEncode(ct),
+      iv: b64urlEncode(iv),
+      tag: b64urlEncode(randomSalt), // Store the random salt as "tag" for decryption
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`encryptField failed: ${msg}`);
+  }
+}
+
+/**
+ * Decrypt a profile field using Noble V2
+ * @param {string} cipherB64 - Base64url encoded cipher text
+ * @param {string} ivB64 - Base64url encoded IV
+ * @param {string} tagB64 - Base64url encoded random salt
+ * @param {string} userSalt - User's unique salt for key derivation
+ * @returns {Promise<string>} Decrypted plaintext
+ */
+export async function decryptField(cipherB64, ivB64, tagB64, userSalt) {
+  try {
+    if (!cipherB64 || !ivB64 || !tagB64 || !userSalt) {
+      throw new Error('decryptField: missing required parameters');
+    }
+    await ensureLibs();
+
+    // Decode components
+    const cipher = b64urlDecode(cipherB64);
+    const iv = b64urlDecode(ivB64);
+    const randomSalt = b64urlDecode(tagB64);
+
+    // Derive key using the same random salt
+    const key = await deriveKeyPBKDF2(userSalt, randomSalt);
+
+    // Decrypt
+    const aead = _gcm(key, iv);
+    const pt = aead.decrypt(cipher);
+    return new TextDecoder().decode(pt);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`decryptField failed: ${msg}`);
+  }
+}
+

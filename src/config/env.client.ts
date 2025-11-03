@@ -57,6 +57,8 @@ export type ClientConfig = {
     multiMethodVerificationEnabled: boolean; // Phase 1 Week 4: Parallel multi-method verification with trust scoring
     simpleproofEnabled: boolean; // Phase 1: SimpleProof timestamping with OpenTimestamps and Bitcoin anchoring
     irohEnabled: boolean; // Phase 2: Iroh node discovery via DHT for decentralized verification
+    nip03Enabled: boolean; // Phase 2 Week 3: NIP-03 OpenTimestamps attestations (master toggle)
+    nip03IdentityCreationEnabled: boolean; // Phase 2 Week 3: NIP-03 attestations for identity creation
     relayPrivacyEnabled: boolean; // TIER 1: Relay privacy layer with per-relay batching
     tokenBindingEnabled: boolean; // TIER 1: Device fingerprint-based token binding
     timingAuditEnabled: boolean; // TIER 1: Timing attack prevention audit logging
@@ -124,6 +126,17 @@ const SIMPLEPROOF_ENABLED =
 const IROH_ENABLED =
   (getEnvVar("VITE_IROH_ENABLED") || "false").toString().toLowerCase() ===
   "true";
+
+// Phase 2 Week 3: NIP-03 OpenTimestamps attestations (master toggle); default: false
+const NIP03_ENABLED =
+  (getEnvVar("VITE_NIP03_ENABLED") || "false").toString().toLowerCase() ===
+  "true";
+
+// Phase 2 Week 3: NIP-03 attestations for identity creation; default: false
+const NIP03_IDENTITY_CREATION_ENABLED =
+  (getEnvVar("VITE_NIP03_IDENTITY_CREATION") || "false")
+    .toString()
+    .toLowerCase() === "true";
 
 // TIER 1: Relay privacy layer with per-relay batching; default: true (enabled after testing)
 const RELAY_PRIVACY_ENABLED =
@@ -313,6 +326,8 @@ export const clientConfig: ClientConfig = {
     multiMethodVerificationEnabled: MULTI_METHOD_VERIFICATION_ENABLED,
     simpleproofEnabled: SIMPLEPROOF_ENABLED,
     irohEnabled: IROH_ENABLED,
+    nip03Enabled: NIP03_ENABLED,
+    nip03IdentityCreationEnabled: NIP03_IDENTITY_CREATION_ENABLED,
     relayPrivacyEnabled: RELAY_PRIVACY_ENABLED,
     tokenBindingEnabled: TOKEN_BINDING_ENABLED,
     timingAuditEnabled: TIMING_AUDIT_ENABLED,

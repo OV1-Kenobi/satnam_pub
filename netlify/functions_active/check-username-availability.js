@@ -14,6 +14,7 @@
  */
 
 import { supabase } from '../../netlify/functions/supabase.js';
+import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.server.js";
 
 // Security utilities (Phase 3 hardening)
 import {
@@ -39,7 +40,7 @@ console.log('🔒 Secure username availability function initialized (shared Supa
  */
 async function checkUsernameAvailability(username) {
   try {
-    const domain = 'satnam.pub';
+    const domain = resolvePlatformLightningDomainServer();
     const local = (username || '').trim().toLowerCase();
 
     // Basic validation

@@ -270,38 +270,57 @@ export class ApiClient {
         timestamp: new Date().toISOString(),
       });
 
-      const response = await fetch(fullUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
+      // Add timeout to prevent hanging on unresponsive endpoints
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      console.log("🔍 API CLIENT: Response received", {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-      });
+      try {
+        const response = await fetch(fullUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log("🔍 API CLIENT: Registration successful", result);
-        return result;
+        clearTimeout(timeoutId);
+
+        console.log("🔍 API CLIENT: Response received", {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log("🔍 API CLIENT: Registration successful", result);
+          return result;
+        }
+
+        const errorText = await response.text();
+        console.error("🔍 API CLIENT: Registration failed", {
+          status: response.status,
+          statusText: response.statusText,
+          errorText,
+        });
+
+        throw new Error(
+          `Registration failed: ${response.status} ${response.statusText} - ${errorText}`
+        );
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === "AbortError") {
+          console.error("🔍 API CLIENT: Registration request timeout (30s)");
+          throw new Error(
+            "Registration request timed out - server not responding"
+          );
+        }
+        console.error("🔍 API CLIENT: storeUserData error:", error);
+        throw error;
       }
-
-      const errorText = await response.text();
-      console.error("🔍 API CLIENT: Registration failed", {
-        status: response.status,
-        statusText: response.statusText,
-        errorText,
-      });
-
-      throw new Error(
-        `Registration failed: ${response.status} ${response.statusText} - ${errorText}`
-      );
     } catch (error) {
-      console.error("🔍 API CLIENT: storeUserData error:", error);
+      console.error("🔍 API CLIENT: storeUserData outer error:", error);
       throw error;
     }
   }

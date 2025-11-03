@@ -77,10 +77,10 @@ export const config = {
       "VITE_NIP05_VERIFICATION_ENDPOINT",
       "https://api.satnam.pub/.well-known/nostr.json"
     ),
-    allowedDomains: getEnvVar(
-      "VITE_NIP05_ALLOWED_DOMAINS",
-      "satnam.pub,citadel.academy"
-    ).split(","),
+    // Use VITE_PLATFORM_LIGHTNING_DOMAIN as the primary NIP-05 domain for white-label compatibility
+    allowedDomains: [
+      getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN", "my.satnam.pub")
+    ].filter(d => d && d.trim()),
   },
 };
 

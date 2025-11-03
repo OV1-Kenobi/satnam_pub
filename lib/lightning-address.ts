@@ -10,6 +10,7 @@
  * ✅ Integration with unified family banking infrastructure
  */
 
+import { resolvePlatformLightningDomain } from "../src/config/domain.client";
 import type { FamilyMember } from "./family-api.d.ts";
 import { getFamilyMember, getFamilyMembers } from "./family-api.js";
 import { LightningClient } from "./lightning-client";
@@ -251,17 +252,12 @@ export class LightningAddressService {
   /**
    * Get domain for Lightning Addresses
    * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
+   * Uses centralized domain resolver for white-label compatibility
    *
    * @returns Domain string
    */
   private getDomain(): string {
-    // MASTER CONTEXT COMPLIANCE: Use import.meta.env for browser compatibility
-    return (
-      import.meta.env?.VITE_LIGHTNING_ADDRESS_DOMAIN ||
-      (typeof process !== "undefined" &&
-        process.env?.LIGHTNING_ADDRESS_DOMAIN) ||
-      "satnam.pub"
-    );
+    return resolvePlatformLightningDomain();
   }
 
   /**

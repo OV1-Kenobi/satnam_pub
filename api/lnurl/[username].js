@@ -14,10 +14,10 @@ async function getApiBaseUrl() {
 }
 
 async function getLightningDomain() {
-  return getEnvVar("LIGHTNING_ADDRESS_DOMAIN") || "satnam.pub";
+  return getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN") || getEnvVar("LIGHTNING_ADDRESS_DOMAIN") || "my.satnam.pub";
 }
 function getApprovedDomains() {
-  const v = process.env.VITE_NIP05_ALLOWED_DOMAINS || "satnam.pub,citadel.academy";
+  const v = process.env.VITE_PLATFORM_LIGHTNING_DOMAIN || process.env.VITE_NIP05_ALLOWED_DOMAINS || "my.satnam.pub";
   return v
     .split(",")
     .map(s => s.trim().toLowerCase())

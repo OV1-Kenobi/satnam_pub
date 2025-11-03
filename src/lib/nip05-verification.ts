@@ -10,6 +10,9 @@
 import { CentralEventPublishingService } from "../../lib/central_event_publishing_service";
 // Note: PubkyDHTClient is imported dynamically in tryPkarrResolution() to avoid bundling server-side code
 
+// Import domain resolver for white-label compatibility
+import { resolvePlatformLightningDomain } from "../config/domain.client";
+
 export interface NIP05VerificationResult {
   verified: boolean;
   pubkey?: string;
@@ -43,33 +46,40 @@ export class NIP05VerificationService {
   private verificationCache: Map<string, NIP05VerificationResult> = new Map();
 
   constructor(config?: Partial<NIP05VerificationConfig>) {
+    // Get platform domain for white-label compatibility
+    const platformDomain = resolvePlatformLightningDomain();
+
+    // Build allowed domains list with platform domain first
+    const allowedDomains = [
+      platformDomain, // Platform's primary domain (e.g., my.satnam.pub)
+      "satnam.pub",
+      "citadel.academy",
+      "nostr.com",
+      "damus.io",
+      "snort.social",
+      "iris.to",
+      "primal.net",
+      "relayable.org",
+      "nostrplebs.com",
+      "nostr.wine",
+      "nostr.land",
+      "nostr.band",
+      "nostr.directory",
+      "nostr.zone",
+      "nostr.network",
+      "nostr.world",
+      "nostr.space",
+      "nostr.tech",
+      "nostr.dev",
+      "nostr.org",
+    ];
+
     this.config = {
       default_timeout_ms: 5000,
       max_retries: 3,
       retry_delay_ms: 1000,
       cache_duration_ms: 300000, // 5 minutes
-      allowed_domains: [
-        "satnam.pub",
-        "citadel.academy",
-        "nostr.com",
-        "damus.io",
-        "snort.social",
-        "iris.to",
-        "primal.net",
-        "relayable.org",
-        "nostrplebs.com",
-        "nostr.wine",
-        "nostr.land",
-        "nostr.band",
-        "nostr.directory",
-        "nostr.zone",
-        "nostr.network",
-        "nostr.world",
-        "nostr.space",
-        "nostr.tech",
-        "nostr.dev",
-        "nostr.org",
-      ],
+      allowed_domains: [...new Set(allowedDomains)], // Remove duplicates
       blocked_domains: ["malicious.example.com", "phishing.example.com"],
       ...config,
     };

@@ -12,8 +12,6 @@
  * - Maintain zero-knowledge principles
  */
 
-import { hashWithPrivacySalt } from "../../lib/crypto/privacy-manager";
-
 // Types for encrypted and decrypted user data
 export interface EncryptedUserData {
   id: string;
@@ -22,14 +20,39 @@ export interface EncryptedUserData {
   created_at: string;
   updated_at: string;
   user_salt: string;
-  hashed_username: string;
-  hashed_bio: string;
-  hashed_display_name: string;
-  hashed_picture: string;
+
+  // ENCRYPTED PROFILE COLUMNS: Displayable user data encrypted with Noble V2
+  encrypted_username: string | null;
+  encrypted_username_iv: string | null;
+  encrypted_username_tag: string | null;
+
+  encrypted_bio: string | null;
+  encrypted_bio_iv: string | null;
+  encrypted_bio_tag: string | null;
+
+  encrypted_display_name: string | null;
+  encrypted_display_name_iv: string | null;
+  encrypted_display_name_tag: string | null;
+
+  encrypted_picture: string | null;
+  encrypted_picture_iv: string | null;
+  encrypted_picture_tag: string | null;
+
+  encrypted_nip05: string | null;
+  encrypted_nip05_iv: string | null;
+  encrypted_nip05_tag: string | null;
+
+  encrypted_lightning_address: string | null;
+  encrypted_lightning_address_iv: string | null;
+  encrypted_lightning_address_tag: string | null;
+
+  // HASHED COLUMNS: Authentication fields (one-way, not displayable)
   hashed_npub: string;
   hashed_nip05: string;
-  hashed_lightning_address: string;
-  encrypted_nsec?: string; // Use encrypted_nsec directly instead of hashed version
+
+  // Encrypted nsec (already properly encrypted with Noble V2)
+  encrypted_nsec?: string;
+
   spending_limits?: string;
   privacy_settings?: string;
 }
@@ -103,65 +126,130 @@ function cacheDecryptedData(userId: string, data: DecryptedUserProfile): void {
 }
 
 /**
- * PRIVACY-FIRST DECRYPTION: Use known values from user session
- *
- * In maximum encryption architecture, decryption relies on:
- * 1. Known values provided during registration/login
- * 2. User-provided decryption context (username, etc.)
- * 3. Session-based decryption keys
- *
- * This maintains zero-knowledge where server never sees plaintext.
+ * Browser-compatible PBKDF2 key derivation using Web Crypto API
+ * Matches the backend implementation for consistent encryption/decryption
  */
+async function deriveKeyPBKDF2(
+  userSalt: string,
+  randomSaltB64: string
+): Promise<CryptoKey> {
+  try {
+    // Decode the random salt from base64url
+    const randomSalt = base64urlToBytes(randomSaltB64);
+
+    // Import user salt as key material
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(userSalt),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+
+    // Derive key using PBKDF2-SHA256 (100k iterations, 256-bit key)
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: randomSalt,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"]
+    );
+
+    return key;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`PBKDF2 key derivation failed: ${msg}`);
+  }
+}
 
 /**
- * Decrypt a single hashed field
+ * Base64url decode helper
+ * Returns Uint8Array with strict ArrayBuffer (not SharedArrayBuffer)
+ */
+function base64urlToBytes(str: string): Uint8Array {
+  try {
+    // Add padding if needed
+    const pad = str.length % 4;
+    const normalized = (pad ? str + "=".repeat(4 - pad) : str)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const binaryString = atob(normalized);
+    // Create a new ArrayBuffer to ensure it's not a SharedArrayBuffer
+    const buffer = new ArrayBuffer(binaryString.length);
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Base64url decode failed: ${msg}`);
+  }
+}
+
+/**
+ * Decrypt a single encrypted field using Noble V2 AES-256-GCM
  *
- * IMPORTANT: Hashed fields cannot be "decrypted" in the traditional sense.
- * They are one-way hashes. We can only:
- * 1. Use known values (from user input during session)
- * 2. Verify hashes match expected values
- * 3. Return empty strings for unknown hashed data
+ * IMPORTANT: This function performs actual decryption (reversible).
+ * It requires all three components: cipher, iv, and tag (random salt).
  *
- * For actual encrypted data (not hashed), use the encryption utilities.
+ * @param fieldName - Name of the field being decrypted (for logging)
+ * @param cipher - Base64url encoded ciphertext
+ * @param iv - Base64url encoded initialization vector
+ * @param tag - Base64url encoded random salt (used for key derivation)
+ * @param userSalt - User's unique salt for key derivation
+ * @returns Decrypted plaintext string
  */
 async function decryptField(
   fieldName: string,
-  hashedValue: string,
-  userSalt: string,
-  knownValue?: string
+  cipher: string | null,
+  iv: string | null,
+  tag: string | null,
+  userSalt: string
 ): Promise<string> {
-  // If we have the known value (e.g., from user input during login), use it directly
-  if (knownValue) {
-    // Verify the known value matches the hash
-    try {
-      const computedHash = await hashWithPrivacySalt(knownValue, userSalt);
-      if (computedHash === hashedValue) {
-        return knownValue;
-      } else {
-        console.error(
-          `Hash verification failed for ${fieldName} - known value is incorrect`
-        );
-        throw new Error(`Hash verification failed for ${fieldName}`);
-      }
-    } catch (error) {
-      console.error(`Failed to verify hash for ${fieldName}:`, error);
-      throw error;
-    }
+  // Return empty string for null/missing encrypted data
+  if (!cipher || !iv || !tag) {
+    console.log(`⚠️ Skipping decryption for ${fieldName} - no encrypted data`);
+    return "";
   }
 
-  // CRITICAL: Hashed data cannot be decrypted without the original value
-  // Throw error instead of returning empty string
-  // The application should maintain known values in session state
-  console.error(
-    `Cannot decrypt hashed field ${fieldName} without known value. ` +
-      `Hashed data is one-way and requires the original value from user input.`
-  );
+  try {
+    // Derive key using PBKDF2
+    const key = await deriveKeyPBKDF2(userSalt, tag);
 
-  throw new Error(`Cannot decrypt hashed field ${fieldName}`);
+    // Decode cipher and IV from base64url
+    const cipherBytes = base64urlToBytes(cipher);
+    const ivBytes = base64urlToBytes(iv);
+
+    // Decrypt using AES-256-GCM
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: ivBytes as BufferSource },
+      key,
+      cipherBytes as BufferSource
+    );
+
+    // Convert decrypted bytes to string
+    const plaintext = new TextDecoder().decode(decrypted);
+    console.log(`✅ Successfully decrypted ${fieldName}`);
+    return plaintext;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`❌ Decryption failed for ${fieldName}: ${msg}`);
+    throw new Error(`Failed to decrypt ${fieldName}: ${msg}`);
+  }
 }
 
 /**
  * Main decryption function for user profile data
+ *
+ * Decrypts all encrypted profile fields using Noble V2 AES-256-GCM
+ * No longer requires knownValues parameter - all data is encrypted and reversible
  */
 export async function decryptUserProfile(
   encryptedData: EncryptedUserData,
@@ -186,7 +274,7 @@ export async function decryptUserProfile(
   console.log("🔓 Decrypting user profile for user:", encryptedData.id);
 
   try {
-    // Decrypt all encrypted fields
+    // Decrypt all encrypted fields using Noble V2
     const [
       username,
       bio,
@@ -198,47 +286,50 @@ export async function decryptUserProfile(
       encrypted_nsec,
     ] = await Promise.all([
       decryptField(
-        "hashed_username",
-        encryptedData.hashed_username,
-        encryptedData.user_salt,
-        knownValues?.username
+        "username",
+        encryptedData.encrypted_username,
+        encryptedData.encrypted_username_iv,
+        encryptedData.encrypted_username_tag,
+        encryptedData.user_salt
       ),
       decryptField(
-        "hashed_bio",
-        encryptedData.hashed_bio,
-        encryptedData.user_salt,
-        knownValues?.bio
+        "bio",
+        encryptedData.encrypted_bio,
+        encryptedData.encrypted_bio_iv,
+        encryptedData.encrypted_bio_tag,
+        encryptedData.user_salt
       ),
       decryptField(
-        "hashed_display_name",
-        encryptedData.hashed_display_name,
-        encryptedData.user_salt,
-        knownValues?.display_name
+        "display_name",
+        encryptedData.encrypted_display_name,
+        encryptedData.encrypted_display_name_iv,
+        encryptedData.encrypted_display_name_tag,
+        encryptedData.user_salt
       ),
       decryptField(
-        "hashed_picture",
-        encryptedData.hashed_picture,
-        encryptedData.user_salt,
-        knownValues?.picture
+        "picture",
+        encryptedData.encrypted_picture,
+        encryptedData.encrypted_picture_iv,
+        encryptedData.encrypted_picture_tag,
+        encryptedData.user_salt
       ),
       decryptField(
-        "hashed_npub",
-        encryptedData.hashed_npub,
-        encryptedData.user_salt,
-        knownValues?.npub
+        "nip05",
+        encryptedData.encrypted_nip05,
+        encryptedData.encrypted_nip05_iv,
+        encryptedData.encrypted_nip05_tag,
+        encryptedData.user_salt
       ),
       decryptField(
-        "hashed_nip05",
-        encryptedData.hashed_nip05,
-        encryptedData.user_salt,
-        knownValues?.nip05
+        "lightning_address",
+        encryptedData.encrypted_lightning_address,
+        encryptedData.encrypted_lightning_address_iv,
+        encryptedData.encrypted_lightning_address_tag,
+        encryptedData.user_salt
       ),
-      decryptField(
-        "hashed_lightning_address",
-        encryptedData.hashed_lightning_address,
-        encryptedData.user_salt,
-        knownValues?.lightning_address
-      ),
+      // Note: npub and nip05 are hashed for authentication, not encrypted for display
+      // For now, return empty strings (these are typically not displayed)
+      Promise.resolve(""),
       // Use encrypted_nsec directly (already properly encrypted with Noble V2)
       Promise.resolve(encryptedData.encrypted_nsec || ""),
     ]);
@@ -336,52 +427,61 @@ export async function decryptSpecificFields(
     switch (field) {
       case "username":
         result.username = await decryptField(
-          "hashed_username",
-          encryptedData.hashed_username,
+          "username",
+          encryptedData.encrypted_username,
+          encryptedData.encrypted_username_iv,
+          encryptedData.encrypted_username_tag,
           encryptedData.user_salt
         );
         break;
       case "bio":
         result.bio = await decryptField(
-          "hashed_bio",
-          encryptedData.hashed_bio,
+          "bio",
+          encryptedData.encrypted_bio,
+          encryptedData.encrypted_bio_iv,
+          encryptedData.encrypted_bio_tag,
           encryptedData.user_salt
         );
         break;
       case "display_name":
         result.display_name = await decryptField(
-          "hashed_display_name",
-          encryptedData.hashed_display_name,
+          "display_name",
+          encryptedData.encrypted_display_name,
+          encryptedData.encrypted_display_name_iv,
+          encryptedData.encrypted_display_name_tag,
           encryptedData.user_salt
         );
         break;
       case "picture":
         result.picture = await decryptField(
-          "hashed_picture",
-          encryptedData.hashed_picture,
-          encryptedData.user_salt
-        );
-        break;
-      case "npub":
-        result.npub = await decryptField(
-          "hashed_npub",
-          encryptedData.hashed_npub,
+          "picture",
+          encryptedData.encrypted_picture,
+          encryptedData.encrypted_picture_iv,
+          encryptedData.encrypted_picture_tag,
           encryptedData.user_salt
         );
         break;
       case "nip05":
         result.nip05 = await decryptField(
-          "hashed_nip05",
-          encryptedData.hashed_nip05,
+          "nip05",
+          encryptedData.encrypted_nip05,
+          encryptedData.encrypted_nip05_iv,
+          encryptedData.encrypted_nip05_tag,
           encryptedData.user_salt
         );
         break;
       case "lightning_address":
         result.lightning_address = await decryptField(
-          "hashed_lightning_address",
-          encryptedData.hashed_lightning_address,
+          "lightning_address",
+          encryptedData.encrypted_lightning_address,
+          encryptedData.encrypted_lightning_address_iv,
+          encryptedData.encrypted_lightning_address_tag,
           encryptedData.user_salt
         );
+        break;
+      case "npub":
+        // npub is hashed for authentication, not encrypted for display
+        result.npub = "";
         break;
     }
   }

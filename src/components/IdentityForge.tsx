@@ -77,6 +77,10 @@ const rawPkarrFlag =
   (typeof process !== 'undefined' ? (process as any)?.env?.VITE_PKARR_ENABLED : undefined);
 const PKARR_ENABLED: boolean = String(rawPkarrFlag ?? '').toLowerCase() === 'true';
 
+// Task 7: Feature flags for NIP-03 attestation (Phase 2 Week 3 Day 9)
+const NIP03_ENABLED: boolean = clientConfig.flags.nip03Enabled ?? false;
+const NIP03_IDENTITY_CREATION_ENABLED: boolean = clientConfig.flags.nip03IdentityCreationEnabled ?? false;
+
 
 
 
@@ -158,8 +162,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     agreedToTerms: false,
   });
   // Multi-domain NIP-05 + external Lightning Address support
-  const allowedDomains = (config?.nip05?.allowedDomains || ["satnam.pub"]).filter((d: string) => typeof d === 'string' && d.trim());
-  const [selectedDomain, setSelectedDomain] = useState<string>(allowedDomains[0] || "satnam.pub");
+  // Initialize from dynamic resolver to ensure white-label compatibility
+  const platformDomain = resolvePlatformLightningDomain();
+  const allowedDomains = (config?.nip05?.allowedDomains || [platformDomain]).filter((d: string) => typeof d === 'string' && d.trim());
+  const [selectedDomain, setSelectedDomain] = useState<string>(allowedDomains[0] || platformDomain);
   const [externalLightningAddress, setExternalLightningAddress] = useState<string>("");
   const [extAddrValid, setExtAddrValid] = useState<boolean | null>(null);
   const [extAddrReachable, setExtAddrReachable] = useState<boolean | null>(null);
@@ -172,6 +178,26 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   async function verifyLightningAddressReachable(local: string, domain: string): Promise<boolean> {
     return isLightningAddressReachable(`${local}@${domain}`);
+  }
+
+  // Helper function to determine the correct Lightning Address to display
+  // Respects user's choices: external address > custom domain > platform default
+  function getDisplayLightningAddress(backendAddress?: string): string {
+    // Priority 1: Backend-provided Lightning Address (from registration response)
+    if (backendAddress) return backendAddress;
+
+    // Priority 2: User's external Lightning Address (if provided and validated)
+    if (externalLightningAddress && extAddrValid && extAddrReachable) {
+      return externalLightningAddress;
+    }
+
+    // Priority 3: User's selected domain (if different from platform default)
+    if (selectedDomain && selectedDomain !== platformDomain) {
+      return `${formData.username}@${selectedDomain}`;
+    }
+
+    // Priority 4: Platform default domain
+    return `${formData.username}@${platformDomain}`;
   }
 
   useEffect(() => {
@@ -278,6 +304,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [pkarrPublishing, setPkarrPublishing] = useState(false);
   const [pkarrPublished, setPkarrPublished] = useState(false);
   const [pkarrError, setPkarrError] = useState<string | null>(null);
+
+  // NIP-03 Attestation State (Phase 2 Week 3 Day 9)
+  const [kind0EventId, setKind0EventId] = useState<string | null>(null);
+  const [nip03EventId, setNip03EventId] = useState<string | null>(null);
+  const [attestationStatus, setAttestationStatus] = useState<'pending' | 'success' | 'failure' | 'skipped' | null>(null);
+  const [nip03AttestationError, setNip03AttestationError] = useState<string | null>(null);
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   // Use refs to track current values for cleanup without triggering effect re-runs
@@ -714,6 +746,11 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     }
   };
 
+  // Task 7: Helper function to check if NIP-03 attestation is enabled
+  const isNip03AttestationEnabled = (): boolean => {
+    return NIP03_ENABLED && NIP03_IDENTITY_CREATION_ENABLED && SIMPLEPROOF_ENABLED;
+  };
+
   // PKARR Publishing (Phase 2A - Day 4)
   const publishPkarrRecord = async () => {
     if (!PKARR_ENABLED || !ephemeralNsec || !formData.pubkey) {
@@ -846,9 +883,23 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
 
       // Publish centrally using the active SecureSession
+      let publishedEventId: string | null = null;
       try {
+        // Task 2: Capture Kind:0 event ID after publishing
+        // Add timeout to prevent hanging on relay issues
+        const publishPromise = central_event_publishing_service.publishProfile(ephemeralNsec, profileMetadata);
+        const timeoutPromise = new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('Profile publishing timeout')), 15000) // 15 second timeout
+        );
+        publishedEventId = await Promise.race([publishPromise, timeoutPromise]);
 
-        await central_event_publishing_service.publishProfile(ephemeralNsec, profileMetadata);
+        // Validate event ID format (64-character hex string)
+        if (publishedEventId && /^[0-9a-f]{64}$/i.test(publishedEventId)) {
+          console.log('✅ Kind:0 event published with ID:', publishedEventId);
+          setKind0EventId(publishedEventId);
+        } else {
+          console.warn('⚠️ Invalid Kind:0 event ID format:', publishedEventId);
+        }
       } catch (pubErr) {
         console.warn('Profile event signed but publish failed or skipped:', pubErr instanceof Error ? pubErr.message : pubErr);
       }
@@ -1234,6 +1285,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       secureMemoryWipe(ephemeralNsec);
       console.log('🛡️ SECURITY: Ephemeral secret wiped from memory after preparation');
 
+      // Task 3: Update registration API call payload with Kind:0 event ID
+      // Task 7: Only include Kind:0 event ID if NIP-03 attestation is enabled
       const requestData = {
         username: formData.username,
         password: formData.password,
@@ -1248,10 +1301,31 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         // Include import account information
         isImportedAccount: migrationMode === 'import',
         detectedProfile: detectedProfile,
+        // Task 3: Include Kind:0 event ID for NIP-03 attestation (optional, only if NIP-03 enabled)
+        ...(isNip03AttestationEnabled() && kind0EventId ? { kind0_event_id: kind0EventId } : {}),
       };
 
 
       const result = await apiClient.storeUserData(requestData);
+
+      // Task 4: Handle NIP-03 attestation responses
+      if (result.attestation) {
+        console.log('📜 Attestation response received:', result.attestation);
+        if (result.attestation.nip03_event_id) {
+          setNip03EventId(result.attestation.nip03_event_id);
+        }
+        if (result.attestation.attestation_status) {
+          setAttestationStatus(result.attestation.attestation_status);
+          if (result.attestation.attestation_status === 'success') {
+            console.log('✅ NIP-03 attestation successful');
+          } else if (result.attestation.attestation_status === 'failure') {
+            console.warn('❌ NIP-03 attestation failed:', result.attestation.error);
+            setNip03AttestationError(result.attestation.error || 'Attestation failed');
+          } else if (result.attestation.attestation_status === 'skipped') {
+            console.log('⏭️ NIP-03 attestation skipped (feature flags disabled)');
+          }
+        }
+      }
 
       // CRITICAL: Secure cleanup of ephemeral nsec from memory immediately after encryption
       secureMemoryCleanup(ephemeralNsec);
@@ -3053,7 +3127,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         </div>
                         <div className="flex justify-between">
                           <span className="text-green-300">Lightning Address (Bitcoin Payments):</span>
-                          <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress || `${registrationResult.user.username}@${resolvePlatformLightningDomain()}`}</span>
+                          <span className="text-green-100 font-mono">{getDisplayLightningAddress(registrationResult.user.lightningAddress)}</span>
                         </div>
                         {PKARR_ENABLED && (
                           <div className="flex justify-between items-center">
@@ -3083,7 +3157,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           data={JSON.stringify({
                             username: registrationResult.user.username,
                             nip05: registrationResult.user.nip05 || `${registrationResult.user.username}@${selectedDomain}`,
-                            lightningAddress: registrationResult.user.lightningAddress || `${registrationResult.user.username}@${resolvePlatformLightningDomain()}`,
+                            lightningAddress: getDisplayLightningAddress(registrationResult.user.lightningAddress),
                             createdAt: new Date().toISOString(),
                           })}
                           verificationId={verificationId}
