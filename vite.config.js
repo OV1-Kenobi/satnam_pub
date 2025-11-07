@@ -395,6 +395,65 @@ export default defineConfig({
               return 'wallet-components';
             }
 
+            // Platform and ecosystem components - large feature area
+            if (id.includes('NostrEcosystem') ||
+                id.includes('DynasticSovereignty') ||
+                id.includes('EducationPlatform') ||
+                id.includes('SovereignFamilyBanking') ||
+                id.includes('SovereigntyEducation') ||
+                id.includes('FeaturesOverview') ||
+                id.includes('VisibilityModeExplainer') ||
+                id.includes('FamilyFedimintGovernance') ||
+                id.includes('FamilyLightningTreasury') ||
+                id.includes('UnifiedFamilyPayments') ||
+                id.includes('FamilyCoordination') ||
+                id.includes('FamilyOnboarding') ||
+                id.includes('PhoenixDFamilyManager') ||
+                id.includes('GuardianOnboardingGuide') ||
+                id.includes('NameTagCredentialingQuest')) {
+              return 'platform-components';
+            }
+
+            // Utility and shared UI components
+            if (id.includes('ErrorBoundary') ||
+                id.includes('ContactCard') ||
+                id.includes('ContactsList') ||
+                id.includes('TransactionHistory') ||
+                id.includes('Settings') ||
+                id.includes('CreditsBalance') ||
+                id.includes('CryptoPreloader') ||
+                id.includes('CryptoProvider') ||
+                id.includes('ContextualAvatar') ||
+                id.includes('OperationTypeBadge') ||
+                id.includes('ToastContainer') ||
+                id.includes('ProtectedRoute') ||
+                id.includes('FeatureGate') ||
+                id.includes('ApiStatus') ||
+                id.includes('ServerStatus') ||
+                id.includes('PrivacyControls') ||
+                id.includes('ProfileURLDisplay') ||
+                id.includes('ProfileVisibilitySettings') ||
+                id.includes('PublicProfilePage') ||
+                id.includes('SupabaseConfigModal') ||
+                id.includes('AtomicSwapModal') ||
+                id.includes('NWCModal') ||
+                id.includes('KeyImportForm') ||
+                id.includes('MaxPrivacyAuth') ||
+                id.includes('IndividualAuth') ||
+                id.includes('PrivacyFirstIdentityManager') ||
+                id.includes('PrivacyFirstMessaging') ||
+                id.includes('FrostSignaturePanel') ||
+                id.includes('PhoenixDNodeStatus') ||
+                id.includes('IndividualPaymentDashboard') ||
+                id.includes('PaymentAutomationCard') ||
+                id.includes('AddContactForm') ||
+                id.includes('EditContactForm') ||
+                id.includes('ContactsManagerModal') ||
+                id.includes('NotificationsTab') ||
+                id.includes('OTPVerificationPanel')) {
+              return 'ui-utils-components';
+            }
+
             // Everything else stays in components
             return 'components';
           }
