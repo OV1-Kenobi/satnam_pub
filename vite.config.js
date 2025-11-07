@@ -66,6 +66,9 @@ export default defineConfig({
       { find: "@/services", replacement: resolve("src/services") },
       { find: "@/types", replacement: resolve("src/types") },
       { find: "@/utils", replacement: resolve("src/utils") },
+      // Axios TDZ fix: force browser platform and prebundled browser build
+      { find: /axios\/lib\/platform\/node\/index\.js$/, replacement: "axios/lib/platform/browser/index.js" },
+      { find: /^axios$/, replacement: "axios/dist/browser/axios.cjs" },
       { find: "@", replacement: resolve("src") },
     ],
   },
@@ -183,9 +186,8 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase - bundle ALL @supabase/* packages together to prevent circular dependencies
-            // This includes @supabase/supabase-js, @supabase/postgrest-js, @supabase/realtime-js, @supabase/node-fetch, etc.
-            if (id.includes('@supabase/')) {
+            // Supabase: bundle all @supabase/* packages into one vendor chunk
+            if (id.includes('node_modules/@supabase/')) {
               return 'supabase-vendor';
             }
 
@@ -203,6 +205,11 @@ export default defineConfig({
             // FROST and cryptographic signing
             if (id.includes('@cmdcode/frost') || id.includes('@frostr/bifrost')) {
               return 'frost-vendor';
+            }
+
+            // Axios: isolate to its own chunk to avoid TDZ from platform aggregator
+            if (id.includes('node_modules/axios/')) {
+              return 'axios-vendor';
             }
 
             // Phoenix and Lightning server libraries
@@ -286,11 +293,15 @@ export default defineConfig({
             return 'api-modules';
           }
 
-          // Supabase and database: allow Vite to chunk automatically to prevent evaluation-order issues
-          // Intentionally do not force a separate 'database' chunk to avoid cross-chunk cycles
-          // if (id.includes('src/lib/supabase')) {
-          //   return 'database';
-          // }
+          // Supabase wrapper: force into supabase-vendor to avoid split wrapper chunk
+          if (id.includes('src/lib/supabase')) {
+            return 'supabase-vendor';
+          }
+
+          // Netlify Functions supabase server client: unify with supabase-vendor to avoid extra wrapper chunk
+          if (id.includes('netlify/functions/supabase')) {
+            return 'supabase-vendor';
+          }
 
           // Authentication - keep together (including recent auth-adapter changes)
           if (id.includes('src/lib/auth/') ||

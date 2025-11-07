@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import AppWithErrorBoundary from './App';
 import { AuthProvider } from "./components/auth/AuthProvider";
 import { CryptoPreloader } from "./components/CryptoPreloader";
+import { getEnvVar } from './config/env.client';
 import "./index.css";
 import { initializeSentry } from "./lib/sentry";
 
@@ -121,7 +122,8 @@ createRoot(document.getElementById("root")!).render(
 
 
 // Register service worker for PWA (feature-flagged)
-const ENABLE_PWA = import.meta.env?.VITE_ENABLE_PWA === 'true';
+// CRITICAL FIX: Use getEnvVar() for module-level access to prevent TDZ errors
+const ENABLE_PWA = (getEnvVar('VITE_ENABLE_PWA') || 'false') === 'true';
 
 if (ENABLE_PWA && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useState } from "react";
+import { getEnvVar } from "../config/env.client";
 import { makeSunBinding } from "../lib/nip42/challenge-binding";
 import { authenticateWithRelays } from "../lib/nip42/relay-auth";
 
@@ -19,8 +20,8 @@ export interface ProductionNTAG424AuthState {
   error?: string | null;
 }
 
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE_URL as string) || "/api";
+// CRITICAL FIX: Use getEnvVar() for module-level access to prevent TDZ errors
+const API_BASE: string = getEnvVar("VITE_API_BASE_URL") || "/api";
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   try {
@@ -40,8 +41,9 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
  */
 export const useProductionNTAG424 = () => {
   // Feature flag check: NFC MFA must be enabled
+  // CRITICAL FIX: Use getEnvVar() for module-level access to prevent TDZ errors
   const NFC_MFA_ENABLED =
-    (import.meta.env.VITE_ENABLE_NFC_MFA as string) === "true";
+    (getEnvVar("VITE_ENABLE_NFC_MFA") || "false") === "true";
 
   const [authState, setAuthState] = useState<ProductionNTAG424AuthState>({
     isAuthenticated: false,
