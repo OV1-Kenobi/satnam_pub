@@ -183,8 +183,9 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase
-            if (id.includes('@supabase/supabase-js')) {
+            // Supabase - bundle ALL @supabase/* packages together to prevent circular dependencies
+            // This includes @supabase/supabase-js, @supabase/postgrest-js, @supabase/realtime-js, @supabase/node-fetch, etc.
+            if (id.includes('@supabase/')) {
               return 'supabase-vendor';
             }
 
@@ -320,12 +321,6 @@ export default defineConfig({
             return 'lightning';
           }
 
-          // Tapsigner NFC card library (feature-flagged, can be lazy-loaded)
-          if (id.includes('src/lib/tapsigner/') ||
-              id.includes('src/lib/signers/tapsigner-adapter')) {
-            return 'tapsigner-lib';
-          }
-
           // Privacy and security utilities
           if (id.includes('src/lib/privacy/') ||
               id.includes('src/lib/security/') ||
@@ -335,26 +330,6 @@ export default defineConfig({
 
           // PHASE 2: Components - split by feature and directory
           if (id.includes('src/components/')) {
-            // Tapsigner NFC card components (feature-flagged, can be lazy-loaded)
-            if (id.includes('Tapsigner') ||
-                id.includes('ActionContextSelector')) {
-              return 'tapsigner-components';
-            }
-
-            // Identity and attestation components (feature-flagged)
-            if (id.includes('src/components/identity/') ||
-                id.includes('src/components/attestation/') ||
-                id.includes('IdentityForge') ||
-                id.includes('KeyRotation') ||
-                id.includes('KeyImport')) {
-              return 'identity-components';
-            }
-
-            // Iroh and decentralized components (feature-flagged)
-            if (id.includes('src/components/iroh/')) {
-              return 'iroh-components';
-            }
-
             // Public landing pages (lazy-loaded)
             if (id.includes('src/components/pages/')) {
               return 'landing-pages';
@@ -430,11 +405,8 @@ export default defineConfig({
             return 'services';
           }
 
-          // Hooks - split Tapsigner hooks separately (feature-flagged)
+          // Hooks
           if (id.includes('src/hooks/')) {
-            if (id.includes('useTapsigner')) {
-              return 'tapsigner-hooks';
-            }
             return 'hooks';
           }
 
