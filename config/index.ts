@@ -222,8 +222,12 @@ interface PrivacyConfig {
  * @returns {string|undefined} Environment variable value
  */
 function getEnvVar(key: string): string | undefined {
-  // Server/runtime only: prefer process.env for Netlify Functions and Node
-  return process.env[key];
+  // CRITICAL FIX: Check if process exists before accessing (prevents TDZ errors in browser builds)
+  if (typeof process !== "undefined" && process.env) {
+    return process.env[key];
+  }
+  // Browser fallback: return undefined (Vite will inject via define in vite.config.js)
+  return undefined;
 }
 
 /**
