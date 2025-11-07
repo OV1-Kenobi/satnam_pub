@@ -193,6 +193,10 @@ $$ LANGUAGE plpgsql;
 ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rate_limit_events ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (prevents 42710 error on re-run)
+DROP POLICY IF EXISTS rate_limits_service_full_access ON public.rate_limits;
+DROP POLICY IF EXISTS rate_limit_events_service_full_access ON public.rate_limit_events;
+
 -- Service role has full access (used by Netlify Functions)
 CREATE POLICY rate_limits_service_full_access ON public.rate_limits
     FOR ALL

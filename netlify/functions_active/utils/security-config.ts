@@ -102,7 +102,7 @@ export const CSP_POLICIES = {
 
   /** Relaxed policy for development (includes localhost) */
   DEVELOPMENT:
-    "default-src 'self' http://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self'; connect-src 'self' http://localhost:* https://www.satnam.pub https://my.satnam.pub; frame-ancestors 'none'",
+    "default-src 'self' http://localhost:* http://127.0.0.1:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://*.supabase.co wss://*.supabase.co https://www.satnam.pub https://my.satnam.pub; frame-ancestors 'none'",
 
   /** Get CSP policy based on environment and endpoint type */
   getPolicy(type: "strict" | "api" | "default" = "api"): string {

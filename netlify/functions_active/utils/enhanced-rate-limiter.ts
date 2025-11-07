@@ -21,7 +21,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { getEnvVar, getRequiredEnvVar } from "./env.js";
+import { getEnvVar } from "./env.js";
 
 /**
  * Rate limit configuration for different endpoint types
@@ -40,6 +40,7 @@ export const RATE_LIMITS = {
   IDENTITY_VERIFY: { limit: 50, windowMs: 60 * 60 * 1000 }, // 50 req/hr
   NFC_OPERATIONS: { limit: 20, windowMs: 60 * 60 * 1000 }, // 20 req/hr
   WALLET_OPERATIONS: { limit: 30, windowMs: 60 * 60 * 1000 }, // 30 req/hr
+  TAPSIGNER_NOSTR_SIGNING: { limit: 10, windowMs: 60 * 1000 }, // 10 req/min per card
   DEFAULT: { limit: 30, windowMs: 60 * 1000 }, // 30 req/min
 } as const;
 
@@ -59,7 +60,9 @@ export interface RateLimitConfig {
  * @param headers - Request headers object
  * @returns Client IP address
  */
-export function getClientIP(headers: Record<string, string | string[]>): string {
+export function getClientIP(
+  headers: Record<string, string | string[]>
+): string {
   // Check headers in order of preference
   // x-forwarded-for: comma-separated list of IPs (first is client)
   const xForwardedFor = headers["x-forwarded-for"];
@@ -108,7 +111,9 @@ export async function checkRateLimit(
     const key = supabaseKey || getEnvVar("SUPABASE_ANON_KEY");
 
     if (!url || !key) {
-      console.warn("Rate limiting disabled: Supabase credentials not available");
+      console.warn(
+        "Rate limiting disabled: Supabase credentials not available"
+      );
       return true; // Allow request if rate limiter is unavailable
     }
 
@@ -234,10 +239,7 @@ export async function resetRateLimit(
 
     const supabase = createClient(url, key);
 
-    await supabase
-      .from("rate_limits")
-      .delete()
-      .eq("identifier", identifier);
+    await supabase.from("rate_limits").delete().eq("identifier", identifier);
   } catch (error) {
     console.error("Rate limit reset failed:", error);
     throw error;
@@ -295,4 +297,3 @@ export async function getRateLimitStatus(
     return null;
   }
 }
-

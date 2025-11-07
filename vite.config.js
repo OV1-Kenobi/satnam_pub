@@ -9,12 +9,12 @@ function getEnvVar(key) {
   if (typeof import.meta !== "undefined" && import.meta.env) {
     return import.meta.env[key];
   }
-
+  
   // Fallback to process.env (Node.js context)
   if (typeof process !== "undefined" && process.env) {
     return process.env[key];
   }
-
+  
   return undefined;
 }
 
@@ -66,10 +66,6 @@ export default defineConfig({
       { find: "@/services", replacement: resolve("src/services") },
       { find: "@/types", replacement: resolve("src/types") },
       { find: "@/utils", replacement: resolve("src/utils") },
-      // Axios TDZ fix: force browser platform and prebundled browser build
-      { find: /axios\/lib\/platform\/node\/index\.js$/, replacement: "axios/lib/platform/browser/index.js" },
-      { find: /^axios$/, replacement: "axios/dist/browser/axios.cjs" },
-
       { find: "@", replacement: resolve("src") },
     ],
   },
@@ -187,8 +183,8 @@ export default defineConfig({
               return 'seo-vendor';
             }
 
-            // Supabase: bundle all @supabase/* packages into one vendor chunk
-            if (id.includes('node_modules/@supabase/')) {
+            // Supabase
+            if (id.includes('@supabase/supabase-js')) {
               return 'supabase-vendor';
             }
 
@@ -206,11 +202,6 @@ export default defineConfig({
             // FROST and cryptographic signing
             if (id.includes('@cmdcode/frost') || id.includes('@frostr/bifrost')) {
               return 'frost-vendor';
-            }
-
-            // Axios: isolate to its own chunk to avoid TDZ from platform aggregator
-            if (id.includes('node_modules/axios/')) {
-              return 'axios-vendor';
             }
 
             // Phoenix and Lightning server libraries
@@ -294,15 +285,11 @@ export default defineConfig({
             return 'api-modules';
           }
 
-          // Supabase wrapper: force into supabase-vendor to avoid split wrapper chunk
-          if (id.includes('src/lib/supabase')) {
-            return 'supabase-vendor';
-          }
-
-          // Netlify Functions supabase server client: unify with supabase-vendor to avoid extra wrapper chunk
-          if (id.includes('netlify/functions/supabase')) {
-            return 'supabase-vendor';
-          }
+          // Supabase and database: allow Vite to chunk automatically to prevent evaluation-order issues
+          // Intentionally do not force a separate 'database' chunk to avoid cross-chunk cycles
+          // if (id.includes('src/lib/supabase')) {
+          //   return 'database';
+          // }
 
           // Authentication - keep together (including recent auth-adapter changes)
           if (id.includes('src/lib/auth/') ||
@@ -333,6 +320,12 @@ export default defineConfig({
             return 'lightning';
           }
 
+          // Tapsigner NFC card library (feature-flagged, can be lazy-loaded)
+          if (id.includes('src/lib/tapsigner/') ||
+              id.includes('src/lib/signers/tapsigner-adapter')) {
+            return 'tapsigner-lib';
+          }
+
           // Privacy and security utilities
           if (id.includes('src/lib/privacy/') ||
               id.includes('src/lib/security/') ||
@@ -342,6 +335,26 @@ export default defineConfig({
 
           // PHASE 2: Components - split by feature and directory
           if (id.includes('src/components/')) {
+            // Tapsigner NFC card components (feature-flagged, can be lazy-loaded)
+            if (id.includes('Tapsigner') ||
+                id.includes('ActionContextSelector')) {
+              return 'tapsigner-components';
+            }
+
+            // Identity and attestation components (feature-flagged)
+            if (id.includes('src/components/identity/') ||
+                id.includes('src/components/attestation/') ||
+                id.includes('IdentityForge') ||
+                id.includes('KeyRotation') ||
+                id.includes('KeyImport')) {
+              return 'identity-components';
+            }
+
+            // Iroh and decentralized components (feature-flagged)
+            if (id.includes('src/components/iroh/')) {
+              return 'iroh-components';
+            }
+
             // Public landing pages (lazy-loaded)
             if (id.includes('src/components/pages/')) {
               return 'landing-pages';
@@ -417,8 +430,11 @@ export default defineConfig({
             return 'services';
           }
 
-          // Hooks
+          // Hooks - split Tapsigner hooks separately (feature-flagged)
           if (id.includes('src/hooks/')) {
+            if (id.includes('useTapsigner')) {
+              return 'tapsigner-hooks';
+            }
             return 'hooks';
           }
 

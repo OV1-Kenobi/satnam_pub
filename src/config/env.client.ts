@@ -85,6 +85,11 @@ export type ClientConfig = {
     profileAnalyticsEnabled: boolean; // Phase 3: Enable privacy-first profile analytics (default: false)
     profileCustomizationEnabled: boolean; // Phase 3: Enable profile customization (themes, banners, social links, default: false)
     blossomUploadEnabled: boolean; // Phase 4B: Enable Blossom image uploads (default: false)
+    // Phase 1: Tapsigner NFC Card Integration
+    tapsignerEnabled: boolean; // Phase 1: Master toggle for Tapsigner integration
+    tapsignerLnbitsEnabled: boolean; // Phase 1: LNbits integration for Tapsigner cards
+    tapsignerTapToSpendEnabled: boolean; // Phase 1: Tap-to-spend payment functionality
+    tapsignerDebugEnabled: boolean; // Phase 1: Debug logging for Tapsigner operations
   };
 };
 
@@ -279,6 +284,28 @@ const BLOSSOM_UPLOAD_ENABLED =
     .toString()
     .toLowerCase() === "true";
 
+// Phase 1: Tapsigner NFC Card Integration - Master toggle; default: true
+const TAPSIGNER_ENABLED =
+  (getEnvVar("VITE_TAPSIGNER_ENABLED") || "true").toString().toLowerCase() ===
+  "true";
+
+// Phase 1: Tapsigner LNbits integration; default: true
+const TAPSIGNER_LNBITS_ENABLED =
+  (getEnvVar("VITE_TAPSIGNER_LNBITS_ENABLED") || "true")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: Tapsigner tap-to-spend payment functionality; default: true
+const TAPSIGNER_TAP_TO_SPEND_ENABLED =
+  (getEnvVar("VITE_TAPSIGNER_TAP_TO_SPEND_ENABLED") || "true")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 1: Tapsigner debug logging; default: false (opt-in for development)
+const TAPSIGNER_DEBUG_ENABLED =
+  (getEnvVar("VITE_TAPSIGNER_DEBUG") || "false").toString().toLowerCase() ===
+  "true";
+
 export const clientConfig: ClientConfig = {
   lnbits: {
     // Only required when LNbits integration is enabled
@@ -356,6 +383,11 @@ export const clientConfig: ClientConfig = {
     profileCustomizationEnabled: PROFILE_CUSTOMIZATION_ENABLED,
     // Phase 4B: Banner Management flags
     blossomUploadEnabled: BLOSSOM_UPLOAD_ENABLED,
+    // Phase 1: Tapsigner NFC Card Integration
+    tapsignerEnabled: TAPSIGNER_ENABLED,
+    tapsignerLnbitsEnabled: TAPSIGNER_LNBITS_ENABLED,
+    tapsignerTapToSpendEnabled: TAPSIGNER_TAP_TO_SPEND_ENABLED,
+    tapsignerDebugEnabled: TAPSIGNER_DEBUG_ENABLED,
   },
 } as const;
 

@@ -8,6 +8,7 @@ import AmberAdapter from "./amber-adapter";
 import Nip05PasswordAdapter from "./nip05-password-adapter";
 import Nip07Adapter from "./nip07-adapter";
 import Ntag424Adapter from "./ntag424-adapter";
+import TapsignerAdapter from "./tapsigner-adapter";
 
 function getFlag(key: string, def: boolean): boolean {
   try {
@@ -41,6 +42,12 @@ try {
   try {
     if (getFlag("VITE_ENABLE_AMBER_SIGNING", false)) {
       CEPS.registerExternalSigner(new AmberAdapter());
+    }
+  } catch {}
+  // Conditionally register Tapsigner NFC card signer
+  try {
+    if (getFlag("VITE_TAPSIGNER_ENABLED", false)) {
+      CEPS.registerExternalSigner(new TapsignerAdapter());
     }
   } catch {}
 } catch {}

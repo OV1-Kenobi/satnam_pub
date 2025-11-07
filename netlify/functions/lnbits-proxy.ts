@@ -240,6 +240,8 @@ const ACTIONS = {
   syncBoltcards: { scope: "wallet" as const },
   // Webhooks from external LNbits server
   webhookPayment: { scope: "public" as const },
+  // Tapsigner multi-purpose device authorization
+  tapsignerAuthorizeAction: { scope: "wallet" as const },
 } as const;
 
 type ActionName = keyof typeof ACTIONS;
@@ -860,6 +862,71 @@ export const handler = async (event: any) => {
     }
 
     switch (action) {
+      case "tapsignerAuthorizeAction": {
+        // Multi-purpose Tapsigner action authorization
+        // Routes to tapsigner-unified /authorize_action endpoint
+        const cardId = String(payload?.cardId || "").trim();
+        const actionType = String(payload?.actionType || "").trim();
+        const contextData = payload?.contextData || {};
+
+        if (!cardId || !actionType) {
+          return createValidationErrorResponse(
+            "Missing cardId or actionType",
+            requestId,
+            requestOrigin
+          );
+        }
+
+        if (!["payment", "event", "login"].includes(actionType)) {
+          return createValidationErrorResponse(
+            "Invalid actionType: must be payment, event, or login",
+            requestId,
+            requestOrigin
+          );
+        }
+
+        try {
+          // Call tapsigner-unified endpoint with PIN parameter
+          const tapsignerUrl = `${
+            process.env.NETLIFY_SITE_URL || "http://localhost:8888"
+          }/.netlify/functions/tapsigner-unified/authorize_action`;
+          const authHeader = event.headers?.authorization || "";
+          const pin = String(payload?.pin || "").trim(); // 6-digit PIN from frontend
+
+          const response = await fetch(tapsignerUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
+            body: JSON.stringify({
+              cardId,
+              actionType,
+              contextData,
+              pin: pin || undefined, // Include PIN if provided
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            return json(response.status, result);
+          }
+
+          return json(200, result);
+        } catch (err: any) {
+          logError(err, {
+            requestId,
+            endpoint: "lnbits-proxy",
+            action: "tapsignerAuthorizeAction",
+          });
+          return json(500, {
+            success: false,
+            error: "Tapsigner authorization failed",
+          });
+        }
+      }
+
       case "payInvoice": {
         const invoice = String(payload?.invoice || "").trim();
         if (!invoice)

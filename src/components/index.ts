@@ -80,6 +80,12 @@ export { CryptoPreloader } from "./CryptoPreloader";
 export { CryptoProvider } from "./CryptoProvider";
 export { default as NostrEcosystem } from "./NostrEcosystem";
 
+// Tapsigner NFC Card Integration
+export { ActionContextSelector } from "./ActionContextSelector";
+export { default as TapsignerAuthModal } from "./TapsignerAuthModal";
+export { TapsignerPinEntry } from "./TapsignerPinEntry";
+export { default as TapsignerStatusDisplay } from "./TapsignerStatusDisplay";
+
 // Status & Monitoring
 export { default as ApiStatus } from "./ApiStatus";
 export { default as ServerStatus } from "./ServerStatus";

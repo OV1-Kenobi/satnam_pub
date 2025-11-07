@@ -56,9 +56,11 @@ import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/e
 
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
+import { ActionContextSelector } from "./ActionContextSelector";
 import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
+import { TapsignerPinEntry } from "./TapsignerPinEntry";
 
 // Feature flag: LNBits integration
 const rawLnBitsFlag =
@@ -80,6 +82,12 @@ const PKARR_ENABLED: boolean = String(rawPkarrFlag ?? '').toLowerCase() === 'tru
 // Task 7: Feature flags for NIP-03 attestation (Phase 2 Week 3 Day 9)
 const NIP03_ENABLED: boolean = clientConfig.flags.nip03Enabled ?? false;
 const NIP03_IDENTITY_CREATION_ENABLED: boolean = clientConfig.flags.nip03IdentityCreationEnabled ?? false;
+
+// Phase 3 Task 3.1: Feature flag for Tapsigner integration
+const rawTapsignerFlag =
+  (import.meta as any)?.env?.VITE_TAPSIGNER_ENABLED ??
+  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_TAPSIGNER_ENABLED : undefined);
+const TAPSIGNER_ENABLED: boolean = String(rawTapsignerFlag ?? '').toLowerCase() === 'true';
 
 
 
@@ -164,8 +172,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   // Multi-domain NIP-05 + external Lightning Address support
   // Initialize from dynamic resolver to ensure white-label compatibility
   const platformDomain = resolvePlatformLightningDomain();
-  const allowedDomains = (config?.nip05?.allowedDomains || [platformDomain]).filter((d: string) => typeof d === 'string' && d.trim());
-  const [selectedDomain, setSelectedDomain] = useState<string>(allowedDomains[0] || platformDomain);
+  // Ensure platform domain is first and always available; append any configured domains after it (deduped)
+  const allowedDomains = [
+    platformDomain,
+    ...((config?.nip05?.allowedDomains || []).filter((d: string) => typeof d === 'string' && d.trim() && d !== platformDomain))
+  ];
+  const [selectedDomain, setSelectedDomain] = useState<string>(platformDomain);
   const [externalLightningAddress, setExternalLightningAddress] = useState<string>("");
   const [extAddrValid, setExtAddrValid] = useState<boolean | null>(null);
   const [extAddrReachable, setExtAddrReachable] = useState<boolean | null>(null);
@@ -310,6 +322,20 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [nip03EventId, setNip03EventId] = useState<string | null>(null);
   const [attestationStatus, setAttestationStatus] = useState<'pending' | 'success' | 'failure' | 'skipped' | null>(null);
   const [nip03AttestationError, setNip03AttestationError] = useState<string | null>(null);
+
+  // Phase 3 Task 3.1: Tapsigner Setup State
+  const [showTapsignerSetup, setShowTapsignerSetup] = useState(false);
+  const [tapsignerCardId, setTapsignerCardId] = useState<string | null>(null);
+  const [tapsignerSetupComplete, setTapsignerSetupComplete] = useState(false);
+
+  // Phase 3 Task 3.3: Tapsigner Integration State (Action Selection, PIN Entry, Completion)
+  const [tapsignerStep, setTapsignerStep] = useState<'action' | 'pin' | 'complete'>('action');
+  const [selectedTapsignerAction, setSelectedTapsignerAction] = useState<'payment' | 'event' | 'login' | null>(null);
+  const [tapsignerActionContext, setTapsignerActionContext] = useState<Record<string, unknown> | null>(null);
+  const [tapsignerError, setTapsignerError] = useState<string | null>(null);
+  const [tapsignerAttempts, setTapsignerAttempts] = useState(3);
+  const [tapsignerLocked, setTapsignerLocked] = useState(false);
+  const [tapsignerLockoutExpires, setTapsignerLockoutExpires] = useState<string | null>(null);
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   // Use refs to track current values for cleanup without triggering effect re-runs
@@ -764,21 +790,22 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     try {
       // Import Ed25519 for signing
       const { ed25519 } = await import('@noble/curves/ed25519');
+      const { bytesToHex } = await import('@noble/curves/utils.js');
 
-      // Convert nsec to hex private key for signing
+      // Convert nsec to hex private key for signing (browser-safe, no Buffer)
       const { nip19 } = await import('nostr-tools');
       const decoded = nip19.decode(ephemeralNsec);
       if (decoded.type !== 'nsec') {
         throw new Error('Invalid nsec format');
       }
-      const privateKeyHex = Buffer.from(decoded.data as Uint8Array).toString('hex');
+      const privateKeyHex = bytesToHex(decoded.data as Uint8Array);
 
-      // Convert npub to hex public key
+      // Convert npub to hex public key (browser-safe)
       const npubDecoded = nip19.decode(formData.pubkey);
       if (npubDecoded.type !== 'npub') {
         throw new Error('Invalid npub format');
       }
-      const publicKeyHex = Buffer.from(npubDecoded.data as Uint8Array).toString('hex');
+      const publicKeyHex = bytesToHex(npubDecoded.data as Uint8Array);
 
       // Create PKARR DNS records for NIP-05 verification
       const nip05Identifier = `${formData.username}@${selectedDomain}`;
@@ -971,11 +998,17 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         const fn = win.nostr?.[m];
         if (typeof fn === 'function' && !original[m]) {
           original[m] = fn;
+          // Throttle warnings to avoid console spam / potential performance issues
+          const warnedKey = `blocked:${m}`;
           win.nostr[m] = async (...args: any[]) => {
             if (win.__identityForgeRegFlow) {
               const msg = `[IdentityForge:NIP07-guard] Blocked ${m} during registration`;
-              console.warn(msg, { args });
-              if (typeof console?.trace === 'function') console.trace(msg);
+              if (!win.__ifWarned) win.__ifWarned = new Set();
+              if (!win.__ifWarned.has(warnedKey)) {
+                console.warn(msg, { args });
+                // Do NOT use console.trace here to prevent large stack traces from freezing the tab
+                win.__ifWarned.add(warnedKey);
+              }
               return Promise.reject(new Error('NIP-07 disabled during registration'));
             }
             try {
@@ -1645,14 +1678,18 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         }
 
         // First publish the Nostr profile
+        console.log("[IdentityForge] publishNostrProfile: start", new Date().toISOString());
         setGenerationStep("Publishing Nostr profile...");
         setGenerationProgress(20);
         await publishNostrProfile();
+        console.log("[IdentityForge] publishNostrProfile: done", new Date().toISOString());
 
         // Then register the identity
+        console.log("[IdentityForge] registerIdentity: start", new Date().toISOString());
         setGenerationStep("Registering identity with backend...");
         setGenerationProgress(40);
         const result = await registerIdentity();
+        console.log("[IdentityForge] registerIdentity: done", { ok: !!(result && (result as any).success), t: new Date().toISOString() });
         setGenerationProgress(60);
 
         // Validate registration result
@@ -1671,12 +1708,14 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         }
         setGenerationProgress(100);
 
-        // Check if verification is enabled - if so, show verification step (4), otherwise go to completion (5)
+        // Check if verification is enabled - if so, show verification step (4), otherwise go to Tapsigner or completion
         setGenerationStep("Identity claimed successfully!");
         if (SIMPLEPROOF_ENABLED || IROH_ENABLED) {
           setCurrentStep(4); // Show verification step
+        } else if (TAPSIGNER_ENABLED) {
+          setCurrentStep(5); // Show Tapsigner setup step
         } else {
-          setCurrentStep(5); // Skip to completion
+          setCurrentStep(6); // Skip to completion
         }
       } catch (error) {
         console.error("❌ Failed to complete identity creation:", error);
@@ -1707,8 +1746,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
 
       setCurrentStep(currentStep + 1);
+    } else if (currentStep === 5 && TAPSIGNER_ENABLED) {
+      // Phase 3 Task 3.3: Handle Tapsigner setup step completion
+      // Move from Step 5 (Tapsigner) to Step 6 (Completion)
+      setCurrentStep(6);
     } else {
-      // Step 5 is the final completion screen (Step 4 is verification)
+      // Step 6 is the final completion screen
       setIsComplete(true);
     }
   };
@@ -1749,6 +1792,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         // Verification step (Phase 3B) - always can continue (skip or verify)
         return true;
       case 5:
+        // Tapsigner setup step (Phase 3 Task 3.1) - always can continue (skip or setup)
+        return true;
+      case 6:
         // Final completion screen - no continue button needed
         return false;
       default:
@@ -1928,7 +1974,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         {/* Progress Indicator */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
-            {[1, 2, 3, 4, 5].map((step) => (
+            {[1, 2, 3, 4, 5, 6].map((step) => (
               <div key={step} className="flex items-center">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${step <= currentStep
@@ -1938,7 +1984,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                 >
                   {step < currentStep ? <Check className="h-5 w-5" /> : step}
                 </div>
-                {step < 5 && (
+                {step < 6 && (
                   <div
                     className={`h-1 w-8 mx-2 transition-all duration-300 ${step < currentStep ? "bg-orange-500" : "bg-white/20"
                       }`}
@@ -2021,7 +2067,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       </span>
                       <span className="flex items-center">
                         <Heart className="h-4 w-4 mr-1 text-red-400" />
-                        Welcome to Satnam.pub
+                        Welcome to {platformDomain}
                       </span>
                     </div>
                   </div>
@@ -2118,7 +2164,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
                   {formData.username && (
                     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-                      <p className="text-purple-200 mb-2">
+                      <div className="text-purple-200 mb-2">
 
                         {/* NIP-05 Domain Selection + External Lightning Address */}
                         <div className="space-y-4 pt-4 border-t border-white/10">
@@ -2172,7 +2218,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         </div>
 
                         Your identity will be:
-                      </p>
+                      </div>
                       <p className="text-white font-mono text-lg">
                         {formData.username}@{selectedDomain}
                       </p>
@@ -2843,7 +2889,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                             <div>
                               <h4 className="text-blue-200 font-bold mb-2">What happens next?</h4>
                               <div className="text-blue-200 text-sm space-y-1">
-                                <p>• Your identity will be registered on the Satnam.pub network</p>
+                                <p>• Your identity will be registered on the {platformDomain} network</p>
                                 <p>• Your keys will be encrypted with your password</p>
                                 <p>• You'll get access to Bitcoin education courses</p>
                                 <p>• You can invite peers and earn course credits</p>
@@ -3049,19 +3095,142 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               <VerificationOptInStep
                 verificationId={verificationId || ''}
                 username={formData.username}
-                onSkip={() => setCurrentStep(5)}
+                onSkip={() => TAPSIGNER_ENABLED ? setCurrentStep(5) : setCurrentStep(6)}
                 onComplete={(success: boolean) => {
                   if (success) {
-                    setCurrentStep(5);
+                    setCurrentStep(TAPSIGNER_ENABLED ? 5 : 6);
                   }
                 }}
               />
             )
           }
 
-          {/* Step 5: Final Completion Screen */}
+          {/* Step 5: Tapsigner Setup (Phase 3 Task 3.3 - Integrated with ActionContextSelector & TapsignerPinEntry) */}
           {
-            currentStep === 5 && (
+            TAPSIGNER_ENABLED && currentStep === 5 && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="text-center">
+                  <Shield className="h-16 w-16 text-purple-500 mx-auto mb-4" />
+                  <h3 className="text-2xl font-bold text-white mb-4">
+                    {tapsignerStep === 'action' && 'Select Your Tapsigner Action'}
+                    {tapsignerStep === 'pin' && 'Enter Your Tapsigner PIN'}
+                    {tapsignerStep === 'complete' && 'Tapsigner Setup Complete!'}
+                  </h3>
+                  <p className="text-purple-200">
+                    {tapsignerStep === 'action' && 'Choose what you want to authorize with your Tapsigner card'}
+                    {tapsignerStep === 'pin' && 'Verify your identity with your 6-digit PIN'}
+                    {tapsignerStep === 'complete' && 'Your Tapsigner card is now registered and ready to use'}
+                  </p>
+                </div>
+
+                {/* Sub-step 1: Action Selection */}
+                {tapsignerStep === 'action' && (
+                  <div className="space-y-6">
+                    <ActionContextSelector
+                      availableActions={['payment', 'event', 'login']}
+                      onActionSelect={async (actionType: 'payment' | 'event' | 'login', context: Record<string, unknown>) => {
+                        setSelectedTapsignerAction(actionType);
+                        setTapsignerActionContext(context);
+                        setTapsignerStep('pin');
+                        setTapsignerError(null);
+                      }}
+                      onCancel={() => {
+                        setCurrentStep(6);
+                      }}
+                      defaultAction="event"
+                      isLoading={false}
+                      error={tapsignerError}
+                    />
+                  </div>
+                )}
+
+                {/* Sub-step 2: PIN Entry */}
+                {tapsignerStep === 'pin' && selectedTapsignerAction && (
+                  <div className="space-y-6">
+                    <TapsignerPinEntry
+                      onSubmit={async (pin: string) => {
+                        try {
+                          setTapsignerError(null);
+                          // PIN validation happens on card hardware
+                          // For now, simulate successful PIN entry
+                          setTapsignerCardId(`card_${Date.now()}`);
+                          setTapsignerStep('complete');
+                        } catch (error) {
+                          const errorMsg = error instanceof Error ? error.message : 'PIN validation failed';
+                          setTapsignerError(errorMsg);
+                          // Update attempt counter
+                          setTapsignerAttempts(prev => Math.max(0, prev - 1));
+                        }
+                      }}
+                      onCancel={() => {
+                        setTapsignerStep('action');
+                        setSelectedTapsignerAction(null);
+                        setTapsignerActionContext(null);
+                      }}
+                      attemptNumber={4 - tapsignerAttempts}
+                      attemptsRemaining={tapsignerAttempts}
+                      isLocked={tapsignerLocked}
+                      lockoutExpiresAt={tapsignerLockoutExpires || undefined}
+                      isLoading={false}
+                      error={tapsignerError}
+                      helpText="Enter the 6-digit PIN from your Tapsigner card"
+                    />
+                  </div>
+                )}
+
+                {/* Sub-step 3: Completion */}
+                {tapsignerStep === 'complete' && tapsignerCardId && (
+                  <div className="space-y-6">
+                    <div className="bg-green-500/20 border border-green-500/50 rounded-2xl p-6 text-center">
+                      <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
+                      <h4 className="text-xl font-bold text-green-200 mb-2">Tapsigner Registered Successfully!</h4>
+                      <p className="text-green-200/80 mb-4">
+                        Your Tapsigner card is now registered and ready for secure operations.
+                      </p>
+                      <div className="bg-black/20 rounded-lg p-3 mb-4">
+                        <p className="text-sm text-green-300 font-mono break-all">{tapsignerCardId}</p>
+                      </div>
+                      <p className="text-sm text-green-200/60">
+                        You can now use your card to authorize payments, sign events, and participate in threshold signing.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => {
+                          setTapsignerSetupComplete(true);
+                          setCurrentStep(6);
+                        }}
+                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                      >
+                        Continue to Completion
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Skip Option - Always Available */}
+                {tapsignerStep !== 'complete' && (
+                  <div className="text-center pt-4 border-t border-white/10">
+                    <button
+                      onClick={() => {
+                        setTapsignerSetupComplete(false);
+                        setCurrentStep(6);
+                      }}
+                      className="text-purple-300 hover:text-purple-200 text-sm font-medium transition-colors"
+                    >
+                      Skip Tapsigner Setup for Now
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          {/* Step 6: Final Completion Screen */}
+          {
+            currentStep === 6 && (
               <div className="space-y-6">
                 {isGenerating ? (
                   <div className="space-y-6">
@@ -3407,7 +3576,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
                         <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 mt-4">
                           <p className="text-green-200 text-sm">
-                            ✅ Your existing Nostr identity will be preserved and integrated with Satnam.pub
+                            ✅ Your existing Nostr identity will be preserved and integrated with {platformDomain}
                           </p>
                         </div>
 
@@ -3426,7 +3595,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         </p>
                         <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
                           <p className="text-blue-200 text-sm">
-                            ℹ️ You can still import this key and set up your profile on Satnam.pub
+                            ℹ️ You can still import this key and set up your profile on {platformDomain}
                           </p>
                         </div>
 

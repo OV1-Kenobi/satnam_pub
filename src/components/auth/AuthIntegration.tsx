@@ -18,7 +18,9 @@ import { cloneElement, useEffect, useState, type FC, type ReactElement, type Rea
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, useIdentityForge, useNostrichSignin } from './AuthProvider';
 
+import { getEnvVar } from '../../config/env.client';
 import { createRecoverySession } from '../../lib/auth/recovery-session-bridge';
+import TapsignerAuthModal from '../TapsignerAuthModal';
 
 interface AuthIntegrationProps {
   children: ReactNode;
@@ -157,6 +159,10 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
   const nostrichSignin = useNostrichSignin();
   const navigate = useNavigate();
   const location = useLocation();
+  const [showTapsignerModal, setShowTapsignerModal] = useState(false);
+
+  // Feature flag for Tapsigner
+  const TAPSIGNER_ENABLED = getEnvVar('VITE_TAPSIGNER_ENABLED') === 'true';
 
   // Set login flow when component mounts
   useEffect(() => {
@@ -190,6 +196,21 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
   const handleAuthFailure = (error: string) => {
     nostrichSignin.completeLogin();
     onAuthFailure?.(error);
+  };
+
+  // Handle Tapsigner authentication
+  const handleTapsignerAuth = async (sessionToken: string) => {
+    try {
+      console.log('🔐 AuthIntegration: Tapsigner authentication successful');
+      // Store Tapsigner session token in auth context
+      // The session token is already validated by the Tapsigner backend
+      setShowTapsignerModal(false);
+      handleAuthSuccess('individual');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Tapsigner authentication failed';
+      console.error('🔐 AuthIntegration: Tapsigner auth error:', errorMessage);
+      handleAuthFailure(errorMessage);
+    }
   };
 
   // Handle NIP-05/Password authentication
@@ -280,14 +301,26 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
         </div>
       )}
 
+      {/* Tapsigner Modal */}
+      {TAPSIGNER_ENABLED && (
+        <TapsignerAuthModal
+          isOpen={showTapsignerModal}
+          onSuccess={handleTapsignerAuth}
+          onError={(error: string) => handleAuthFailure(error)}
+          onClose={() => setShowTapsignerModal(false)}
+        />
+      )}
+
       {/* Wrap children with authentication handlers */}
       {cloneElement(children as ReactElement, {
         onNIP05Auth: handleNIP05Auth,
         onNIP07Auth: handleNIP07Auth,
+        onTapsignerAuth: () => setShowTapsignerModal(true),
         onAuthSuccess: handleAuthSuccess,
         onAuthFailure: handleAuthFailure,
         isAuthenticating: auth.loading,
-        authError: auth.error
+        authError: auth.error,
+        tapsignerEnabled: TAPSIGNER_ENABLED
       })}
     </div>
   );

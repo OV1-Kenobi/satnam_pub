@@ -1,17 +1,25 @@
 /**
  * Integration Test Setup
  * Shared utilities for real integration tests with actual Supabase database
+ * and Netlify Functions
  *
  * This file provides:
  * - Real Supabase client configuration
  * - Database seeding and cleanup utilities
  * - Test data factories
  * - Authentication helpers
+ * - Netlify Functions API helpers
  */
 
 import { ed25519 } from "@noble/curves/ed25519";
 import { bytesToHex } from "@noble/hashes/utils";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+
+// Netlify Functions configuration
+const API_BASE_URL = process.env.VITE_API_URL || "http://localhost:8888";
+const TAPSIGNER_ENDPOINT = `${API_BASE_URL}/.netlify/functions/tapsigner-unified`;
+
+export let serverAvailable = false;
 
 // Environment variable helper
 function getEnvVar(key: string): string | undefined {
@@ -343,3 +351,145 @@ export const TestLifecycle = {
     await DatabaseCleanup.cleanupAll(supabase);
   },
 };
+
+// ============================================================================
+// Netlify Functions Integration Helpers
+// ============================================================================
+
+/**
+ * Check if Netlify Functions server is available
+ */
+export async function checkNetlifyServerAvailability(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    const response = await fetch(TAPSIGNER_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status" }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    serverAvailable = response.status !== undefined;
+    return serverAvailable;
+  } catch (error) {
+    serverAvailable = false;
+    return false;
+  }
+}
+
+/**
+ * Create test JWT token
+ */
+export function createTestJWT(): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" })
+  ).toString("base64");
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: "test-user-123",
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    })
+  ).toString("base64");
+  const signature = "test-signature";
+
+  return `${header}.${payload}.${signature}`;
+}
+
+/**
+ * Make authenticated API call to Tapsigner endpoint
+ */
+export async function makeAuthenticatedCall(
+  action: string,
+  payload: any = {}
+): Promise<Response> {
+  const token = createTestJWT();
+
+  return fetch(TAPSIGNER_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      action,
+      ...payload,
+    }),
+  });
+}
+
+/**
+ * Test helper: Register card
+ */
+export async function testRegisterCard(
+  cardId: string = "a1b2c3d4e5f6a7b8",
+  publicKey: string = "a".repeat(64)
+): Promise<Response> {
+  return makeAuthenticatedCall("register", {
+    cardId,
+    publicKey,
+    familyRole: "private",
+  });
+}
+
+/**
+ * Test helper: Verify card
+ */
+export async function testVerifyCard(
+  cardId: string = "a1b2c3d4e5f6a7b8",
+  signature: string = "a".repeat(128),
+  challenge: string = "test-challenge"
+): Promise<Response> {
+  return makeAuthenticatedCall("verify", {
+    cardId,
+    signature,
+    challenge,
+  });
+}
+
+/**
+ * Test helper: Sign event
+ */
+export async function testSignEvent(
+  cardId: string = "a1b2c3d4e5f6a7b8",
+  event: any = {
+    kind: 1,
+    content: "Test message",
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [],
+  }
+): Promise<Response> {
+  return makeAuthenticatedCall("sign", {
+    cardId,
+    event,
+  });
+}
+
+/**
+ * Test helper: Link wallet
+ */
+export async function testLinkWallet(
+  cardId: string = "a1b2c3d4e5f6a7b8",
+  walletId: string = "test-wallet-123",
+  spendLimit: number = 100000
+): Promise<Response> {
+  return makeAuthenticatedCall("lnbits-link", {
+    cardId,
+    walletId,
+    spendLimit,
+  });
+}
+
+/**
+ * Test helper: Get card status
+ */
+export async function testGetCardStatus(
+  cardId: string = "a1b2c3d4e5f6a7b8"
+): Promise<Response> {
+  return makeAuthenticatedCall("status", {
+    cardId,
+  });
+}

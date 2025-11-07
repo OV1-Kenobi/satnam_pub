@@ -25,6 +25,11 @@
   VITE_PKARR_AUTO_VERIFY_ON_ADD = "false"               # Auto-verify contacts on creation
   VITE_PKARR_ADMIN_ENABLED = "false"                    # Admin analytics dashboard
   VITE_MULTI_METHOD_VERIFICATION_ENABLED = "false"      # Parallel multi-method verification
+  # Phase 1: Tapsigner NFC Card Integration (default: false for production safety)
+  VITE_TAPSIGNER_ENABLED = "true"                       # Master Tapsigner feature flag
+  VITE_TAPSIGNER_LNBITS_ENABLED = "true"                # LNbits integration for Tapsigner
+  VITE_TAPSIGNER_TAP_TO_SPEND_ENABLED = "true"          # Tap-to-spend payment functionality
+  VITE_TAPSIGNER_DEBUG = "true"                         # Debug logging (disable in production)
 
 # Development server configuration
 [dev]

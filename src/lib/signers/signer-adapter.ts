@@ -10,7 +10,12 @@
  * Browser-only, zero-knowledge friendly. No Node.js APIs. Web Crypto only where needed.
  */
 
-export type SigningMethodId = "nip05_password" | "nip07" | "amber" | "ntag424";
+export type SigningMethodId =
+  | "nip05_password"
+  | "nip07"
+  | "amber"
+  | "ntag424"
+  | "tapsigner";
 
 /**
  * Actions that require signing. Used by CEPS routing and adapters for capability checks.
@@ -98,7 +103,10 @@ export interface SignerAdapter {
    * @param options - Adapter-specific options (e.g., prompt behavior)
    * @returns Signed event (must pass CEPS.verifyEvent)
    */
-  signEvent(unsigned: unknown, options?: Record<string, unknown>): Promise<unknown>;
+  signEvent(
+    unsigned: unknown,
+    options?: Record<string, unknown>
+  ): Promise<unknown>;
 
   /**
    * Authorize a payment (e.g., LNbits). Implementations may produce a signed event or a
@@ -112,8 +120,10 @@ export interface SignerAdapter {
    * @param payload - Threshold signing payload for this session
    * @param sessionId - Federated signing session identifier
    */
-  signThreshold(payload: unknown, sessionId: string): Promise<ThresholdSigningResult>;
+  signThreshold(
+    payload: unknown,
+    sessionId: string
+  ): Promise<ThresholdSigningResult>;
 }
 
 export type { SignerCapability as TSignerCapability };
-

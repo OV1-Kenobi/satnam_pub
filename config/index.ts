@@ -585,8 +585,8 @@ export const lightningConfig: LightningConfig = {
  * NIP-05 configuration
  */
 export const nip05Config: Nip05Config = {
-  domain: getEnvVar("NIP05_DOMAIN") || "yourdomain.com",
-  allowedDomains: (getEnvVar("NIP05_ALLOWED_DOMAINS") || "satnam.pub")
+  domain: getEnvVar("NIP05_DOMAIN") || "my.satnam.pub",
+  allowedDomains: (getEnvVar("NIP05_ALLOWED_DOMAINS") || "my.satnam.pub")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
@@ -596,7 +596,7 @@ export const nip05Config: Nip05Config = {
  * Family member configuration
  */
 export const familyConfig: FamilyConfig = {
-  domain: getEnvVar("FAMILY_DOMAIN") || "satnam.pub",
+  domain: getEnvVar("FAMILY_DOMAIN") || "my.satnam.pub",
   usernameMaxLength: getEnvVar("FAMILY_USERNAME_MAX_LENGTH") || 20,
 };
 

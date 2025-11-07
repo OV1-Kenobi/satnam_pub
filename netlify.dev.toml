@@ -1,0 +1,57 @@
+# Netlify Dev-only configuration (does NOT affect production)
+# Use: netlify dev --config netlify.dev.toml
+
+[dev]
+  targetPort = 5173
+  port = 8888
+  autoLaunch = false
+  framework = "#custom"
+  command = "npm run dev"
+
+# Ensure Vite internal modules are handled directly
+[[redirects]]
+  from = "/@vite/*"
+  to = "/@vite/:splat"
+  status = 200
+  force = false
+
+# Let Vite serve source files
+[[redirects]]
+  from = "/src/*"
+  to = "/src/:splat"
+  status = 200
+  force = false
+
+# IMPORTANT: Do NOT rewrite browser ESM client modules under /api/endpoints/*
+# Without this, the generic /api/* rule would proxy to Netlify Functions and 404
+[[redirects]]
+  from = "/api/endpoints/*"
+  to = "/api/endpoints/:splat"
+  status = 200
+  force = false
+
+# Generic API mapping to Netlify Functions (kept for other /api/* calls)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = false
+
+# SPA routing (catch-all, must be last)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+
+# Development-friendly security headers (CSP only for local dev)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Dev CSP: allow Vite HMR and local resources. This file is only used by netlify dev.
+    Content-Security-Policy = "default-src 'self' http://localhost:* http://127.0.0.1:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: http:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://*.supabase.co wss://*.supabase.co https://*.netlify.app; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:; manifest-src 'self';"
+

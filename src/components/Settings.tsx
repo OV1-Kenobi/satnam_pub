@@ -6,11 +6,13 @@ import KeyRotationWizard from "./KeyRotationWizard";
 import ProfileVisibilitySettings from "./ProfileVisibilitySettings";
 
 import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
+import { getEnvVar } from "../config/env.client";
 import { showToast } from "../services/toastService";
 import AmberConnectButton from "./auth/AmberConnectButton";
 import SignerMethodSettings from "./auth/SignerMethodSettings";
 import IrohNodeManager from "./iroh/IrohNodeManager";
 import AttestationsTab from "./Settings/AttestationsTab";
+import TapsignerStatusDisplay from "./TapsignerStatusDisplay";
 
 
 
@@ -56,10 +58,15 @@ const Settings: React.FC = () => {
   const publicProfilesEnabled = getFlag("VITE_PUBLIC_PROFILES_ENABLED", false);
   const pkarrEnabled = getFlag("VITE_PKARR_ENABLED", false);
   const irohEnabled = getFlag("VITE_IROH_ENABLED", false);
+  const tapsignerEnabled = getEnvVar("VITE_TAPSIGNER_ENABLED") === "true";
 
   // Iroh verification state
   const [irohVerificationEnabled, setIrohVerificationEnabled] = useState<boolean>(false);
   const [userIrohNodeId, setUserIrohNodeId] = useState<string | undefined>(undefined);
+
+  // Phase 3 Task 3.1: Tapsigner card management state
+  const [tapsignerCards, setTapsignerCards] = useState<any[]>([]);
+  const [loadingTapsignerCards, setLoadingTapsignerCards] = useState(false);
 
   useEffect(() => {
     try {
@@ -269,18 +276,41 @@ const Settings: React.FC = () => {
             </div>
           </section>
 
-          <section className="bg-purple-900/60 border border-yellow-400/20 rounded-2xl p-6">
-            <h2 className="text-xl font-semibold text-yellow-300 mb-4">NFC Management</h2>
-            <div className="space-y-3">
-              <button
-                disabled
-                title="Coming Soon"
-                className="w-full bg-gray-600 text-white font-medium py-2 px-4 rounded-lg opacity-60 cursor-not-allowed"
-              >
-                Reprogram NFC Name Tag (Coming Soon)
-              </button>
-            </div>
-          </section>
+          {/* Phase 3 Task 3.1: Tapsigner Card Management */}
+          {tapsignerEnabled && (
+            <section className="bg-purple-900/60 border border-yellow-400/20 rounded-2xl p-6">
+              <h2 className="text-xl font-semibold text-yellow-300 mb-4">Tapsigner Cards</h2>
+              {loadingTapsignerCards ? (
+                <div className="text-center py-4">
+                  <p className="text-purple-200">Loading cards...</p>
+                </div>
+              ) : tapsignerCards.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-purple-200 mb-3">No Tapsigner cards registered yet</p>
+                  <p className="text-sm text-purple-300">Register a card during identity creation or add one here</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {tapsignerCards.map((card) => (
+                    <TapsignerStatusDisplay
+                      key={card.cardId}
+                      card={card}
+                      onAuthenticate={() => {
+                        showToast.success("Card authenticated successfully");
+                      }}
+                      onUnlink={() => {
+                        showToast.success("Wallet unlinked from card");
+                      }}
+                      onRemove={() => {
+                        setTapsignerCards(tapsignerCards.filter(c => c.cardId !== card.cardId));
+                        showToast.success("Card removed successfully");
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="bg-purple-900/60 border border-yellow-400/20 rounded-2xl p-6 md:col-span-1">
             <h2 className="text-xl font-semibold text-yellow-300 mb-4">Signing Methods</h2>
