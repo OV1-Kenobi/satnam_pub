@@ -22,21 +22,20 @@ const IdentityForgeGuard: React.FC<GuardProps> = ({ children }) => {
               const msg = `[IdentityForgeGuard] Blocked ${m} during registration`;
               try {
                 console.warn(msg, { args });
-                if (typeof console?.trace === "function") console.trace(msg);
-              } catch {}
+              } catch { }
               throw new Error("NIP-07 disabled during registration");
             };
           }
         });
       }
-    } catch {}
+    } catch { }
   }
 
   useEffect(() => {
     return () => {
       try {
         delete (window as any).__identityForgeRegFlow;
-      } catch {}
+      } catch { }
     };
   }, []);
 

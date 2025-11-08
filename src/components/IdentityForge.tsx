@@ -986,63 +986,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   }, []);
   // Hard block NIP-07 calls during registration by monkey-patching methods in-place
   // This avoids race conditions where other code caches window.nostr before we patch
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const win = window as any;
-    const blockedMethods = ['getPublicKey', 'signEvent', 'signSchnorr'];
-    const original: Record<string, any> = {};
 
-    const applyPatches = () => {
-      if (!win.nostr) return;
-      blockedMethods.forEach((m) => {
-        const fn = win.nostr?.[m];
-        if (typeof fn === 'function' && !original[m]) {
-          original[m] = fn;
-          // Throttle warnings to avoid console spam / potential performance issues
-          const warnedKey = `blocked:${m}`;
-          win.nostr[m] = async (...args: any[]) => {
-            if (win.__identityForgeRegFlow) {
-              const msg = `[IdentityForge:NIP07-guard] Blocked ${m} during registration`;
-              if (!win.__ifWarned) win.__ifWarned = new Set();
-              if (!win.__ifWarned.has(warnedKey)) {
-                console.warn(msg, { args });
-                // Do NOT use console.trace here to prevent large stack traces from freezing the tab
-                win.__ifWarned.add(warnedKey);
-              }
-              return Promise.reject(new Error('NIP-07 disabled during registration'));
-            }
-            try {
-              return await original[m].apply(win.nostr, args);
-            } catch (err) {
-              throw err;
-            }
-          };
-        }
-      });
-    };
-
-    // Initial patch and keep trying briefly to catch late extension injection
-    try { applyPatches(); } catch { }
-    const intervalId = setInterval(() => {
-      try { applyPatches(); } catch { }
-    }, 300);
-    // Stop after 10 seconds to avoid perpetual intervals
-    const stopTimer = setTimeout(() => clearInterval(intervalId), 10000);
-
-    return () => {
-      try {
-        if (win.nostr) {
-          blockedMethods.forEach((m) => {
-            if (original[m]) {
-              try { win.nostr[m] = original[m]; } catch { }
-            }
-          });
-        }
-      } catch { }
-      clearInterval(intervalId);
-      clearTimeout(stopTimer);
-    };
-  }, []);
 
 
 
@@ -1716,6 +1660,15 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           setCurrentStep(5); // Show Tapsigner setup step
         } else {
           setCurrentStep(6); // Skip to completion
+        }
+
+        // CRITICAL FIX: Clear the registration guard flag after Step 3 completes
+        // This allows NIP-07 calls to work normally in Steps 4-6
+        // The guard was blocking getPublicKey() during registration, but we need to allow it now
+        if (typeof window !== 'undefined') {
+          try {
+            delete (window as any).__identityForgeRegFlow;
+          } catch { }
         }
       } catch (error) {
         console.error("❌ Failed to complete identity creation:", error);
@@ -3095,10 +3048,22 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               <VerificationOptInStep
                 verificationId={verificationId || ''}
                 username={formData.username}
-                onSkip={() => TAPSIGNER_ENABLED ? setCurrentStep(5) : setCurrentStep(6)}
+                onSkip={() => {
+                  try {
+                    TAPSIGNER_ENABLED ? setCurrentStep(5) : setCurrentStep(6);
+                  } catch (error) {
+                    console.error('Error skipping verification step:', error);
+                    setErrorMessage('Failed to proceed. Please try again.');
+                  }
+                }}
                 onComplete={(success: boolean) => {
-                  if (success) {
-                    setCurrentStep(TAPSIGNER_ENABLED ? 5 : 6);
+                  try {
+                    if (success) {
+                      setCurrentStep(TAPSIGNER_ENABLED ? 5 : 6);
+                    }
+                  } catch (error) {
+                    console.error('Error completing verification step:', error);
+                    setErrorMessage('Failed to complete verification. Please try again.');
                   }
                 }}
               />
