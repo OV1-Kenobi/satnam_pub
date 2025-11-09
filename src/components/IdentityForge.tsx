@@ -57,6 +57,7 @@ import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/e
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
 import { ActionContextSelector } from "./ActionContextSelector";
+import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimationWrapper";
 import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
@@ -790,7 +791,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     try {
       // Import Ed25519 for signing
       const { ed25519 } = await import('@noble/curves/ed25519');
-      const { bytesToHex } = await import('@noble/curves/utils.js');
 
       // Convert nsec to hex private key for signing (browser-safe, no Buffer)
       const { nip19 } = await import('nostr-tools');
@@ -798,14 +798,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       if (decoded.type !== 'nsec') {
         throw new Error('Invalid nsec format');
       }
-      const privateKeyHex = bytesToHex(decoded.data as Uint8Array);
+      const privateKeyBytes = decoded.data as Uint8Array;
+      const privateKeyHex = Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
       // Convert npub to hex public key (browser-safe)
       const npubDecoded = nip19.decode(formData.pubkey);
       if (npubDecoded.type !== 'npub') {
         throw new Error('Invalid npub format');
       }
-      const publicKeyHex = bytesToHex(npubDecoded.data as Uint8Array);
+      const publicKeyBytes = npubDecoded.data as Uint8Array;
+      const publicKeyHex = Array.from(publicKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
       // Create PKARR DNS records for NIP-05 verification
       const nip05Identifier = `${formData.username}@${selectedDomain}`;
@@ -824,21 +826,25 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         },
       ];
 
-      // Create signature payload
+      // Create signature payload with proper delimiters
       const timestamp = Math.floor(Date.now() / 1000);
       const sequence = 1; // First publish
       const recordsJson = JSON.stringify(records);
-      const message = `${recordsJson}${timestamp}${sequence}`;
+      // Use delimiters to prevent ambiguity in message format
+      const message = `${recordsJson}|${timestamp}|${sequence}`;
       const messageBytes = new TextEncoder().encode(message);
 
       // Sign with Ed25519
-      const privateKeyBytes = new Uint8Array(
+      const signingKeyBytes = new Uint8Array(
         privateKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
       );
-      const signature = ed25519.sign(messageBytes, privateKeyBytes);
+      const signature = ed25519.sign(messageBytes, signingKeyBytes);
       const signatureHex = Array.from(signature)
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
+
+      // CRITICAL: Secure cleanup of private key material
+      signingKeyBytes.fill(0);
 
       // Publish to backend endpoint
       const sessionToken = SecureTokenManager.getAccessToken();
@@ -846,7 +852,18 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         throw new Error('No session token available');
       }
 
-      const response = await fetch('/.netlify/functions/pkarr-publish', {
+      // Validate inputs before sending
+      if (!records || records.length === 0) {
+        throw new Error('No DNS records to publish');
+      }
+      if (!publicKeyHex || publicKeyHex.length !== 64) {
+        throw new Error('Invalid public key format');
+      }
+      if (!signatureHex || signatureHex.length !== 128) {
+        throw new Error('Invalid signature format');
+      }
+
+      const response = await fetch(`${API_BASE}/pkarr-publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -858,6 +875,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           timestamp,
           sequence,
           signature: signatureHex,
+          message_format: 'v1', // Version the message format for future compatibility
         }),
       });
 
@@ -1285,6 +1303,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
       const result = await apiClient.storeUserData(requestData);
 
+      // FIX-1: Extract and store verification_id for SimpleProof/Iroh attestations
+      if (result.verification_id) {
+        setVerificationId(result.verification_id);
+        console.log('✅ Verification ID set for attestations:', result.verification_id);
+      }
+
       // Task 4: Handle NIP-03 attestation responses
       if (result.attestation) {
         console.log('📜 Attestation response received:', result.attestation);
@@ -1587,14 +1611,29 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           setErrorMessage('Please verify the TOTP sent to your existing Nostr account before continuing.');
           return;
         }
-        // For import users, register identity and go directly to completion (skip verification step)
+        // For import users, register identity and go to appropriate next step based on feature flags
         try {
           await registerIdentity();
-          setCurrentStep(5); // Go directly to completion screen (skip verification step for import users)
+
+          // FIX-5: Check feature flags to determine next step for import users
+          if (SIMPLEPROOF_ENABLED || IROH_ENABLED) {
+            setCurrentStep(4); // Show verification step
+          } else if (TAPSIGNER_ENABLED) {
+            setCurrentStep(5); // Show Tapsigner setup step
+          } else {
+            setCurrentStep(6); // Skip to completion
+          }
         } catch (error) {
           console.error("❌ Failed to register imported identity:", error);
           const errorMessage = error instanceof Error ? error.message : String(error);
           setGenerationStep(`Registration failed: ${errorMessage}`);
+        } finally {
+          // FIX-7: Always clear the registration guard flag
+          if (typeof window !== 'undefined') {
+            try {
+              delete (window as any).__identityForgeRegFlow;
+            } catch { }
+          }
         }
       } else {
         // Go to profile creation for new users
@@ -1641,35 +1680,43 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           throw new Error('Registration failed - invalid response from server');
         }
 
-        // Optional: Publish PKARR record (non-blocking)
+        // FIX-3: Optional: Publish PKARR record (non-blocking but with proper error handling)
         if (PKARR_ENABLED) {
           setGenerationStep("Publishing PKARR attestation...");
           setGenerationProgress(80);
-          await publishPkarrRecord().catch(err => {
+          try {
+            const pkarrResult = await publishPkarrRecord();
+            if (!pkarrResult.success) {
+              console.warn('⚠️ PKARR publishing failed:', pkarrResult.error);
+              // Don't fail registration, but log for debugging
+            }
+          } catch (err) {
             console.warn('⚠️ PKARR publishing failed (non-blocking):', err);
             // Don't fail registration if PKARR publishing fails
-          });
+          }
         }
         setGenerationProgress(100);
 
-        // Check if verification is enabled - if so, show verification step (4), otherwise go to Tapsigner or completion
+        // FIX-8: Check if verification is enabled - if so, show verification step (4), otherwise go to Tapsigner or completion
         setGenerationStep("Identity claimed successfully!");
+
+        // FIX-8: Determine next step based on enabled features
+        let nextStep = 6; // Default to completion
         if (SIMPLEPROOF_ENABLED || IROH_ENABLED) {
-          setCurrentStep(4); // Show verification step
+          nextStep = 4; // Show verification step
         } else if (TAPSIGNER_ENABLED) {
-          setCurrentStep(5); // Show Tapsigner setup step
-        } else {
-          setCurrentStep(6); // Skip to completion
+          nextStep = 5; // Show Tapsigner setup step
         }
 
-        // CRITICAL FIX: Clear the registration guard flag after Step 3 completes
-        // This allows NIP-07 calls to work normally in Steps 4-6
-        // The guard was blocking getPublicKey() during registration, but we need to allow it now
-        if (typeof window !== 'undefined') {
-          try {
-            delete (window as any).__identityForgeRegFlow;
-          } catch { }
-        }
+        // FIX-8: Log feature flag status for debugging
+        console.log('📊 Feature flags after registration:', {
+          SIMPLEPROOF_ENABLED,
+          IROH_ENABLED,
+          TAPSIGNER_ENABLED,
+          nextStep,
+        });
+
+        setCurrentStep(nextStep);
       } catch (error) {
         console.error("❌ Failed to complete identity creation:", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1679,6 +1726,15 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         setGenerationProgress(0);
       } finally {
         setIsGenerating(false);
+
+        // FIX-6: Always clear the registration guard flag in finally block
+        // This ensures it's cleared even if an error occurs
+        // The guard was blocking getPublicKey() during registration, but we need to allow it now
+        if (typeof window !== 'undefined') {
+          try {
+            delete (window as any).__identityForgeRegFlow;
+          } catch { }
+        }
       }
     } else if (currentStep < 4) {
 
@@ -3259,10 +3315,12 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           <span className="text-green-300">NIP-05 (Nostr Identity):</span>
                           <span className="text-green-100 font-mono">{registrationResult.user.nip05 || `${registrationResult.user.username}@${selectedDomain}`}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-green-300">Lightning Address (Bitcoin Payments):</span>
-                          <span className="text-green-100 font-mono">{getDisplayLightningAddress(registrationResult.user.lightningAddress)}</span>
-                        </div>
+                        {registrationResult.user.lightningAddress && (
+                          <div className="flex justify-between">
+                            <span className="text-green-300">Lightning Address (Bitcoin Payments):</span>
+                            <span className="text-green-100 font-mono">{registrationResult.user.lightningAddress}</span>
+                          </div>
+                        )}
                         {PKARR_ENABLED && (
                           <div className="flex justify-between items-center">
                             <span className="text-green-300">PKARR Attestation:</span>
@@ -3287,7 +3345,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           Create a permanent, verifiable record of your account creation on the Bitcoin blockchain.
                           This is optional but recommended for maximum identity verification.
                         </p>
-                        <SimpleProofTimestampButton
+                        <SimpleProofFeeEstimationWrapper
                           data={JSON.stringify({
                             username: registrationResult.user.username,
                             nip05: registrationResult.user.nip05 || `${registrationResult.user.username}@${selectedDomain}`,
@@ -3296,8 +3354,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                           })}
                           verificationId={verificationId}
                           eventType="account_creation"
-                          estimatedFeeSats={500}
-                          requireConfirmation={true}
                           onSuccess={(result: any) => {
                             console.log('✅ SimpleProof attestation created for account creation:', result);
                           }}

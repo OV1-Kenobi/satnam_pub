@@ -39,7 +39,7 @@ import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 
 import { supabase } from "../lib/supabase";
 import { isLightningAddressReachable, parseLightningAddress, toLnurlpUrl } from "../utils/lightning-address";
-import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
+import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimationWrapper";
 
 
 
@@ -837,20 +837,15 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                   <p className="text-purple-300 text-xs mb-3 italic">
                     ⚠️ Privacy Notice: Only a cryptographic hash of your registration data will be stored on-chain, not your actual identity.
                   </p>
-                  <SimpleProofTimestampButton
-                    data={JSON.stringify({
-                      eventType: 'nfc_registration',
-                      // PRIVACY FIX: Use timestamp-based hash instead of PII
-                      // This creates a unique, verifiable record without exposing user identity
-                      registrationTimestamp: Date.now(),
-                      // Simple hash using timestamp + random value for uniqueness
-                      registrationId: `nfc-reg-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
-                      registeredAt: new Date().toISOString(),
-                    })}
+                  <SimpleProofFeeEstimationWrapper
                     verificationId={verificationId}
                     eventType="nfc_registration"
-                    estimatedFeeSats={500}
-                    requireConfirmation={true}
+                    data={JSON.stringify({
+                      eventType: 'nfc_registration',
+                      // Privacy: Only a unique ID and timestamp are stored, no PII
+                      registrationId: verificationId,
+                      registeredAt: new Date().toISOString(),
+                    })}
                     onSuccess={(result: any) => {
                       console.log('✅ SimpleProof attestation created for NFC registration:', result);
                       showToast.success('Blockchain attestation created successfully', {
@@ -865,9 +860,6 @@ export const NTAG424AuthModal: React.FC<NTAG424AuthModalProps> = ({
                         duration: 3000
                       });
                     }}
-                    variant="primary"
-                    size="sm"
-                    className="w-full"
                   />
                   <p className="text-purple-300 text-xs mt-2 text-center">
                     You can skip this step and continue

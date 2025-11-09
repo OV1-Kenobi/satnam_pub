@@ -20,5 +20,8 @@ export function addSimpleProofBreadcrumb(
   message: string,
   data?: Record<string, any>
 ): void;
-export function startSimpleProofTransaction(name: string, op: string): any;
-
+export function startSimpleProofTransaction<T>(
+  name: string,
+  op: string,
+  callback: () => T | Promise<T>
+): T | Promise<T> | undefined;

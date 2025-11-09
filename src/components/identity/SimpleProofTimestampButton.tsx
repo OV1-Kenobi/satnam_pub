@@ -326,6 +326,38 @@ const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonPr
   );
 };
 
+// Helper function to handle retry with protection against infinite loops
+const handleRetryWithProtection = () => {
+  const MAX_RELOAD_ATTEMPTS = 2;
+  const STORAGE_KEY = 'simpleproof_reload_attempts';
+  const STORAGE_TIMESTAMP_KEY = 'simpleproof_reload_timestamp';
+  const RESET_TIMEOUT_MS = 60000; // Reset counter after 1 minute
+
+  const now = Date.now();
+  const lastTimestamp = parseInt(sessionStorage.getItem(STORAGE_TIMESTAMP_KEY) || '0');
+
+  // Reset counter if more than 1 minute has passed
+  if (now - lastTimestamp > RESET_TIMEOUT_MS) {
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_TIMESTAMP_KEY);
+  }
+
+  const attempts = parseInt(sessionStorage.getItem(STORAGE_KEY) || '0');
+
+  if (attempts < MAX_RELOAD_ATTEMPTS) {
+    sessionStorage.setItem(STORAGE_KEY, String(attempts + 1));
+    sessionStorage.setItem(STORAGE_TIMESTAMP_KEY, String(now));
+    window.location.reload();
+  } else {
+    // Show error message instead of reloading
+    alert(
+      'The SimpleProof feature has encountered a persistent error. ' +
+      'Please contact support or try again later. ' +
+      'Your identity data is secure and has not been affected.'
+    );
+  }
+};
+
 // Wrap with Sentry error boundary for graceful error handling (skip in test environment)
 export const SimpleProofTimestampButton =
   typeof process !== 'undefined' && process.env.NODE_ENV === 'test'
@@ -343,7 +375,7 @@ export const SimpleProofTimestampButton =
               The blockchain attestation feature encountered an error. Your identity is still secure.
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={handleRetryWithProtection}
               className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
             >
               Retry

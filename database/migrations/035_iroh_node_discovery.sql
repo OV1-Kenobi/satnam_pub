@@ -54,29 +54,53 @@ CREATE INDEX IF NOT EXISTS idx_iroh_last_seen
 -- Enable RLS
 ALTER TABLE public.iroh_node_discovery ENABLE ROW LEVEL SECURITY;
 
--- RLS Policy: Service role can insert new discoveries
-CREATE POLICY "service_role_insert_iroh_discovery"
-    ON public.iroh_node_discovery
-    FOR INSERT
-    WITH CHECK (auth.role() = 'service_role');
+-- Create RLS policies idempotently using PL/pgSQL
+-- PostgreSQL doesn't support CREATE POLICY IF NOT EXISTS, so we use conditional logic
+DO $$
+BEGIN
+    -- RLS Policy 1: Service role can insert new discoveries
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'iroh_node_discovery'
+        AND policyname = 'service_role_insert_iroh_discovery'
+    ) THEN
+        CREATE POLICY "service_role_insert_iroh_discovery"
+            ON public.iroh_node_discovery
+            FOR INSERT
+            WITH CHECK (auth.role() = 'service_role');
+    END IF;
 
--- RLS Policy: Users can view their own node discoveries
-CREATE POLICY "users_view_own_iroh_discovery"
-    ON public.iroh_node_discovery
-    FOR SELECT
-    USING (
-        verification_id IN (
-            SELECT id FROM multi_method_verification_results 
-            WHERE user_duid = auth.uid()
-        )
-    );
+    -- RLS Policy 2: Users can view their own node discoveries
+    -- FIX: Cast auth.uid() to VARCHAR to match user_duid type
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'iroh_node_discovery'
+        AND policyname = 'users_view_own_iroh_discovery'
+    ) THEN
+        CREATE POLICY "users_view_own_iroh_discovery"
+            ON public.iroh_node_discovery
+            FOR SELECT
+            USING (
+                verification_id IN (
+                    SELECT id FROM multi_method_verification_results
+                    WHERE user_duid = auth.uid()::VARCHAR
+                )
+            );
+    END IF;
 
--- RLS Policy: Service role can update discovery status
-CREATE POLICY "service_role_update_iroh_discovery"
-    ON public.iroh_node_discovery
-    FOR UPDATE
-    USING (auth.role() = 'service_role')
-    WITH CHECK (auth.role() = 'service_role');
+    -- RLS Policy 3: Service role can update discovery status
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'iroh_node_discovery'
+        AND policyname = 'service_role_update_iroh_discovery'
+    ) THEN
+        CREATE POLICY "service_role_update_iroh_discovery"
+            ON public.iroh_node_discovery
+            FOR UPDATE
+            USING (auth.role() = 'service_role')
+            WITH CHECK (auth.role() = 'service_role');
+    END IF;
+END $$;
 
 -- Helper function: Store Iroh node discovery result
 CREATE OR REPLACE FUNCTION store_iroh_discovery(

@@ -17,6 +17,7 @@ import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
 import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";
 import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
+import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimationWrapper";
 import PaymentCascadeModal from './PaymentCascadeModal';
 
 // Feature flag for SimpleProof
@@ -411,7 +412,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                   Create a permanent, verifiable record of your family federation establishment on the Bitcoin blockchain.
                   This provides cryptographic proof of your federation's founding charter and members.
                 </p>
-                <SimpleProofTimestampButton
+                <SimpleProofFeeEstimationWrapper
                   data={JSON.stringify({
                     eventType: 'family_federation',
                     federationId: federationId,
@@ -425,8 +426,6 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                   })}
                   verificationId={verificationId}
                   eventType="family_federation"
-                  estimatedFeeSats={500}
-                  requireConfirmation={true}
                   onSuccess={(result: any) => {
                     console.log('✅ SimpleProof attestation created for family federation:', result);
                   }}

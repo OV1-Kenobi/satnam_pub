@@ -8,8 +8,8 @@
  * Maintains zero-knowledge architecture and privacy-first principles
  */
 
+import { RotateCcw, Save, X } from "lucide-react";
 import React, { useState } from "react";
-import { X, Save, RotateCcw } from "lucide-react";
 import type { TrustLevel } from "../../lib/trust/types";
 
 export interface TrustFilters {
@@ -74,7 +74,7 @@ export const TrustFilterPanel: React.FC<TrustFilterPanelProps> = ({
   };
 
   const handleVerificationMethodToggle = (method: "simpleproof" | "iroh" | "nip85") => {
-    const newMethods = filters.verificationMethods || [];
+    const newMethods = [...(filters.verificationMethods || [])];
     const index = newMethods.indexOf(method);
     if (index > -1) {
       newMethods.splice(index, 1);
@@ -188,11 +188,10 @@ export const TrustFilterPanel: React.FC<TrustFilterPanelProps> = ({
                       filters.trustLevel === (level as TrustLevel) ? undefined : (level as TrustLevel)
                     )
                   }
-                  className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                    filters.trustLevel === level
+                  className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${filters.trustLevel === level
                       ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
+                    }`}
                 >
                   {"⭐".repeat(level)}
                 </button>

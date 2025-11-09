@@ -49,6 +49,9 @@ export type ClientConfig = {
     cacheTTLMs: number;
     defaultExposureLevel: "public" | "contacts" | "whitelist" | "private";
   };
+  simpleproof?: {
+    dynamicFeeEstimationEnabled?: boolean; // Enable real-time fee estimation from Mempool.space
+  };
   flags: {
     lnbitsEnabled: boolean;
     amberSigningEnabled: boolean;
@@ -344,6 +347,9 @@ export const clientConfig: ClientConfig = {
     cacheTTLMs: parseInt(getEnvVar("VITE_NIP85_CACHE_TTL_MS") || "300000", 10),
     defaultExposureLevel: (getEnvVar("VITE_NIP85_DEFAULT_EXPOSURE_LEVEL") ||
       "private") as "public" | "contacts" | "whitelist" | "private",
+  },
+  simpleproof: {
+    dynamicFeeEstimationEnabled: true, // Always enabled - core feature
   },
   flags: {
     lnbitsEnabled: LNBITS_ENABLED,

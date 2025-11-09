@@ -122,6 +122,7 @@ interface ResponseData {
   meta: { timestamp: string; environment: string };
   invitationProcessed?: InvitationProcessed;
   postAuthAction?: string;
+  verification_id?: string; // FIX-1: UUID for SimpleProof/Iroh attestations during registration
 }
 // -----------------------------------------------
 
@@ -1643,6 +1644,8 @@ export const handler: Handler = async (event, context) => {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || "production",
       },
+      // FIX-1: Include verification_id for SimpleProof/Iroh attestations during registration
+      verification_id: profileResult.data!.id,
     };
 
     // Process peer invitation if provided

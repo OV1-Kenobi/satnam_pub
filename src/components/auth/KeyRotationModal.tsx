@@ -10,7 +10,8 @@ import React, { useState } from 'react';
 import { clientConfig } from '../../config/env.client';
 import { nostrKeyRecovery } from '../../lib/auth/nostr-key-recovery';
 import IdentityForge from '../IdentityForge';
-import { SimpleProofTimestampButton } from "../identity/SimpleProofTimestampButton";
+
+import SimpleProofFeeEstimationWrapper from "../identity/SimpleProofFeeEstimationWrapper";
 import { useAuth } from './AuthProvider';
 
 // Feature flag for SimpleProof
@@ -413,7 +414,7 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
                       ⚠️ Privacy Notice: The rotation reason will NOT be stored on the blockchain (only in our database).
                     </strong>
                   </p>
-                  <SimpleProofTimestampButton
+                  <SimpleProofFeeEstimationWrapper
                     data={JSON.stringify({
                       eventType: 'key_rotation',
                       oldNpub: auth.user?.hashed_npub || 'unknown',
@@ -425,8 +426,6 @@ export const KeyRotationModal: React.FC<KeyRotationModalProps> = ({
                     })}
                     verificationId={verificationId}
                     eventType="key_rotation"
-                    estimatedFeeSats={500}
-                    requireConfirmation={true}
                     onSuccess={(result: any) => {
                       console.log('✅ SimpleProof attestation created for key rotation:', result);
                     }}

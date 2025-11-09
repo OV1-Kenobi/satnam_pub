@@ -294,17 +294,12 @@ const Settings: React.FC = () => {
                   {tapsignerCards.map((card) => (
                     <TapsignerStatusDisplay
                       key={card.cardId}
-                      card={card}
-                      onAuthenticate={() => {
-                        showToast.success("Card authenticated successfully");
-                      }}
-                      onUnlink={() => {
-                        showToast.success("Wallet unlinked from card");
-                      }}
-                      onRemove={() => {
-                        setTapsignerCards(tapsignerCards.filter(c => c.cardId !== card.cardId));
+                      cardId={card.cardId}
+                      onUnregisterCard={() => {
+                        setTapsignerCards(prevCards => prevCards.filter(c => c.cardId !== card.cardId));
                         showToast.success("Card removed successfully");
                       }}
+                      showActions={true}
                     />
                   ))}
                 </div>

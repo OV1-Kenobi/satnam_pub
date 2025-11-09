@@ -12,6 +12,7 @@
  */
 
 import type { Handler } from "@netlify/functions";
+import { createHash } from "node:crypto";
 import {
   createLogger,
   logApiCall,
@@ -71,8 +72,9 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 // Old helper functions removed - now using centralized security utilities
 
 function getCacheKey(otsProof: string): string {
-  // Use first 32 chars of proof as cache key (sufficient for uniqueness)
-  return `verify:${otsProof.substring(0, 32)}`;
+  // Use hash of full proof as cache key for collision-free uniqueness
+  const hash = createHash("sha256").update(otsProof).digest("hex");
+  return `verify:${hash}`;
 }
 
 function getCachedResult(cacheKey: string): SimpleProofVerifyResponse | null {
@@ -327,10 +329,10 @@ export const handler: Handler = async (event) => {
 
     // Build response
     const response: SimpleProofVerifyResponse = {
-      is_valid: apiResult.is_valid || false,
-      bitcoin_block: apiResult.bitcoin_block || null,
-      bitcoin_tx: apiResult.bitcoin_tx || null,
-      confidence: apiResult.confidence || "unconfirmed",
+      is_valid: apiResult.is_valid ?? false,
+      bitcoin_block: apiResult.bitcoin_block ?? null,
+      bitcoin_tx: apiResult.bitcoin_tx ?? null,
+      confidence: apiResult.confidence ?? "unconfirmed",
       verified_at: Math.floor(Date.now() / 1000),
     };
 

@@ -22,6 +22,35 @@ import { CheckCircle, Info, Loader, Shield, ShieldCheck } from 'lucide-react';
 import React, { useState } from 'react';
 import { showToast } from '../../services/toastService';
 
+// Static method configuration to avoid recreation on every render
+const METHOD_CONFIG: Record<string, { icon: string; label: string; description: string }> = {
+  pkarr: {
+    icon: '🔗',
+    label: 'PKARR',
+    description: 'BitTorrent DHT identity verification',
+  },
+  simpleproof: {
+    icon: '⏱️',
+    label: 'SimpleProof',
+    description: 'Timestamped attestation',
+  },
+  kind0: {
+    icon: '📝',
+    label: 'Nostr Profile',
+    description: 'Nostr kind:0 metadata verification',
+  },
+  physical_mfa: {
+    icon: '🏷️',
+    label: 'NFC Tag',
+    description: 'Physical NFC Name Tag verification',
+  },
+  iroh_dht: {
+    icon: '🌐',
+    label: 'Iroh DHT',
+    description: 'Iroh node discovery verification',
+  },
+};
+
 interface ContactVerificationBadgeProps {
   contactHash: string;
   nip05?: string;
@@ -93,35 +122,7 @@ export const ContactVerificationBadge: React.FC<ContactVerificationBadgeProps> =
 
   // Get verification method badge
   const getMethodBadge = (method: string, verified: boolean) => {
-    const methodConfig: Record<string, { icon: string; label: string; description: string }> = {
-      pkarr: {
-        icon: '🔗',
-        label: 'PKARR',
-        description: 'BitTorrent DHT identity verification',
-      },
-      simpleproof: {
-        icon: '⏱️',
-        label: 'SimpleProof',
-        description: 'Timestamped attestation',
-      },
-      kind0: {
-        icon: '📝',
-        label: 'Nostr Profile',
-        description: 'Nostr kind:0 metadata verification',
-      },
-      physical_mfa: {
-        icon: '🏷️',
-        label: 'NFC Tag',
-        description: 'Physical NFC Name Tag verification',
-      },
-      iroh_dht: {
-        icon: '🌐',
-        label: 'Iroh DHT',
-        description: 'Iroh node discovery verification',
-      },
-    };
-
-    const config = methodConfig[method];
+    const config = METHOD_CONFIG[method];
     if (!config) return null;
 
     return (

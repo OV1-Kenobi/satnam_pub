@@ -12,7 +12,7 @@
  */
 
 import type { Handler } from "@netlify/functions";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Security utilities (Phase 3 hardening)
 import {
@@ -103,12 +103,31 @@ async function callSimpleProofApi(
 }
 
 async function storeTimestamp(
-  supabase: any,
+  supabase: SupabaseClient<any, "public", any>,
   verificationId: string,
   otsProof: string,
   bitcoinBlock: number | null,
-  bitcoinTx: string | null
+  bitcoinTx: string | null,
+  performanceMs?: number
 ): Promise<string> {
+  // Check for existing timestamp to prevent duplicates
+  const { data: existing, error: checkError } = await supabase
+    .from("simpleproof_timestamps")
+    .select("id")
+    .eq("verification_id", verificationId)
+    .single();
+
+  if (checkError && checkError.code !== "PGRST116") {
+    // PGRST116 = no rows found (expected when no duplicate exists)
+    throw new Error(
+      `Database error checking for duplicates: ${checkError.message}`
+    );
+  }
+
+  if (existing) {
+    throw new Error("Timestamp already exists for this verification_id");
+  }
+
   const { data, error } = await supabase
     .from("simpleproof_timestamps")
     .insert({
@@ -118,6 +137,7 @@ async function storeTimestamp(
       bitcoin_tx: bitcoinTx,
       verified_at: Math.floor(Date.now() / 1000),
       is_valid: true,
+      performance_ms: performanceMs || null, // Store actual operation duration
     })
     .select("id")
     .single();
@@ -266,6 +286,9 @@ async function handleCreateTimestamp(
   body: SimpleProofRequest,
   requestOrigin?: string
 ) {
+  // Phase 2: Performance tracking - capture start time for metrics
+  const operationStartTime = Date.now();
+
   // Security: Validate input
   if (!body.data || typeof body.data !== "string") {
     return errorResponse(
@@ -399,12 +422,16 @@ async function handleCreateTimestamp(
   let timestampId: string;
   const dbStartTime = Date.now();
   try {
+    // Phase 2: Calculate total operation duration for performance metrics
+    const performanceMs = Date.now() - operationStartTime;
+
     timestampId = await storeTimestamp(
       supabase,
       body.verification_id!,
       apiResult.ots_proof,
       apiResult.bitcoin_block || null,
-      apiResult.bitcoin_tx || null
+      apiResult.bitcoin_tx || null,
+      performanceMs // Pass actual operation duration to database
     );
     const dbDuration = Date.now() - dbStartTime;
     logDatabaseOperation("INSERT", "simpleproof_timestamps", true, dbDuration, {

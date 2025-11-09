@@ -106,6 +106,29 @@ interface RateLimitMetrics {
 
 type ExportFormat = 'csv' | 'json';
 
+/**
+ * Sanitize CSV cell to prevent formula injection and escape quotes
+ * Prevents CSV injection attacks by prefixing dangerous characters with single quote
+ * @param value - The cell value to sanitize
+ * @returns Properly escaped CSV cell value
+ */
+const sanitizeCSVCell = (value: string | number | undefined): string => {
+  if (value === undefined || value === null) return '';
+  const str = String(value);
+
+  // Prevent CSV injection: prefix dangerous characters with single quote
+  if (/^[=+\-@\t\r]/.test(str)) {
+    return `"'${str.replace(/"/g, '""')}"`;
+  }
+
+  // Escape internal quotes by doubling them, and wrap in quotes if needed
+  if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
+  return str;
+};
+
 interface SimpleProofAnalyticsDashboardProps {
   /**
    * PRIVACY REQUIREMENT: userId MUST be hashed before passing to this component
@@ -302,13 +325,13 @@ const SimpleProofAnalyticsDashboardComponent: React.FC<SimpleProofAnalyticsDashb
     return { errorRate, totalErrors, totalOperations, errorTrend };
   }, [filteredTimestamps]);
 
-  // Phase 2B-2 Day 15: Calculate response time metrics
-  // WARNING: Using simulated data for demonstration purposes only
-  // TODO: Replace with actual performance tracking data from Sentry or custom instrumentation
+  // Phase 3: Calculate response time metrics from real performance data
+  // Uses actual performance_ms values stored in database
   const responseTimeMetrics = useMemo((): ResponseTimeMetrics => {
-    // TODO: Replace with actual performance tracking data
-    const timestampTimes = filteredTimestamps.map(() => Math.random() * 5000 + 1000); // 1-6s (SIMULATED)
-    const verificationTimes = filteredTimestamps.map(() => Math.random() * 2000 + 500); // 0.5-2.5s (SIMULATED)
+    // Extract actual performance metrics from timestamps
+    const performanceTimes = filteredTimestamps
+      .map(t => (t as any).performance_ms)
+      .filter((ms): ms is number => ms !== null && ms !== undefined && ms > 0);
 
     const calculateStats = (times: number[]) => {
       if (times.length === 0) return { average: 0, min: 0, max: 0, p95: 0 };
@@ -321,93 +344,86 @@ const SimpleProofAnalyticsDashboardComponent: React.FC<SimpleProofAnalyticsDashb
       return { average, min, max, p95 };
     };
 
-    const timestamp = calculateStats(timestampTimes);
-    const verification = calculateStats(verificationTimes);
+    const stats = calculateStats(performanceTimes);
 
-    // Trend data (simplified)
+    // Build trend data by grouping performance metrics by date
     const trend: Array<{ date: string; avgTimestamp: number; avgVerification: number }> = [];
-    const dailyGroups = new Map<string, { timestampTimes: number[]; verificationTimes: number[] }>();
+    const dailyGroups = new Map<string, number[]>();
 
-    filteredTimestamps.forEach((t, index) => {
-      const date = new Date(t.created_at * 1000);
-      const dateKey = date.toISOString().split('T')[0];
-      const existing = dailyGroups.get(dateKey) || { timestampTimes: [], verificationTimes: [] };
-      existing.timestampTimes.push(timestampTimes[index]);
-      existing.verificationTimes.push(verificationTimes[index]);
-      dailyGroups.set(dateKey, existing);
+    filteredTimestamps.forEach(t => {
+      const performanceMs = (t as any).performance_ms;
+      if (performanceMs && performanceMs > 0) {
+        const date = new Date(t.created_at * 1000);
+        const dateKey = date.toISOString().split('T')[0];
+        const existing = dailyGroups.get(dateKey) || [];
+        existing.push(performanceMs);
+        dailyGroups.set(dateKey, existing);
+      }
     });
 
     dailyGroups.forEach((times, date) => {
-      const avgTimestamp = times.timestampTimes.reduce((sum, t) => sum + t, 0) / times.timestampTimes.length;
-      const avgVerification = times.verificationTimes.reduce((sum, t) => sum + t, 0) / times.verificationTimes.length;
-      trend.push({ date, avgTimestamp, avgVerification });
+      const avgTimestamp = times.reduce((sum, t) => sum + t, 0) / times.length;
+      // For now, verification time is same as timestamp time (single operation)
+      // In future, could be split into separate metrics if needed
+      trend.push({ date, avgTimestamp, avgVerification: avgTimestamp });
     });
 
     trend.sort((a, b) => a.date.localeCompare(b.date));
 
-    return { timestamp, verification, trend };
+    return {
+      timestamp: stats,
+      verification: stats, // Same as timestamp for now (single operation)
+      trend,
+    };
   }, [filteredTimestamps]);
 
   // Phase 2B-2 Day 15: Calculate cache metrics
-  // WARNING: Using simulated data for demonstration purposes only
+  // CRITICAL: Real cache metrics not yet available
   // TODO: Integrate with actual SimpleProofCache metrics tracking
+  // TODO: Add cache_hits and cache_misses columns to simpleproof_timestamps table
   const cacheMetrics = useMemo((): CacheMetrics => {
-    // TODO: Replace with actual cache tracking data from SimpleProofCache
+    // Return zero metrics with no data available
+    // This prevents misleading users with fake cache data
     const totalRequests = filteredTimestamps.length;
-    const totalHits = Math.floor(totalRequests * 0.65); // SIMULATED: Assume 65% hit rate
-    const totalMisses = totalRequests - totalHits;
-    const hitRate = totalRequests > 0 ? (totalHits / totalRequests) * 100 : 0;
 
-    // Cache hit rate trend by day
-    const trend: Array<{ date: string; hitRate: number }> = [];
-    const dailyGroups = new Map<string, number>();
-
-    filteredTimestamps.forEach(t => {
-      const date = new Date(t.created_at * 1000);
-      const dateKey = date.toISOString().split('T')[0];
-      dailyGroups.set(dateKey, (dailyGroups.get(dateKey) || 0) + 1);
-    });
-
-    dailyGroups.forEach((_count, date) => {
-      // SIMULATED: Varying hit rates (60-70%)
-      const rate = 60 + Math.random() * 10;
-      trend.push({ date, hitRate: rate });
-    });
-
-    trend.sort((a, b) => a.date.localeCompare(b.date));
-
-    return { hitRate, totalHits, totalMisses, totalRequests, trend };
+    return {
+      hitRate: 0,
+      totalHits: 0,
+      totalMisses: 0,
+      totalRequests,
+      trend: [], // No trend data available without real metrics
+    };
   }, [filteredTimestamps]);
 
   // Phase 2B-2 Day 15: Calculate rate limit metrics
-  // WARNING: Using simulated data for demonstration purposes only
+  // CRITICAL: Real rate limit data not yet available
   // TODO: Integrate with actual rate limiter from netlify/functions/utils/rate-limiter.js
+  // TODO: Add rate_limit_tracking table to store actual rate limit usage
   const rateLimitMetrics = useMemo((): RateLimitMetrics => {
-    // TODO: Replace with actual rate limiter data
+    // Return zero metrics with no data available
+    // This prevents misleading users with fake rate limit data
     const now = Date.now();
-    const hourAgo = now - 3600000;
-    const recentTimestamps = timestamps.filter(t => t.created_at * 1000 > hourAgo);
 
     return {
       timestamp: {
-        current: recentTimestamps.length,
-        limit: 10, // SIMULATED: Matches rate limiter config
-        percentage: (recentTimestamps.length / 10) * 100,
+        current: 0,
+        limit: 10, // From rate limiter config
+        percentage: 0,
         resetTime: now + (3600000 - (now % 3600000)), // Next hour
       },
       verification: {
-        current: Math.floor(recentTimestamps.length * 1.5), // SIMULATED: Assume more verifications
-        limit: 100, // SIMULATED: Matches rate limiter config
-        percentage: (Math.floor(recentTimestamps.length * 1.5) / 100) * 100,
+        current: 0,
+        limit: 100, // From rate limiter config
+        percentage: 0,
         resetTime: now + (3600000 - (now % 3600000)), // Next hour
       },
     };
-  }, [timestamps]);
+  }, []);
 
   // Phase 2B-2 Day 15: Enhanced export function with JSON support
   const handleExport = useCallback(() => {
     if (exportFormat === 'csv') {
-      // CSV Export
+      // CSV Export with security hardening and data integrity warnings
       const headers = [
         'Timestamp ID',
         'Created At',
@@ -418,21 +434,27 @@ const SimpleProofAnalyticsDashboardComponent: React.FC<SimpleProofAnalyticsDashb
         'Error Rate (%)',
         'Cache Hit Rate (%)',
       ];
+
       const rows = filteredTimestamps.map(t => [
-        t.id,
-        new Date(t.created_at * 1000).toISOString(),
-        t.bitcoin_block?.toString() || 'N/A',
-        t.bitcoin_tx || 'N/A',
-        t.is_valid === true ? 'Yes' : t.is_valid === false ? 'Failed' : 'Pending',
-        '500',
-        errorRateMetrics.errorRate.toFixed(2),
-        cacheMetrics.hitRate.toFixed(2),
+        sanitizeCSVCell(t.id),
+        sanitizeCSVCell(new Date(t.created_at * 1000).toISOString()),
+        sanitizeCSVCell(t.bitcoin_block?.toString() || 'N/A'),
+        sanitizeCSVCell(t.bitcoin_tx || 'N/A'),
+        sanitizeCSVCell(t.is_valid === true ? 'Yes' : t.is_valid === false ? 'Failed' : 'Pending'),
+        sanitizeCSVCell('500'), // Estimated fee
+        sanitizeCSVCell(errorRateMetrics.errorRate.toFixed(2)),
+        sanitizeCSVCell(cacheMetrics.hitRate.toFixed(2)),
       ]);
 
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
-      ].join('\n');
+      // Build CSV with headers and data rows
+      const csvLines: string[] = [
+        // Actual headers
+        headers.map(h => sanitizeCSVCell(h)).join(','),
+        // Data rows
+        ...rows.map(row => row.join(',')),
+      ];
+
+      const csvContent = csvLines.join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
@@ -649,70 +671,83 @@ const SimpleProofAnalyticsDashboardComponent: React.FC<SimpleProofAnalyticsDashb
             </div>
 
             {/* Average Response Time */}
-            <div className={`border rounded-lg p-4 ${responseTimeMetrics.timestamp.average < 10000 ? 'bg-blue-500/10 border-blue-500/30' : 'bg-red-500/10 border-red-500/30'
+            <div className={`border rounded-lg p-4 ${responseTimeMetrics.timestamp.average === 0
+              ? 'bg-gray-500/10 border-gray-500/30'
+              : responseTimeMetrics.timestamp.average < 3000
+                ? 'bg-green-500/10 border-green-500/30'
+                : responseTimeMetrics.timestamp.average < 10000
+                  ? 'bg-yellow-500/10 border-yellow-500/30'
+                  : 'bg-red-500/10 border-red-500/30'
               }`}>
               <div className="flex items-center justify-between mb-2">
-                <Clock className={`h-5 w-5 ${responseTimeMetrics.timestamp.average < 10000 ? 'text-blue-400' : 'text-red-400'
+                <Clock className={`h-5 w-5 ${responseTimeMetrics.timestamp.average === 0
+                  ? 'text-gray-400'
+                  : responseTimeMetrics.timestamp.average < 3000
+                    ? 'text-green-400'
+                    : responseTimeMetrics.timestamp.average < 10000
+                      ? 'text-yellow-400'
+                      : 'text-red-400'
                   }`} />
-                <span className={`text-xs ${responseTimeMetrics.timestamp.average < 10000 ? 'text-blue-300' : 'text-red-300'
+                <span className={`text-xs ${responseTimeMetrics.timestamp.average === 0
+                  ? 'text-gray-300'
+                  : responseTimeMetrics.timestamp.average < 3000
+                    ? 'text-green-300'
+                    : responseTimeMetrics.timestamp.average < 10000
+                      ? 'text-yellow-300'
+                      : 'text-red-300'
                   }`}>Avg Response Time</span>
               </div>
               <div className="text-2xl font-bold text-white mb-1">
-                {(responseTimeMetrics.timestamp.average / 1000).toFixed(2)}s
+                {responseTimeMetrics.timestamp.average === 0
+                  ? 'N/A'
+                  : `${(responseTimeMetrics.timestamp.average / 1000).toFixed(2)}s`}
               </div>
-              <div className={`text-xs ${responseTimeMetrics.timestamp.average < 10000 ? 'text-blue-300/70' : 'text-red-300/70'
+              <div className={`text-xs ${responseTimeMetrics.timestamp.average === 0
+                ? 'text-gray-300/70'
+                : responseTimeMetrics.timestamp.average < 3000
+                  ? 'text-green-300/70'
+                  : responseTimeMetrics.timestamp.average < 10000
+                    ? 'text-yellow-300/70'
+                    : 'text-red-300/70'
                 }`}>
-                P95: {(responseTimeMetrics.timestamp.p95 / 1000).toFixed(2)}s
-                {responseTimeMetrics.timestamp.average >= 10000 && ' ⚠️'}
+                {responseTimeMetrics.timestamp.average === 0
+                  ? 'No performance data available'
+                  : `P95: ${(responseTimeMetrics.timestamp.p95 / 1000).toFixed(2)}s${responseTimeMetrics.timestamp.average >= 10000 ? ' ⚠️' : ''
+                  }`}
               </div>
             </div>
 
             {/* Cache Hit Rate */}
-            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4">
+            <div className="bg-gray-500/10 border border-gray-500/30 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <Database className="h-5 w-5 text-cyan-400" />
-                <span className="text-xs text-cyan-300">Cache Hit Rate</span>
+                <Database className="h-5 w-5 text-gray-400" />
+                <span className="text-xs text-gray-300">Cache Hit Rate</span>
               </div>
               <div className="text-2xl font-bold text-white mb-1">
-                {cacheMetrics.hitRate.toFixed(1)}%
+                N/A
               </div>
-              <div className="text-xs text-cyan-300/70">
-                {cacheMetrics.totalHits} hits / {cacheMetrics.totalRequests} requests
+              <div className="text-xs text-gray-300/70">
+                No cache metrics available
               </div>
             </div>
 
             {/* Rate Limit Usage */}
-            <div className={`border rounded-lg p-4 ${rateLimitMetrics.timestamp.percentage < 50 ? 'bg-green-500/10 border-green-500/30' :
-              rateLimitMetrics.timestamp.percentage < 80 ? 'bg-yellow-500/10 border-yellow-500/30' :
-                'bg-red-500/10 border-red-500/30'
-              }`}>
+            <div className="bg-gray-500/10 border border-gray-500/30 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <Gauge className={`h-5 w-5 ${rateLimitMetrics.timestamp.percentage < 50 ? 'text-green-400' :
-                  rateLimitMetrics.timestamp.percentage < 80 ? 'text-yellow-400' :
-                    'text-red-400'
-                  }`} />
-                <span className={`text-xs ${rateLimitMetrics.timestamp.percentage < 50 ? 'text-green-300' :
-                  rateLimitMetrics.timestamp.percentage < 80 ? 'text-yellow-300' :
-                    'text-red-300'
-                  }`}>Rate Limit</span>
+                <Gauge className="h-5 w-5 text-gray-400" />
+                <span className="text-xs text-gray-300">Rate Limit</span>
               </div>
               <div className="text-2xl font-bold text-white mb-1">
-                {rateLimitMetrics.timestamp.current}/{rateLimitMetrics.timestamp.limit}
+                N/A
               </div>
-              <div className={`text-xs ${rateLimitMetrics.timestamp.percentage < 50 ? 'text-green-300/70' :
-                rateLimitMetrics.timestamp.percentage < 80 ? 'text-yellow-300/70' :
-                  'text-red-300/70'
-                }`}>
-                {rateLimitMetrics.timestamp.percentage.toFixed(0)}% used
+              <div className="text-xs text-gray-300/70">
+                No rate limit data available
               </div>
               {/* Progress bar */}
               <div className="mt-2 w-full bg-black/30 rounded-full h-2">
                 <div
-                  className={`h-2 rounded-full transition-all ${rateLimitMetrics.timestamp.percentage < 50 ? 'bg-green-500' :
-                    rateLimitMetrics.timestamp.percentage < 80 ? 'bg-yellow-500' :
-                      'bg-red-500'
-                    }`}
-                  style={{ width: `${Math.min(rateLimitMetrics.timestamp.percentage, 100)}%` }}
+                  className="h-2 rounded-full transition-all bg-gray-500"
+                  style={{ width: '0%' }}
                 />
               </div>
             </div>

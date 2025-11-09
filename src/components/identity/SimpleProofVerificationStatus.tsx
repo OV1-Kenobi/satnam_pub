@@ -259,10 +259,10 @@ export const SimpleProofVerificationStatus =
     ? SimpleProofVerificationStatusComponent
     : withSentryErrorBoundary(
       SimpleProofVerificationStatusComponent,
-      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+      <div className="p-3 bg-red-500/20 border border-red-500/40 rounded-lg">
         <div className="flex items-center gap-2">
-          <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-          <p className="text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 text-red-200 flex-shrink-0" />
+          <p className="text-sm text-red-200">
             Verification status temporarily unavailable
           </p>
         </div>

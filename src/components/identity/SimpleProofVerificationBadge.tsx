@@ -226,7 +226,7 @@ export const SimpleProofVerificationBadge =
     ? SimpleProofVerificationBadgeComponent
     : withSentryErrorBoundary(
       SimpleProofVerificationBadgeComponent,
-      <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 border border-red-500/30 text-xs rounded-md">
         <AlertCircle className="h-3 w-3" />
         Error
       </span>

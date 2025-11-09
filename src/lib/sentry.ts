@@ -221,7 +221,7 @@ export function startSimpleProofTransaction<T>(
   name: string,
   op: string,
   callback: () => T | Promise<T>
-): T | Promise<T> | undefined {
+): T | Promise<T> {
   if (!isSentryInitialized) {
     return callback();
   }

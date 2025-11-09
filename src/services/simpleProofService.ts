@@ -91,6 +91,39 @@ export interface TimestampByIdResponse {
 }
 
 // ============================================================================
+// PRIVACY HELPERS
+// ============================================================================
+
+/**
+ * Hash a value for use in cache keys without leaking identifiers in logs
+ * Uses Web Crypto API SHA-256 for consistent, privacy-preserving hashing
+ * @param value - The value to hash (e.g., user_id)
+ * @returns Promise<string> - First 16 characters of hex-encoded SHA-256 hash
+ */
+async function hashForCache(value: string): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(value);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hexHash = hashArray
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return hexHash.slice(0, 16); // Use first 16 chars for brevity
+  } catch (error) {
+    // Fallback: if crypto is unavailable, use a simple hash
+    // This should rarely happen in modern browsers
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      const char = value.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(16).padStart(16, "0").slice(0, 16);
+  }
+}
+
+// ============================================================================
 // FETCH HELPERS
 // ============================================================================
 
@@ -498,10 +531,11 @@ export class SimpleProofService {
       };
     }
 
-    // Check cache first
+    // Check cache first - use hashed user_id to prevent identifier leakage in logs
+    const userCacheId = await hashForCache(request.user_id);
     const cacheKey = this.cache.getCacheKey(
       "history",
-      request.user_id,
+      userCacheId,
       String(request.limit || 100)
     );
     const cached = this.cache.get<TimestampHistoryResponse>(cacheKey);

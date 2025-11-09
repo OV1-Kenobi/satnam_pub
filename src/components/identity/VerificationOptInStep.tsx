@@ -6,10 +6,10 @@
  * @compliance Privacy-first, zero-knowledge, feature flag gated
  */
 
-import React, { useState } from 'react';
-import { CheckCircle, AlertCircle, Loader, Shield, Info, ArrowRight } from 'lucide-react';
-import { createAttestation } from '../../lib/attestation-manager';
+import { AlertCircle, ArrowRight, CheckCircle, Info, Loader, Shield } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { clientConfig } from '../../config/env.client';
+import { createAttestation } from '../../lib/attestation-manager';
 
 interface VerificationOptInStepProps {
   verificationId: string;
@@ -28,8 +28,24 @@ export const VerificationOptInStep: React.FC<VerificationOptInStepProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // FIX-2: Track if component is still mounted to prevent state updates on unmounted component
+  const isMountedRef = useRef(true);
+  // FIX-2: Track timeout ID for proper cleanup to prevent memory leaks
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const SIMPLEPROOF_ENABLED = clientConfig.flags.simpleproofEnabled ?? false;
   const IROH_ENABLED = clientConfig.flags.irohEnabled ?? false;
+
+  // FIX-2: Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      // FIX-2: Clear timeout on unmount to prevent memory leaks
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   // Don't show if no verification methods are enabled
   if (!SIMPLEPROOF_ENABLED && !IROH_ENABLED) {
@@ -49,16 +65,34 @@ export const VerificationOptInStep: React.FC<VerificationOptInStepProps> = ({
         includeIroh: false, // User doesn't provide node ID during registration
       });
 
-      setSuccess(true);
-      setTimeout(() => {
-        onComplete(true);
-      }, 2000);
+      // FIX-2: Only update state if component is still mounted
+      if (isMountedRef.current) {
+        setSuccess(true);
+
+        // Clear any existing timeout before setting a new one
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+
+        // FIX-2: Store timeout ID in ref for proper cleanup
+        timeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            onComplete(true);
+          }
+        }, 2000);
+      }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to create attestation';
-      setError(errorMsg);
-      console.error('Attestation creation failed:', err);
+      // FIX-2: Only update state if component is still mounted
+      if (isMountedRef.current) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to create attestation';
+        setError(errorMsg);
+        console.error('Attestation creation failed:', err);
+      }
     } finally {
-      setIsCreating(false);
+      // FIX-2: Only update state if component is still mounted
+      if (isMountedRef.current) {
+        setIsCreating(false);
+      }
     }
   };
 

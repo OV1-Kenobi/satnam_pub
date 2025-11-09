@@ -4,6 +4,36 @@ import { FamilyFederationAuthContext, useInternalFamilyFederationAuth } from "..
 import { AuthContextType, FamilyFederationUser, FederationRole } from "../../types/auth";
 import { useAuth } from "./AuthProvider";
 
+// ============================================================================
+// VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Validate and cast federation role to ensure it's a valid enum value
+ * Defaults to 'adult' if invalid (safer than 'private' which may not be in allowedRoles)
+ */
+function validateFederationRole(role: unknown): FederationRole {
+  const validRoles: FederationRole[] = ['private', 'offspring', 'adult', 'steward', 'guardian'];
+  if (typeof role === 'string' && validRoles.includes(role as FederationRole)) {
+    return role as FederationRole;
+  }
+  // Default to 'adult' instead of 'private' for better compatibility with allowedRoles
+  return 'adult';
+}
+
+/**
+ * Validate and cast auth method to ensure it's a valid value for FamilyFederationUser
+ * FamilyFederationUser only supports 'nip07' and 'nip05-password'
+ * Defaults to 'nip05-password' if invalid
+ */
+function validateAuthMethod(method: unknown): "nip07" | "nip05-password" {
+  const validMethods: Array<"nip07" | "nip05-password"> = ['nip07', 'nip05-password'];
+  if (typeof method === 'string' && validMethods.includes(method as "nip07" | "nip05-password")) {
+    return method as "nip07" | "nip05-password";
+  }
+  return 'nip05-password';
+}
+
 interface FamilyFederationAuthProviderProps {
   children: React.ReactNode;
 }
@@ -17,16 +47,25 @@ const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> 
   const isAuthenticated = privacyAuth.authenticated;
   const isLoading = privacyAuth.loading;
   const error = privacyAuth.error;
+
   // Convert to legacy format for backward compatibility
+  // SECURITY: Preserve actual user values instead of hard-coding defaults
+  // This prevents authorization bypass and data loss
   const userAuth: FamilyFederationUser | null = privacyAuth.user ? {
-    npub: '', // Not stored in privacy-first system
-    nip05: '', // Not stored in privacy-first system
-    federationRole: (privacyAuth.user.federationRole || privacyAuth.user.role || 'private') as FederationRole,
-    authMethod: (privacyAuth.user.authMethod || 'nip05-password') as any,
-    isWhitelisted: true,
-    votingPower: 1,
-    stewardApproved: true,
-    guardianApproved: true,
+    // Privacy-first system stores hashed values, not plaintext
+    // Use hashed values if available, otherwise empty string
+    npub: (privacyAuth.user as any).hashed_npub || (privacyAuth.user as any).npub || '',
+    nip05: (privacyAuth.user as any).hashed_nip05 || (privacyAuth.user as any).nip05 || '',
+    // Validate federation role with proper enum checking (defaults to 'adult' for safety)
+    federationRole: validateFederationRole((privacyAuth.user as any).federationRole || (privacyAuth.user as any).role),
+    // Validate auth method with proper enum checking (FamilyFederationUser only supports nip07 and nip05-password)
+    authMethod: validateAuthMethod((privacyAuth.user as any).authMethod),
+    // Use actual authorization values instead of hard-coded true
+    // This prevents privilege escalation and maintains proper access control
+    isWhitelisted: (privacyAuth.user as any).isWhitelisted ?? false,
+    votingPower: (privacyAuth.user as any).votingPower ?? 0,
+    stewardApproved: (privacyAuth.user as any).stewardApproved ?? false,
+    guardianApproved: (privacyAuth.user as any).guardianApproved ?? false,
     sessionToken: privacyAuth.sessionToken || ''
   } : null;
 
@@ -67,11 +106,22 @@ const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> 
   };
 
   const verifyOTP = async (otpKey: string, otp: string) => {
-    // Use the privacy-first auth OTP authentication
+    // OTP authentication is not yet supported in the unified system
+    // Throw immediately with clear error message for graceful degradation
     try {
-      // OTP authentication not yet supported in unified system
-      console.warn('⚠️ OTP authentication is not yet supported. Please use NIP-05/Password authentication.');
-      const success = false;
+      // Check if OTP is supported in the privacy-first auth system
+      const supportsOTP = (privacyAuth as any).supportsOTP ?? false;
+
+      if (!supportsOTP) {
+        // Throw UnsupportedError immediately so callers can display clear "Not supported" state
+        throw new Error(
+          'OTP authentication is not available in the current system. ' +
+          'Please use NIP-05/Password authentication or contact support for account migration.'
+        );
+      }
+
+      // If OTP is supported, delegate to privacy-first auth
+      const success = await (privacyAuth as any).verifyOTP?.(otpKey, otp);
       if (!success) {
         throw new Error("OTP verification failed");
       }

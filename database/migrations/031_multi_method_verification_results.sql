@@ -123,21 +123,44 @@ CREATE INDEX IF NOT EXISTS idx_trust_stats_updated ON trust_score_statistics(upd
 ALTER TABLE public.multi_method_verification_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trust_score_statistics ENABLE ROW LEVEL SECURITY;
 
--- RLS Policy: Allow service role to insert results
-CREATE POLICY "service_role_insert_results" ON public.multi_method_verification_results
-    FOR INSERT
-    WITH CHECK (true);
+-- Create RLS policies idempotently using PL/pgSQL
+-- PostgreSQL doesn't support CREATE POLICY IF NOT EXISTS, so we use conditional logic
+DO $$
+BEGIN
+    -- RLS Policy 1: Allow service role to insert results
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'multi_method_verification_results'
+        AND policyname = 'service_role_insert_results'
+    ) THEN
+        CREATE POLICY "service_role_insert_results" ON public.multi_method_verification_results
+            FOR INSERT
+            WITH CHECK (true);
+    END IF;
 
--- RLS Policy: Allow authenticated users to view their own results
--- Cast auth.uid() to TEXT since user_identities.id is TEXT (DUID), not UUID
-CREATE POLICY "users_view_own_results" ON public.multi_method_verification_results
-    FOR SELECT
-    USING (user_duid = (SELECT id FROM user_identities WHERE id = auth.uid()::text LIMIT 1));
+    -- RLS Policy 2: Allow authenticated users to view their own results
+    -- Cast auth.uid() to TEXT since user_identities.id is TEXT (DUID), not UUID
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'multi_method_verification_results'
+        AND policyname = 'users_view_own_results'
+    ) THEN
+        CREATE POLICY "users_view_own_results" ON public.multi_method_verification_results
+            FOR SELECT
+            USING (user_duid = (SELECT id FROM user_identities WHERE id = auth.uid()::text LIMIT 1));
+    END IF;
 
--- RLS Policy: Allow service role to manage stats
-CREATE POLICY "service_role_manage_trust_stats" ON public.trust_score_statistics
-    FOR ALL
-    USING (true);
+    -- RLS Policy 3: Allow service role to manage stats
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'trust_score_statistics'
+        AND policyname = 'service_role_manage_trust_stats'
+    ) THEN
+        CREATE POLICY "service_role_manage_trust_stats" ON public.trust_score_statistics
+            FOR ALL
+            USING (true);
+    END IF;
+END $$;
 
 -- Create function to log multi-method verification result
 CREATE OR REPLACE FUNCTION log_multi_method_verification(

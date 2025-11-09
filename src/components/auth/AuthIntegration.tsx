@@ -14,7 +14,7 @@
  */
 
 import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
-import { cloneElement, useEffect, useState, type FC, type ReactElement, type ReactNode } from 'react';
+import React, { cloneElement, useEffect, useState, type FC, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, useIdentityForge, useNostrichSignin } from './AuthProvider';
 
@@ -26,6 +26,12 @@ interface AuthIntegrationProps {
   children: ReactNode;
   onAuthSuccess?: (destination?: 'individual' | 'family') => void;
   onAuthFailure?: (error: string) => void;
+}
+
+interface LocationState {
+  from?: {
+    pathname: string;
+  };
 }
 
 /**
@@ -51,7 +57,7 @@ export const IdentityForgeIntegration: FC<AuthIntegrationProps> = ({
     return () => {
       identityForge.setRegistrationFlow(false);
     };
-  }, []);
+  }, [identityForge]);
 
   // Handle successful registration
   const handleRegistrationSuccess = async (userData: {
@@ -135,13 +141,15 @@ export const IdentityForgeIntegration: FC<AuthIntegrationProps> = ({
       )}
 
       {/* Wrap children with registration handlers */}
-      {cloneElement(children as ReactElement, {
-        onRegistrationSuccess: handleRegistrationSuccess,
-        onRegistrationFailure: handleRegistrationFailure,
-        isAuthenticating: auth.loading,
-        authError: auth.error,
-        initialMigrationMode: deepLinkedMigrationMode
-      })}
+      {React.isValidElement(children)
+        ? cloneElement(children, {
+          onRegistrationSuccess: handleRegistrationSuccess,
+          onRegistrationFailure: handleRegistrationFailure,
+          isAuthenticating: auth.loading,
+          authError: auth.error,
+          initialMigrationMode: deepLinkedMigrationMode
+        } as any)
+        : children}
     </div>
   );
 };
@@ -171,7 +179,7 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
     return () => {
       nostrichSignin.setLoginFlow(false);
     };
-  }, []);
+  }, [nostrichSignin]);
 
   // Handle successful authentication
   const handleAuthSuccess = async (destination?: 'individual' | 'family') => {
@@ -188,7 +196,7 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
     onAuthSuccess?.(destination);
 
     // Respect intended destination from route state
-    const from = (location.state as any)?.from?.pathname || '/';
+    const from = (location.state as LocationState)?.from?.pathname || '/';
     navigate(from, { replace: true });
   };
 
@@ -312,16 +320,18 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
       )}
 
       {/* Wrap children with authentication handlers */}
-      {cloneElement(children as ReactElement, {
-        onNIP05Auth: handleNIP05Auth,
-        onNIP07Auth: handleNIP07Auth,
-        onTapsignerAuth: () => setShowTapsignerModal(true),
-        onAuthSuccess: handleAuthSuccess,
-        onAuthFailure: handleAuthFailure,
-        isAuthenticating: auth.loading,
-        authError: auth.error,
-        tapsignerEnabled: TAPSIGNER_ENABLED
-      })}
+      {React.isValidElement(children)
+        ? cloneElement(children, {
+          onNIP05Auth: handleNIP05Auth,
+          onNIP07Auth: handleNIP07Auth,
+          onTapsignerAuth: () => setShowTapsignerModal(true),
+          onAuthSuccess: handleAuthSuccess,
+          onAuthFailure: handleAuthFailure,
+          isAuthenticating: auth.loading,
+          authError: auth.error,
+          tapsignerEnabled: TAPSIGNER_ENABLED
+        } as any)
+        : children}
     </div>
   );
 };
@@ -333,6 +343,7 @@ export const NostrichSigninIntegration: FC<AuthIntegrationProps> = ({
 export const SessionMonitor: FC = () => {
   const auth = useAuth();
   const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Monitor session validity
   useEffect(() => {
@@ -352,9 +363,14 @@ export const SessionMonitor: FC = () => {
 
   // Handle session refresh
   const handleRefreshSession = async () => {
-    const success = await auth.refreshSession();
-    if (success) {
-      setShowSessionWarning(false);
+    setRefreshing(true);
+    try {
+      const success = await auth.refreshSession();
+      if (success) {
+        setShowSessionWarning(false);
+      }
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -376,10 +392,10 @@ export const SessionMonitor: FC = () => {
           <div className="flex gap-2">
             <button
               onClick={handleRefreshSession}
-              disabled={auth.loading}
+              disabled={refreshing}
               className="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700 disabled:opacity-50"
             >
-              {auth.loading ? 'Refreshing...' : 'Refresh Session'}
+              {refreshing ? 'Refreshing...' : 'Refresh Session'}
             </button>
             <button
               onClick={() => setShowSessionWarning(false)}

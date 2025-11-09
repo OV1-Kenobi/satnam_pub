@@ -1,6 +1,9 @@
 declare module "bolt11" {
   export type Network = "bitcoin" | "testnet" | "regtest" | "simnet";
-  export type TagData = string | number | Uint8Array;
+
+  // TagData represents the data field within a tag object
+  // Can be a hex string, plain string, or structured object (e.g., for fallback_address)
+  export type TagData = string | Record<string, unknown>;
 
   export interface PaymentRequest {
     paymentRequest: string;
