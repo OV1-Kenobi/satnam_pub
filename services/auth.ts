@@ -52,6 +52,18 @@ async function signJWT(payload: TokenPayload, secret: string): Promise<string> {
 }
 
 /**
+ * Helper: Decode base64url string with proper padding
+ * @param base64url - Base64url encoded string
+ * @returns Decoded string
+ */
+function decodeBase64Url(base64url: string): string {
+  let base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = base64.length % 4;
+  if (pad) base64 += "=".repeat(4 - pad);
+  return atob(base64);
+}
+
+/**
  * Browser-compatible JWT verification using Web Crypto API
  */
 async function verifyJWT(token: string, secret: string): Promise<TokenPayload> {
@@ -72,7 +84,7 @@ async function verifyJWT(token: string, secret: string): Promise<TokenPayload> {
     ["verify"]
   );
 
-  const signature = Uint8Array.from(atob(encodedSignature), (c) =>
+  const signature = Uint8Array.from(decodeBase64Url(encodedSignature), (c) =>
     c.charCodeAt(0)
   );
   const isValid = await crypto.subtle.verify(
@@ -86,7 +98,7 @@ async function verifyJWT(token: string, secret: string): Promise<TokenPayload> {
     throw new Error("Invalid JWT signature");
   }
 
-  return JSON.parse(atob(encodedPayload));
+  return JSON.parse(decodeBase64Url(encodedPayload));
 }
 
 /**

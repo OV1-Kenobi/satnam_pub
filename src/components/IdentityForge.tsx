@@ -58,7 +58,6 @@ import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
 import { ActionContextSelector } from "./ActionContextSelector";
 import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimationWrapper";
-import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
 import { TapsignerPinEntry } from "./TapsignerPinEntry";
@@ -173,6 +172,9 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   // Multi-domain NIP-05 + external Lightning Address support
   // Initialize from dynamic resolver to ensure white-label compatibility
   const platformDomain = resolvePlatformLightningDomain();
+  if (!platformDomain) {
+    throw new Error("Failed to resolve platform lightning domain");
+  }
   // Ensure platform domain is first and always available; append any configured domains after it (deduped)
   const allowedDomains = [
     platformDomain,

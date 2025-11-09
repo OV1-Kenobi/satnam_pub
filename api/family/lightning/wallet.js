@@ -15,15 +15,25 @@ import { CentralEventPublishingService } from '../../../lib/central_event_publis
 import { decryptSensitiveData } from '../../../netlify/functions/privacy/encryption.js';
 import { SecureSessionManager } from '../../../netlify/functions/security/session-manager.js';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase configuration');
+/**
+ * Get environment variable with proper fallback pattern
+ * For Netlify Functions: use process.env only (never import.meta.env)
+ * @param {string} key - Environment variable key
+ * @returns {string|undefined}
+ */
+function getEnvVar(key) {
+  return process.env[key];
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Initialize Supabase client with deferred validation
+const supabaseUrl = getEnvVar('SUPABASE_URL');
+const supabaseKey = getEnvVar('SUPABASE_ANON_KEY');
+
+// Defer validation to handler to allow module to load
+let supabase = null;
+if (supabaseUrl && supabaseKey) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+}
 
 /**
  * SECURITY FIX: Safely decrypt and parse permissions field with proper validation
@@ -155,7 +165,7 @@ async function validateFamilyMembership(userHash, familyId) {
  * @returns {boolean}
  */
 function hasSpendingPermissions(role) {
-  return ['steward', 'guardian'].includes(role);
+  return ['steward', 'guardian'].includes(role?.toLowerCase()?.trim());
 }
 
 /**
@@ -164,7 +174,7 @@ function hasSpendingPermissions(role) {
  * @returns {boolean}
  */
 function hasBalanceViewPermissions(role) {
-  return ['steward', 'guardian'].includes(role);
+  return ['steward', 'guardian'].includes(role?.toLowerCase()?.trim());
 }
 
 /**
@@ -173,7 +183,7 @@ function hasBalanceViewPermissions(role) {
  * @returns {boolean}
  */
 function hasHistoryViewPermissions(role) {
-  return ['offspring', 'adult', 'steward', 'guardian'].includes(role);
+  return ['offspring', 'adult', 'steward', 'guardian'].includes(role?.toLowerCase()?.trim());
 }
 
 /**
@@ -499,13 +509,17 @@ function checkFamilyLightningRateLimit(familyId) {
 /**
  * Main handler function
  * @param {Object} event - Netlify event object
- * @param {Object} context - Netlify context object
  * @returns {Promise<Object>} Netlify response object
  */
-export default async function handler(event, context) {
-  // CORS headers
+export default async function handler(event) {
+  // CORS headers with configurable allowed origins
+  const allowedOrigins = getEnvVar('ALLOWED_ORIGINS')?.split(',') || ['https://www.satnam.pub'];
+  const origin = event.headers.origin || event.headers.Origin;
+  const corsOrigin = allowedOrigins.includes('*') ? '*' :
+    (allowedOrigins.includes(origin) ? origin : allowedOrigins[0]);
+
   const corsHeaders = {
-    'Access-Control-Allow-Origin': process.env.VITE_APP_DOMAIN || 'https://www.satnam.pub',
+    'Access-Control-Allow-Origin': corsOrigin,
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Content-Type': 'application/json'
@@ -521,6 +535,17 @@ export default async function handler(event, context) {
   }
 
   try {
+    // Validate Supabase configuration
+    if (!supabase) {
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'Service configuration error'
+        })
+      };
+    }
     // CRITICAL SECURITY: Validate JWT token and extract authenticated user data
     const authHeader = event.headers.authorization || event.headers.Authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -547,26 +572,33 @@ export default async function handler(event, context) {
       };
     }
 
-    const { userId: authenticatedUserHash, federationRole } = sessionValidation;
+    const { userId: authenticatedUserHash } = sessionValidation;
 
-    // Parse request data
+    // Parse request data based on HTTP method
     let requestData = {};
-    if (event.body) {
-      try {
-        requestData = JSON.parse(event.body);
-      } catch (parseError) {
-        return {
-          statusCode: 400,
-          headers: corsHeaders,
-          body: JSON.stringify({
-            success: false,
-            error: 'Invalid JSON in request body'
-          })
-        };
+    let familyId;
+
+    if (event.httpMethod === 'GET') {
+      // For GET requests, extract from query parameters
+      familyId = event.queryStringParameters?.familyId;
+    } else if (event.httpMethod === 'POST') {
+      // For POST requests, parse from body
+      if (event.body) {
+        try {
+          requestData = JSON.parse(event.body);
+          familyId = requestData.familyId;
+        } catch (parseError) {
+          return {
+            statusCode: 400,
+            headers: corsHeaders,
+            body: JSON.stringify({
+              success: false,
+              error: 'Invalid JSON in request body'
+            })
+          };
+        }
       }
     }
-
-    const { familyId } = requestData;
 
     if (!familyId) {
       return {

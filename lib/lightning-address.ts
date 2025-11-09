@@ -255,9 +255,14 @@ export class LightningAddressService {
    * Uses centralized domain resolver for white-label compatibility
    *
    * @returns Domain string
+   * @throws Error if domain resolution fails
    */
   private getDomain(): string {
-    return resolvePlatformLightningDomain();
+    const domain = resolvePlatformLightningDomain();
+    if (!domain) {
+      throw new Error("Failed to resolve platform lightning domain");
+    }
+    return domain;
   }
 
   /**

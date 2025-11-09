@@ -213,24 +213,34 @@ function validateChallengeRequest(queryParams) {
  */
 export default async function handler(event, context) {
   // CORS headers for browser compatibility (env-aware)
+  // SECURITY: Avoid wildcard with credentials; echo origin, add Vary, and harden dev/prod rules
   function getAllowedOrigin(origin) {
     const isProd = process.env.NODE_ENV === 'production';
-    if (isProd) return 'https://satnam.pub';
-    if (!origin) return '*';
+    if (isProd) {
+      try {
+        if (origin && new URL(origin).origin === 'https://satnam.pub') return origin;
+      } catch {}
+      return 'null';
+    }
+    // Dev: allow localhost/127.0.0.1 over http only
     try {
-      const u = new URL(origin);
-      if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && (u.protocol === 'http:')) {
+      const u = origin ? new URL(origin) : null;
+      if (u && (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.protocol === 'http:') {
         return origin;
       }
     } catch {}
-    return '*';
+    return 'null';
   }
-  const requestOrigin = event.headers?.origin || event.headers?.Origin;
+  const requestOrigin = event.headers?.origin || event.headers?.Origin || '';
+  const allowedOrigin = getAllowedOrigin(requestOrigin);
   const corsHeaders = {
-    "Access-Control-Allow-Origin": getAllowedOrigin(requestOrigin),
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Vary": "Origin",
+    "Access-Control-Allow-Credentials": allowedOrigin !== 'null' ? "true" : "false",
+    "Access-Control-Allow-Headers": event.headers?.['access-control-request-headers'] || "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    "Cache-Control": "no-store",
   };
 
   // Handle preflight requests
@@ -304,23 +314,36 @@ export default async function handler(event, context) {
     // Persist challenge for replay protection and validation
     try {
       const { supabase } = await import("../../netlify/functions/supabase.js");
-      const sessionId = (event.queryStringParameters && event.queryStringParameters.sessionId) || undefined;
+      const sessionId = validation.sessionId || undefined;
+      const issuedAtISO = new Date(timestamp).toISOString();
+      const expiresAtISO = new Date(expiresAt).toISOString();
 
-      // Cleanup expired challenges (best-effort)
-      await supabase.from('auth_challenges').delete().lt('expires_at', new Date().toISOString());
+      // Cleanup expired challenges (best-effort; ignore error)
+      const { error: cleanupError } = await supabase
+        .from('auth_challenges')
+        .delete()
+        .lt('expires_at', issuedAtISO);
+      if (cleanupError) {
+        console.warn('Challenge cleanup failed');
+      }
 
-      await supabase.from('auth_challenges').insert({
-        session_id: sessionId || nonce, // fallback to nonce if no sessionId provided
-        nonce,
-        challenge,
-        domain,
-        issued_at: new Date(timestamp).toISOString(),
-        expires_at: new Date(expiresAt).toISOString(),
-        is_used: false
-      });
-    } catch (persistError) {
+      const { error: insertError } = await supabase
+        .from('auth_challenges')
+        .insert({
+          session_id: sessionId || nonce, // fallback to nonce if no sessionId provided
+          nonce,
+          challenge,
+          domain,
+          issued_at: issuedAtISO,
+          expires_at: expiresAtISO,
+          is_used: false
+        });
+      if (insertError) {
+        console.warn('Challenge insert failed');
+      }
+    } catch {
       // Do not leak sensitive info; log minimal context
-      console.error('Challenge persistence failed');
+      console.error('Challenge persistence import failed');
     }
 
     // Create challenge data structure
@@ -415,11 +438,11 @@ export const nip07ChallengeConfig = {
 
 /**
  * Validate NIP-07 challenge compatibility with existing authentication systems
- * @param {string} operation - Operation type
- * @param {Object} data - Operation data
+ * @param {string} _operation - Operation type (reserved for future use)
+ * @param {Object} _data - Operation data (reserved for future use)
  * @returns {Object} Compatibility validation result
  */
-export function validateNIP07ChallengeCompatibility(operation, data) {
+export function validateNIP07ChallengeCompatibility(_operation, _data) {
   const compatibility = {
     browserExtension: true, // Compatible with NIP-07 browser extensions
     nostrProtocol: true, // Compatible with Nostr protocol specifications

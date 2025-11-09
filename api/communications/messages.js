@@ -28,31 +28,36 @@ async function getClientFromReq(req) {
     const { SecureSessionManager } = await import(
       "../../netlify/functions/security/session-manager.js"
     );
-    console.log("🔐 DEBUG: SecureSessionManager imported successfully");
-    console.log("🔐 DEBUG: Auth header received:", authHeader ? `Bearer ${authHeader.substring(7, 20)}...` : "none");
+    // Gate debug logging behind environment variable - never log tokens
+    if (process.env.DEBUG_AUTH === 'true') {
+      console.log("🔐 DEBUG: SecureSessionManager imported");
+      console.log("🔐 DEBUG: Auth header present:", !!authHeader);
+    }
     const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
-    console.log("🔐 DEBUG: Session validation result:", session ? "valid" : "invalid");
     if (!session || !session.hashedId) {
-      console.log("🔐 DEBUG: Session missing or no hashedId:", { hasSession: !!session, hasHashedId: session?.hashedId });
+      if (process.env.DEBUG_AUTH === 'true') {
+        console.log("🔐 DEBUG: Session validation failed");
+      }
       return { error: { statusCode: 401, message: "Invalid token" } };
     }
-    console.log("🔐 DEBUG: Session hashedId:", session.hashedId);
 
     // Use server-side Supabase client (no per-request Authorization header)
     const { supabase } = await import("../../netlify/functions/supabase.js");
     return { client: supabase, sessionHashedId: session.hashedId };
   } catch (importError) {
-    console.error("🔐 DEBUG: SecureSessionManager import failed:", importError);
+    console.error("Session validation failed");
     return { error: { statusCode: 500, message: "Session validation failed" } };
   }
 }
 
 export default async function handler(req, res) {
-  // CORS (preserve existing behavior)
+  // CORS with proper caching headers
   res.setHeader("Access-Control-Allow-Origin", getEnvVar("VITE_APP_DOMAIN") || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Cache-Control", "no-store");
 
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "GET") { res.status(405).json({ success: false, error: "Method not allowed" }); return; }
@@ -74,10 +79,10 @@ export default async function handler(req, res) {
 
     // Query params
     const { cursor, limit: limitParam, conversationId, protocol } = req.query || {};
-    const limit = Math.min(parseInt(limitParam || "30", 10) || 30, 100);
+    const parsedLimit = parseInt(limitParam || "30", 10);
+    const limit = Math.min(Math.max(parsedLimit || 30, 1), 100);
 
     // App-layer authorization: only show messages where user is sender or recipient
-    console.log("🔐 DEBUG: messages - querying gift_wrapped_messages with sessionHashedId:", sessionHashedId);
     let query = client
       .from("gift_wrapped_messages")
       .select(
@@ -91,10 +96,9 @@ export default async function handler(req, res) {
       query = query.lt("created_at", cursor);
     }
 
-    // Optional protocol filtering for debugging and analytics
+    // Optional protocol filtering
     if (protocol && ['nip59', 'nip04', 'nip17', 'mls'].includes(protocol)) {
       query = query.eq("protocol", protocol);
-      console.log("🔐 DEBUG: messages - filtering by protocol:", protocol);
     }
 
     if (conversationId) {
@@ -104,9 +108,15 @@ export default async function handler(req, res) {
         return;
       }
       const [left, right] = parts;
-      const hashPattern = /^[A-Za-z0-9_-]+$/;
+      // Strengthen validation: must start and end with alphanumeric, allow underscores/hyphens in middle
+      const hashPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*[A-Za-z0-9]$/;
       if (!hashPattern.test(left) || !hashPattern.test(right)) {
         res.status(400).json({ success: false, error: "Invalid conversationId" });
+        return;
+      }
+      // Check for reasonable length limits
+      if (left.length > 64 || right.length > 64) {
+        res.status(400).json({ success: false, error: "Invalid conversationId length" });
         return;
       }
       // Ensure user is part of the conversation
@@ -119,24 +129,25 @@ export default async function handler(req, res) {
 
     const { data, error } = await query;
     if (error) {
-      console.error("🔐 DEBUG: messages - database error:", error);
+      console.error("Database query failed");
       res.status(500).json({ success: false, error: "Failed to load messages" });
       return;
     }
 
-    console.log("🔐 DEBUG: messages - query successful, messages found:", data?.length || 0);
     const items = Array.isArray(data) ? data : [];
 
+    // Determine pagination before grouping
+    const hasMore = items.length > limit;
+    const sliced = hasMore ? items.slice(0, limit) : items;
+    const nextCursor = hasMore ? sliced[sliced.length - 1].created_at : null;
+
+    // Group conversations based on actual returned items (not all items)
     const conversations = new Map();
-    for (const m of items) {
+    for (const m of sliced) {
       const key = conversationKey(m.sender_hash, m.recipient_hash);
       if (!conversations.has(key)) conversations.set(key, []);
       conversations.get(key).push(m);
     }
-
-    const hasMore = items.length > limit;
-    const sliced = hasMore ? items.slice(0, limit) : items;
-    const nextCursor = hasMore ? sliced[sliced.length - 1].created_at : null;
 
     res.status(200).json({
       success: true,

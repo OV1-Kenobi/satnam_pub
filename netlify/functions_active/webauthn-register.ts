@@ -64,6 +64,18 @@ interface TokenPayload {
   authMethod: string;
 }
 
+/**
+ * Helper: Decode base64url string with proper padding
+ * @param base64url - Base64url encoded string
+ * @returns Decoded string
+ */
+function decodeBase64Url(base64url: string): string {
+  let base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = base64.length % 4;
+  if (pad) base64 += "=".repeat(4 - pad);
+  return Buffer.from(base64, "base64").toString("utf-8");
+}
+
 // Validate JWT token and extract user info
 function validateToken(authHeader: string | undefined): TokenPayload | null {
   if (!authHeader?.startsWith("Bearer ")) {
@@ -85,10 +97,8 @@ function validateToken(authHeader: string | undefined): TokenPayload | null {
       return null;
     }
 
-    // Decode payload
-    const payload = JSON.parse(
-      Buffer.from(parts[1], "base64").toString("utf-8")
-    );
+    // Decode payload with proper base64url handling
+    const payload = JSON.parse(decodeBase64Url(parts[1]));
 
     return payload as TokenPayload;
   } catch (error) {

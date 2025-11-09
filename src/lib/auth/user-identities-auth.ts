@@ -351,6 +351,9 @@ export class UserIdentitiesAuth {
         }
         if (npub === npubToFind) {
           const domain = resolvePlatformLightningDomain();
+          if (!domain) {
+            throw new Error("Failed to resolve platform lightning domain");
+          }
           return `${username}@${domain}`;
         }
       }

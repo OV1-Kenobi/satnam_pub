@@ -704,8 +704,16 @@ export default async function handler(event, context) {
     try {
       const helper = await import('../../netlify/functions/utils/jwt-secret.js');
       jwtSecret = helper.getJwtSecret();
+      if (!jwtSecret) {
+        throw new Error('JWT secret is undefined');
+      }
     } catch (e) {
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
+      console.error('Failed to load JWT secret:', e);
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({ success: false, error: 'JWT configuration error' })
+      };
     }
 
     // Protected identifier (hashedId) using DUID_SERVER_SECRET and sessionId

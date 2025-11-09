@@ -93,10 +93,9 @@ export class CitadelRelay {
       // Sign via CEPS active session/server key policy
       const signed = await CEPS.signEventWithActiveSession(unsignedEvent).catch(
         async () => {
-          // fallback: sign via CEPS server keys if no active session
-          const srv = await (CEPS as any)?.serverKeys?.();
-          if (!srv?.nsec) throw new Error("No signing context available");
-          return CEPS.signEvent(unsignedEvent, srv.nsec);
+          // Fallback: if no active session, throw error
+          // Server-side signing should be handled via sendServerDM or other CEPS methods
+          throw new Error("No active signing session available");
         }
       );
 
@@ -172,9 +171,9 @@ export class CitadelRelay {
 
       const signed = await CEPS.signEventWithActiveSession(unsignedEvent).catch(
         async () => {
-          const srv = await (CEPS as any)?.serverKeys?.();
-          if (!srv?.nsec) throw new Error("No signing context available");
-          return CEPS.signEvent(unsignedEvent, srv.nsec);
+          // Fallback: if no active session, throw error
+          // Server-side signing should be handled via sendServerDM or other CEPS methods
+          throw new Error("No active signing session available");
         }
       );
 
@@ -277,9 +276,9 @@ export class CitadelRelay {
       const familyEvent = await CEPS.signEventWithActiveSession(
         familyUnsigned
       ).catch(async () => {
-        const srv = await (CEPS as any)?.serverKeys?.();
-        if (!srv?.nsec) throw new Error("No signing context available");
-        return CEPS.signEvent(familyUnsigned, srv.nsec);
+        // Fallback: if no active session, throw error
+        // Server-side signing should be handled via sendServerDM or other CEPS methods
+        throw new Error("No active signing session available");
       });
 
       const publishedId = await CEPS.publishEvent(familyEvent as any, [relay]);
@@ -432,9 +431,9 @@ export class CitadelRelay {
       const signed = await CEPS.signEventWithActiveSession(
         unsignedEvent as any
       ).catch(async () => {
-        const srv = await (CEPS as any)?.serverKeys?.();
-        if (!srv?.nsec) throw new Error("No signing context available");
-        return CEPS.signEvent(unsignedEvent as any, srv.nsec);
+        // Fallback: if no active session, throw error
+        // Server-side signing should be handled via sendServerDM or other CEPS methods
+        throw new Error("No active signing session available");
       });
 
       // 4) Verify signature using CEPS verify

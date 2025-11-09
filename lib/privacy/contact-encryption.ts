@@ -154,8 +154,11 @@ export class ContactEncryptionManager {
       const plainBytes = new TextEncoder().encode(contactJson);
       const encrypted = cipher.encrypt(plainBytes);
 
-      // Generate contact hash salt and hash for privacy-preserving search
-      const contactHashSalt = randomBytes(NOBLE_CONFIG.saltLength);
+      // Reuse per-contact salt for consistent hash-based search
+      // This enables privacy-preserving search while maintaining deterministic hashes
+      const contactHashSalt = new Uint8Array(
+        perContactKey.salt.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+      );
       const contactHash = await hashContactIdentifier(
         contactData.npub,
         contactHashSalt
@@ -166,7 +169,7 @@ export class ContactEncryptionManager {
         contact_encryption_salt: perContactKey.salt,
         contact_encryption_iv: perContactKey.iv,
         contact_hash: contactHash,
-        contact_hash_salt: bytesToHex(contactHashSalt),
+        contact_hash_salt: perContactKey.salt,
       };
     } catch (error) {
       throw new Error(
@@ -189,9 +192,10 @@ export class ContactEncryptionManager {
     for (let i = 0; i < count; i++) {
       try {
         // Generate random npub-like string
-        const randomNpub = `npub1${randomBytes(32)
-          .toString("hex")
-          .substring(0, 59)}`;
+        const randomNpub = `npub1${bytesToHex(randomBytes(32)).substring(
+          0,
+          59
+        )}`;
 
         // Generate random display name
         const randomNames = [
@@ -231,8 +235,9 @@ export class ContactEncryptionManager {
         };
 
         // Generate per-contact encryption key
+        // Use cryptographically secure random ID instead of timestamp to prevent temporal analysis
         const perContactKey = await this.generatePerContactEncryptionKey(
-          `decoy_${i}_${Date.now()}`
+          `decoy_${crypto.randomUUID()}`
         );
 
         // Encrypt decoy contact
@@ -287,9 +292,12 @@ export class ContactEncryptionManager {
     // Mix real and decoy contacts
     const mixedContacts = [...realContacts, ...decoyContacts];
 
-    // Shuffle using Fisher-Yates algorithm
+    // Shuffle using Fisher-Yates algorithm with cryptographically secure randomness
     for (let i = mixedContacts.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      // Use cryptographically secure random values to prevent correlation attacks
+      const randomValue = randomBytes(4);
+      const randomInt = new DataView(randomValue.buffer).getUint32(0, true);
+      const j = randomInt % (i + 1);
       [mixedContacts[i], mixedContacts[j]] = [
         mixedContacts[j],
         mixedContacts[i],

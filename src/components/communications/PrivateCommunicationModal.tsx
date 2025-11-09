@@ -514,7 +514,8 @@ export function PrivateCommunicationModal({
    */
   const selectLightningProvider = (recipient: Contact): 'phoenixd' | 'nwc' | 'voltage' => {
     // Priority 1: Internal Satnam ecosystem payments
-    if (recipient.nip05?.endsWith(`@${resolvePlatformLightningDomain()}`) || recipient.nip05?.endsWith('@citadel.academy')) {
+    const platformDomain = resolvePlatformLightningDomain();
+    if (platformDomain && (recipient.nip05?.endsWith(`@${platformDomain}`) || recipient.nip05?.endsWith('@citadel.academy'))) {
       return 'phoenixd'
     }
 

@@ -40,7 +40,7 @@ import { secureNsecManager } from "../src/lib/secure-nsec-manager";
 
 // Import relay privacy layer for metadata protection
 import {
-  initializeDefaultRelayConfigs,
+  initializeRelayPrivacyLayer,
   relayPrivacyLayer,
 } from "./relay-privacy-layer";
 
@@ -456,6 +456,10 @@ export class CentralEventPublishingService {
     { resolve: (v: any) => void; reject: (e: any) => void; timer: any }
   > = new Map();
   private nip46Unsubscribe: (() => void) | null = null;
+  // Mutex-style lock to serialize NIP-46 connection and cleanup
+  private nip46Lock: Promise<void> = Promise.resolve();
+  // Guard against concurrent subscription attempts
+  private nip46Subscribing: boolean = false;
 
   constructor() {
     this.relays = defaultRelays();
@@ -463,11 +467,27 @@ export class CentralEventPublishingService {
     // Keep config.relays in sync with resolved relays for consistency
     this.config.relays = this.relays.slice();
 
-    // Initialize relay privacy layer with default Satnam relay configurations
+    // Initialize relay privacy layer with publish callback
+    // Note: This creates a closure that captures 'this' for relay publishing
     try {
-      initializeDefaultRelayConfigs();
+      initializeRelayPrivacyLayer(async (event: Event, relayUrl: string) => {
+        // Publish single event to specific relay via pool
+        const onauth = (_challenge: string) => {
+          console.log(`[CEPS] Relay ${relayUrl} requested AUTH`);
+        };
+        const pubResult = (this.getPool() as any).publish([relayUrl], event, {
+          onauth,
+        });
+        const publishPromise = Array.isArray(pubResult)
+          ? pubResult[0]
+          : (pubResult as any);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timeout")), 10000)
+        );
+        await Promise.race([publishPromise, timeoutPromise]);
+      });
       console.log(
-        "[CEPS] Relay privacy layer initialized with default configurations"
+        "[CEPS] Relay privacy layer initialized with publish callback"
       );
     } catch (error) {
       console.warn("[CEPS] Failed to initialize relay privacy layer:", error);
@@ -556,32 +576,26 @@ export class CentralEventPublishingService {
   ): Promise<string> {
     const sessionId = await PrivacyUtils.generateEncryptedUUID();
     const sessionKey = await PrivacyUtils.generateSessionKey();
-    const pubHex = await (async () => {
+    const pubHex = (() => {
+      // Accept 64-hex or bech32 nsec only
+      if (/^[0-9a-fA-F]{64}$/.test(nsec)) return getPublicKey(nsec);
       try {
-        // nsec may be hex already or bech32; handle both
-        if (typeof nsec === "string" && /^[0-9a-fA-F]{64}$/.test(nsec))
-          return getPublicKey(hexToBytes(nsec));
         const dec = nip19.decode(nsec);
         if (dec.type === "nsec") {
-          const data = dec.data as Uint8Array;
-          return getPublicKey(data);
+          const data = dec.data as Uint8Array | string;
+          const seckey = typeof data === "string" ? data : bytesToHex(data);
+          return getPublicKey(seckey);
         }
       } catch {}
-      // As a safe fallback, derive from bytes of the string
-      const bytes = te.encode(nsec);
-      const keyBytes =
-        bytes.length >= 32
-          ? bytes.slice(0, 32)
-          : new Uint8Array(32).map((_, i) => bytes[i % bytes.length] || 0);
-      return getPublicKey(keyBytes);
+      throw new Error("Invalid nsec: expected 64-hex or bech32 'nsec1...'");
     })();
     const userHash = await PrivacyUtils.hashIdentifier(pubHex);
     const ttlHours = options?.ttlHours ?? this.config.session.ttlHours;
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
     // Do NOT store nsec; create SecureNsecManager session instead (using policy)
+    const policy = await this.getSigningPolicy();
     try {
-      const policy = await this.getSigningPolicy();
       await secureNsecManager.createPostRegistrationSession(
         nsec,
         policy.sessionDurationMs,
@@ -589,7 +603,11 @@ export class CentralEventPublishingService {
         policy.browserLifetime
       );
     } catch (e) {
-      console.warn("[CEPS] Failed to create SecureNsecManager session:", e);
+      throw new Error(
+        `[CEPS] SecureNsecManager session creation failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`
+      );
     }
 
     this.userSession = {
@@ -1920,7 +1938,9 @@ export class CentralEventPublishingService {
     // New multi-method route when first arg is an action string
     if (
       typeof a === "string" &&
-      (a === "event" || a === "payment" || a === "threshold")
+      (a === "event" || a === "payment" || a === "threshold") &&
+      // Ensure we're not mistakenly treating an event with kind="event" as an action
+      typeof (a as any).kind === "undefined"
     ) {
       const action = a as SignAction;
       const payload = b;
@@ -2019,7 +2039,7 @@ export class CentralEventPublishingService {
       const policy = await this.getSigningPolicy();
       if (policy.singleUse) {
         try {
-          (secureNsecManager as any).clearTemporarySession?.();
+          (secureNsecManager as any).clearTemporarySession?.(sessionId);
         } catch {}
       }
     } catch {}
@@ -2948,7 +2968,7 @@ export class CentralEventPublishingService {
     }>
   > {
     // Hydrate/verify CEPS user session
-    await (this as any).ensureActiveUserSession?.();
+    await this.ensureActiveUserSession();
     if (!this.userSession) throw new Error("No active session");
 
     // Acquire Supabase client
@@ -3487,6 +3507,13 @@ export class CentralEventPublishingService {
   }
 
   public clearNip46Pairing(): void {
+    // Serialize cleanup to prevent race conditions
+    this.nip46Lock = this.nip46Lock
+      .then(() => this._clearNip46PairingUnsafe())
+      .catch(() => {});
+  }
+
+  private _clearNip46PairingUnsafe(): void {
     try {
       if (this.nip46Unsubscribe) {
         try {
@@ -3495,7 +3522,7 @@ export class CentralEventPublishingService {
       }
       this.nip46Unsubscribe = null;
       // Reject all pending
-      for (const [id, pr] of this.nip46Pending.entries()) {
+      for (const [, pr] of this.nip46Pending.entries()) {
         try {
           pr.reject(new Error("nip46_cleared"));
         } catch {}
@@ -3527,12 +3554,12 @@ export class CentralEventPublishingService {
     if (!this.nip46ClientPrivHex) throw new Error("nip46_no_client_key");
     if (this.nip46Encryption === "nip44") {
       const anyNip44: any = nip44 as any;
-      if (anyNip44?.v2?.getConversationKey && anyNip44?.v2?.encrypt) {
-        const convKey = await anyNip44.v2.getConversationKey(
+      if (anyNip44?.v2?.utils?.getConversationKey && anyNip44?.v2?.encrypt) {
+        const convKey = await anyNip44.v2.utils.getConversationKey(
           this.nip46ClientPrivHex,
           toPubHex
         );
-        return await anyNip44.v2.encrypt(convKey, plaintext);
+        return await anyNip44.v2.encrypt(plaintext, convKey);
       }
       if (anyNip44?.encrypt) {
         return await anyNip44.encrypt(
@@ -3553,12 +3580,12 @@ export class CentralEventPublishingService {
     if (!this.nip46ClientPrivHex) throw new Error("nip46_no_client_key");
     if (this.nip46Encryption === "nip44") {
       const anyNip44: any = nip44 as any;
-      if (anyNip44?.v2?.getConversationKey && anyNip44?.v2?.decrypt) {
-        const convKey = await anyNip44.v2.getConversationKey(
+      if (anyNip44?.v2?.utils?.getConversationKey && anyNip44?.v2?.decrypt) {
+        const convKey = await anyNip44.v2.utils.getConversationKey(
           this.nip46ClientPrivHex,
           fromPubHex
         );
-        return await anyNip44.v2.decrypt(convKey, ciphertext);
+        return await anyNip44.v2.decrypt(ciphertext, convKey);
       }
       if (anyNip44?.decrypt) {
         return await anyNip44.decrypt(
@@ -3574,6 +3601,11 @@ export class CentralEventPublishingService {
 
   private nip46Subscribe(relays: string[]): () => void {
     if (!this.nip46ClientPubHex) throw new Error("nip46_no_client_pub");
+    // Prevent concurrent subscriptions
+    if (this.nip46Subscribing) {
+      throw new Error("nip46_subscription_in_progress");
+    }
+    this.nip46Subscribing = true;
     // Tear down any existing
     if (this.nip46Unsubscribe) {
       try {
@@ -3633,7 +3665,9 @@ export class CentralEventPublishingService {
               content: enc,
               pubkey: this.nip46ClientPubHex,
             };
-            const ev = this.signEvent(unsigned, this.nip46ClientPrivHex!);
+            // Add null check before signing
+            if (!this.nip46ClientPrivHex) return;
+            const ev = this.signEvent(unsigned, this.nip46ClientPrivHex);
             await this.publishEvent(ev, this.nip46Relays);
           }
         } catch (err) {
@@ -3644,7 +3678,9 @@ export class CentralEventPublishingService {
           );
         }
       },
-      oneose: () => {},
+      oneose: () => {
+        this.nip46Subscribing = false;
+      },
     });
     this.nip46Unsubscribe = unsub;
     return unsub;
@@ -3669,6 +3705,8 @@ export class CentralEventPublishingService {
       content: enc,
       pubkey: this.nip46ClientPubHex,
     };
+    // Add null check before signing
+    if (!this.nip46ClientPrivHex) throw new Error("nip46_no_client_key");
     const ev = this.signEvent(unsigned, this.nip46ClientPrivHex);
     const timer = setTimeout(() => {
       const p = this.nip46Pending.get(req.id);
@@ -3698,6 +3736,23 @@ export class CentralEventPublishingService {
     encryption?: "nip04" | "nip44";
     timeoutMs?: number;
   }): Promise<{ signerPubHex: string }> {
+    // Serialize connection establishment to prevent race conditions
+    return await new Promise<{ signerPubHex: string }>((resolve, reject) => {
+      this.nip46Lock = this.nip46Lock
+        .then(() => this._establishNip46ConnectionUnsafe(args))
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  private async _establishNip46ConnectionUnsafe(args: {
+    clientPrivHex: string;
+    clientPubHex: string;
+    secretHex: string;
+    relay: string;
+    encryption?: "nip04" | "nip44";
+    timeoutMs?: number;
+  }): Promise<{ signerPubHex: string }> {
     // Initialize state
     this.clearNip46Pairing();
     this.nip46ClientPrivHex = args.clientPrivHex;
@@ -3712,31 +3767,36 @@ export class CentralEventPublishingService {
 
     // Wait for signer to initiate connect with matching secret
     const timeout = args.timeoutMs ?? 45000;
-    const result = await new Promise<{ signerPubHex: string }>(
-      (resolve, reject) => {
-        let intervalHandle: any = null;
-        const t = setTimeout(() => {
-          if (intervalHandle) clearInterval(intervalHandle);
-          reject(new Error("nip46_connect_timeout"));
-        }, timeout);
-        const check = () => {
-          if (this.nip46SignerPubHex) {
-            clearTimeout(t);
+    let intervalHandle: any = null;
+    try {
+      const result = await new Promise<{ signerPubHex: string }>(
+        (resolve, reject) => {
+          const t = setTimeout(() => {
             if (intervalHandle) clearInterval(intervalHandle);
-            resolve({ signerPubHex: this.nip46SignerPubHex });
-            return true;
-          }
-          return false;
-        };
-        // Quick poll loop in case connect arrives immediately
-        intervalHandle = setInterval(() => {
-          if (check()) clearInterval(intervalHandle);
-        }, 250);
-        // If already present (race), resolve
-        if (check() && intervalHandle) clearInterval(intervalHandle);
-      }
-    );
-    return result;
+            reject(new Error("nip46_connect_timeout"));
+          }, timeout);
+          const check = () => {
+            if (this.nip46SignerPubHex) {
+              clearTimeout(t);
+              if (intervalHandle) clearInterval(intervalHandle);
+              resolve({ signerPubHex: this.nip46SignerPubHex });
+              return true;
+            }
+            return false;
+          };
+          // Quick poll loop in case connect arrives immediately
+          intervalHandle = setInterval(() => {
+            if (check()) clearInterval(intervalHandle);
+          }, 250);
+          // If already present (race), resolve
+          if (check() && intervalHandle) clearInterval(intervalHandle);
+        }
+      );
+      return result;
+    } finally {
+      // Ensure cleanup in all exit paths
+      if (intervalHandle) clearInterval(intervalHandle);
+    }
   }
 
   public async nip46SignEvent<T extends object>(
@@ -3808,8 +3868,14 @@ export class CentralEventPublishingService {
         timestamp: Math.floor(Date.now() / 1000),
       });
 
-      // Send via NIP-59 gift-wrapped messaging for maximum privacy
-      const eventId = await this.sendServerDM(guardianPubkey, content);
+      // Convert hex pubkey to npub format
+      const guardianNpub = this.encodeNpub(guardianPubkey);
+
+      // Send via standard direct message (uses active session)
+      const eventId = await this.sendStandardDirectMessage(
+        guardianNpub,
+        content
+      );
 
       console.log(`[CEPS] Guardian approval request published: ${eventId}`);
 
@@ -3875,7 +3941,7 @@ export class CentralEventPublishingService {
    *
    * Sends a notification to all participating guardians when the threshold
    * has been met and the event has been successfully broadcast.
-   * Uses NIP-59 for privacy.
+   * Uses NIP-59 for privacy with rate limiting to prevent relay spam.
    *
    * @param guardianPubkeys - Array of guardian public keys (hex)
    * @param notification - Notification details
@@ -3905,36 +3971,46 @@ export class CentralEventPublishingService {
         `[CEPS] Notifying ${guardianPubkeys.length} guardians of signing completion`
       );
 
-      const results = await Promise.all(
-        guardianPubkeys.map(async (guardianPubkey) => {
-          try {
-            const content = JSON.stringify({
-              type: "guardian_signing_complete",
-              requestId: notification.requestId,
-              familyId: notification.familyId,
-              eventType: notification.eventType,
-              eventId: notification.eventId,
-              completedAt: notification.completedAt,
-              participatingGuardians: notification.participatingGuardians,
-              timestamp: Math.floor(Date.now() / 1000),
-            });
+      // Rate limit: send notifications sequentially with 100ms delay to prevent relay spam
+      const results = [];
+      for (const guardianPubkey of guardianPubkeys) {
+        try {
+          const content = JSON.stringify({
+            type: "guardian_signing_complete",
+            requestId: notification.requestId,
+            familyId: notification.familyId,
+            eventType: notification.eventType,
+            eventId: notification.eventId,
+            completedAt: notification.completedAt,
+            participatingGuardians: notification.participatingGuardians,
+            timestamp: Math.floor(Date.now() / 1000),
+          });
 
-            const eventId = await this.sendServerDM(guardianPubkey, content);
+          // Convert hex pubkey to npub format
+          const guardianNpub = this.encodeNpub(guardianPubkey);
 
-            return { guardianPubkey, success: true, eventId };
-          } catch (error) {
-            console.error(
-              `[CEPS] Failed to notify guardian ${guardianPubkey}:`,
-              error
-            );
-            return {
-              guardianPubkey,
-              success: false,
-              error: error instanceof Error ? error.message : "Unknown error",
-            };
-          }
-        })
-      );
+          // Send via standard direct message (uses active session)
+          const eventId = await this.sendStandardDirectMessage(
+            guardianNpub,
+            content
+          );
+
+          results.push({ guardianPubkey, success: true, eventId });
+
+          // Rate limiting: wait 100ms before next notification
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error(
+            `[CEPS] Failed to notify guardian ${guardianPubkey}:`,
+            error
+          );
+          results.push({
+            guardianPubkey,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
 
       const allSuccess = results.every((r) => r.success);
 

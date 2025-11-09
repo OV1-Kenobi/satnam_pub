@@ -1,26 +1,26 @@
 /**
  * Relay Privacy Layer
- * 
+ *
  * Implements configurable privacy levels for Nostr event publishing with per-relay batching.
  * Supports three relay types: public, private-paid, and private-tor.
- * 
+ *
  * Privacy Levels:
  * - 'public': No batching, direct publish (default)
  * - 'private': Event batching with random delays (0-5s) to obscure timing patterns
  * - 'tor': Maximum privacy with batching and Tor relay routing
  */
 
-import type { Event } from 'nostr-tools';
+import type { Event } from "nostr-tools";
 
 /**
  * Privacy level configuration for relay publishing
  */
-export type PrivacyLevel = 'public' | 'private' | 'tor';
+export type PrivacyLevel = "public" | "private" | "tor";
 
 /**
  * Relay type classification
  */
-export type RelayType = 'public' | 'private-paid' | 'private-tor';
+export type RelayType = "public" | "private-paid" | "private-tor";
 
 /**
  * Privacy-configured relay definition
@@ -47,14 +47,25 @@ interface BatchedEventEntry {
 
 /**
  * Relay Privacy Layer Manager
- * 
+ *
  * Manages event batching and privacy-level configuration per relay.
  * Ensures timing patterns are obscured for privacy-sensitive relays.
  */
 export class RelayPrivacyLayer {
   private batchQueues: Map<string, BatchedEventEntry[]> = new Map();
-  private batchTimers: Map<string, NodeJS.Timeout> = new Map();
+  private batchTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private relayConfigs: Map<string, PrivacyRelay> = new Map();
+  private publishCallback?: (event: Event, relayUrl: string) => Promise<void>;
+
+  /**
+   * Initialize with optional publish callback
+   * @param publishCallback - Function to publish events to relay (e.g., via WebSocket)
+   */
+  constructor(
+    publishCallback?: (event: Event, relayUrl: string) => Promise<void>
+  ) {
+    this.publishCallback = publishCallback;
+  }
 
   /**
    * Configure a relay with privacy settings
@@ -74,8 +85,8 @@ export class RelayPrivacyLayer {
     // Default: public relay, no batching
     const defaultConfig: PrivacyRelay = {
       url: relayUrl,
-      type: 'public',
-      privacyLevel: 'public',
+      type: "public",
+      privacyLevel: "public",
       batchingEnabled: false,
       batchSize: 1,
       batchDelayMs: 0,
@@ -87,9 +98,13 @@ export class RelayPrivacyLayer {
 
   /**
    * Queue event for batched publishing
-   * Returns promise that resolves when event is published
+   * Returns promise that resolves when event is published to relay
+   * Rejects if no publish callback is configured or if publishing fails
    */
-  async publishWithBatching(event: Event, relay: PrivacyRelay): Promise<string> {
+  async publishWithBatching(
+    event: Event,
+    relay: PrivacyRelay
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const entry: BatchedEventEntry = {
         event,
@@ -101,7 +116,10 @@ export class RelayPrivacyLayer {
 
       if (!relay.batchingEnabled) {
         // Direct publish without batching
-        resolve(event.id || '');
+        this.publishEvent(event, relay).then(
+          () => resolve(event.id || ""),
+          (error) => reject(error)
+        );
         return;
       }
 
@@ -125,12 +143,37 @@ export class RelayPrivacyLayer {
   }
 
   /**
+   * Publish a single event to relay
+   * Uses configured publish callback or throws error if not configured
+   */
+  private async publishEvent(event: Event, relay: PrivacyRelay): Promise<void> {
+    if (!this.publishCallback) {
+      throw new Error(
+        `No publish callback configured for RelayPrivacyLayer. Cannot publish event to ${relay.url}`
+      );
+    }
+
+    try {
+      await this.publishCallback(event, relay.url);
+    } catch (error) {
+      throw new Error(
+        `Failed to publish event to ${relay.url}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }
+
+  /**
    * Schedule batch flush with random delay
+   * CRITICAL: Only schedules if no timer is already active
+   * Prevents timer reset on continuous trickle of events
    */
   private scheduleBatchFlush(queueKey: string, relay: PrivacyRelay): void {
-    // Clear existing timer if any
+    // Only schedule if no timer is active
+    // This prevents the timer from perpetually resetting if events arrive continuously
     if (this.batchTimers.has(queueKey)) {
-      clearTimeout(this.batchTimers.get(queueKey)!);
+      return;
     }
 
     // Random delay between 0 and batchDelayMs
@@ -145,8 +188,9 @@ export class RelayPrivacyLayer {
 
   /**
    * Flush all batched events for a relay
+   * Publishes all queued events and resolves/rejects their promises
    */
-  private flushBatch(queueKey: string): void {
+  private async flushBatch(queueKey: string): Promise<void> {
     const queue = this.batchQueues.get(queueKey);
     if (!queue || queue.length === 0) return;
 
@@ -156,9 +200,16 @@ export class RelayPrivacyLayer {
       this.batchTimers.delete(queueKey);
     }
 
-    // Resolve all entries in batch
+    // Publish all events in batch
     for (const entry of queue) {
-      entry.resolve(entry.event.id || '');
+      try {
+        await this.publishEvent(entry.event, entry.relay);
+        entry.resolve(entry.event.id || "");
+      } catch (error) {
+        entry.reject(
+          error instanceof Error ? error : new Error("Unknown publishing error")
+        );
+      }
     }
 
     // Clear queue
@@ -172,25 +223,25 @@ export class RelayPrivacyLayer {
   static getDefaultSatnamRelays(): PrivacyRelay[] {
     return [
       {
-        url: 'wss://relay.satnam.pub',
-        type: 'public',
-        privacyLevel: 'public',
+        url: "wss://relay.satnam.pub",
+        type: "public",
+        privacyLevel: "public",
         batchingEnabled: false,
         batchSize: 1,
         batchDelayMs: 0,
       },
       {
-        url: 'wss://private.satnam.pub',
-        type: 'private-paid',
-        privacyLevel: 'private',
+        url: "wss://private.satnam.pub",
+        type: "private-paid",
+        privacyLevel: "private",
         batchingEnabled: true,
         batchSize: 5,
         batchDelayMs: 5000, // 0-5 second random delay
       },
       {
-        url: 'wss://private-tor.satnam.pub',
-        type: 'private-tor',
-        privacyLevel: 'tor',
+        url: "wss://private-tor.satnam.pub",
+        type: "private-tor",
+        privacyLevel: "tor",
         batchingEnabled: true,
         batchSize: 10,
         batchDelayMs: 5000, // 0-5 second random delay
@@ -206,15 +257,41 @@ export class RelayPrivacyLayer {
       this.flushBatch(queueKey);
     }
   }
+
+  /**
+   * Set or update the publish callback
+   * CRITICAL: Must be called before publishing events
+   */
+  setPublishCallback(
+    callback: (event: Event, relayUrl: string) => Promise<void>
+  ): void {
+    this.publishCallback = callback;
+  }
 }
 
 /**
  * Global instance of relay privacy layer
+ * CRITICAL: Must be initialized with a publish callback before use
  */
 export const relayPrivacyLayer = new RelayPrivacyLayer();
 
 /**
- * Initialize default Satnam relay configurations
+ * Initialize relay privacy layer with publish callback and default relay configurations
+ * CRITICAL: Must be called before publishing events
+ */
+export function initializeRelayPrivacyLayer(
+  publishCallback: (event: Event, relayUrl: string) => Promise<void>
+): void {
+  relayPrivacyLayer.setPublishCallback(publishCallback);
+  const defaultRelays = RelayPrivacyLayer.getDefaultSatnamRelays();
+  for (const relay of defaultRelays) {
+    relayPrivacyLayer.configureRelay(relay);
+  }
+}
+
+/**
+ * Initialize default Satnam relay configurations only
+ * @deprecated Use initializeRelayPrivacyLayer instead to ensure publish callback is set
  */
 export function initializeDefaultRelayConfigs(): void {
   const defaultRelays = RelayPrivacyLayer.getDefaultSatnamRelays();
@@ -222,4 +299,3 @@ export function initializeDefaultRelayConfigs(): void {
     relayPrivacyLayer.configureRelay(relay);
   }
 }
-

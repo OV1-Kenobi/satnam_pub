@@ -330,11 +330,9 @@ function validateGiftwrappedMessage(messageData) {
     errors.push({ field: 'recipient', message: 'Recipient identifier is required' });
   }
 
-  // For incoming logs we require explicit sender (remote party). For outgoing we override from auth.
-  const isIncoming = messageData && typeof messageData.direction === 'string' && messageData.direction === 'incoming';
-  if (isIncoming && (!messageData.sender || typeof messageData.sender !== 'string')) {
-    errors.push({ field: 'sender', message: 'Sender identifier is required for incoming messages' });
-  }
+  // For outgoing messages, sender comes from authenticated session; input is ignored
+  // For incoming messages, sender is set from the signed event
+  // No validation needed here - sender is always set from auth context or event
 
   // Encryption level validation
   const validEncryptionLevels = ['standard', 'enhanced', 'maximum'];
@@ -480,7 +478,9 @@ async function processMessageDelivery(signedEvent, messageData) {
 function extractClientInfo(event) {
   return {
     userAgent: event.headers['user-agent'],
-    ipAddress: event.headers['x-forwarded-for'] ||
+    ipAddress: event.clientIp ||
+               event.headers['x-nf-client-connection-ip'] ||
+               event.headers['x-forwarded-for'] ||
                event.headers['x-real-ip'] ||
                event.headers['client-ip'],
     origin: event.headers['origin']
@@ -532,7 +532,9 @@ export default async function handler(event, context) {
     let messageData;
     try {
       messageData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-      console.log("🔐 DEBUG: giftwrapped - received message data:", JSON.stringify(messageData, null, 2));
+      if (getEnvVar('DEBUG_GIFTWRAPPED') === '1') {
+        console.log("🔐 DEBUG: received message metadata only");
+      }
     } catch (parseError) {
       console.error("🔐 DEBUG: giftwrapped - JSON parse error:", parseError);
       return {
@@ -577,8 +579,12 @@ export default async function handler(event, context) {
 
     const validatedData = validationResult.data;
 
-    // IP-based rate limiting; require identifiable client IP
-    const clientIP = event.headers['x-forwarded-for'] || event.headers['x-real-ip'] || event.headers['client-ip'];
+    // IP-based rate limiting; use Netlify's event.clientIp as primary source
+    const clientIP = event.clientIp ||
+                     event.headers['x-nf-client-connection-ip'] ||
+                     event.headers['x-forwarded-for'] ||
+                     event.headers['x-real-ip'] ||
+                     event.headers['client-ip'];
     if (!clientIP) {
       return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Client identification required' }) };
     }
@@ -923,10 +929,8 @@ export default async function handler(event, context) {
         console.warn('🔐 DEBUG: giftwrapped - unexpected error updating delivery status', e);
       }
 
-      // Zero out ephemeral key for security (only if it exists)
-      if (ephemeralKey) {
-        ephemeralKey.split('').forEach((_, i, arr) => arr[i] = '0');
-      }
+      // Note: String zeroization removed - JS strings are immutable.
+      // Use Uint8Array and .fill(0) if key material is kept in memory.
     } else {
       // Standard DM logging mode: no delivery processing, consider it published
       deliveryResult = {

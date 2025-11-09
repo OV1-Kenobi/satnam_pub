@@ -42,16 +42,21 @@ async function getClientFromReq(req) {
 }
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS headers with configurable origin
+  res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ success: false, error: 'Method not allowed' }); return; }
 
-  // Rate limiting (best-effort)
-  const clientIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown';
+  // Rate limiting: extract rightmost IP from x-forwarded-for chain to prevent spoofing
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const clientIP = forwardedFor
+    ? String(forwardedFor).split(',').pop()?.trim()
+    : req.headers['x-real-ip'] || 'unknown';
   if (!allowRequest(String(clientIP))) { res.status(429).json({ success: false, error: 'Rate limit exceeded' }); return; }
 
   try {
@@ -62,14 +67,20 @@ export default async function handler(req, res) {
     if (!query || typeof query !== 'string') { res.status(400).json({ success: false, error: 'query required' }); return; }
 
     // Privacy-first: search on contact_hash only (client pre-hashes displayName/nip05 into contact_hash variants if needed)
-    const likeQuery = `%${String(query).toLowerCase()}%`;
+    // Escape LIKE pattern characters to prevent wildcard injection
+    const escapeLike = (s) => String(s).replace(/([%_\\])/g, '\\$1');
+    const likeQuery = `%${escapeLike(String(query).toLowerCase())}%`;
+
+    // Clamp limit to [1, 50] to prevent negative/NaN values
+    const parsedLimit = parseInt(limit, 10);
+    const clampedLimit = Math.min(Math.max(parsedLimit || 20, 1), 50);
 
     let q = client
       .from('encrypted_contacts')
       .select('id, owner_hash, encrypted_contact, contact_hash, contact_encryption_salt, contact_encryption_iv, trust_level, family_role, supports_gift_wrap, preferred_encryption, added_at, last_contact_at, contact_count')
       .ilike('contact_hash', likeQuery)
       .order('added_at', { ascending: false })
-      .limit(Math.min(parseInt(limit, 10) || 20, 50));
+      .limit(clampedLimit);
 
     // Constrain to caller's allowed owner hashes using RLS or explicit filter
     if (allowedHashes.size > 0) {
@@ -81,7 +92,8 @@ export default async function handler(req, res) {
 
     res.status(200).json({ success: true, contacts: data || [] });
   } catch (e) {
-    const code = e?.status || e?.code || 500;
+    // Preserve thrown HTTP status codes (status, statusCode, or code)
+    const code = e?.status ?? e?.statusCode ?? e?.code ?? 500;
     console.error('search-contacts error:', e);
     res.status(code).json({ success: false, error: e?.message || 'Unexpected error' });
   }

@@ -56,3 +56,13 @@ test_file.txt
 
 # Local Netlify folder
 .netlify
+
+# Internal planning/analysis documents - not for public repository
+docs/GROUP_MESSAGING_*.md
+
+# Internal security audit and analysis documentation - not for public repository
+docs/*_AUDIT_*.md
+docs/*_FIXES_*.md
+docs/*_SECURITY_*.md
+docs/*_ANALYSIS_*.md
+docs/*_IMPLEMENTATION_*.md

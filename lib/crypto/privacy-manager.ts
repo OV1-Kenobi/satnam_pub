@@ -61,22 +61,67 @@ export class PrivacyManager {
   }
 
   /**
-   * Constant-time string comparison to prevent timing attacks
-   * SECURITY: Prevents information leakage through timing differences
-   * @param {string} a - First string to compare
-   * @param {string} b - Second string to compare
-   * @returns {Promise<boolean>} - True if strings match, false otherwise
+   * Timing-safe equality check to prevent timing attacks.
+   *
+   * Compares two values in constant time, preventing information leakage through
+   * timing differences. Prefer comparing fixed-length digests (e.g., HMACs, SHA-256 hashes).
+   *
+   * Accepts canonical strings (hex/base64/utf-8) or raw bytes (Uint8Array/Buffer).
+   * Length differences are included in the comparison accumulator to prevent early exits.
+   *
+   * @param a - First value to compare (string or Uint8Array)
+   * @param b - Second value to compare (string or Uint8Array)
+   * @returns true if values are equal, false otherwise
+   *
+   * @example
+   * // Compare hex-encoded hashes
+   * const hash1 = "abc123def456";
+   * const hash2 = "abc123def456";
+   * const isEqual = PrivacyManager.constantTimeCompare(hash1, hash2); // true
+   *
+   * @example
+   * // Compare raw bytes
+   * const bytes1 = new Uint8Array([1, 2, 3, 4]);
+   * const bytes2 = new Uint8Array([1, 2, 3, 4]);
+   * const isEqual = PrivacyManager.constantTimeCompare(bytes1, bytes2); // true
+   *
+   * @security
+   * - No early returns on length mismatch (length diff folded into accumulator)
+   * - XOR-based comparison prevents branch prediction attacks
+   * - Suitable for comparing authentication tokens, signatures, and password hashes
+   * - NOT suitable for comparing plaintext passwords (use PBKDF2 + constantTimeCompare instead)
    */
-  static constantTimeCompare(a: string, b: string): boolean {
-    // Ensure we always compare the same number of characters
-    const maxLength = Math.max(a.length, b.length);
-    let result = a.length ^ b.length; // Include length difference in result
+  static constantTimeCompare(
+    a: string | Uint8Array,
+    b: string | Uint8Array
+  ): boolean {
+    // Convert both inputs to Uint8Array for uniform comparison
+    const aBytes = this._toUint8Array(a);
+    const bBytes = this._toUint8Array(b);
+
+    // Constant-time comparison: include length difference in accumulator
+    const maxLength = Math.max(aBytes.length, bBytes.length);
+    let result = aBytes.length ^ bBytes.length; // Include length difference in result
     for (let i = 0; i < maxLength; i++) {
-      const aChar = i < a.length ? a.charCodeAt(i) : 0;
-      const bChar = i < b.length ? b.charCodeAt(i) : 0;
-      result |= aChar ^ bChar;
+      const aByte = i < aBytes.length ? aBytes[i] : 0;
+      const bByte = i < bBytes.length ? bBytes[i] : 0;
+      result |= aByte ^ bByte;
     }
     return result === 0;
+  }
+
+  /**
+   * Convert string or Uint8Array to Uint8Array
+   * @private
+   */
+  private static _toUint8Array(value: string | Uint8Array): Uint8Array {
+    if (value instanceof Uint8Array) {
+      return value;
+    }
+    if (typeof value === "string") {
+      return new TextEncoder().encode(value);
+    }
+    return new Uint8Array(0);
   }
 
   /**

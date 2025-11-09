@@ -193,7 +193,13 @@ export class EnhancedNostrManager {
       relays: Array.from(this.relayConnections.keys()),
       profile: {
         name: username,
-        nip05: `${username}@${resolvePlatformLightningDomain()}`,
+        nip05: (() => {
+          const domain = resolvePlatformLightningDomain();
+          if (!domain) {
+            throw new Error("Failed to resolve platform lightning domain");
+          }
+          return `${username}@${domain}`;
+        })(),
       },
       preferences: {
         autoPublishProfile: true,

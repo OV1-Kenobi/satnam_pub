@@ -193,11 +193,23 @@ async function testJWTStandardization() {
 }
 
 // Helper Functions
+/**
+ * Decode base64url string with proper padding
+ * @param {string} base64url - Base64url encoded string
+ * @returns {string} Decoded string
+ */
+function decodeBase64Url(base64url) {
+  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = base64.length % 4;
+  if (pad) base64 += '='.repeat(4 - pad);
+  return atob(base64);
+}
+
 function parseJWTPayload(token) {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    return JSON.parse(atob(parts[1]));
+    return JSON.parse(decodeBase64Url(parts[1]));
   } catch (error) {
     return null;
   }

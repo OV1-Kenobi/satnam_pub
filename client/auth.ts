@@ -22,6 +22,24 @@ let memoryTokenStorage: {
 };
 
 /**
+ * Helper: parse JWT payload with proper base64url decoding (browser-safe)
+ * Handles base64url encoding (RFC 4648) with proper padding
+ * @param jwt - JWT token string
+ * @returns Parsed JWT payload
+ * @throws Error if JWT format is invalid or payload cannot be parsed
+ */
+function parseJwt<T = unknown>(jwt: string): T {
+  const parts = jwt.split(".");
+  if (parts.length < 2) throw new Error("Invalid JWT: missing payload part");
+  const base64Url = parts[1];
+  let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = base64.length % 4;
+  if (pad) base64 += "=".repeat(4 - pad);
+  const json = atob(base64);
+  return JSON.parse(json) as T;
+}
+
+/**
  * Authenticates a user with a signed Nostr event and stores the token securely.
  * @param signedEvent The signed Nostr event for authentication
  * @returns Promise resolving to the authentication token or false if authentication failed
@@ -35,23 +53,23 @@ export const authenticateUser = async (
 
     // SECURITY: Store access token in memory only (XSS-safe)
     if (typeof window !== "undefined") {
-      // Parse token to get expiry
+      // Parse token to get expiry with robust base64url decoding
       try {
-        const parts = token.split(".");
-        if (parts.length !== 3) {
-          throw new Error("Invalid JWT format");
+        const raw = token.startsWith("Bearer ") ? token.slice(7) : token;
+        const payload = parseJwt<{ exp?: number }>(raw);
+        memoryTokenStorage.accessToken = token;
+        if (typeof payload?.exp === "number") {
+          memoryTokenStorage.expiresAt = payload.exp * 1000; // ms
+        } else {
+          console.warn(
+            "Token payload missing exp; not marking as authenticated."
+          );
+          memoryTokenStorage.expiresAt = null;
         }
-        const payload = JSON.parse(atob(parts[1]));
-        memoryTokenStorage = {
-          accessToken: token,
-          expiresAt: payload.exp * 1000, // Convert to milliseconds
-        };
       } catch (parseError) {
         console.error("Failed to parse token payload:", parseError);
-        memoryTokenStorage = {
-          accessToken: token,
-          expiresAt: Date.now() + 60 * 60 * 1000, // Default 1 hour
-        };
+        memoryTokenStorage.accessToken = token;
+        memoryTokenStorage.expiresAt = null; // safer than guessing
       }
     }
     return token;

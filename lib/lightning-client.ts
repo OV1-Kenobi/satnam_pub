@@ -335,9 +335,13 @@ export class LightningClient {
     amount: number,
     purpose?: string
   ): Promise<CreateInvoiceResponse & { privacy: PrivacyWrappedInvoice }> {
+    const domain = resolvePlatformLightningDomain();
+    if (!domain) {
+      throw new Error("Failed to resolve platform lightning domain");
+    }
     const description = purpose
-      ? `Payment to ${familyMember}@my.satnam.pub: ${purpose}`
-      : `Payment to ${familyMember}@my.satnam.pub`;
+      ? `Payment to ${familyMember}@${domain}: ${purpose}`
+      : `Payment to ${familyMember}@${domain}`;
 
     const invoice = await this.createInvoice(
       { amount, description },
@@ -595,11 +599,15 @@ export class LightningClient {
 
     try {
       // Create privacy-wrapped invoice for internal payment
+      const domain = resolvePlatformLightningDomain();
+      if (!domain) {
+        throw new Error("Failed to resolve platform lightning domain");
+      }
       const invoice = await this.createInvoice(
         {
           amount,
           description:
-            memo || `P2P payment from ${fromUser} to ${toUser}@my.satnam.pub`,
+            memo || `P2P payment from ${fromUser} to ${toUser}@${domain}`,
         },
         true // Always enable privacy for internal payments
       );
@@ -621,12 +629,15 @@ export class LightningClient {
       for (const fallbackNode of routing.fallbackNodes) {
         try {
           this.switchNode(fallbackNode);
+          const domain = resolvePlatformLightningDomain();
+          if (!domain) {
+            throw new Error("Failed to resolve platform lightning domain");
+          }
           const invoice = await this.createInvoice(
             {
               amount,
               description:
-                memo ||
-                `P2P payment from ${fromUser} to ${toUser}@my.satnam.pub`,
+                memo || `P2P payment from ${fromUser} to ${toUser}@${domain}`,
             },
             true
           );
@@ -737,17 +748,21 @@ export class LightningClient {
 
       if (enablePrivacy) {
         try {
+          const domain = resolvePlatformLightningDomain();
+          if (!domain) {
+            throw new Error("Failed to resolve platform lightning domain");
+          }
           const invoice = await this.createInvoice({
             amount,
             description:
               memo ||
-              `P2P external payment from ${fromUser}@my.satnam.pub to ${toLightningAddress}`,
+              `P2P external payment from ${fromUser}@${domain} to ${toLightningAddress}`,
           });
 
           privacyWrapped = await this.privacyLayer.wrapInvoiceForPrivacy(
             invoice.invoice,
             memo ||
-              `P2P external payment from ${fromUser}@my.satnam.pub to ${toLightningAddress}`
+              `P2P external payment from ${fromUser}@${domain} to ${toLightningAddress}`
           );
 
           if (!privacyWrapped.isPrivacyEnabled) {
@@ -762,12 +777,16 @@ export class LightningClient {
       }
 
       // Execute external payment
+      const domain = resolvePlatformLightningDomain();
+      if (!domain) {
+        throw new Error("Failed to resolve platform lightning domain");
+      }
       const payment = await this.sendPayment(
         fromUser,
         toLightningAddress,
         amount,
         memo ||
-          `P2P external payment from ${fromUser}@my.satnam.pub to ${toLightningAddress}`
+          `P2P external payment from ${fromUser}@${domain} to ${toLightningAddress}`
       );
 
       return {

@@ -29,7 +29,7 @@ import { PrivacyManager } from "../lib/crypto/privacy-manager";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
-} from "../lib/privacy/encryption";
+} from "../src/lib/privacy/encryption";
 import { AuthAuditLog, OnboardingSession, User } from "../types/user";
 import { generateRandomHex, sha256 } from "../utils/crypto-factory";
 import { generateToken } from "./auth";
