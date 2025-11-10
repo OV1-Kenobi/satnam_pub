@@ -1644,7 +1644,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     } else if (currentStep === 3 && migrationMode === 'generate') {
       // Publish profile and register identity, then move directly to completion
 
-
       // Set generating state to show progress
       setIsGenerating(true);
       setGenerationStep("Publishing profile and registering identity...");
@@ -1666,14 +1665,26 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         console.log("[IdentityForge] publishNostrProfile: start", new Date().toISOString());
         setGenerationStep("Publishing Nostr profile...");
         setGenerationProgress(20);
-        await publishNostrProfile();
+
+        // CRITICAL FIX: Add timeout to prevent hanging on relay issues
+        const profilePromise = publishNostrProfile();
+        const profileTimeout = new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('Profile publishing timeout after 15 seconds')), 15000)
+        );
+        await Promise.race([profilePromise, profileTimeout]);
         console.log("[IdentityForge] publishNostrProfile: done", new Date().toISOString());
 
         // Then register the identity
         console.log("[IdentityForge] registerIdentity: start", new Date().toISOString());
         setGenerationStep("Registering identity with backend...");
         setGenerationProgress(40);
-        const result = await registerIdentity();
+
+        // CRITICAL FIX: Add timeout to prevent hanging on backend issues
+        const registerPromise = registerIdentity();
+        const registerTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Registration timeout after 30 seconds')), 30000)
+        );
+        const result = await Promise.race([registerPromise, registerTimeout]);
         console.log("[IdentityForge] registerIdentity: done", { ok: !!(result && (result as any).success), t: new Date().toISOString() });
         setGenerationProgress(60);
 
@@ -1687,10 +1698,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           setGenerationStep("Publishing PKARR attestation...");
           setGenerationProgress(80);
           try {
-            const pkarrResult = await publishPkarrRecord();
-            if (!pkarrResult.success) {
-              console.warn('⚠️ PKARR publishing failed:', pkarrResult.error);
-              // Don't fail registration, but log for debugging
+            // CRITICAL FIX: Check session token before attempting PKARR publish
+            const sessionToken = SecureTokenManager.getAccessToken();
+            if (!sessionToken) {
+              console.warn('⚠️ PKARR skipped: no session token available yet');
+            } else {
+              const pkarrResult = await publishPkarrRecord();
+              if (!pkarrResult.success) {
+                console.warn('⚠️ PKARR publishing failed:', pkarrResult.error);
+                // Don't fail registration, but log for debugging
+              }
             }
           } catch (err) {
             console.warn('⚠️ PKARR publishing failed (non-blocking):', err);
@@ -1718,6 +1735,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           nextStep,
         });
 
+        // CRITICAL FIX: Always transition to next step, even if PKARR failed
         setCurrentStep(nextStep);
       } catch (error) {
         console.error("❌ Failed to complete identity creation:", error);

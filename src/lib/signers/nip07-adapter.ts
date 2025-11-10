@@ -4,16 +4,18 @@
  * Provides event signing via window.nostr. Payment/threshold are not supported by NIP-07.
  */
 
+import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 import type {
   SignerAdapter,
-  SigningMethodId,
-  SignerStatus,
   SignerCapability,
+  SignerStatus,
+  SigningMethodId,
 } from "./signer-adapter";
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 
 interface NostrExtension {
-  signEvent: (unsigned: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  signEvent: (
+    unsigned: Record<string, unknown>
+  ) => Promise<Record<string, unknown>>;
   getPublicKey?: () => Promise<string>;
 }
 
@@ -26,7 +28,11 @@ function getNostr(): NostrExtension | null {
 export class Nip07Adapter implements SignerAdapter {
   public readonly id: SigningMethodId = "nip07";
   public readonly label = "NIP-07 Extension";
-  public readonly capabilities: SignerCapability = { event: true, payment: false, threshold: false };
+  public readonly capabilities: SignerCapability = {
+    event: true,
+    payment: false,
+    threshold: false,
+  };
 
   private connected = false;
 
@@ -36,9 +42,21 @@ export class Nip07Adapter implements SignerAdapter {
   }
 
   async getStatus(): Promise<SignerStatus> {
+    // CRITICAL FIX: Check registration flag FIRST before any extension access
+    // During Identity Forge registration, IdentityForgeGuard blocks getPublicKey()
+    // to prevent NIP-07 extension access. We must return "unavailable" immediately
+    // to prevent infinite recursion between selectSigner() -> getStatus() -> getPublicKey() -> error -> fallback adapter
+    if (typeof window !== "undefined") {
+      const win = window as any;
+      if (win.__identityForgeRegFlow) {
+        return "unavailable";
+      }
+    }
+
     const ext = getNostr();
     if (!ext) return "unavailable";
     if (this.connected) return "connected";
+
     // Best effort probe without user prompt
     try {
       if (ext.getPublicKey) {
@@ -61,7 +79,9 @@ export class Nip07Adapter implements SignerAdapter {
       this.connected = true;
     } catch (e) {
       this.connected = false;
-      throw new Error(e instanceof Error ? e.message : "Extension permission denied or locked");
+      throw new Error(
+        e instanceof Error ? e.message : "Extension permission denied or locked"
+      );
     }
   }
 
@@ -83,18 +103,28 @@ export class Nip07Adapter implements SignerAdapter {
       }
       return signed;
     } catch (e) {
-      throw new Error(e instanceof Error ? e.message : "User rejected signing or extension error");
+      throw new Error(
+        e instanceof Error
+          ? e.message
+          : "User rejected signing or extension error"
+      );
     }
   }
 
-  async authorizePayment(): Promise<{ authorized: boolean; proof?: unknown; error?: string }> {
+  async authorizePayment(): Promise<{
+    authorized: boolean;
+    proof?: unknown;
+    error?: string;
+  }> {
     return { authorized: false, error: "Not supported by NIP-07" };
   }
 
-  async signThreshold(): Promise<{ partial: unknown; meta?: Record<string, unknown> }> {
+  async signThreshold(): Promise<{
+    partial: unknown;
+    meta?: Record<string, unknown>;
+  }> {
     throw new Error("Threshold signing not supported by NIP-07");
   }
 }
 
 export default Nip07Adapter;
-

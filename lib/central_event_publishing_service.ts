@@ -444,6 +444,11 @@ export class CentralEventPublishingService {
   // Registered external signer adapters (NIP-07, Amber, NTAG424, etc.)
   private externalSigners: SignerAdapter[] = [];
 
+  // CRITICAL FIX: Recursion guard for signEventWithActiveSession
+  // Tracks call depth to detect infinite loops between selectSigner and adapter.getStatus()
+  private signEventRecursionDepth: number = 0;
+  private readonly MAX_RECURSION_DEPTH: number = 3;
+
   // ---- NIP-46 (Nostr Connect) ephemeral pairing state ----
   private nip46ClientPrivHex: string | null = null;
   private nip46ClientPubHex: string | null = null;
@@ -1935,116 +1940,132 @@ export class CentralEventPublishingService {
     options?: any
   ): Promise<any>;
   async signEventWithActiveSession(a: any, b?: any, c?: any): Promise<any> {
-    // New multi-method route when first arg is an action string
-    if (
-      typeof a === "string" &&
-      (a === "event" || a === "payment" || a === "threshold") &&
-      // Ensure we're not mistakenly treating an event with kind="event" as an action
-      typeof (a as any).kind === "undefined"
-    ) {
-      const action = a as SignAction;
-      const payload = b;
-      const options = c || {};
-      const signer = await this.selectSigner(action);
-
-      if (!signer) {
-        if (action === "event") {
-          // Fallback to legacy secure-session signing for backward compatibility
-          return await this.signEventWithActiveSession(payload);
-        }
-        throw new Error("No eligible signer available for action " + action);
-      }
-
-      if (action === "event") {
-        const signed = await signer.signEvent(payload, options);
-        try {
-          // Best-effort validation for adapters that return a Nostr event
-          if ((signed as any) && typeof (signed as any) === "object") {
-            const ok = this.verifyEvent(signed as any);
-            if (!ok)
-              throw new Error("Adapter returned invalid event signature");
-          }
-        } catch (e) {
-          throw new Error(
-            e instanceof Error ? e.message : "Signature verification failed"
-          );
-        }
-        return signed;
-      }
-
-      if (action === "payment") {
-        return await signer.authorizePayment(payload);
-      }
-
-      // threshold
-      const sessionId = options?.sessionId ?? payload?.sessionId ?? "";
-      return await signer.signThreshold(payload, sessionId);
-    }
-
-    // Legacy behavior: a is the unsigned event
-    const unsignedEvent = a;
-
-    // Prefer a registered external signer for standard event signing when available
+    // CRITICAL FIX: Detect infinite recursion between selectSigner and adapter.getStatus()
+    this.signEventRecursionDepth++;
     try {
-      const preferred = await this.selectSigner("event");
-      if (preferred) {
-        console.log(
-          "[CEPS] Using external signer adapter for event:",
-          preferred.id
+      if (this.signEventRecursionDepth > this.MAX_RECURSION_DEPTH) {
+        throw new Error(
+          `Infinite recursion detected in signer selection (depth: ${this.signEventRecursionDepth}). ` +
+            `This typically indicates a circular dependency between selectSigner() and adapter.getStatus(). ` +
+            `Check that all adapters return "unavailable" during Identity Forge registration.`
         );
-        const signedViaAdapter = await preferred.signEvent(unsignedEvent);
-        try {
-          if (signedViaAdapter && typeof signedViaAdapter === "object") {
-            const ok = this.verifyEvent(signedViaAdapter as any);
-            if (!ok)
-              throw new Error("External signer returned invalid signature");
+      }
+
+      // New multi-method route when first arg is an action string
+      if (
+        typeof a === "string" &&
+        (a === "event" || a === "payment" || a === "threshold") &&
+        // Ensure we're not mistakenly treating an event with kind="event" as an action
+        typeof (a as any).kind === "undefined"
+      ) {
+        const action = a as SignAction;
+        const payload = b;
+        const options = c || {};
+        const signer = await this.selectSigner(action);
+
+        if (!signer) {
+          if (action === "event") {
+            // Fallback to legacy secure-session signing for backward compatibility
+            return await this.signEventWithActiveSession(payload);
           }
-        } catch (e) {
-          throw new Error(
-            e instanceof Error ? e.message : "Signature verification failed"
-          );
+          throw new Error("No eligible signer available for action " + action);
         }
-        return signedViaAdapter;
+
+        if (action === "event") {
+          const signed = await signer.signEvent(payload, options);
+          try {
+            // Best-effort validation for adapters that return a Nostr event
+            if ((signed as any) && typeof (signed as any) === "object") {
+              const ok = this.verifyEvent(signed as any);
+              if (!ok)
+                throw new Error("Adapter returned invalid event signature");
+            }
+          } catch (e) {
+            throw new Error(
+              e instanceof Error ? e.message : "Signature verification failed"
+            );
+          }
+          return signed;
+        }
+
+        if (action === "payment") {
+          return await signer.authorizePayment(payload);
+        }
+
+        // threshold
+        const sessionId = options?.sessionId ?? payload?.sessionId ?? "";
+        return await signer.signThreshold(payload, sessionId);
       }
-    } catch (e) {
-      console.warn(
-        "[CEPS] External signer not available; falling back to secure session:",
-        e instanceof Error ? e.message : String(e)
+
+      // Legacy behavior: a is the unsigned event
+      const unsignedEvent = a;
+
+      // Prefer a registered external signer for standard event signing when available
+      try {
+        const preferred = await this.selectSigner("event");
+        if (preferred) {
+          console.log(
+            "[CEPS] Using external signer adapter for event:",
+            preferred.id
+          );
+          const signedViaAdapter = await preferred.signEvent(unsignedEvent);
+          try {
+            if (signedViaAdapter && typeof signedViaAdapter === "object") {
+              const ok = this.verifyEvent(signedViaAdapter as any);
+              if (!ok)
+                throw new Error("External signer returned invalid signature");
+            }
+          } catch (e) {
+            throw new Error(
+              e instanceof Error ? e.message : "Signature verification failed"
+            );
+          }
+          return signedViaAdapter;
+        }
+      } catch (e) {
+        console.warn(
+          "[CEPS] External signer not available; falling back to secure session:",
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+
+      const sessionId = this.getActiveSigningSessionId();
+      if (!sessionId) throw new Error("No active signing session");
+
+      // Pre-check session status for clearer errors
+      const status = (secureNsecManager as any).getSessionStatus?.(sessionId);
+      if (!status?.active) {
+        throw new Error("Signing session expired or operation limit reached");
+      }
+
+      // Use SecureNsecManager to execute signing with ephemeral access
+      const ev = await secureNsecManager.useTemporaryNsec(
+        sessionId,
+        async (nsecHex: string) => {
+          const toSign = {
+            ...unsignedEvent,
+            created_at:
+              unsignedEvent.created_at || Math.floor(Date.now() / 1000),
+          };
+          return finalizeEvent(toSign as any, nsecHex) as Event;
+        }
       );
+
+      // Enforce policy after sign: apply single-use
+      try {
+        const policy = await this.getSigningPolicy();
+        if (policy.singleUse) {
+          try {
+            (secureNsecManager as any).clearTemporarySession?.(sessionId);
+          } catch {}
+        }
+      } catch {}
+
+      return ev;
+    } finally {
+      // CRITICAL FIX: Always decrement recursion depth to prevent counter from growing
+      this.signEventRecursionDepth--;
     }
-
-    const sessionId = this.getActiveSigningSessionId();
-    if (!sessionId) throw new Error("No active signing session");
-
-    // Pre-check session status for clearer errors
-    const status = (secureNsecManager as any).getSessionStatus?.(sessionId);
-    if (!status?.active) {
-      throw new Error("Signing session expired or operation limit reached");
-    }
-
-    // Use SecureNsecManager to execute signing with ephemeral access
-    const ev = await secureNsecManager.useTemporaryNsec(
-      sessionId,
-      async (nsecHex: string) => {
-        const toSign = {
-          ...unsignedEvent,
-          created_at: unsignedEvent.created_at || Math.floor(Date.now() / 1000),
-        };
-        return finalizeEvent(toSign as any, nsecHex) as Event;
-      }
-    );
-
-    // Enforce policy after sign: apply single-use
-    try {
-      const policy = await this.getSigningPolicy();
-      if (policy.singleUse) {
-        try {
-          (secureNsecManager as any).clearTemporarySession?.(sessionId);
-        } catch {}
-      }
-    } catch {}
-
-    return ev;
   }
 
   /** Register an external signer adapter (idempotent by id). */

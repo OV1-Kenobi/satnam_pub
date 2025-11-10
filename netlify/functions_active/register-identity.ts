@@ -1221,13 +1221,21 @@ export const handler: Handler = async (event, context) => {
     // ============================================================================
     // PHASE 2 WEEK 3 DAY 8: NIP-03 ATTESTATION INTEGRATION
     // ============================================================================
+    // CRITICAL FIX: NIP-03 attestation is deferred to post-registration
+    // Reason: Backend (Netlify Function) has no active session context for CEPS.signEventWithActiveSession()
+    // The Kind:0 profile event is published CLIENT-SIDE in IdentityForge.tsx
+    // NIP-03 attestation should be published in a separate post-registration step via the client
+    // This prevents infinite recursion and maintains zero-knowledge architecture
+
     // Task 5: Feature flag gating for NIP-03 attestation flow
     const nip03Enabled = process.env.VITE_NIP03_ENABLED === "true";
     const nip03IdentityCreationEnabled =
       process.env.VITE_NIP03_IDENTITY_CREATION === "true";
     const simpleproofEnabled = process.env.VITE_SIMPLEPROOF_ENABLED === "true";
 
-    // If NIP-03 is enabled, proceed with attestation flow (Option B sequence)
+    // DEFERRED: NIP-03 attestation is now handled post-registration
+    // If NIP-03 is enabled, we'll store the necessary metadata for later attestation
+    // but skip the actual event signing/publishing during registration
     if (
       nip03Enabled &&
       nip03IdentityCreationEnabled &&
@@ -1366,120 +1374,31 @@ export const handler: Handler = async (event, context) => {
         }
 
         // ====================================================================
-        // Task 2: Create NIP-03 Kind:1040 event
+        // Task 2: DEFERRED - NIP-03 Kind:1040 event publishing
         // ====================================================================
-        let nip03EventId: string | null = null;
+        // CRITICAL FIX: NIP-03 event signing/publishing is deferred to post-registration
+        // Reason: Backend has no active session context for CEPS.signEventWithActiveSession()
+        // The client (IdentityForge.tsx) will handle NIP-03 attestation after registration completes
+        // This prevents infinite recursion and maintains zero-knowledge architecture
 
+        // Store SimpleProof data for later NIP-03 attestation (non-blocking)
+        // The client will retrieve this and publish the NIP-03 event with proper session context
+        console.log(
+          "📝 NIP-03 attestation deferred to post-registration (client-side)"
+        );
+        console.log(
+          `✅ SimpleProof timestamp available for NIP-03: ${simpleproofTimestampId}`
+        );
+
+        // ====================================================================
+        // Task 3: Store NIP-03 attestation metadata for post-registration
+        // ====================================================================
+        // DEFERRED: Store SimpleProof data so client can publish NIP-03 event later
+        // This allows the client to sign and publish the NIP-03 event with proper session context
         try {
-          console.log("📝 Creating NIP-03 Kind:1040 attestation event...");
-
-          // Import CEPS for event signing and publishing
-          const { central_event_publishing_service: CEPS } = await import(
-            "../../lib/central_event_publishing_service.js"
+          console.log(
+            "💾 Storing NIP-03 attestation metadata for post-registration..."
           );
-
-          // Create unsigned Kind:1040 event
-          // SECURITY: Use public identifiers only (npub, not DUID)
-          // NOTE: kind0_event_id should be provided by client in registration request
-          // For now, use npub as the event reference (will be updated in Phase 2 Week 3 Day 9)
-          const unsignedNip03Event = {
-            kind: 1040, // NIP-03 attestation event
-            pubkey: validatedData.npub, // Will be replaced with hex by CEPS
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [
-              ["p", validatedData.npub], // Reference to user's npub (public identifier)
-            ],
-            content: otsProof || "", // OTS proof as content
-          };
-
-          // Sign event using CEPS (requires active session)
-          let signedNip03Event;
-          try {
-            signedNip03Event = await CEPS.signEventWithActiveSession(
-              unsignedNip03Event
-            );
-          } catch (signError) {
-            console.warn(
-              "⚠️ CEPS signing failed, attempting fallback...",
-              signError instanceof Error ? signError.message : signError
-            );
-            // Fallback: use server keys if available
-            try {
-              const serverKeys = await (CEPS as any).serverKeys?.();
-              if (!serverKeys?.nsec) {
-                throw new Error("No signing context available");
-              }
-              signedNip03Event = CEPS.signEvent(
-                unsignedNip03Event,
-                serverKeys.nsec
-              );
-            } catch (fallbackError) {
-              throw new Error(
-                `Event signing failed: ${
-                  fallbackError instanceof Error
-                    ? fallbackError.message
-                    : "Unknown error"
-                }`
-              );
-            }
-          }
-
-          // Publish to relays with retry logic
-          let lastPublishError: Error | null = null;
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-              nip03EventId = await CEPS.publishEvent(signedNip03Event, [
-                "wss://relay.satnam.pub",
-              ]);
-              console.log(`✅ NIP-03 event published: ${nip03EventId}`);
-              break; // Success, exit retry loop
-            } catch (publishError) {
-              lastPublishError =
-                publishError instanceof Error
-                  ? publishError
-                  : new Error(String(publishError));
-
-              if (attempt < 3) {
-                console.warn(
-                  `⚠️ NIP-03 publish attempt ${attempt} failed, retrying...`,
-                  lastPublishError.message
-                );
-                await new Promise((resolve) => setTimeout(resolve, 500));
-              }
-            }
-          }
-
-          if (!nip03EventId) {
-            throw new Error(
-              `NIP-03 event publishing failed after 3 attempts: ${lastPublishError?.message}`
-            );
-          }
-        } catch (nip03Error) {
-          console.error(
-            "❌ NIP-03 event creation failed:",
-            nip03Error instanceof Error ? nip03Error.message : nip03Error
-          );
-          // Block registration on NIP-03 failure (critical for attestation)
-          return {
-            statusCode: 500,
-            headers: corsHeaders,
-            body: JSON.stringify({
-              success: false,
-              error: "Attestation failed: NIP-03 event creation failed",
-              details:
-                nip03Error instanceof Error
-                  ? nip03Error.message
-                  : "Unknown error",
-              meta: { timestamp: new Date().toISOString() },
-            }),
-          };
-        }
-
-        // ====================================================================
-        // Task 3: Store NIP-03 attestation in database
-        // ====================================================================
-        try {
-          console.log("💾 Storing NIP-03 attestation in database...");
 
           // SECURITY: Use public identifiers only (NIP-05, npub)
           // Never expose DUID or internal database UUIDs in metadata
@@ -1487,12 +1406,13 @@ export const handler: Handler = async (event, context) => {
             validatedData.username
           }@${resolvePlatformLightningDomainServer()}`;
 
+          // Store attestation metadata with nip03_event_id=null (will be updated when client publishes)
           const { error: attestationError } = await supabase
             .from("nip03_attestations")
             .insert({
               attested_event_id: nip05Identifier, // Use NIP-05 as public identifier (not DUID)
               attested_event_kind: 0, // Kind:0 profile event
-              nip03_event_id: nip03EventId,
+              nip03_event_id: null, // Will be updated when client publishes NIP-03 event
               nip03_event_kind: 1040, // NIP-03 attestation event
               simpleproof_timestamp_id: simpleproofTimestampId,
               ots_proof: otsProof,
@@ -1501,7 +1421,7 @@ export const handler: Handler = async (event, context) => {
               event_type: "identity_creation",
               user_duid: profileResult.data!.id, // Internal use only (RLS, queries)
               relay_urls: ["wss://relay.satnam.pub"],
-              published_at: Math.floor(Date.now() / 1000),
+              published_at: null, // Will be set when client publishes NIP-03 event
               verified_at: bitcoinBlock ? Math.floor(Date.now() / 1000) : null,
               metadata: {
                 nip05: nip05Identifier, // Public identifier
@@ -1515,18 +1435,23 @@ export const handler: Handler = async (event, context) => {
           }
 
           console.log(
-            `✅ NIP-03 attestation stored for user: ${profileResult.data!.id}`
+            `✅ NIP-03 attestation metadata stored for user: ${
+              profileResult.data!.id
+            }`
+          );
+          console.log(
+            "⏳ Awaiting client-side NIP-03 event publication (post-registration)"
           );
         } catch (attestationStorageError) {
           console.error(
-            "❌ NIP-03 attestation storage failed:",
+            "❌ NIP-03 attestation metadata storage failed:",
             attestationStorageError instanceof Error
               ? attestationStorageError.message
               : attestationStorageError
           );
           // Don't block registration on storage failure (non-critical)
           console.warn(
-            "⚠️ Continuing registration despite attestation storage failure"
+            "⚠️ Continuing registration despite attestation metadata storage failure"
           );
         }
 

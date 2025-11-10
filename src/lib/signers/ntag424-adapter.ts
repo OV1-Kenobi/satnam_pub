@@ -7,6 +7,7 @@
  * - Zero-knowledge: no PIN or secret storage; per-operation NFC auth only
  * - Browser-only: uses Web APIs (CustomEvent, Web NFC check, Web Crypto for requestId)
  * - Feature gated by VITE_ENABLE_NFC_SIGNING (default false)
+ * - CRITICAL: Signs events directly using secureNsecManager to avoid infinite recursion with CEPS
  */
 
 import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
