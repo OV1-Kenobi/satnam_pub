@@ -19,7 +19,7 @@ import type { Handler } from "@netlify/functions";
 import * as crypto from "node:crypto";
 import { promisify } from "node:util";
 import { supabase, supabaseKeyType } from "../../netlify/functions/supabase.js";
-import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.server.js";
+import { resolvePlatformLightningDomainServer } from "./utils/domain.server.js";
 
 // Import centralized security utilities
 import {
@@ -471,15 +471,17 @@ function validateRegistrationData(
     });
   }
 
-  // NIP-05 validation (should match username@satnam.pub)
+  // NIP-05 validation - must match username@{resolved_domain}
+  // Domain is resolved dynamically from VITE_PLATFORM_LIGHTNING_DOMAIN or PLATFORM_LIGHTNING_DOMAIN env vars
+  // Falls back to 'my.satnam.pub' if no env var is set
+  const resolvedDomain = resolvePlatformLightningDomainServer();
   if (
     userData.nip05 &&
-    userData.nip05 !==
-      `${userData.username}@${resolvePlatformLightningDomainServer()}`
+    userData.nip05 !== `${userData.username}@${resolvedDomain}`
   ) {
     errors.push({
       field: "nip05",
-      message: `NIP-05 must match username@${resolvePlatformLightningDomainServer()} format`,
+      message: `NIP-05 must match username@${resolvedDomain} format`,
     });
   }
 
