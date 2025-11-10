@@ -10,7 +10,6 @@ import React, { useState } from 'react';
 import { clientConfig } from '../../config/env.client';
 import { nostrKeyRecovery } from '../../lib/auth/nostr-key-recovery';
 import IdentityForge from '../IdentityForge';
-
 import SimpleProofFeeEstimationWrapper from "../identity/SimpleProofFeeEstimationWrapper";
 import { useAuth } from './AuthProvider';
 

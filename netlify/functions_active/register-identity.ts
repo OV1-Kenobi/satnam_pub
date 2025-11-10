@@ -21,6 +21,10 @@ import { promisify } from "node:util";
 import { supabase, supabaseKeyType } from "../../netlify/functions/supabase.js";
 import { resolvePlatformLightningDomainServer } from "./utils/domain.server.js";
 
+// DIAGNOSTIC: Build signature to confirm deployed bundle version in logs
+const REGISTER_IDENTITY_BUILD =
+  "register-identity@2025-11-10_nip05-normalize-v2" as const;
+
 // Import centralized security utilities
 import {
   RATE_LIMITS,
@@ -475,14 +479,31 @@ function validateRegistrationData(
   // Domain is resolved dynamically from VITE_PLATFORM_LIGHTNING_DOMAIN or PLATFORM_LIGHTNING_DOMAIN env vars
   // Falls back to 'my.satnam.pub' if no env var is set
   const resolvedDomain = resolvePlatformLightningDomainServer();
-  if (
-    userData.nip05 &&
-    userData.nip05 !== `${userData.username}@${resolvedDomain}`
-  ) {
-    errors.push({
-      field: "nip05",
-      message: `NIP-05 must match username@${resolvedDomain} format`,
+
+  if (userData.nip05) {
+    // Normalize both sides for comparison: lowercase and trim whitespace
+    // NIP-05 identifiers are case-insensitive per spec
+    const normalizedReceivedNip05 = userData.nip05.trim().toLowerCase();
+    const normalizedExpectedNip05 = `${userData.username
+      .trim()
+      .toLowerCase()}@${resolvedDomain}`;
+
+    // DIAGNOSTIC: Log NIP-05 validation details for debugging
+    console.log("🔍 NIP-05 Validation Debug:", {
+      receivedNip05: userData.nip05,
+      normalizedReceivedNip05,
+      receivedUsername: userData.username,
+      resolvedDomain,
+      normalizedExpectedNip05,
+      match: normalizedReceivedNip05 === normalizedExpectedNip05,
     });
+
+    if (normalizedReceivedNip05 !== normalizedExpectedNip05) {
+      errors.push({
+        field: "nip05",
+        message: `NIP-05 must match username@${resolvedDomain} format`,
+      });
+    }
   }
 
   if (errors.length > 0) {
@@ -930,6 +951,9 @@ export const handler: Handler = async (event, context) => {
     timestamp: new Date().toISOString(),
   });
 
+  // DIAGNOSTIC: Build signature to confirm deployed bundle
+  console.log("🧩 Build:", { build: REGISTER_IDENTITY_BUILD });
+
   // DIAGNOSTIC: Test environment variables and Supabase connection
   console.log("🔍 Environment check:", {
     hasSupabaseUrl:
@@ -939,6 +963,13 @@ export const handler: Handler = async (event, context) => {
     hasDuidSecret: !!process.env.DUID_SERVER_SECRET,
     supabaseKeyType: supabaseKeyType,
     nodeEnv: process.env.NODE_ENV,
+  });
+
+  // DIAGNOSTIC: Domain resolution variables and computed domain
+  console.log("🌐 Domain resolution check:", {
+    VITE_PLATFORM_LIGHTNING_DOMAIN: process.env.VITE_PLATFORM_LIGHTNING_DOMAIN,
+    PLATFORM_LIGHTNING_DOMAIN: process.env.PLATFORM_LIGHTNING_DOMAIN,
+    resolvedDomain: resolvePlatformLightningDomainServer(),
   });
 
   // Use centralized security headers utility for CORS and security headers
@@ -1001,6 +1032,32 @@ export const handler: Handler = async (event, context) => {
 
     console.log(`✅ Rate limit check passed for IP: ${clientIP}`);
 
+    // DIAGNOSTIC: Log sanitized request payload for debugging
+    try {
+      console.log("\ud83d\udce6 Received registration payload (sanitized):", {
+        username:
+          typeof userData?.username === "string"
+            ? userData.username
+            : undefined,
+        nip05: typeof userData?.nip05 === "string" ? userData.nip05 : undefined,
+        lightningAddress:
+          typeof userData?.lightningAddress === "string"
+            ? userData.lightningAddress
+            : undefined,
+        npubPrefix:
+          typeof userData?.npub === "string"
+            ? `${userData.npub.slice(0, 8)}\u2026`
+            : undefined,
+        encryptedNsecPrefix:
+          typeof userData?.encryptedNsec === "string"
+            ? `${userData.encryptedNsec.slice(0, 6)}\u2026`
+            : undefined,
+        selectedDomain:
+          (userData && (userData.selectedDomain || (userData as any).domain)) ||
+          undefined,
+      });
+    } catch {}
+
     // Validate request data
     const validationResult = validateRegistrationData(userData);
     if (!validationResult.success) {
@@ -1010,11 +1067,21 @@ export const handler: Handler = async (event, context) => {
         method: event.httpMethod,
         details: validationResult.errors,
       });
-      return createValidationErrorResponse(
-        "Invalid registration data",
-        requestId,
-        requestOrigin
-      );
+      // Return detailed validation errors to client for debugging
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: "Invalid registration data",
+          details: validationResult.errors,
+          meta: {
+            timestamp: new Date().toISOString(),
+            resolvedDomain: resolvePlatformLightningDomainServer(),
+            build: REGISTER_IDENTITY_BUILD,
+          },
+        }),
+      };
     }
 
     const validatedData = (validationResult as ValidationSuccess).data;
