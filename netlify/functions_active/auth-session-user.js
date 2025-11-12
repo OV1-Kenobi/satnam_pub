@@ -128,10 +128,7 @@ export const handler = async (event) => {
         is_active,
         user_salt,
         encrypted_nsec,
-        encrypted_nsec_iv,
-        hashed_npub,
-        hashed_username,
-        hashed_nip05
+        encrypted_nsec_iv
       `)
       .eq("id", duid)
       .single();
@@ -149,12 +146,7 @@ export const handler = async (event) => {
       is_active: user.is_active !== false,
       user_salt: user.user_salt || null,
       encrypted_nsec: user.encrypted_nsec || null,
-      encrypted_nsec_iv: user.encrypted_nsec_iv || null,
-      npub: user.hashed_npub || null, // Map hashed field to expected name
-      username: user.hashed_username || null, // Map hashed field to expected name
-      hashed_npub: user.hashed_npub || null,
-      hashed_username: user.hashed_username || null,
-      hashed_nip05: user.hashed_nip05 || null,
+      encrypted_nsec_iv: user.encrypted_nsec_iv || null
     };
 
     const response = jsonResponse(200, { success: true, data: { user: userPayload } }, requestOrigin);

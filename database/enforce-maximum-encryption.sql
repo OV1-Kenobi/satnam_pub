@@ -3,13 +3,13 @@
 -- =====================================================
 --
 -- PURPOSE: Enforce zero plaintext storage of user identifiers
--- SECURITY: Implements maximum encryption with hashed columns only
--- COMPLIANCE: Ensures all sensitive data is stored in hashed format
+-- SECURITY: Implements encryption-first schema with encrypted_* profile fields and DUID lookups
+-- COMPLIANCE: Ensures no legacy hashed_* columns are required or referenced
 --
 -- CRITICAL SECURITY REQUIREMENT:
 -- - NO plaintext user identifiers in database
--- - ALL sensitive data must use hashed columns with unique salts
--- - Plaintext columns should be deprecated/removed
+-- - Profile data must use encrypted_* columns (AES-GCM) with iv/tag metadata
+-- - Lookups use DUIDs (HMAC-SHA256 with server secret) via nip05_records.name_duid/pubkey_duid
 --
 -- Run this script in the Supabase SQL editor
 --
@@ -17,59 +17,44 @@
 BEGIN;
 
 -- =====================================================
--- STEP 1: Ensure all required hashed columns exist
+-- STEP 1: Ensure required columns exist (no legacy hashed_* columns)
 -- =====================================================
 
--- Add hashed columns to user_identities if they don't exist
+-- user_identities: ensure user_salt exists for password hashing and encryption
 ALTER TABLE user_identities
-ADD COLUMN IF NOT EXISTS user_salt TEXT,
-ADD COLUMN IF NOT EXISTS hashed_username TEXT,
-ADD COLUMN IF NOT EXISTS hashed_npub TEXT,
-ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
-ADD COLUMN IF NOT EXISTS hashed_lightning_address TEXT;
+ADD COLUMN IF NOT EXISTS user_salt TEXT;
 
--- Add hashed columns to nip05_records if table exists
+-- nip05_records: ensure DUID columns exist for lookups
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
     ALTER TABLE nip05_records
-    ADD COLUMN IF NOT EXISTS user_salt TEXT,
-    ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
-    ADD COLUMN IF NOT EXISTS hashed_npub TEXT;
+    ADD COLUMN IF NOT EXISTS name_duid TEXT,
+    ADD COLUMN IF NOT EXISTS pubkey_duid TEXT,
+    ADD COLUMN IF NOT EXISTS domain TEXT;
   END IF;
 END $$;
 
 -- =====================================================
--- STEP 2: Create indexes on hashed columns for performance
+-- STEP 2: Create indexes for DUID lookups and salts
 -- =====================================================
 
--- Indexes for fast lookups on hashed data
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_npub ON user_identities(hashed_npub);
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_nip05 ON user_identities(hashed_nip05);
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_username ON user_identities(hashed_username);
-CREATE INDEX IF NOT EXISTS idx_user_identities_user_salt ON user_identities(user_salt);
+-- Indexes for fast lookups on DUIDs
+CREATE INDEX IF NOT EXISTS idx_nip05_records_name_duid ON nip05_records(name_duid);
+CREATE INDEX IF NOT EXISTS idx_nip05_records_pubkey_duid ON nip05_records(pubkey_duid);
+CREATE INDEX IF NOT EXISTS idx_nip05_records_domain ON nip05_records(domain);
 
-CREATE INDEX IF NOT EXISTS idx_nip05_records_hashed_npub ON nip05_records(hashed_npub);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_hashed_nip05 ON nip05_records(hashed_nip05);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_user_salt ON nip05_records(user_salt);
+-- Useful index for user_salt
+CREATE INDEX IF NOT EXISTS idx_user_identities_user_salt ON user_identities(user_salt);
 
 -- =====================================================
 -- STEP 3: Add constraints to enforce maximum encryption
 -- =====================================================
 
--- Ensure user_salt is always present for new records
-ALTER TABLE user_identities 
-ADD CONSTRAINT user_identities_salt_required 
+-- Ensure user_salt is always present for new records in user_identities
+ALTER TABLE user_identities
+ADD CONSTRAINT user_identities_salt_required
 CHECK (user_salt IS NOT NULL AND user_salt != '');
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
-    ALTER TABLE nip05_records
-    ADD CONSTRAINT nip05_records_salt_required
-    CHECK (user_salt IS NOT NULL AND user_salt != '');
-  END IF;
-END $$;
 
 -- =====================================================
 -- STEP 4: Create privacy compliance check function
@@ -214,8 +199,8 @@ COMMIT;
 -- VERIFICATION AND SUCCESS MESSAGE
 -- =====================================================
 
-SELECT 
-    '✅ MAXIMUM ENCRYPTION ARCHITECTURE ENFORCED' as result,
-    'All hashed columns created and indexed' as details,
+SELECT
+    '✅ ENCRYPTION-FIRST ARCHITECTURE ENFORCED' as result,
+    'DUID columns created and indexed; no legacy hashed_* columns required' as details,
     'Database ready for zero plaintext storage' as status,
     'Run check_privacy_compliance() to verify compliance' as next_steps;

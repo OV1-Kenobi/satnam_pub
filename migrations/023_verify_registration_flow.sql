@@ -97,9 +97,6 @@ BEGIN
             user_salt,
             encrypted_nsec,
             encrypted_nsec_iv,
-            hashed_username,
-            hashed_npub,
-            hashed_nip05,
             password_hash,
             password_salt,
             role,
@@ -111,9 +108,6 @@ BEGIN
             test_salt,
             test_encrypted_nsec,
             NULL, -- IV included in encrypted_nsec for current format
-            'hashed_test_username',
-            'hashed_test_npub',
-            'hashed_test_nip05',
             'test_password_hash',
             'test_password_salt',
             'private',
@@ -165,9 +159,7 @@ BEGIN
             END IF;
         END;
         
-        -- Clean up test user
-        DELETE FROM user_identities WHERE id = test_user_id;
-        RAISE NOTICE '🧹 Test user cleaned up';
+        -- No cleanup needed; this verification script rolls back at the end to avoid any persistent writes.
     END IF;
 END $$;
 
@@ -193,9 +185,6 @@ BEGIN
             id,
             user_salt,
             encrypted_nsec,
-            hashed_username,
-            hashed_npub,
-            hashed_nip05,
             password_hash,
             password_salt,
             role,
@@ -206,9 +195,6 @@ BEGIN
             test_user_id,
             NULL, -- This should trigger constraint violation
             'test_encrypted_nsec',
-            'hashed_test_username',
-            'hashed_test_npub',
-            'hashed_test_nip05',
             'test_password_hash',
             'test_password_salt',
             'private',
@@ -218,7 +204,7 @@ BEGIN
         );
         
         -- If we get here, constraint is not working
-        DELETE FROM user_identities WHERE id = test_user_id;
+        -- No delete needed; outer transaction will be rolled back.
         RAISE WARNING '❌ Salt constraint is not enforcing (active user without salt was allowed)';
         
     EXCEPTION WHEN check_violation THEN
@@ -281,7 +267,7 @@ BEGIN
     END IF;
 END $$;
 
-COMMIT;
+ROLLBACK;
 
 -- Final success message
 DO $$

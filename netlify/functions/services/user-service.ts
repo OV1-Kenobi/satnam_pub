@@ -7,7 +7,7 @@ import { getEnvVar } from "../utils/env.js";
  * particularly for session management and user data retrieval.
  */
 
-import { createHash } from "crypto";
+import { createHash, createHmac } from "crypto";
 import { FamilyFederationUser, FederationRole } from "../../../src/types/auth";
 import { defaultLogger as logger } from "../../../utils/logger";
 import db from "../db";
@@ -46,10 +46,23 @@ export class UserService {
    */
   static async getUserByNpub(npub: string): Promise<UserProfile | null> {
     try {
-      const npubHash = this.hashIdentifier(npub);
+      const secret = getEnvVar("DUID_SERVER_SECRET");
+      if (!secret)
+        throw new Error("Server misconfig: missing DUID_SERVER_SECRET");
+      const hmac = createHmac("sha256", secret);
+      hmac.update(`NPUBv1:${npub}`);
+      const pubkey_duid = hmac.digest("hex");
+      const recRes = await db.query(
+        "SELECT name_duid FROM nip05_records WHERE pubkey_duid = $1 AND is_active = true LIMIT 1",
+        [pubkey_duid]
+      );
+      if (recRes.rows.length === 0) {
+        return null;
+      }
+      const duid = recRes.rows[0].name_duid as string;
       const result = await db.query(
-        "SELECT * FROM user_identities WHERE hashed_npub = $1 AND is_active = true LIMIT 1",
-        [npubHash]
+        "SELECT * FROM user_identities WHERE id = $1 AND is_active = true LIMIT 1",
+        [duid]
       );
 
       if (result.rows.length === 0) {

@@ -561,13 +561,13 @@ async function checkUsernameAvailability(username: string): Promise<boolean> {
     const identifier = `${local}@${domain}`;
     const hmac = crypto.createHmac("sha256", secret);
     hmac.update(identifier);
-    const hashed_nip05 = hmac.digest("hex");
+    const name_duid = hmac.digest("hex");
 
     const { data, error } = await supabase
       .from("nip05_records")
       .select("id")
       .eq("domain", domain)
-      .eq("hashed_nip05", hashed_nip05)
+      .eq("name_duid", name_duid)
       .eq("is_active", true)
       .limit(1);
 
@@ -620,7 +620,7 @@ async function createUserIdentity(
 
     // CRITICAL SECURITY: Import privacy-first hashing utilities
     console.log("🔍 Importing privacy-hashing utilities...");
-    const { generateUserSalt, createHashedUserData } = await import(
+    const { generateUserSalt } = await import(
       "../../lib/security/privacy-hashing.js"
     );
     console.log("✅ Privacy-hashing utilities imported successfully");
@@ -717,13 +717,6 @@ async function createUserIdentity(
       tag: string;
     } | null;
 
-    // HASH AUTHENTICATION FIELDS: Keep hashing for npub/nip05 (one-way, not displayable)
-    let hashedUserData: {
-      hashed_npub: string;
-      hashed_nip05: string;
-      [k: string]: any;
-    };
-
     try {
       // Encrypt displayable profile fields
       console.log("🔐 Encrypting profile fields with Noble V2...");
@@ -746,18 +739,10 @@ async function createUserIdentity(
       );
       console.log("✅ Profile fields encrypted successfully");
 
-      // Hash authentication fields (npub, nip05 for lookups)
-      console.log("🔐 Hashing authentication fields...");
-      hashedUserData = (await createHashedUserData(
-        {
-          npub: userData.npub,
-          nip05: userData.nip05 || "",
-          encryptedNsec: encryptedNsecNoble, // Use Noble V2 encrypted nsec
-          password: userData.password,
-        },
-        userSalt
-      )) as { hashed_npub: string; hashed_nip05: string; [k: string]: any };
-      console.log("✅ Authentication fields hashed successfully");
+      // Greenfield rollout: no hashed auth fields required (use DUID records)
+      console.log(
+        "🔐 Skipping legacy hashed auth fields; using DUID records instead"
+      );
     } catch (encryptError) {
       console.error("Failed to encrypt/hash user data:", encryptError);
       throw new Error("Failed to encrypt user data securely");
@@ -791,10 +776,6 @@ async function createUserIdentity(
       encrypted_lightning_address: encryptedLightningAddress?.cipher || null,
       encrypted_lightning_address_iv: encryptedLightningAddress?.iv || null,
       encrypted_lightning_address_tag: encryptedLightningAddress?.tag || null,
-
-      // HASHED COLUMNS: Authentication fields (one-way, not displayable)
-      hashed_npub: hashedUserData.hashed_npub,
-      hashed_nip05: hashedUserData.hashed_nip05,
 
       // Metadata (non-sensitive)
       role: userData.role,
@@ -833,7 +814,6 @@ async function createUserIdentity(
         profileDataKeys: Object.keys(profileData),
         hasId: !!profileData.id,
         hasEncryptedUsername: !!profileData.encrypted_username,
-        hasHashedNpub: !!profileData.hashed_npub,
         hasEncryptedNsec: !!profileData.encrypted_nsec,
       }
     );
@@ -907,7 +887,6 @@ async function createUserIdentity(
           hasId: !!profileData.id,
           role: profileData.role,
           hasEncryptedNsec: !!profileData.encrypted_nsec,
-          hasHashedNpub: !!profileData.hashed_npub,
           fieldCount: Object.keys(profileData).length,
         }
       );
@@ -992,7 +971,7 @@ export const handler: Handler = async (event, context) => {
   }
 
   // Track reserved NIP-05 reservation for cleanup across try/catch scope
-  let reservedHashedNip05: string | null = null;
+  let reservedNameDuid: string | null = null;
   let reservedDomain: string | null = null;
 
   try {
@@ -1145,15 +1124,15 @@ export const handler: Handler = async (event, context) => {
       const { createHmac } = await import("node:crypto");
       const secret = await getDUIDSecret();
 
-      const hashed_nip05 = createHmac("sha256", secret)
+      const name_duid = createHmac("sha256", secret)
         .update(identifier)
         .digest("hex");
-      const hashed_npub = createHmac("sha256", secret)
+      const pubkey_duid = createHmac("sha256", secret)
         .update(`NPUBv1:${validatedData.npub}`)
         .digest("hex");
 
       // Track reservation details for potential cleanup on failure
-      reservedHashedNip05 = hashed_nip05;
+      reservedNameDuid = name_duid;
       reservedDomain = domain;
 
       const { error: nip05InsertError } = await supabase
@@ -1163,8 +1142,8 @@ export const handler: Handler = async (event, context) => {
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          hashed_nip05,
-          hashed_npub,
+          name_duid,
+          pubkey_duid,
         });
 
       if (nip05InsertError) {
@@ -1699,11 +1678,11 @@ export const handler: Handler = async (event, context) => {
 
     // Cleanup reserved NIP-05 if user creation failed after reservation
     try {
-      if (reservedHashedNip05 && reservedDomain) {
+      if (reservedNameDuid && reservedDomain) {
         await supabase
           .from("nip05_records")
           .delete()
-          .eq("hashed_nip05", reservedHashedNip05)
+          .eq("name_duid", reservedNameDuid)
           .eq("domain", reservedDomain);
         console.log("✅ Cleaned up reserved NIP-05 after registration failure");
       }

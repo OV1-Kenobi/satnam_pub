@@ -427,29 +427,29 @@ async function resolveNpubToDUID(npub) {
     // Import supabase client for database operations
     const { supabase } = await import("../../netlify/functions/supabase.js");
 
-    // Hash the npub using same method as registration (SERVER-SIDE ONLY)
+    // Compute pubkey_duid with canonical prefix (SERVER-SIDE ONLY)
     const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(npub);
-    const hashed_npub = hmac.digest('hex');
+    hmac.update(`NPUBv1:${npub}`);
+    const pubkey_duid = hmac.digest('hex');
 
     // Lookup in nip05_records table
     const { data: nip05Record, error } = await supabase
       .from('nip05_records')
-      .select('hashed_nip05')
-      .eq('hashed_npub', hashed_npub)
+      .select('name_duid')
+      .eq('pubkey_duid', pubkey_duid)
       .eq('is_active', true)
       .single();
 
     if (error || !nip05Record) {
       console.log('npub not found in nip05_records:', {
         npubPrefix: npub.substring(0, 4) + '...',
-        hashedNpubPrefix: hashed_npub.substring(0, 4) + '...'
+        pubkeyDuidPrefix: pubkey_duid.substring(0, 4) + '...'
       });
       return null;
     }
 
-    // The hashed_nip05 IS the DUID we need!
-    return nip05Record.hashed_nip05;
+    // The name_duid IS the DUID we need
+    return nip05Record.name_duid;
 
   } catch (error) {
     console.error('SERVER-SIDE npub to DUID resolution failed:', error);

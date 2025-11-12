@@ -52,10 +52,9 @@ const FamilyFederationAuthProvider: React.FC<FamilyFederationAuthProviderProps> 
   // SECURITY: Preserve actual user values instead of hard-coding defaults
   // This prevents authorization bypass and data loss
   const userAuth: FamilyFederationUser | null = privacyAuth.user ? {
-    // Privacy-first system stores hashed values, not plaintext
-    // Use hashed values if available, otherwise empty string
-    npub: (privacyAuth.user as any).hashed_npub || (privacyAuth.user as any).npub || '',
-    nip05: (privacyAuth.user as any).hashed_nip05 || (privacyAuth.user as any).nip05 || '',
+    // Privacy-first system uses encrypted fields; no hashed fields are present
+    npub: (privacyAuth.user as any).npub || '',
+    nip05: (privacyAuth.user as any).nip05 || '',
     // Validate federation role with proper enum checking (defaults to 'adult' for safety)
     federationRole: validateFederationRole((privacyAuth.user as any).federationRole || (privacyAuth.user as any).role),
     // Validate auth method with proper enum checking (FamilyFederationUser only supports nip07 and nip05-password)

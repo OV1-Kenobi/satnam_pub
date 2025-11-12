@@ -13,18 +13,6 @@
 ALTER TABLE user_identities 
 ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 
--- Add hashed profile columns (required by maximum encryption)
-ALTER TABLE user_identities 
-ADD COLUMN IF NOT EXISTS hashed_username TEXT,
-ADD COLUMN IF NOT EXISTS hashed_bio TEXT DEFAULT '',
-ADD COLUMN IF NOT EXISTS hashed_display_name TEXT,
-ADD COLUMN IF NOT EXISTS hashed_picture TEXT DEFAULT '';
-
--- Add hashed identity columns (required by maximum encryption)
-ALTER TABLE user_identities 
-ADD COLUMN IF NOT EXISTS hashed_nip05 TEXT,
-ADD COLUMN IF NOT EXISTS hashed_lightning_address TEXT,
-ADD COLUMN IF NOT EXISTS hashed_encrypted_nsec TEXT;
 
 -- Add metadata columns (required by registration function)
 ALTER TABLE user_identities 
@@ -32,25 +20,18 @@ ADD COLUMN IF NOT EXISTS spending_limits JSONB DEFAULT '{"daily_limit": -1, "req
 ADD COLUMN IF NOT EXISTS privacy_settings JSONB DEFAULT '{"privacy_level": "maximum", "zero_knowledge_enabled": true, "over_encryption": true}';
 
 -- Step 2: Add missing columns to nip05_records table (if they don't exist)
-ALTER TABLE nip05_records 
-ADD COLUMN IF NOT EXISTS hashed_name TEXT,
-ADD COLUMN IF NOT EXISTS hashed_npub TEXT,
+ALTER TABLE nip05_records
+ADD COLUMN IF NOT EXISTS name_duid TEXT,
+ADD COLUMN IF NOT EXISTS pubkey_duid TEXT,
 ADD COLUMN IF NOT EXISTS domain TEXT DEFAULT 'satnam.pub';
 
 -- Step 3: Add column comments for documentation
 COMMENT ON COLUMN user_identities.is_active IS 'CRITICAL: Controls access to authenticated sections';
-COMMENT ON COLUMN user_identities.hashed_username IS 'ENCRYPTED: Hashed username for maximum privacy';
-COMMENT ON COLUMN user_identities.hashed_bio IS 'ENCRYPTED: Hashed bio text for maximum privacy';
-COMMENT ON COLUMN user_identities.hashed_display_name IS 'ENCRYPTED: Hashed display name for maximum privacy';
-COMMENT ON COLUMN user_identities.hashed_picture IS 'ENCRYPTED: Hashed picture URL for maximum privacy';
-COMMENT ON COLUMN user_identities.hashed_nip05 IS 'ENCRYPTED: Hashed NIP-05 identifier for maximum privacy';
-COMMENT ON COLUMN user_identities.hashed_lightning_address IS 'ENCRYPTED: Hashed Lightning address for maximum privacy';
-COMMENT ON COLUMN user_identities.hashed_encrypted_nsec IS 'ENCRYPTED: Hashed encrypted private key for critical security';
 COMMENT ON COLUMN user_identities.spending_limits IS 'JSON: User spending limits and approval requirements';
 COMMENT ON COLUMN user_identities.privacy_settings IS 'JSON: Privacy configuration and encryption settings';
 
-COMMENT ON COLUMN nip05_records.hashed_name IS 'ENCRYPTED: Hashed NIP-05 name for verification';
-COMMENT ON COLUMN nip05_records.hashed_npub IS 'ENCRYPTED: Hashed public key for NIP-05 verification';
+COMMENT ON COLUMN nip05_records.name_duid IS 'DUID: HMAC-SHA256 of username@domain with server secret';
+COMMENT ON COLUMN nip05_records.pubkey_duid IS 'DUID: HMAC-SHA256 of NPUBv1:npub with server secret';
 COMMENT ON COLUMN nip05_records.domain IS 'UNENCRYPTED: Whitelisted domain for verification';
 
 -- Step 4: Ensure RLS is enabled (critical for security)
@@ -102,9 +83,8 @@ GRANT ALL ON nip05_records TO service_role;
 
 -- Step 7: Create performance indexes
 CREATE INDEX IF NOT EXISTS idx_user_identities_is_active ON user_identities(is_active);
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_username ON user_identities(hashed_username);
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_npub ON user_identities(hashed_npub);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_hashed_npub ON nip05_records(hashed_npub);
+CREATE INDEX IF NOT EXISTS idx_nip05_records_name_duid ON nip05_records(name_duid);
+CREATE INDEX IF NOT EXISTS idx_nip05_records_pubkey_duid ON nip05_records(pubkey_duid);
 CREATE INDEX IF NOT EXISTS idx_nip05_records_domain ON nip05_records(domain);
 
 -- Step 8: Verification query
@@ -119,8 +99,8 @@ SELECT
   column_name,
   data_type,
   is_nullable,
-  CASE 
-    WHEN column_name IN ('is_active', 'hashed_username', 'hashed_bio', 'hashed_display_name', 'hashed_picture', 'hashed_nip05', 'hashed_lightning_address', 'hashed_encrypted_nsec', 'spending_limits', 'privacy_settings') 
+  CASE
+    WHEN column_name IN ('is_active', 'spending_limits', 'privacy_settings')
     THEN '🆕 ADDED'
     ELSE '📋 EXISTING'
   END as column_status

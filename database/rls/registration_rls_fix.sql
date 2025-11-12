@@ -4,7 +4,7 @@
 --          privacy-first DUID architecture and CEPS/session flows
 -- =============================================================
 -- Applies policies for:
---   - user_identities  (TEXT DUID primary key, hashed columns)
+--   - user_identities  (TEXT DUID primary key)
 --   - nip05_records    (username reservations)
 --
 -- Key Features
@@ -12,7 +12,7 @@
 --   2) anon SELECT on nip05_records (availability) and user_identities (active auth lookups)
 --   3) authenticated FULL CRUD on own user_identities row
 --      using either auth.uid()::text = id OR app.current_user_duid context
---   4) authenticated ownership of nip05_records by hashed_npub mapping
+--   4) ownership policy for nip05_records omitted in greenfield (no hashed_* mapping)
 --   5) idempotent: safe to run multiple times
 -- =============================================================
 
@@ -134,36 +134,8 @@ BEGIN
         USING (is_active = true)
     $policy$;
 
-    -- 3) Authenticated users manage their own NIP-05 reservations via hashed_npub match
-    --    Ownership: nip05_records.hashed_npub equals user_identities.hashed_npub
-    --    where the user is determined by CEPS context or auth.uid()::text
-    EXECUTE $policy$
-      CREATE POLICY "nip05_records_user_manage_own" ON public.nip05_records
-        FOR ALL
-        TO authenticated
-        USING (
-          EXISTS (
-            SELECT 1
-            FROM public.user_identities ui
-            WHERE ui.hashed_npub = nip05_records.hashed_npub
-              AND (
-                ui.id = current_setting('app.current_user_duid', true)
-                OR ui.id = auth.uid()::text
-              )
-          )
-        )
-        WITH CHECK (
-          EXISTS (
-            SELECT 1
-            FROM public.user_identities ui
-            WHERE ui.hashed_npub = nip05_records.hashed_npub
-              AND (
-                ui.id = current_setting('app.current_user_duid', true)
-                OR ui.id = auth.uid()::text
-              )
-          )
-        )
-    $policy$;
+    -- 3) Ownership/management policy intentionally omitted for greenfield (no hashed_* mapping).
+    --    Management of nip05_records is handled via service-role functions or dedicated endpoints.
   END IF;
 END$$;
 
@@ -172,6 +144,8 @@ END$$;
 -- Supports session-based signing preferences per user DUID
 -- =============================================================
 DO $$
+DECLARE
+  has_user_duid boolean := false;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.tables
@@ -179,24 +153,94 @@ BEGIN
   ) THEN
     EXECUTE 'ALTER TABLE public.user_signing_preferences ENABLE ROW LEVEL SECURITY';
 
+    -- Drop existing policy if present (idempotent)
     PERFORM 1 FROM pg_policies WHERE schemaname='public' AND tablename='user_signing_preferences' AND policyname='user_signing_prefs_user_crud';
     IF FOUND THEN EXECUTE 'DROP POLICY IF EXISTS "user_signing_prefs_user_crud" ON public.user_signing_preferences'; END IF;
 
-    EXECUTE $policy$
-      CREATE POLICY "user_signing_prefs_user_crud" ON public.user_signing_preferences
-        FOR ALL
-        TO authenticated
-        USING (
-          user_duid = current_setting('app.current_user_duid', true)
-          OR user_duid = auth.uid()::text
-        )
-        WITH CHECK (
-          user_duid = current_setting('app.current_user_duid', true)
-          OR user_duid = auth.uid()::text
-        )
-    $policy$;
+    -- Only create policy if required column exists
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='user_signing_preferences' AND column_name='user_duid'
+    ) INTO has_user_duid;
+
+    IF has_user_duid THEN
+      EXECUTE $policy$
+        CREATE POLICY "user_signing_prefs_user_crud" ON public.user_signing_preferences
+          FOR ALL
+          TO authenticated
+          USING (
+            user_duid IS NOT NULL AND (
+              (
+                NULLIF(current_setting('app.current_user_duid', true), '') IS NOT NULL
+                AND user_duid = current_setting('app.current_user_duid', true)
+              )
+              OR user_duid = auth.uid()::text
+            )
+          )
+          WITH CHECK (
+            user_duid IS NOT NULL AND (
+              (
+                NULLIF(current_setting('app.current_user_duid', true), '') IS NOT NULL
+                AND user_duid = current_setting('app.current_user_duid', true)
+              )
+              OR user_duid = auth.uid()::text
+            )
+          )
+      $policy$;
+    ELSE
+      RAISE NOTICE 'Skipping policy user_signing_prefs_user_crud: column "user_duid" not found on public.user_signing_preferences';
+    END IF;
   END IF;
 END$$;
+
+-- =============================================================
+-- Optional: Auto-populate user_duid on INSERT for user_signing_preferences
+-- Allows clients to omit user_duid; it will default to auth.uid() (or CEPS context)
+-- =============================================================
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='user_signing_preferences'
+  ) THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='user_signing_preferences' AND column_name='user_duid'
+    ) THEN
+      -- Create/replace trigger function (idempotent)
+      EXECUTE $fn$
+      CREATE OR REPLACE FUNCTION public.set_user_signing_prefs_user_duid()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $BODY$
+      BEGIN
+        -- Only set when missing or blank
+        IF NEW.user_duid IS NULL OR NEW.user_duid = '' THEN
+          NEW.user_duid := COALESCE(
+            NULLIF(auth.uid()::text, ''),
+            NULLIF(current_setting('app.current_user_duid', true), ''),
+            NEW.user_duid
+          );
+        END IF;
+        RETURN NEW;
+      END
+      $BODY$;
+      $fn$;
+
+      -- Recreate trigger to ensure latest function is used (idempotent)
+      EXECUTE 'DROP TRIGGER IF EXISTS set_user_signing_prefs_user_duid_trg ON public.user_signing_preferences';
+      EXECUTE $trg$
+      CREATE TRIGGER set_user_signing_prefs_user_duid_trg
+      BEFORE INSERT ON public.user_signing_preferences
+      FOR EACH ROW
+      EXECUTE FUNCTION public.set_user_signing_prefs_user_duid()
+      $trg$;
+    ELSE
+      RAISE NOTICE 'Skipping trigger creation: column "user_duid" not found on public.user_signing_preferences';
+    END IF;
+  END IF;
+END$$;
+
 
 -- =============================================================
 -- Notes:

@@ -61,9 +61,6 @@ CREATE TABLE IF NOT EXISTS profile_views (
 -- STEP 3: Create indexes for performance
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_username
-  ON user_identities(hashed_username);
-
 CREATE INDEX IF NOT EXISTS idx_user_identities_profile_visibility
   ON user_identities(profile_visibility);
 

@@ -680,7 +680,7 @@ async function handleLogin(event: any) {
   // Load user identity for session creation
   const { data: user } = await supabase
     .from("user_identities")
-    .select("id, role, hashed_npub, hashed_nip05")
+    .select("id, role")
     .eq("id", reg.owner_hash)
     .maybeSingle();
 
@@ -688,11 +688,11 @@ async function handleLogin(event: any) {
     return json(404, { success: false, error: "User not found" });
   }
 
-  // Create session token (map hashed_npub into npub field for consistency with existing server endpoints)
+  // Create session token (privacy-preserving: no hashed_* fields)
   const sessionToken = await SecureSessionManager.createSession(
     {} as any,
     {
-      npub: user.hashed_npub || reg.owner_hash,
+      npub: reg.owner_hash,
       nip05: undefined,
       federationRole: (user.role as any) || "private",
       authMethod: "nfc",
@@ -722,7 +722,7 @@ async function handleLogin(event: any) {
 
   return json(200, {
     success: true,
-    data: { sessionToken, user: { role: user.role, npub: user.hashed_npub } },
+    data: { sessionToken, user: { role: user.role, npub: reg.owner_hash } },
   });
 }
 

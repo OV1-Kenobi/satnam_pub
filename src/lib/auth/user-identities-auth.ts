@@ -94,12 +94,27 @@ export interface UserIdentity {
   // Encrypted nsec storage (decryptable)
   encrypted_nsec?: string;
   encrypted_nsec_iv?: string | null;
+  encrypted_nsec_tag?: string | null;
 
-  // MAXIMUM ENCRYPTION: Hashed columns only - no plaintext storage
-  hashed_username?: string;
-  hashed_npub?: string;
-  hashed_nip05?: string;
-  hashed_lightning_address?: string;
+  // Encrypted profile fields (AES-256-GCM)
+  encrypted_username?: string;
+  encrypted_username_iv?: string | null;
+  encrypted_username_tag?: string | null;
+  encrypted_bio?: string;
+  encrypted_bio_iv?: string | null;
+  encrypted_bio_tag?: string | null;
+  encrypted_display_name?: string;
+  encrypted_display_name_iv?: string | null;
+  encrypted_display_name_tag?: string | null;
+  encrypted_picture?: string;
+  encrypted_picture_iv?: string | null;
+  encrypted_picture_tag?: string | null;
+  encrypted_nip05?: string;
+  encrypted_nip05_iv?: string | null;
+  encrypted_nip05_tag?: string | null;
+  encrypted_lightning_address?: string;
+  encrypted_lightning_address_iv?: string | null;
+  encrypted_lightning_address_tag?: string | null;
 
   // Password security
   password_hash: string;

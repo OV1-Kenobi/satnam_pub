@@ -31,9 +31,8 @@ BEGIN
       FOR INSERT
       TO anon
       WITH CHECK (
-        COALESCE(hashed_username, '') <> ''
-        AND COALESCE(hashed_npub, '') <> ''
-        AND COALESCE(hashed_encrypted_nsec, '') <> ''
+        COALESCE(user_salt, '') <> ''
+        AND COALESCE(encrypted_nsec, '') <> ''
       );
     $sql$;
   END IF;
@@ -44,10 +43,8 @@ END $do$;
 DO $do$
 DECLARE
   pol_exists boolean;
-  has_hnip05 boolean;
-  has_hnpub boolean;
-  has_name boolean;
-  has_npub boolean;
+  has_name_duid boolean;
+  has_pubkey_duid boolean;
   has_domain boolean;
   policy_sql text;
 BEGIN
@@ -62,26 +59,18 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_nip05'
-  ) INTO has_hnip05;
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name_duid'
+  ) INTO has_name_duid;
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_npub'
-  ) INTO has_hnpub;
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name'
-  ) INTO has_name;
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='npub'
-  ) INTO has_npub;
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey_duid'
+  ) INTO has_pubkey_duid;
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='nip05_records' AND column_name='domain'
   ) INTO has_domain;
 
-  IF has_hnip05 AND has_hnpub THEN
+  IF has_name_duid AND has_pubkey_duid THEN
     IF has_domain THEN
       policy_sql := $pol$
         CREATE POLICY anon_insert_nip05_records
@@ -89,9 +78,9 @@ BEGIN
         FOR INSERT
         TO anon
         WITH CHECK (
-          COALESCE(hashed_nip05, '') <> ''
-          AND COALESCE(hashed_npub, '') <> ''
-          AND domain IN ('satnam.pub','www.satnam.pub')
+          COALESCE(name_duid, '') <> ''
+          AND COALESCE(pubkey_duid, '') <> ''
+          AND lower(domain) IN ('satnam.pub','www.satnam.pub')
         );
       $pol$;
     ELSE
@@ -101,43 +90,19 @@ BEGIN
         FOR INSERT
         TO anon
         WITH CHECK (
-          COALESCE(hashed_nip05, '') <> '' AND COALESCE(hashed_npub, '') <> ''
-        );
-      $pol$;
-    END IF;
-  ELSIF has_name AND has_npub THEN
-    IF has_domain THEN
-      policy_sql := $pol$
-        CREATE POLICY anon_insert_nip05_records
-        ON public.nip05_records
-        FOR INSERT
-        TO anon
-        WITH CHECK (
-          COALESCE(name, '') <> ''
-          AND COALESCE(npub, '') <> ''
-          AND domain IN ('satnam.pub','www.satnam.pub')
-        );
-      $pol$;
-    ELSE
-      policy_sql := $pol$
-        CREATE POLICY anon_insert_nip05_records
-        ON public.nip05_records
-        FOR INSERT
-        TO anon
-        WITH CHECK (
-          COALESCE(name, '') <> '' AND COALESCE(npub, '') <> ''
+          COALESCE(name_duid, '') <> '' AND COALESCE(pubkey_duid, '') <> ''
         );
       $pol$;
     END IF;
   ELSE
-    -- Fallback: require at least one identifier present to avoid fully open insert
+    -- Fallback: deny by default if required columns are missing
     policy_sql := $pol$
       CREATE POLICY anon_insert_nip05_records
       ON public.nip05_records
       FOR INSERT
       TO anon
       WITH CHECK (
-        TRUE = FALSE -- No-op if schema is unknown; adjust manually if needed
+        TRUE = FALSE
       );
     $pol$;
   END IF;
@@ -146,62 +111,39 @@ BEGIN
 END $do$;
 
 -- Create unique indexes IF columns exist (prevents duplicates)
--- user_identities hashed_npub
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='user_identities' AND column_name='hashed_npub'
-  ) THEN
-    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_user_identities_hnpub ON public.user_identities (hashed_npub)';
-  END IF;
-END$$;
+-- user_identities: no hashed_* indexes are created in greenfield deployments
+-- (reserved for future indexes on DUIDs or encrypted fields if needed)
 
--- user_identities hashed_nip05
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='user_identities' AND column_name='hashed_nip05'
-  ) THEN
-    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_user_identities_hnip05 ON public.user_identities (hashed_nip05)';
-  END IF;
-END$$;
-
--- user_identities hashed_username
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='user_identities' AND column_name='hashed_username'
-  ) THEN
-    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_user_identities_husername ON public.user_identities (hashed_username)';
-  END IF;
-END$$;
-
--- nip05_records: prefer hashed_nip05 unique, otherwise lower(name)
+-- nip05_records: ensure unique index on name_duid (and domain if present); fallback to lower(name) if legacy schema
 DO $$
 DECLARE
-  has_hnip05 boolean;
+  has_name_duid boolean;
+  has_domain boolean;
   has_name boolean;
 BEGIN
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_nip05'
-  ) INTO has_hnip05;
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name_duid'
+  ) INTO has_name_duid;
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='domain'
+  ) INTO has_domain;
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name'
   ) INTO has_name;
 
-  IF has_hnip05 THEN
-    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_hnip05 ON public.nip05_records (hashed_nip05)';
+  IF has_name_duid AND has_domain THEN
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_name_duid_domain ON public.nip05_records (name_duid, lower(domain))';
+  ELSIF has_name_duid THEN
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_name_duid ON public.nip05_records (name_duid)';
   ELSIF has_name THEN
     -- Normalize case for uniqueness if using plaintext name
     IF NOT EXISTS (
-      SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='uq_nip05_records_lower_name'
+      SELECT 1 FROM pg_indexes WHERE schemaname=''public'' AND tablename=''nip05_records'' AND indexname=''uq_nip05_records_lower_name''
     ) THEN
-      EXECUTE 'CREATE UNIQUE INDEX uq_nip05_records_lower_name ON public.nip05_records ((lower(name)))';
+      EXECUTE ''CREATE UNIQUE INDEX uq_nip05_records_lower_name ON public.nip05_records ((lower(name)))'';
     END IF;
   END IF;
 END$$;

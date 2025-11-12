@@ -288,17 +288,17 @@ async function handleNip07SigninInline(event, context, corsHeaders) {
     let npub;
     try { const { nip19 } = await import('nostr-tools'); npub = nip19.npubEncode(signedEvent.pubkey); } catch { npub = `npub${String(signedEvent.pubkey||'').slice(0,16)}...`; }
 
-    // Resolve DUID from npub using hashed_npub -> hashed_nip05
+    // Resolve DUID from npub using pubkey_duid -> name_duid
     const { createHmac } = await import('node:crypto');
     const duidSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
     if (!duidSecret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
-    const hashed_npub = createHmac('sha256', duidSecret).update(npub).digest('hex');
+    const pubkey_duid = createHmac('sha256', duidSecret).update(`NPUBv1:${npub}`).digest('hex');
     const { data: rec, error: recErr } = await supabase
-      .from('nip05_records').select('hashed_nip05, nip05').eq('hashed_npub', hashed_npub).eq('is_active', true).single();
+      .from('nip05_records').select('name_duid, nip05').eq('pubkey_duid', pubkey_duid).eq('is_active', true).single();
     if (recErr || !rec) {
       return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Authentication failed' }) };
     }
-    const duid = rec.hashed_nip05;
+    const duid = rec.name_duid;
 
     // Lookup user
     const { data: user, error: userErr } = await supabase
@@ -628,7 +628,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
     const { supabase } = await import('./supabase.js');
     const { data: user, error: userError, status } = await supabase
       .from('user_identities')
-      .select('id, role, is_active, user_salt, encrypted_nsec, hashed_npub, hashed_username')
+      .select('id, role, is_active, user_salt, encrypted_nsec')
       .eq('id', duid)
       .single();
 
@@ -647,9 +647,7 @@ async function handleSessionUserInline(event, context, corsHeaders) {
       user_salt: user.user_salt || null,
       encrypted_nsec: user.encrypted_nsec || null,
 
-      // Privacy-first: plaintext npub/username are not stored; hashed variants are available if needed
-      hashed_npub: user.hashed_npub || null,
-      hashed_username: user.hashed_username || null,
+      // Privacy-first: hashed_* fields removed in greenfield rollout
     };
 
     const durationMs = Date.now() - t0;
@@ -818,14 +816,14 @@ async function handleCheckUsernameAvailabilityInline(event, context, corsHeaders
     const secret = (process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY || '').trim();
     if (!secret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
     const identifier = `${username}@${domain}`;
-    const hashed_nip05 = createHmac('sha256', secret).update(identifier).digest('hex');
+    const name_duid = createHmac('sha256', secret).update(identifier).digest('hex');
 
     const { supabase } = await import('./supabase.js');
     const { data, error } = await supabase
       .from('nip05_records')
       .select('id')
       .eq('domain', domain)
-      .eq('hashed_nip05', hashed_nip05)
+      .eq('name_duid', name_duid)
       .eq('is_active', true)
       .limit(1);
 
@@ -1142,10 +1140,6 @@ async function handleSigninInline(event, context, corsHeaders) {
         user_salt,
         encrypted_nsec,
         encrypted_nsec_iv,
-        hashed_username,
-        hashed_npub,
-        hashed_nip05,
-        hashed_lightning_address,
         spending_limits,
         privacy_settings,
         family_federation_id,
@@ -1189,9 +1183,6 @@ async function handleSigninInline(event, context, corsHeaders) {
 
     console.log('🔍 User data debug (privacy-first schema):', {
       id: user.id?.substring(0, 8),
-      hashedUsername: user.hashed_username ? `${user.hashed_username.substring(0, 8)}...` : 'MISSING',
-      hashedNip05: user.hashed_nip05 ? `${user.hashed_nip05.substring(0, 8)}...` : 'MISSING',
-      hashedNpub: user.hashed_npub ? `${user.hashed_npub.substring(0, 8)}...` : 'MISSING',
       role: user.role,
       hasPasswordHash: !!user.password_hash,
       hasPasswordSalt: !!user.password_salt,
@@ -1207,7 +1198,6 @@ async function handleSigninInline(event, context, corsHeaders) {
     console.log('🔍 Complete user object keys:', Object.keys(user || {}));
     console.log('🔍 User salt preview:', user.user_salt ? `${user.user_salt.substring(0, 8)}...` : 'MISSING');
     console.log('🔍 Encrypted nsec preview:', user.encrypted_nsec ? `${user.encrypted_nsec.substring(0, 8)}...` : 'MISSING');
-    console.log('🔍 Hashed npub preview:', user.hashed_npub ? `${user.hashed_npub.substring(0, 8)}...` : 'MISSING');
 
     // CRITICAL FIX: Check if user has required encrypted credentials for SecureNsecManager session creation
     const hasRequiredCredentials = !!(user.user_salt && user.encrypted_nsec);
@@ -1278,32 +1268,21 @@ async function handleSigninInline(event, context, corsHeaders) {
       sessionId: sessionId, // Required by frontend - unique session identifier
       nip05: nip05, // Use input nip05 (plaintext) for frontend compatibility
 
-      // BACKEND-REQUIRED FIELDS (for compatibility with other endpoints)
-      username: user.hashed_username || 'unknown', // Use hashed field from database
+      // BACKEND-REQUIRED FIELDS
       role: user.role || 'private'
     });
 
-    // CRITICAL FIX: Prepare response data using correct privacy-first schema (hashed fields)
+    // Prepare response data using encryption-first schema (no hashed_* fields)
     const responseUserData = {
       id: user.id,
       nip05: nip05, // Use the input nip05 (plaintext for client use)
       role: user.role,
       is_active: user.is_active !== false,
 
-      // CRITICAL: Include encrypted credentials for SecureNsecManager session creation
+      // Include encrypted credentials for SecureNsecManager session creation
       user_salt: user.user_salt || null,
       encrypted_nsec: user.encrypted_nsec || null,
       encrypted_nsec_iv: user.encrypted_nsec_iv || null,
-
-      // Privacy-first schema uses hashed fields (database storage)
-      hashed_npub: user.hashed_npub || null,
-      hashed_username: user.hashed_username || null,
-      hashed_nip05: user.hashed_nip05 || null,
-      hashed_lightning_address: user.hashed_lightning_address || null,
-
-      // Additional fields for client compatibility
-      username: user.hashed_username || null, // Map hashed to expected field name
-      npub: user.hashed_npub || null, // Map hashed to expected field name
 
       // Privacy and federation settings
       spending_limits: user.spending_limits || null,

@@ -141,10 +141,6 @@ BEGIN
             user_salt TEXT NOT NULL UNIQUE,
             encrypted_nsec TEXT,
             encrypted_nsec_iv TEXT,
-            hashed_username TEXT NOT NULL,
-            hashed_npub TEXT NOT NULL,
-            hashed_nip05 TEXT,
-            hashed_lightning_address TEXT,
             password_hash TEXT NOT NULL,
             password_salt TEXT NOT NULL UNIQUE,
             password_created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -177,15 +173,6 @@ BEGIN
         RAISE NOTICE '✓ Added user_salt column to user_identities';
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_identities' AND column_name = 'hashed_username') THEN
-        ALTER TABLE user_identities ADD COLUMN hashed_username TEXT;
-        RAISE NOTICE '✓ Added hashed_username column to user_identities';
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_identities' AND column_name = 'hashed_npub') THEN
-        ALTER TABLE user_identities ADD COLUMN hashed_npub TEXT;
-        RAISE NOTICE '✓ Added hashed_npub column to user_identities';
-    END IF;
 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_identities' AND column_name = 'password_hash') THEN
         ALTER TABLE user_identities ADD COLUMN password_hash TEXT;
@@ -745,7 +732,7 @@ END $$;
 
 
 -- =====================================================
--- HELPER VIEW: current_user_identity (DUID Index -> hashed_npub)
+-- HELPER VIEW: current_user_identity (DUID Index -> pubkey_duid)
 -- Centralizes lookup for RLS policies using app.current_user_duid
 -- Phase 2: Uses secure DUID index for database operations
 -- =====================================================
@@ -754,7 +741,7 @@ END $$;
 CREATE OR REPLACE VIEW current_user_identity AS
 SELECT
     id AS duid_index,
-    hashed_npub
+    NULL::TEXT AS pubkey_duid
 FROM user_identities
 WHERE id = current_setting('app.current_user_duid', true);
 
@@ -853,7 +840,7 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_user_identities_role ON user_identities(role);
 CREATE INDEX IF NOT EXISTS idx_user_identities_is_active ON user_identities(is_active);
-CREATE INDEX IF NOT EXISTS idx_user_identities_hashed_username ON user_identities(hashed_username);
+
 
 -- Family federation indexes
 CREATE INDEX IF NOT EXISTS idx_family_federations_is_active ON family_federations(is_active);

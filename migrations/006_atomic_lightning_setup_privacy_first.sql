@@ -1,25 +1,27 @@
 -- migrations/006_atomic_lightning_setup_privacy_first.sql
 -- PRIVACY-FIRST ATOMIC LIGHTNING SETUP 
--- Updated to work with user_identities table and hashed storage
+-- Updated to work with user_identities table and encrypted storage
 -- 
 -- SECURITY FEATURES:
 -- 🔒 Atomic transaction with automatic rollback on failure
 -- 🔒 Encrypted storage in privacy_settings JSONB field
--- 🔒 Hashed Lightning addresses in user_identities table
+-- 🔒 Encrypted Lightning addresses in user_identities table
 -- 🔒 Zero plaintext storage of sensitive data
 -- 🔒 Audit trail for all Lightning setup operations
 
 -- Create privacy-first Lightning setup function
 CREATE OR REPLACE FUNCTION setup_lightning_atomic_privacy_first(
   p_user_duid TEXT,
-  p_hashed_lightning_address TEXT,
+  p_encrypted_lightning_address TEXT,
+  p_encrypted_lightning_address_iv TEXT,
+  p_encrypted_lightning_address_tag TEXT,
   p_encrypted_config JSONB DEFAULT '{}'::jsonb
-) 
+)
 RETURNS TABLE(
   success BOOLEAN,
   message TEXT,
   user_duid TEXT
-) 
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
@@ -34,8 +36,10 @@ BEGIN
     RETURN;
   END IF;
 
-  IF p_hashed_lightning_address IS NULL OR p_hashed_lightning_address = '' THEN
-    RETURN QUERY SELECT false, 'Invalid hashed Lightning address provided'::TEXT, NULL::TEXT;
+  IF p_encrypted_lightning_address IS NULL OR p_encrypted_lightning_address = '' OR
+     p_encrypted_lightning_address_iv IS NULL OR p_encrypted_lightning_address_iv = '' OR
+     p_encrypted_lightning_address_tag IS NULL OR p_encrypted_lightning_address_tag = '' THEN
+    RETURN QUERY SELECT false, 'Invalid encrypted Lightning address payload provided'::TEXT, NULL::TEXT;
     RETURN;
   END IF;
 
@@ -71,9 +75,11 @@ BEGIN
       'lightning_address_updated_at', EXTRACT(EPOCH FROM NOW())::bigint
     );
 
-    -- Update user_identities with hashed Lightning address and encrypted config
+    -- Update user_identities with encrypted Lightning address and encrypted config
     UPDATE user_identities SET
-      hashed_lightning_address = p_hashed_lightning_address,
+      encrypted_lightning_address = p_encrypted_lightning_address,
+      encrypted_lightning_address_iv = p_encrypted_lightning_address_iv,
+      encrypted_lightning_address_tag = p_encrypted_lightning_address_tag,
       privacy_settings = v_new_settings,
       updated_at = NOW()
     WHERE id = p_user_duid;
@@ -90,7 +96,7 @@ BEGIN
       'lightning_setup',
       'user_identity',
       jsonb_build_object(
-        'hashed_address_length', length(p_hashed_lightning_address),
+        'encrypted_address_length', length(p_encrypted_lightning_address),
         'config_keys_count', jsonb_array_length(jsonb_object_keys(p_encrypted_config)),
         'setup_timestamp', EXTRACT(EPOCH FROM NOW())::bigint
       ),
@@ -148,7 +154,9 @@ END $$;
 CREATE OR REPLACE FUNCTION get_lightning_config_privacy_first(p_user_duid TEXT)
 RETURNS TABLE(
   user_duid TEXT,
-  hashed_lightning_address TEXT,
+  encrypted_lightning_address TEXT,
+  encrypted_lightning_address_iv TEXT,
+  encrypted_lightning_address_tag TEXT,
   encrypted_config JSONB,
   setup_timestamp BIGINT
 )
@@ -157,14 +165,16 @@ SECURITY DEFINER
 AS $$
 BEGIN
   RETURN QUERY
-  SELECT 
+  SELECT
     ui.id as user_duid,
-    ui.hashed_lightning_address,
+    ui.encrypted_lightning_address,
+    ui.encrypted_lightning_address_iv,
+    ui.encrypted_lightning_address_tag,
     (ui.privacy_settings->>'lightning_config')::jsonb as encrypted_config,
     (ui.privacy_settings->>'lightning_setup_at')::bigint as setup_timestamp
   FROM user_identities ui
   WHERE ui.id = p_user_duid
-    AND ui.hashed_lightning_address IS NOT NULL;
+    AND ui.encrypted_lightning_address IS NOT NULL;
 END;
 $$;
 

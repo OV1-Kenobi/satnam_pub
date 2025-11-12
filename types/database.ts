@@ -5,11 +5,27 @@
 export interface UserIdentity {
   id: string; // DUID index for secure O(1) authentication
   user_salt: string;
-  hashed_username: string;
-  hashed_npub: string;
-  hashed_encrypted_nsec?: string;
-  hashed_nip05?: string;
-  hashed_lightning_address?: string;
+  encrypted_nsec?: string;
+  encrypted_nsec_iv?: string | null;
+  encrypted_nsec_tag?: string | null;
+  encrypted_username?: string;
+  encrypted_username_iv?: string | null;
+  encrypted_username_tag?: string | null;
+  encrypted_bio?: string;
+  encrypted_bio_iv?: string | null;
+  encrypted_bio_tag?: string | null;
+  encrypted_display_name?: string;
+  encrypted_display_name_iv?: string | null;
+  encrypted_display_name_tag?: string | null;
+  encrypted_picture?: string;
+  encrypted_picture_iv?: string | null;
+  encrypted_picture_tag?: string | null;
+  encrypted_nip05?: string;
+  encrypted_nip05_iv?: string | null;
+  encrypted_nip05_tag?: string | null;
+  encrypted_lightning_address?: string;
+  encrypted_lightning_address_iv?: string | null;
+  encrypted_lightning_address_tag?: string | null;
   password_hash: string;
   password_salt: string;
   password_created_at: Date;
@@ -75,11 +91,27 @@ export interface NostrBackup {
 export interface CreateUserIdentityInput {
   id: string; // DUID
   user_salt: string;
-  hashed_username: string;
-  hashed_npub: string;
-  hashed_encrypted_nsec?: string;
-  hashed_nip05?: string;
-  hashed_lightning_address?: string;
+  encrypted_nsec?: string;
+  encrypted_nsec_iv?: string | null;
+  encrypted_nsec_tag?: string | null;
+  encrypted_username?: string;
+  encrypted_username_iv?: string | null;
+  encrypted_username_tag?: string | null;
+  encrypted_bio?: string;
+  encrypted_bio_iv?: string | null;
+  encrypted_bio_tag?: string | null;
+  encrypted_display_name?: string;
+  encrypted_display_name_iv?: string | null;
+  encrypted_display_name_tag?: string | null;
+  encrypted_picture?: string;
+  encrypted_picture_iv?: string | null;
+  encrypted_picture_tag?: string | null;
+  encrypted_nip05?: string;
+  encrypted_nip05_iv?: string | null;
+  encrypted_nip05_tag?: string | null;
+  encrypted_lightning_address?: string;
+  encrypted_lightning_address_iv?: string | null;
+  encrypted_lightning_address_tag?: string | null;
   password_hash: string;
   password_salt: string;
   role?: "private" | "offspring" | "adult" | "steward" | "guardian";
@@ -120,11 +152,27 @@ export interface CreateNostrBackupInput {
 
 // Update types (all fields optional except ID)
 export interface UpdateUserIdentityInput {
-  hashed_username?: string;
-  hashed_npub?: string;
-  hashed_encrypted_nsec?: string;
-  hashed_nip05?: string;
-  hashed_lightning_address?: string;
+  encrypted_nsec?: string;
+  encrypted_nsec_iv?: string | null;
+  encrypted_nsec_tag?: string | null;
+  encrypted_username?: string;
+  encrypted_username_iv?: string | null;
+  encrypted_username_tag?: string | null;
+  encrypted_bio?: string;
+  encrypted_bio_iv?: string | null;
+  encrypted_bio_tag?: string | null;
+  encrypted_display_name?: string;
+  encrypted_display_name_iv?: string | null;
+  encrypted_display_name_tag?: string | null;
+  encrypted_picture?: string;
+  encrypted_picture_iv?: string | null;
+  encrypted_picture_tag?: string | null;
+  encrypted_nip05?: string;
+  encrypted_nip05_iv?: string | null;
+  encrypted_nip05_tag?: string | null;
+  encrypted_lightning_address?: string;
+  encrypted_lightning_address_iv?: string | null;
+  encrypted_lightning_address_tag?: string | null;
   role?: "private" | "offspring" | "adult" | "steward" | "guardian";
   spending_limits?: any;
   privacy_settings?: any;

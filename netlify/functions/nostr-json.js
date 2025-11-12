@@ -56,7 +56,7 @@ export const handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({}) };
     }
 
-    // Compute hashed key = HMAC-SHA-256(DUID_SERVER_SECRET, "name@domain")
+    // Compute name_duid = HMAC-SHA-256(DUID_SERVER_SECRET, "name@domain")
     const crypto = await import('node:crypto');
     const secret = process.env.DUID_SERVER_SECRET;
     if (!secret) {
@@ -68,9 +68,9 @@ export const handler = async (event) => {
     const identifier = `${name}@${domain}`;
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(identifier);
-    const hashed_nip05 = hmac.digest('hex');
+    const name_duid = hmac.digest('hex');
 
-    const path = `nip05_artifacts/${domain}/${hashed_nip05}.json`;
+    const path = `nip05_artifacts/${domain}/${name_duid}.json`;
 
     // Fetch per-user artifact from Supabase Storage (memory-friendly via existing client)
     let artifact = null;

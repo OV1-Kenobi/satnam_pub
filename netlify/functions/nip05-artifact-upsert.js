@@ -1,4 +1,4 @@
-// Netlify Function: Upsert NIP-05 artifact and hashed_npub on key rotation
+// Netlify Function: Upsert NIP-05 artifact and pubkey_duid on key rotation
 // POST /.netlify/functions/nip05-artifact-upsert
 
 export const handler = async (event) => {
@@ -40,8 +40,8 @@ export const handler = async (event) => {
     }
 
     const identifier = `${localName.toLowerCase()}@${effectiveDomain}`;
-    const hmac1 = crypto.createHmac('sha256', secret).update(identifier).digest('hex');
-    const hmac2 = crypto.createHmac('sha256', secret).update(`NPUBv1:${newNpub}`).digest('hex');
+    const name_duid = crypto.createHmac('sha256', secret).update(identifier).digest('hex');
+    const pubkey_duid = crypto.createHmac('sha256', secret).update(`NPUBv1:${newNpub}`).digest('hex');
 
     const supaMod = await import('./supabase.js');
     const supabase = (supaMod && (supaMod.supabase ?? supaMod.default)) || null;
@@ -51,12 +51,12 @@ export const handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Server misconfiguration' }) };
     }
 
-    // Update hashed_npub in DB for this hashed_nip05
+    // Update pubkey_duid in DB for this name_duid
     const { error: updateErr } = await supabase
       .from('nip05_records')
-      .update({ hashed_npub: hmac2, updated_at: new Date().toISOString() })
+      .update({ pubkey_duid: pubkey_duid, updated_at: new Date().toISOString() })
       .eq('domain', effectiveDomain)
-      .eq('hashed_nip05', hmac1)
+      .eq('name_duid', name_duid)
       .eq('is_active', true);
 
     if (updateErr) {
@@ -80,7 +80,7 @@ export const handler = async (event) => {
     }
 
     // Upload artifact (upsert)
-    const path = `nip05_artifacts/${effectiveDomain}/${hmac1}.json`;
+    const path = `nip05_artifacts/${effectiveDomain}/${name_duid}.json`;
     try {
       const { error: uploadErr } = await supabase.storage
         .from('nip05-artifacts')

@@ -1,10 +1,10 @@
 -- Migration: Enforce privacy-first nip05_records (server-side DUID hashing)
 -- Objective:
 -- 1) Remove plaintext columns (name, pubkey, etc.) from nip05_records
--- 2) Store only hashed_nip05 and hashed_npub using server-side secret (DUID_SERVER_SECRET)
+-- 2) Store only name_duid and pubkey_duid using server-side secret (DUID_SERVER_SECRET)
 -- 3) Keep domain and is_active for scoping; maintain created_at/updated_at
 -- 4) Create indexes for fast availability checks
--- 5) RLS: allow anon INSERT with hashed fields; SELECT only hashed fields for anon (no leakage)
+-- 5) RLS: allow anon INSERT with DUID fields; SELECT only DUID fields for anon (no leakage)
 
 BEGIN;
 
@@ -20,8 +20,8 @@ BEGIN
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         domain text NOT NULL DEFAULT 'satnam.pub',
         is_active boolean NOT NULL DEFAULT true,
-        hashed_nip05 text NOT NULL,
-        hashed_npub text NOT NULL,
+        name_duid text NOT NULL,
+        pubkey_duid text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
@@ -43,21 +43,16 @@ BEGIN
     EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN pubkey';
   END IF;
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_name'
-  ) THEN
-    EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN hashed_name';
-  END IF;
-  IF EXISTS (
     SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='nip05_records' AND column_name='user_salt'
   ) THEN
     EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN user_salt';
   END IF;
 END $do$;
 
--- 2) Ensure hashed columns exist
+-- 2) Ensure DUID columns exist
 ALTER TABLE public.nip05_records
-  ADD COLUMN IF NOT EXISTS hashed_nip05 text NOT NULL,
-  ADD COLUMN IF NOT EXISTS hashed_npub text NOT NULL;
+  ADD COLUMN IF NOT EXISTS name_duid text NOT NULL,
+  ADD COLUMN IF NOT EXISTS pubkey_duid text NOT NULL;
 
 -- 3) Ensure domain/is_active columns exist (and defaults)
 ALTER TABLE public.nip05_records
@@ -70,18 +65,18 @@ ALTER TABLE public.nip05_records
 DO $do$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='uq_nip05_records_hnip05'
+    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='uq_nip05_records_name_duid_domain'
   ) THEN
-    EXECUTE 'CREATE UNIQUE INDEX uq_nip05_records_hnip05 ON public.nip05_records (domain, hashed_nip05)';
+    EXECUTE 'CREATE UNIQUE INDEX uq_nip05_records_name_duid_domain ON public.nip05_records (domain, name_duid)';
   END IF;
   IF NOT EXISTS (
-    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='idx_nip05_records_hnpub'
+    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='idx_nip05_records_pubkey_duid'
   ) THEN
-    EXECUTE 'CREATE INDEX idx_nip05_records_hnpub ON public.nip05_records (hashed_npub)';
+    EXECUTE 'CREATE INDEX idx_nip05_records_pubkey_duid ON public.nip05_records (pubkey_duid)';
   END IF;
 END $do$;
 
--- 5) RLS policies (anon INSERT with hashed-only fields; no plaintext leakage)
+-- 5) RLS policies (anon INSERT with DUID-only fields; no plaintext leakage)
 ALTER TABLE public.nip05_records ENABLE ROW LEVEL SECURITY;
 
 -- Clean existing conflicting policies
@@ -97,16 +92,16 @@ END $do$;
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT INSERT, SELECT ON TABLE public.nip05_records TO anon;
 
--- Allow anon INSERT if hashed fields are present and domain is allowed
+-- Allow anon INSERT if DUID fields are present and domain is allowed
 CREATE POLICY anon_insert_nip05_records ON public.nip05_records
   FOR INSERT TO anon
   WITH CHECK (
-    COALESCE(hashed_nip05,'') <> ''
-    AND COALESCE(hashed_npub,'') <> ''
+    COALESCE(name_duid,'') <> ''
+    AND COALESCE(pubkey_duid,'') <> ''
     AND domain IN ('satnam.pub','www.satnam.pub')
   );
 
--- Allow anon SELECT only on hashed fields (no sensitive leakage)
+-- Allow anon SELECT only on DUID fields (no sensitive leakage)
 -- Note: Clients should not need SELECT; provided for availability checks if needed
 CREATE POLICY anon_select_nip05_records ON public.nip05_records
   FOR SELECT TO anon

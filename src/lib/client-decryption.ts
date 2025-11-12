@@ -46,10 +46,6 @@ export interface EncryptedUserData {
   encrypted_lightning_address_iv: string | null;
   encrypted_lightning_address_tag: string | null;
 
-  // HASHED COLUMNS: Authentication fields (one-way, not displayable)
-  hashed_npub: string;
-  hashed_nip05: string;
-
   // Encrypted nsec (already properly encrypted with Noble V2)
   encrypted_nsec?: string;
 
@@ -150,7 +146,8 @@ async function deriveKeyPBKDF2(
     const key = await crypto.subtle.deriveKey(
       {
         name: "PBKDF2",
-        salt: randomSalt,
+        // Use underlying ArrayBuffer to satisfy BufferSource typing in strict DOM libs
+        salt: randomSalt.buffer as ArrayBuffer,
         iterations: 100000,
         hash: "SHA-256",
       },

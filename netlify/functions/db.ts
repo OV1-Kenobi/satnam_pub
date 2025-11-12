@@ -275,8 +275,6 @@ const models = {
     create: async (userData: {
       id: string; // DUID
       user_salt: string;
-      hashed_username: string;
-      hashed_npub: string;
       password_hash: string;
       password_salt: string;
       role?: string;
@@ -285,18 +283,16 @@ const models = {
       const result = await pool.query(
         `
         INSERT INTO user_identities (
-          id, user_salt, hashed_username, hashed_npub, 
+          id, user_salt,
           password_hash, password_salt, role, family_federation_id,
           created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
         RETURNING *
       `,
         [
           userData.id,
           userData.user_salt,
-          userData.hashed_username,
-          userData.hashed_npub,
           userData.password_hash,
           userData.password_salt,
           userData.role || "private",
@@ -320,10 +316,14 @@ const models = {
     /**
      * Get user identity by hashed npub
      */
-    getByHashedNpub: async (hashedNpub: string) => {
+    getByHashedNpub: async (pubkeyDuid: string) => {
       const result = await pool.query(
-        "SELECT * FROM user_identities WHERE hashed_npub = $1 AND is_active = true",
-        [hashedNpub]
+        `SELECT ui.*
+         FROM nip05_records nr
+         JOIN user_identities ui ON ui.id = nr.name_duid
+         WHERE nr.pubkey_duid = $1 AND nr.is_active = true
+         LIMIT 1`,
+        [pubkeyDuid]
       );
       return result.rows[0];
     },
@@ -386,7 +386,7 @@ const models = {
     getMembers: async (familyFederationId: string) => {
       const result = await pool.query(
         `
-        SELECT fm.*, ui.hashed_username, ui.role as user_role
+        SELECT fm.*, ui.id as user_duid, ui.role as user_role
         FROM family_members fm
         JOIN user_identities ui ON fm.user_duid = ui.id
         WHERE fm.family_federation_id = $1 AND fm.is_active = true
@@ -425,7 +425,7 @@ const models = {
      */
     updateHashedAddress: async (data: {
       user_duid: string;
-      hashed_lightning_address: string;
+      lightning_address_duid?: string;
       encrypted_config?: object;
     }) => {
       // Update privacy settings with Lightning config
@@ -435,18 +435,13 @@ const models = {
 
       const result = await pool.query(
         `
-        UPDATE user_identities 
-        SET hashed_lightning_address = $2, 
-            privacy_settings = privacy_settings || $3::jsonb,
-            updated_at = NOW()
+        UPDATE user_identities
+            SET privacy_settings = privacy_settings || $2::jsonb,
+                updated_at = NOW()
         WHERE id = $1 AND is_active = true
-        RETURNING id, hashed_lightning_address, privacy_settings
+        RETURNING id, privacy_settings
       `,
-        [
-          data.user_duid,
-          data.hashed_lightning_address,
-          JSON.stringify(privacyUpdate),
-        ]
+        [data.user_duid, JSON.stringify(privacyUpdate)]
       );
       return result.rows[0];
     },
@@ -456,7 +451,7 @@ const models = {
      */
     getByUserDuid: async (userDuid: string) => {
       const result = await pool.query(
-        "SELECT id, hashed_lightning_address, privacy_settings FROM user_identities WHERE id = $1 AND is_active = true AND hashed_lightning_address IS NOT NULL",
+        "SELECT id, privacy_settings FROM user_identities WHERE id = $1 AND is_active = true",
         [userDuid]
       );
       return result.rows[0];
