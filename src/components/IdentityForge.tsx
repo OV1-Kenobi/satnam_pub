@@ -948,14 +948,29 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           console.warn('⚠️ Invalid Kind:0 event ID format:', publishedEventId);
         }
       } catch (pubErr) {
-        console.warn('Profile event signed but publish failed or skipped:', pubErr instanceof Error ? pubErr.message : pubErr);
+        // FIX #2: Improved error logging for profile publishing failures
+        const errorMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
+        console.error('❌ Profile publishing failed with detailed error:', {
+          error: errorMsg,
+          errorType: pubErr instanceof Error ? pubErr.name : 'Unknown',
+          timestamp: new Date().toISOString(),
+          username: formData.username,
+          domain: selectedDomain,
+        });
+        console.warn('⚠️ Profile publishing failed but registration will continue (non-blocking):', errorMsg);
       }
 
       // DON'T clear ephemeral nsec here - registerIdentity() still needs it
 
     } catch (error) {
-      console.error('Profile publishing failed:', error);
-      // Continue anyway - profile can be updated later
+      // FIX #2: Improved error logging for outer profile publishing errors
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Profile publishing outer error:', {
+        error: errorMsg,
+        errorType: error instanceof Error ? error.name : 'Unknown',
+        timestamp: new Date().toISOString(),
+      });
+      // Continue anyway - profile can be updated later (non-blocking behavior)
     } finally {
       // Profile publishing complete
     }
@@ -1671,8 +1686,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         const profileTimeout = new Promise<void>((_, reject) =>
           setTimeout(() => reject(new Error('Profile publishing timeout after 15 seconds')), 15000)
         );
-        await Promise.race([profilePromise, profileTimeout]);
-        console.log("[IdentityForge] publishNostrProfile: done", new Date().toISOString());
+        try {
+          await Promise.race([profilePromise, profileTimeout]);
+          console.log("[IdentityForge] publishNostrProfile: done", new Date().toISOString());
+        } catch (profileErr) {
+          // FIX #2: Log profile publishing errors but continue (non-blocking)
+          const profileErrorMsg = profileErr instanceof Error ? profileErr.message : String(profileErr);
+          console.warn("[IdentityForge] Profile publishing failed (non-blocking, will continue):", profileErrorMsg);
+          setGenerationStep("Profile publishing failed (continuing with registration)...");
+          // Continue to registration - profile publishing is non-blocking
+        }
 
         // Then register the identity
         console.log("[IdentityForge] registerIdentity: start", new Date().toISOString());

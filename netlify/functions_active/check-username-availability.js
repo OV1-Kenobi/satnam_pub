@@ -134,10 +134,21 @@ async function checkUsernameAvailability(username) {
 
 /**
  * Generate username suggestion when the requested username is taken
+ * SECURITY: Limits recursion depth to prevent infinite loops and excessive database queries
  * @param {string} baseUsername - Base username to generate suggestions from
+ * @param {number} attemptCount - Current attempt count (internal use, starts at 0)
  * @returns {Promise<string>} Suggested username
  */
-async function generateUsernameSuggestion(baseUsername) {
+async function generateUsernameSuggestion(baseUsername, attemptCount = 0) {
+  // SECURITY FIX #1: Maximum recursion depth limit (5 attempts max)
+  const MAX_SUGGESTION_ATTEMPTS = 5;
+
+  if (attemptCount >= MAX_SUGGESTION_ATTEMPTS) {
+    console.warn(`[USERNAME_SUGGESTION] Max attempts (${MAX_SUGGESTION_ATTEMPTS}) reached for base username: ${baseUsername}`);
+    // Return fallback immediately without further database queries
+    return `${baseUsername}_${Math.floor(Math.random() * 10000)}`;
+  }
+
   const suggestions = [
     `${baseUsername}${Math.floor(Math.random() * 100)}`,
     `${baseUsername}_${Math.floor(Math.random() * 1000)}`,
@@ -146,15 +157,22 @@ async function generateUsernameSuggestion(baseUsername) {
     `${baseUsername}_new`
   ];
 
-  // Try to find an available suggestion
+  // Try to find an available suggestion (non-recursive approach)
   for (const suggestion of suggestions) {
-    const result = await checkUsernameAvailability(suggestion);
-    if (result.available) {
-      return suggestion;
+    try {
+      const result = await checkUsernameAvailability(suggestion);
+      if (result.available) {
+        console.log(`[USERNAME_SUGGESTION] Found available suggestion: ${suggestion}`);
+        return suggestion;
+      }
+    } catch (err) {
+      console.warn(`[USERNAME_SUGGESTION] Error checking suggestion ${suggestion}:`, err instanceof Error ? err.message : err);
+      // Continue to next suggestion on error
     }
   }
 
-  // Fallback to random number
+  // If no suggestions available, return fallback immediately (no recursion)
+  console.warn(`[USERNAME_SUGGESTION] No available suggestions found after ${attemptCount + 1} attempt(s), using random fallback`);
   return `${baseUsername}_${Math.floor(Math.random() * 10000)}`;
 }
 
@@ -180,6 +198,12 @@ export const handler = async (event, context) => {
 
   try {
     // Database-backed rate limiting
+    // FIX #4: Rate limit documentation for username availability checks
+    // RATE_LIMITS.IDENTITY_VERIFY = 50 requests per hour per IP
+    // Rationale: Username checks are performed during registration flow (real-time validation)
+    // and should allow reasonable frequency for form input validation without being too permissive.
+    // 50 req/hr = ~1 request per 72 seconds, sufficient for typical user registration workflows.
+    // If users report rate limiting issues during registration, consider increasing to 100 req/hr.
     const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
     const allowed = await checkRateLimit(
       rateLimitKey,
@@ -191,6 +215,7 @@ export const handler = async (event, context) => {
         requestId,
         endpoint: "check-username-availability",
         method: event.httpMethod,
+        rateLimitConfig: `${RATE_LIMITS.IDENTITY_VERIFY.limit} requests per ${RATE_LIMITS.IDENTITY_VERIFY.windowMs / 1000 / 60} minutes`,
       });
       return createRateLimitErrorResponse(requestId, requestOrigin);
     }

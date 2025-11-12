@@ -481,6 +481,25 @@ function validateRegistrationData(
   const resolvedDomain = resolvePlatformLightningDomainServer();
 
   if (userData.nip05) {
+    // FIX #5: Validate NIP-05 length before database write
+    // NIP-05 identifiers should not exceed 255 characters (typical database VARCHAR limit)
+    if (userData.nip05.length > 255) {
+      errors.push({
+        field: "nip05",
+        message: "NIP-05 identifier exceeds maximum length of 255 characters",
+      });
+    }
+
+    // FIX #5: Validate NIP-05 format (must contain exactly one '@' symbol)
+    const atSymbolCount = (userData.nip05.match(/@/g) || []).length;
+    if (atSymbolCount !== 1) {
+      errors.push({
+        field: "nip05",
+        message:
+          "NIP-05 identifier must contain exactly one '@' symbol (format: username@domain)",
+      });
+    }
+
     // Normalize both sides for comparison: lowercase and trim whitespace
     // NIP-05 identifiers are case-insensitive per spec
     const normalizedReceivedNip05 = userData.nip05.trim().toLowerCase();

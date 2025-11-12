@@ -9,12 +9,12 @@ function getEnvVar(key) {
   if (typeof import.meta !== "undefined" && import.meta.env) {
     return import.meta.env[key];
   }
-  
+
   // Fallback to process.env (Node.js context)
   if (typeof process !== "undefined" && process.env) {
     return process.env[key];
   }
-  
+
   return undefined;
 }
 
@@ -22,6 +22,7 @@ const isDevelopment = getEnvVar('NODE_ENV') === 'development';
 const isProduction = getEnvVar('NODE_ENV') === 'production';
 
 // Helper to collect all VITE_* environment variables
+// Returns a plain object that will be injected into the browser via Vite's define
 function getAllViteEnvVars() {
   const viteEnv = {};
   if (typeof process !== 'undefined' && process.env) {
@@ -522,9 +523,7 @@ export default defineConfig({
     __DEV__: isDevelopment,
     // Provide a concrete process.env object at runtime so dynamic lookups work in the browser
     // This includes ALL VITE_* environment variables automatically
-    // CRITICAL: Do NOT use JSON.stringify() - it converts the object to a string
-    // Instead, use the object directly so Vite can properly inject it
-    'process.env': getAllViteEnvVars(),
+    'process.env': JSON.stringify(getAllViteEnvVars()),
   },
 
   optimizeDeps: {

@@ -7,6 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 
 /**
  * Environment variable getter with browser and Netlify Function compatibility
+ * CRITICAL: For browser code, use import.meta.env (Vite's native pattern)
+ * For Netlify Functions, use process.env
  * @param {string} key - Environment variable key
  * @param {string} [defaultValue] - Default value if not found
  * @returns {string} Environment variable value
@@ -25,10 +27,9 @@ function getEnvVar(key: string, defaultValue: string = ""): string {
     /* noop */
   }
 
-  // SECONDARY: Removed import.meta usage per Netlify Functions CJS compatibility rule
+  // SECONDARY: Removed import.meta usage - does NOT work in Netlify Functions
   // All environment values are injected into process.env via Vite define
   // and must be read from process.env only for shared code.
-  // No-op fallback removed intentionally.
 
   // TERTIARY: global shim if provided at runtime
   try {
@@ -150,7 +151,10 @@ function createSupabaseStub(): SupabaseClient {
       throw new Error(message);
     },
   };
-  return new Proxy({} as SupabaseClient, handler);
+  // Use 'as unknown as SupabaseClient' to bypass strict type checking
+  // This is intentionally a stub that throws on property access
+  // The Proxy pattern allows us to defer type validation until runtime
+  return new Proxy({}, handler) as unknown as SupabaseClient;
 }
 
 // Create real client only when credentials are present; otherwise a stub that throws on use
