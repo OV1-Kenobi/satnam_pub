@@ -522,7 +522,9 @@ export default defineConfig({
     __DEV__: isDevelopment,
     // Provide a concrete process.env object at runtime so dynamic lookups work in the browser
     // This includes ALL VITE_* environment variables automatically
-    'process.env': JSON.stringify(getAllViteEnvVars()),
+    // CRITICAL: Do NOT use JSON.stringify() - it converts the object to a string
+    // Instead, use the object directly so Vite can properly inject it
+    'process.env': getAllViteEnvVars(),
   },
 
   optimizeDeps: {
