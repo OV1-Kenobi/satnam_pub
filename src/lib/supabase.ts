@@ -77,20 +77,15 @@ const getSupabaseConfig = () => {
 
     console.error("❌ Supabase credentials missing:", errorDetails);
 
-    // In production, fail fast. In development, allow app to boot with a stub client.
-    const isProd =
-      typeof process !== "undefined" && process.env?.NODE_ENV === "production";
-    if (isProd) {
-      throw new Error(
-        "CRITICAL: Bootstrap Supabase credentials missing. " +
-          "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables " +
-          "to access the Vault system. " +
-          `Environment: ${errorDetails.environment}, ` +
-          `Available VITE_ vars: ${errorDetails.availableEnvVars.length}`
-      );
-    }
-    // Development: return empty to signal missing config to stub initializer
-    return { url: "", key: "" } as { url: string; key: string };
+    // ALWAYS fail fast - credentials are REQUIRED for the app to function
+    // This prevents silent failures and white screens in production
+    throw new Error(
+      "CRITICAL: Bootstrap Supabase credentials missing. " +
+        "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables " +
+        "to access the Vault system. " +
+        `Environment: ${errorDetails.environment}, ` +
+        `Available VITE_ vars: ${errorDetails.availableEnvVars.length}`
+    );
   }
 
   return { url, key };
