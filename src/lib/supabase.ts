@@ -14,28 +14,21 @@ import { createClient } from "@supabase/supabase-js";
  * @returns {string} Environment variable value
  */
 function getEnvVar(key: string, defaultValue: string = ""): string {
-  // PRIMARY: process.env (works for both Netlify Functions and Vite-defined injections)
+  // Use Vite's define-injected process.env object in the browser; works in Functions too
   try {
-    if (
-      typeof process !== "undefined" &&
-      (process as any).env &&
-      typeof ((process as any).env as any)[key] !== "undefined"
-    ) {
-      return (((process as any).env as any)[key] as string) || defaultValue;
+    const env = process.env as any as Record<string, string | undefined>;
+    if (env && typeof env[key] !== "undefined") {
+      return (env[key] as string) || defaultValue;
     }
   } catch {
     /* noop */
   }
 
-  // SECONDARY: Removed import.meta usage - does NOT work in Netlify Functions
-  // All environment values are injected into process.env via Vite define
-  // and must be read from process.env only for shared code.
-
-  // TERTIARY: global shim if provided at runtime
+  // Fallback: runtime shim if provided (no secrets)
   try {
     if (typeof globalThis !== "undefined" && (globalThis as any).__APP_ENV__) {
       const v = (globalThis as any).__APP_ENV__[key];
-      if (typeof v !== "undefined") return v as string;
+      if (typeof v !== "undefined") return (v as string) || defaultValue;
     }
   } catch {
     /* noop */
@@ -52,15 +45,16 @@ const getSupabaseConfig = () => {
   const key = getEnvVar("VITE_SUPABASE_ANON_KEY");
 
   // Debug environment variable access (without exposing sensitive data)
+  const __env = process.env as any as Record<string, string | undefined>;
   console.log("🔍 Supabase Environment Check:", {
     hasUrl: !!url,
     hasKey: !!key,
     urlLength: url ? url.length : 0,
     keyLength: key ? key.length : 0,
     environment: typeof window !== "undefined" ? "browser" : "node",
-    processEnvAvailable: typeof process !== "undefined" && !!process.env,
-    processEnvHasViteVars:
-      typeof process !== "undefined" && !!process.env?.VITE_SUPABASE_URL,
+    viteEnvCount: __env
+      ? Object.keys(__env).filter((k) => k.startsWith("VITE_")).length
+      : 0,
   });
 
   // Security validation - ensure we have bootstrap credentials
@@ -69,10 +63,10 @@ const getSupabaseConfig = () => {
       hasUrl: !!url,
       hasKey: !!key,
       environment: typeof window !== "undefined" ? "browser" : "node",
-      availableEnvVars:
-        typeof process !== "undefined" && process.env
-          ? Object.keys(process.env).filter((k) => k.startsWith("VITE_"))
-          : [],
+      availableEnvVars: (() => {
+        const env = process.env as any as Record<string, string | undefined>;
+        return env ? Object.keys(env).filter((k) => k.startsWith("VITE_")) : [];
+      })(),
     };
 
     console.error("❌ Supabase credentials missing:", errorDetails);
