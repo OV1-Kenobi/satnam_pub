@@ -8,6 +8,12 @@
   CI = "true"
   # Cache bust after complete Argon2 removal + PBKDF2 migration - 2025-08-04
   NETLIFY_CACHE_BUST = "pbkdf2-migration-complete-20250804"
+  # CRITICAL: Supabase bootstrap credentials for Vite build-time injection
+  # These MUST be set in Netlify UI environment variables and will be injected into process.env
+  # by vite.config.js getAllViteEnvVars() function during build
+  # If missing, the browser will not have Supabase credentials and all API calls will fail
+  VITE_SUPABASE_URL = "${VITE_SUPABASE_URL}"
+  VITE_SUPABASE_ANON_KEY = "${VITE_SUPABASE_ANON_KEY}"
   # Family Federation Decoupling feature flags - BIFROST-First Strategy
   VITE_BIFROST_ENABLED = "false"
   VITE_FEDIMINT_INTEGRATION_ENABLED = "false"
