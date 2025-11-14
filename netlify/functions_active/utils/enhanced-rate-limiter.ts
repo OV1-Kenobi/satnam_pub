@@ -107,8 +107,14 @@ export async function checkRateLimit(
 ): Promise<boolean> {
   try {
     // Get Supabase credentials
-    const url = supabaseUrl || getEnvVar("SUPABASE_URL");
-    const key = supabaseKey || getEnvVar("SUPABASE_ANON_KEY");
+    const url =
+      supabaseUrl ||
+      getEnvVar("SUPABASE_URL") ||
+      getEnvVar("VITE_SUPABASE_URL");
+    const key =
+      supabaseKey ||
+      getEnvVar("SUPABASE_ANON_KEY") ||
+      getEnvVar("VITE_SUPABASE_ANON_KEY");
 
     if (!url || !key) {
       console.warn(
@@ -230,7 +236,10 @@ export async function resetRateLimit(
   supabaseKey?: string
 ): Promise<void> {
   try {
-    const url = supabaseUrl || getEnvVar("SUPABASE_URL");
+    const url =
+      supabaseUrl ||
+      getEnvVar("SUPABASE_URL") ||
+      getEnvVar("VITE_SUPABASE_URL");
     const key = supabaseKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!url || !key) {
@@ -264,8 +273,14 @@ export async function getRateLimitStatus(
   windowEnd: Date | null;
 } | null> {
   try {
-    const url = supabaseUrl || getEnvVar("SUPABASE_URL");
-    const key = supabaseKey || getEnvVar("SUPABASE_ANON_KEY");
+    const url =
+      supabaseUrl ||
+      getEnvVar("SUPABASE_URL") ||
+      getEnvVar("VITE_SUPABASE_URL");
+    const key =
+      supabaseKey ||
+      getEnvVar("SUPABASE_ANON_KEY") ||
+      getEnvVar("VITE_SUPABASE_ANON_KEY");
 
     if (!url || !key) {
       return null;

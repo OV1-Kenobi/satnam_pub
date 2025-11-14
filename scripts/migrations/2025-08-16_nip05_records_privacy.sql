@@ -29,30 +29,104 @@ BEGIN
   END IF;
 END $do$;
 
--- 1) Drop plaintext columns if they exist
+-- 0b) Drop existing RLS policies on nip05_records to remove dependencies on legacy columns
+DO $do$
+DECLARE
+  pol RECORD;
+BEGIN
+  -- Drop all existing row-level security policies on public.nip05_records
+  -- This prevents dependency errors when dropping legacy hashed_* columns
+  FOR pol IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'nip05_records'
+  LOOP
+    EXECUTE format('DROP POLICY %I ON public.nip05_records', pol.policyname);
+  END LOOP;
+END $do$;
+
+
+-- 1) Drop plaintext and legacy hashed columns if they exist
 DO $do$
 BEGIN
+  -- Legacy plaintext identifiers
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name'
   ) THEN
     EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN name';
   END IF;
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey'
   ) THEN
     EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN pubkey';
   END IF;
+
+  -- Per-row salt (replaced by server-side DUID secret)
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='nip05_records' AND column_name='user_salt'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='user_salt'
   ) THEN
     EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN user_salt';
   END IF;
+
+  -- Deprecated hashed columns (migrated to DUID-only design)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_npub'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN hashed_npub';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_nip05'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN hashed_nip05';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_name'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN hashed_name';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='hashed_pubkey'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.nip05_records DROP COLUMN hashed_pubkey';
+  END IF;
 END $do$;
 
--- 2) Ensure DUID columns exist
+-- 2) Ensure DUID columns exist (initially nullable for legacy rows)
+DO $do$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name_duid'
+  ) THEN
+    ALTER TABLE public.nip05_records ADD COLUMN name_duid text;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey_duid'
+  ) THEN
+    ALTER TABLE public.nip05_records ADD COLUMN pubkey_duid text;
+  END IF;
+END $do$;
+
+-- 2b) Legacy data handling: greenfield deployment (no production data to preserve)
+-- NOTE: This environment only contains test accounts. We explicitly clear all existing
+-- nip05_records rows so that the table can be repopulated exclusively via the new
+-- DUID-based registration flow.
+TRUNCATE TABLE public.nip05_records;
+
+-- 2c) Enforce NOT NULL on DUID columns after cleanup
 ALTER TABLE public.nip05_records
-  ADD COLUMN IF NOT EXISTS name_duid text NOT NULL,
-  ADD COLUMN IF NOT EXISTS pubkey_duid text NOT NULL;
+  ALTER COLUMN name_duid SET NOT NULL,
+  ALTER COLUMN pubkey_duid SET NOT NULL;
 
 -- 3) Ensure domain/is_active columns exist (and defaults)
 ALTER TABLE public.nip05_records

@@ -18,15 +18,15 @@ import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.
 
 // Security utilities (Phase 3 hardening)
 import {
-    RATE_LIMITS,
-    checkRateLimit,
-    createRateLimitIdentifier,
-    getClientIP,
+  RATE_LIMITS,
+  checkRateLimit,
+  createRateLimitIdentifier,
+  getClientIP,
 } from "./utils/enhanced-rate-limiter.ts";
 import {
-    createRateLimitErrorResponse,
-    generateRequestId,
-    logError,
+  createRateLimitErrorResponse,
+  generateRequestId,
+  logError,
 } from "./utils/error-handler.ts";
 import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
 
@@ -89,6 +89,31 @@ async function checkUsernameAvailability(username) {
       .limit(1);
 
     if (error) {
+      // Handle undefined_column (42703) by falling back to plaintext column (temporary compatibility)
+      if (error.code === '42703') {
+        try {
+          const { data: dataPlain, error: plainErr } = await supabase
+            .from('nip05_records')
+            .select('id')
+            .eq('domain', domain)
+            .eq('name', local)
+            .eq('is_active', true)
+            .limit(1);
+          if (plainErr) {
+            console.error('Fallback username check failed:', plainErr);
+            return { available: false, error: 'Failed to check username availability' };
+          }
+          const isAvailablePlain = !dataPlain || dataPlain.length === 0;
+          if (!isAvailablePlain) {
+            const suggestion = await generateUsernameSuggestion(local);
+            return { available: false, error: 'Username is already taken', suggestion };
+          }
+          return { available: true };
+        } catch (e) {
+          console.error('Fallback username check error:', e);
+          return { available: false, error: 'Failed to check username availability' };
+        }
+      }
       console.error('Username availability check failed:', error);
       return { available: false, error: 'Failed to check username availability' };
     }

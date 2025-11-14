@@ -1,0 +1,26 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"tailwindCSS.includeLanguages": {
+			"typescript": "typescript",
+			"javascript": "javascript",
+			"typescriptreact": "typescriptreact",
+			"javascriptreact": "javascriptreact"
+		},
+		"files.associations": {
+			"*.css": "tailwindcss"
+		},
+		"terminal.integrated.profiles.windows": {
+			"PowerShell": {
+				"source": "PowerShell",
+				"icon": "terminal-powershell"
+			}
+		},
+		"terminal.integrated.defaultProfile.windows": "PowerShell",
+		"augment.nextEdit.showDiffInHover": true
+	}
+}
