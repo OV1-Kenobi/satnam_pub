@@ -66,3 +66,5 @@ docs/*_FIXES_*.md
 docs/*_SECURITY_*.md
 docs/*_ANALYSIS_*.md
 docs/*_IMPLEMENTATION_*.md
+
+notes/

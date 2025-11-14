@@ -89,32 +89,15 @@ async function checkUsernameAvailability(username) {
       .limit(1);
 
     if (error) {
-      // Handle undefined_column (42703) by falling back to plaintext column (temporary compatibility)
+      // DUID-only architecture: treat schema errors (e.g. 42703) as misconfiguration, no plaintext fallback
       if (error.code === '42703') {
-        try {
-          const { data: dataPlain, error: plainErr } = await supabase
-            .from('nip05_records')
-            .select('id')
-            .eq('domain', domain)
-            .eq('name', local)
-            .eq('is_active', true)
-            .limit(1);
-          if (plainErr) {
-            console.error('Fallback username check failed:', plainErr);
-            return { available: false, error: 'Failed to check username availability' };
-          }
-          const isAvailablePlain = !dataPlain || dataPlain.length === 0;
-          if (!isAvailablePlain) {
-            const suggestion = await generateUsernameSuggestion(local);
-            return { available: false, error: 'Username is already taken', suggestion };
-          }
-          return { available: true };
-        } catch (e) {
-          console.error('Fallback username check error:', e);
-          return { available: false, error: 'Failed to check username availability' };
-        }
+        console.error(
+          'DUID schema misconfiguration detected during username availability check:',
+          error
+        );
+      } else {
+        console.error('Username availability check failed:', error);
       }
-      console.error('Username availability check failed:', error);
       return { available: false, error: 'Failed to check username availability' };
     }
 

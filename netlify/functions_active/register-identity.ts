@@ -591,28 +591,15 @@ async function checkUsernameAvailability(username: string): Promise<boolean> {
       .limit(1);
 
     if (error) {
-      // Handle undefined_column (42703) by falling back to plaintext column (temporary compatibility)
+      // DUID-only architecture: treat schema errors (e.g. 42703) as misconfiguration, no plaintext fallback
       if ((error as any).code === "42703") {
-        try {
-          const { data: dataPlain, error: plainErr } = await supabase
-            .from("nip05_records")
-            .select("id")
-            .eq("domain", domain)
-            .eq("name", local)
-            .eq("is_active", true)
-            .limit(1);
-          if (plainErr) {
-            console.error("Fallback username check failed:", plainErr);
-            return false; // Conservative on error
-          }
-          const isAvailablePlain = !dataPlain || dataPlain.length === 0;
-          return isAvailablePlain;
-        } catch (e) {
-          console.error("Fallback username check error:", e);
-          return false; // Conservative on error
-        }
+        console.error(
+          "Privacy-first nip05_records schema is misconfigured (missing DUID columns):",
+          error
+        );
+      } else {
+        console.error("Username availability check failed:", error);
       }
-      console.error("Username availability check failed:", error);
       return false; // Conservative: assume not available on error
     }
 
@@ -1204,38 +1191,23 @@ export const handler: Handler = async (event, context) => {
             }),
           };
         }
-        // Handle undefined_column (42703) by falling back to plaintext columns (temporary compatibility)
+        // Treat undefined_column (42703) as schema misconfiguration (no plaintext fallback)
         if (
           code === "42703" ||
           /column .* does not exist/i.test(nip05InsertError.message || "")
         ) {
-          const { error: plainInsertErr } = await supabase
-            .from("nip05_records")
-            .insert({
-              domain,
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              name: local,
-              pubkey: validatedData.npub,
-            });
-          if (plainInsertErr) {
-            console.error(
-              "Plaintext reservation insert failed:",
-              plainInsertErr
-            );
-            return {
-              statusCode: 500,
-              headers: corsHeaders,
-              body: JSON.stringify({
-                success: false,
-                error: "Failed to reserve username",
-              }),
-            };
-          }
-          console.warn(
-            "⚠️ Using plaintext nip05_records fallback reservation (privacy-first migration missing)"
+          console.error(
+            "Privacy-first nip05_records schema is misconfigured (missing DUID columns):",
+            nip05InsertError
           );
+          return {
+            statusCode: 500,
+            headers: corsHeaders,
+            body: JSON.stringify({
+              success: false,
+              error: "Server configuration error: NIP-05 schema misconfigured",
+            }),
+          };
         } else {
           // Any other error -> fail fast with clear message
           return {
