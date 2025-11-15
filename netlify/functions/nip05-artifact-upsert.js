@@ -23,9 +23,21 @@ export const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
 
   try {
-    const { nip05, newNpub, username, domain = 'satnam.pub' } = JSON.parse(event.body || '{}');
-    const localName = username || (typeof nip05 === 'string' ? String(nip05).split('@')[0] : '');
-    const effectiveDomain = domain || (typeof nip05 === 'string' ? String(nip05).split('@')[1] : 'satnam.pub') || 'satnam.pub';
+    const defaultDomain =
+      process.env.VITE_PLATFORM_LIGHTNING_DOMAIN ||
+      process.env.PLATFORM_LIGHTNING_DOMAIN ||
+      'my.satnam.pub';
+
+    const { nip05, newNpub, username, domain } =
+      JSON.parse(event.body || '{}');
+    const localName =
+      username || (typeof nip05 === 'string' ? String(nip05).split('@')[0] : '');
+    const effectiveDomain =
+      domain ||
+      (typeof nip05 === 'string'
+        ? String(nip05).split('@')[1]
+        : defaultDomain) ||
+      defaultDomain;
 
     if (!localName || !newNpub) {
       return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'Missing required fields' }) };

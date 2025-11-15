@@ -156,6 +156,76 @@ export class PrivacyManager {
   }
 
   /**
+   * Encrypt service configuration data
+   * SECURITY: Encrypts sensitive external service credentials and configs
+   * Used for securely storing BTCPay, Voltage, and other service configurations
+   * Browser-compatible using Web Crypto API
+   */
+  static async encryptServiceConfig(
+    config: unknown,
+    serviceKey: string
+  ): Promise<string> {
+    try {
+      const encoder = new TextEncoder();
+
+      // Generate random salt
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(serviceKey),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
+
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 600000,
+          hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt"]
+      );
+
+      // Generate random IV
+      const iv = crypto.getRandomValues(new Uint8Array(12)); // AES-GCM uses 12-byte IV
+
+      // Encrypt config data
+      const dataBuffer = encoder.encode(JSON.stringify(config));
+      const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        dataBuffer
+      );
+
+      // Convert to hex strings
+      const saltHex = Array.from(salt)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const ivHex = Array.from(iv)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const encryptedHex = Array.from(new Uint8Array(encryptedBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // Include version for future migration compatibility
+      return `v1:${saltHex}:${ivHex}:${encryptedHex}`;
+    } catch (error) {
+      throw new Error(
+        `Service config encryption failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  /**
    * Generate anonymous username for privacy
    */
   static generateAnonymousUsername(): string {
@@ -251,7 +321,7 @@ export class PrivacyManager {
         {
           name: "PBKDF2",
           salt: salt,
-          iterations: 100000,
+          iterations: 600000,
           hash: "SHA-256",
         },
         keyMaterial,

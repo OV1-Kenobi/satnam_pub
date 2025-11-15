@@ -29,7 +29,7 @@ function getEnvVar(key: string): string | undefined {
  * NIP-05 configuration
  */
 export const nip05Config = {
-  domain: getEnvVar("NIP05_DOMAIN") || "satnam.pub",
+  domain: getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN") || "my.satnam.pub",
 };
 
 /**

@@ -49,7 +49,7 @@ export const handler = async (event) => {
   try {
     const urlParams = event.queryStringParameters || {};
     const name = (urlParams.name || '').trim().toLowerCase();
-    const domain = 'satnam.pub';
+    const domain = process.env.VITE_PLATFORM_LIGHTNING_DOMAIN || 'my.satnam.pub';
 
     if (!name) {
       // Privacy-first: do not return a full listing

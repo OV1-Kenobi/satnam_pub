@@ -18,7 +18,7 @@ function getEnvVar(key: string): string | undefined {
  * CUSTOM LIGHTNING NODE SERVICE
  *
  * THREE INDEPENDENT ADVANCED OPTIONS:
- * 1. 🏠 Self-custodial node + @satnam.pub
+ * 1. 🏠 Self-custodial node + @my.satnam.pub
  * 2. 🌐 Hosted Lightning + custom domain
  * 3. 🏠🌐 Self-custodial node + custom domain (full advanced)
  *
@@ -378,7 +378,10 @@ export class CustomLightningNodeService {
 
       // Generate Lightning address
       const domain =
-        customDomain || getEnvVar("LIGHTNING_DOMAIN") || "satnam.pub";
+        customDomain ||
+        getEnvVar("LIGHTNING_DOMAIN") ||
+        getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN") ||
+        "my.satnam.pub";
       const lightningAddress = `${username}@${domain}`;
 
       // Determine setup type
@@ -393,7 +396,7 @@ export class CustomLightningNodeService {
       if (!encryptionKey) {
         throw new Error("Missing encryption key for custom-node credentials");
       }
-      const encryptedCredentials = PrivacyManager.encryptServiceConfig(
+      const encryptedCredentials = await PrivacyManager.encryptServiceConfig(
         nodeConfig.credentials,
         encryptionKey
       );

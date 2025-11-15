@@ -172,7 +172,7 @@ CREATE POLICY anon_insert_nip05_records ON public.nip05_records
   WITH CHECK (
     COALESCE(name_duid,'') <> ''
     AND COALESCE(pubkey_duid,'') <> ''
-    AND domain IN ('satnam.pub','www.satnam.pub')
+    AND domain IN ('my.satnam.pub')
   );
 
 -- Allow anon SELECT only on DUID fields (no sensitive leakage)
@@ -207,7 +207,7 @@ CREATE POLICY anon_insert_nip05_artifacts ON storage.objects
   FOR INSERT TO anon
   WITH CHECK (
     bucket_id = 'nip05-artifacts'
-    AND (position('nip05_artifacts/satnam.pub/' in COALESCE(name,'')) = 1)
+    AND (position('nip05_artifacts/my.satnam.pub/' in COALESCE(name,'')) = 1)
     AND right(COALESCE(name,''), 5) = '.json'
   );
 
@@ -216,7 +216,7 @@ CREATE POLICY anon_select_nip05_artifacts ON storage.objects
   FOR SELECT TO anon
   USING (
     bucket_id = 'nip05-artifacts'
-    AND (position('nip05_artifacts/satnam.pub/' in COALESCE(name,'')) = 1)
+    AND (position('nip05_artifacts/my.satnam.pub/' in COALESCE(name,'')) = 1)
     AND right(COALESCE(name,''), 5) = '.json'
   );
 

@@ -19,9 +19,18 @@ function getRequestDomainFromEvent(event) {
   try {
     const host = parseHostFromEvent(event);
     const allowed = new Set(getApprovedDomains());
-    return allowed.has(host) ? host : (process.env.LIGHTNING_ADDRESS_DOMAIN || "satnam.pub");
+    const defaultDomain =
+      process.env.LIGHTNING_ADDRESS_DOMAIN ||
+      process.env.VITE_PLATFORM_LIGHTNING_DOMAIN ||
+      "my.satnam.pub";
+
+    return allowed.has(host) ? host : defaultDomain;
   } catch (_) {
-    return process.env.LIGHTNING_ADDRESS_DOMAIN || "satnam.pub";
+    const defaultDomain =
+      process.env.LIGHTNING_ADDRESS_DOMAIN ||
+      process.env.VITE_PLATFORM_LIGHTNING_DOMAIN ||
+      "my.satnam.pub";
+    return defaultDomain;
   }
 }
 
@@ -38,7 +47,7 @@ async function generateLNURLInvoice(params) {
     routes: [],
     successAction: {
       tag: 'message',
-      message: `Payment sent to ${username}@${domain || 'satnam.pub'}`
+      message: `Payment sent to ${username}@${domain || 'my.satnam.pub'}`
     },
     disposable: false
   };

@@ -10,11 +10,15 @@ async function getApiBaseUrl() {
     return envUrl;
   }
 
-  return "https://api.satnam.pub";
+  return "https://api.my.satnam.pub";
 }
 
 async function getLightningDomain() {
-  return getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN") || getEnvVar("LIGHTNING_ADDRESS_DOMAIN") || "my.satnam.pub";
+  return (
+    getEnvVar("LIGHTNING_ADDRESS_DOMAIN") ||
+    getEnvVar("VITE_PLATFORM_LIGHTNING_DOMAIN") ||
+    "my.satnam.pub"
+  );
 }
 function getApprovedDomains() {
   const v = process.env.VITE_PLATFORM_LIGHTNING_DOMAIN || process.env.VITE_NIP05_ALLOWED_DOMAINS || "my.satnam.pub";
@@ -35,9 +39,17 @@ function getRequestDomain(req) {
   try {
     const host = parseHost(req);
     const allowed = new Set(getApprovedDomains());
-    return allowed.has(host) ? host : (process.env.LIGHTNING_ADDRESS_DOMAIN || "satnam.pub");
+    const defaultDomain =
+      process.env.LIGHTNING_ADDRESS_DOMAIN ||
+      process.env.VITE_PLATFORM_LIGHTNING_DOMAIN ||
+      "my.satnam.pub";
+    return allowed.has(host) ? host : defaultDomain;
   } catch (_) {
-    return process.env.LIGHTNING_ADDRESS_DOMAIN || "satnam.pub";
+    const defaultDomain =
+      process.env.LIGHTNING_ADDRESS_DOMAIN ||
+      process.env.VITE_PLATFORM_LIGHTNING_DOMAIN ||
+      "my.satnam.pub";
+    return defaultDomain;
   }
 }
 
@@ -152,7 +164,12 @@ async function getBaseUrl(req) {
   const url = new URL(req.url);
   const customDomain = await getLightningDomain();
 
-  if (customDomain && customDomain !== "satnam.pub") {
+  const defaultDomain =
+    process.env.LIGHTNING_ADDRESS_DOMAIN ||
+    process.env.VITE_PLATFORM_LIGHTNING_DOMAIN ||
+    "my.satnam.pub";
+
+  if (customDomain && customDomain !== defaultDomain) {
     return `https://${customDomain}`;
   }
 
