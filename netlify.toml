@@ -150,18 +150,17 @@
   status = 200
   force = true
 
-
-# Consolidated auth endpoints (specific routes override below)
-[[redirects]]
-  from = "/api/auth/*"
-  to = "/.netlify/functions/auth-unified"
-  status = 200
-  force = true
-
-# Lightweight session-user endpoint for post-auth session bootstrap
+# Lightweight session-user endpoint for post-auth session bootstrap (must come before generic /api/auth/* route)
 [[redirects]]
   from = "/api/auth/session-user"
   to = "/.netlify/functions/auth-session-user"
+  status = 200
+  force = true
+
+# Consolidated auth endpoints (fallback; specific routes above take priority)
+[[redirects]]
+  from = "/api/auth/*"
+  to = "/.netlify/functions/auth-unified"
   status = 200
   force = true
 
