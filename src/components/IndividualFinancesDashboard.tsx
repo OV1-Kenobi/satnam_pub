@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { resolvePlatformLightningDomain } from '../config/domain.client';
+import SecureTokenManager from '../lib/auth/secure-token-manager';
 
 // Transaction type defined locally below
 
@@ -624,7 +625,7 @@ const LightningTab: React.FC<{
   wallet: EnhancedIndividualWallet;
   onShowNWCSetup: () => void;
 }> = ({ wallet, onShowNWCSetup }) => {
-  const { user } = useAuth();
+  const { user, sessionToken } = useAuth();
   const [zapAmount, setZapAmount] = useState('');
   const [zapRecipient, setZapRecipient] = useState('');
   const [zapMemo, setZapMemo] = useState('');
@@ -750,19 +751,52 @@ const LightningTab: React.FC<{
             <code className="flex-1 bg-white px-4 py-3 rounded-lg border border-blue-300 font-mono text-blue-800">
               {(() => {
                 const authUser = user as unknown as { nip05?: string; username?: string } | null;
-                const nip05 = authUser?.nip05;
-                const uname = wallet.username || authUser?.username;
                 const platformDomain = resolvePlatformLightningDomain();
-                return nip05 || (uname ? `${uname}@${platformDomain}` : '');
+
+                // 1) Prefer nip05 claim from the current JWT token payload
+                let nip05FromToken: string | undefined;
+                if (sessionToken) {
+                  try {
+                    const payload = SecureTokenManager.parseTokenPayload(sessionToken);
+                    nip05FromToken = payload?.nip05;
+                  } catch (error) {
+                    console.warn("Failed to parse session token for NIP-05:", error);
+                    nip05FromToken = undefined;
+                  }
+                }
+
+                // 2) Fallbacks: auth.user.nip05 or derived from username@platformDomain
+                const fallbackUsername = wallet.username || authUser?.username;
+                const nip05 =
+                  nip05FromToken ||
+                  authUser?.nip05 ||
+                  (fallbackUsername ? `${fallbackUsername}@${platformDomain}` : "");
+
+                return nip05 || "";
               })()}
             </code>
             <button
               onClick={() => {
                 const authUser = user as unknown as { nip05?: string; username?: string } | null;
-                const nip05 = authUser?.nip05;
-                const uname = wallet.username || authUser?.username;
                 const platformDomain = resolvePlatformLightningDomain();
-                const toCopy = nip05 || (uname ? `${uname}@${platformDomain}` : '');
+
+                let nip05FromToken: string | undefined;
+                if (sessionToken) {
+                  try {
+                    const payload = SecureTokenManager.parseTokenPayload(sessionToken);
+                    nip05FromToken = payload?.nip05;
+                  } catch (error) {
+                    console.warn("Failed to parse session token for NIP-05:", error);
+                    nip05FromToken = undefined;
+                  }
+                }
+
+                const fallbackUsername = wallet.username || authUser?.username;
+                const toCopy =
+                  nip05FromToken ||
+                  authUser?.nip05 ||
+                  (fallbackUsername ? `${fallbackUsername}@${platformDomain}` : "");
+
                 if (toCopy) navigator.clipboard.writeText(toCopy);
               }}
               className="bg-blue-500 text-white px-4 py-3 rounded-lg hover:bg-blue-600 transition-colors flex items-center space-x-2"

@@ -9,15 +9,11 @@ import ClientSessionVault, { getVaultFeatureFlags, getVaultStatus, isWebAuthnAva
 import { userSigningPreferences } from "../../lib/user-signing-preferences";
 import { PrivacyEnhancedApiService } from "../../services/privacyEnhancedApi";
 import { showToast } from "../../services/toastService";
-import { PrivacyLevel } from "../../types/privacy";
+import { PrivacyLevel, PrivacyPreferences } from "../../types/privacy";
 
 
 
-interface PrivacyPreferences {
-  default_privacy_level: PrivacyLevel;
-  auto_upgrade_threshold: number;
-  require_guardian_approval: boolean;
-  guardian_approval_threshold: number;
+interface ExtendedPrivacyPreferences extends PrivacyPreferences {
   metadata_protection: boolean;
   transaction_unlinkability: boolean;
   privacy_routing_preference: 'always' | 'high_amounts' | 'never';
@@ -30,7 +26,7 @@ interface PrivacyPreferencesModalProps {
   isOpen: boolean;
   onClose: () => void;
   userRole: 'private' | 'offspring' | 'adult' | 'steward' | 'guardian';
-  onPreferencesUpdate?: (prefs: PrivacyPreferences) => void;
+  onPreferencesUpdate?: (prefs: ExtendedPrivacyPreferences) => void;
 }
 
 const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
@@ -39,11 +35,13 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
   userRole,
   onPreferencesUpdate,
 }) => {
-  const [preferences, setPreferences] = useState<PrivacyPreferences>({
+  const [preferences, setPreferences] = useState<ExtendedPrivacyPreferences>({
     default_privacy_level: PrivacyLevel.GIFTWRAPPED,
     auto_upgrade_threshold: 100000,
     require_guardian_approval: true,
     guardian_approval_threshold: 500000,
+    require_adult_approval: userRole === 'offspring',
+    adult_approval_threshold: 50000,
     metadata_protection: true,
     transaction_unlinkability: true,
     privacy_routing_preference: 'always',
@@ -207,11 +205,13 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
       setLoading(true);
 
       // Mock loading user preferences - in real implementation, this would call the API
-      const mockPreferences: PrivacyPreferences = {
+      const mockPreferences: ExtendedPrivacyPreferences = {
         default_privacy_level: PrivacyLevel.GIFTWRAPPED,
         auto_upgrade_threshold: 100000,
         require_guardian_approval: userRole === 'offspring',
         guardian_approval_threshold: 500000,
+        require_adult_approval: userRole === 'offspring',
+        adult_approval_threshold: 50000,
         metadata_protection: true,
         transaction_unlinkability: true,
         privacy_routing_preference: 'always',
@@ -237,7 +237,7 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
     }
   };
 
-  const validatePreferences = (prefs: PrivacyPreferences): string[] => {
+  const validatePreferences = (prefs: ExtendedPrivacyPreferences): string[] => {
     const errors: string[] = [];
 
     if (prefs.auto_upgrade_threshold < 1000) {
@@ -250,6 +250,10 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
 
     if (userRole === 'offspring' && !prefs.require_guardian_approval) {
       errors.push('Offspring must have guardian approval enabled');
+    }
+
+    if (userRole === 'offspring' && !prefs.require_adult_approval) {
+      errors.push('Offspring must have adult approval enabled');
     }
 
     return errors;
@@ -294,9 +298,9 @@ const PrivacyPreferencesModal: React.FC<PrivacyPreferencesModalProps> = ({
     }
   };
 
-  const updatePreference = <K extends keyof PrivacyPreferences>(
+  const updatePreference = <K extends keyof ExtendedPrivacyPreferences>(
     key: K,
-    value: PrivacyPreferences[K]
+    value: ExtendedPrivacyPreferences[K]
   ) => {
     setPreferences(prev => ({ ...prev, [key]: value }));
     setValidationErrors([]);

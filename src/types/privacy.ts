@@ -33,6 +33,15 @@ export interface PrivacySettings {
   requireGuardianApprovalForGiftwrapped: boolean;
 }
 
+export interface PrivacyPreferences {
+  default_privacy_level: PrivacyLevel;
+  auto_upgrade_threshold: number;
+  require_guardian_approval: boolean;
+  guardian_approval_threshold: number;
+  require_adult_approval: boolean;
+  adult_approval_threshold: number;
+}
+
 export const PRIVACY_OPTIONS: MessagePrivacyOptions[] = [
   {
     privacyLevel: PrivacyLevel.GIFTWRAPPED,

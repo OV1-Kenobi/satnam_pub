@@ -29,6 +29,7 @@ import {
   newRequestId,
 } from "./utils/secure-decrypt-logger.js";
 
+import { generateDUIDFromNIP05 } from "../../lib/security/duid-generator.js";
 import { SecureSessionManager } from "./security/session-manager.js";
 import { resolvePlatformLightningDomainServer } from "./utils/domain.server.js";
 
@@ -271,14 +272,57 @@ async function lnbitsFetch(path: string, apiKey: string, init?: RequestInit) {
 }
 
 async function getUserContext(event: any) {
-  const auth = event.headers.authorization || event.headers.Authorization;
-  if (!auth) return null;
-  const token = auth.replace(/^Bearer\s+/i, "");
+  const authHeader = String(
+    event.headers?.authorization || event.headers?.Authorization || ""
+  );
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+
+  // First, try validating as a SecureSessionManager JWT (new auth system)
+  try {
+    const session = await SecureSessionManager.validateSessionFromHeader(
+      authHeader
+    );
+    if (session?.nip05) {
+      const duid = await generateDUIDFromNIP05(session.nip05);
+      // adminSupabase is safe here because DUID is cryptographically derived from validated session
+      const { data: identity, error } = await adminSupabase
+        .from("user_identities")
+        .select("id, role, is_active, npub")
+        .eq("id", duid)
+        .single();
+
+      if (!error && identity) {
+        return {
+          supa: adminSupabase,
+          user: {
+            id: identity.id,
+            role: identity.role,
+            is_active: identity.is_active,
+            npub: identity.npub,
+            nip05: session.nip05,
+          },
+        } as const;
+      }
+    }
+  } catch (error) {
+    // Fall through to Supabase JWT compatibility path
+    console.warn(
+      "SecureSessionManager auth failed, falling back to Supabase JWT",
+      error
+    );
+  }
+
+  // Backwards compatibility: Supabase GoTrue JWTs
+  const token = authHeader.replace(/^Bearer\s+/i, "");
   const supa = getRequestClient(token);
-  const { data } = await supa.auth.getUser();
-  const user = data?.user;
-  if (!user) return null;
-  return { supa, user } as const;
+  try {
+    const { data } = await supa.auth.getUser();
+    const user = data?.user;
+    if (!user) return null;
+    return { supa, user } as const;
+  } catch {
+    return null;
+  }
 }
 
 async function resolvePerUserWalletKey(

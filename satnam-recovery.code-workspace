@@ -1,26 +1,38 @@
 {
-	"folders": [
-		{
-			"path": "."
-		}
-	],
-	"settings": {
-		"tailwindCSS.includeLanguages": {
-			"typescript": "typescript",
-			"javascript": "javascript",
-			"typescriptreact": "typescriptreact",
-			"javascriptreact": "javascriptreact"
-		},
-		"files.associations": {
-			"*.css": "tailwindcss"
-		},
-		"terminal.integrated.profiles.windows": {
-			"PowerShell": {
-				"source": "PowerShell",
-				"icon": "terminal-powershell"
-			}
-		},
-		"terminal.integrated.defaultProfile.windows": "PowerShell",
-		"augment.nextEdit.showDiffInHover": true
-	}
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "tailwindCSS.includeLanguages": {
+      "typescript": "typescript",
+      "javascript": "javascript",
+      "typescriptreact": "typescriptreact",
+      "javascriptreact": "javascriptreact"
+    },
+    "files.associations": {
+      "*.css": "tailwindcss"
+    },
+    "terminal.integrated.profiles.windows": {
+      "PowerShell": {
+        "source": "PowerShell",
+        "icon": "terminal-powershell"
+      }
+    },
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "augment.nextEdit.showDiffInHover": true,
+    "[typescriptreact]": {
+      "editor.defaultFormatter": "vscode.typescript-language-features",
+      "editor.codeActionsOnSave": {
+        "source.organizeImports": "never"
+      }
+    },
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.codeActionsOnSave": {
+        "source.organizeImports": "never"
+      }
+    }
+  }
 }

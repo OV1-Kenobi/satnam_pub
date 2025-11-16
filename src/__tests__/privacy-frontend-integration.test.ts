@@ -127,6 +127,13 @@ describe("Privacy Frontend Integration", () => {
         );
       }
 
+      // For larger Giftwrapped payments, prefer LNProxy for better scalability
+      if (privacyLevel === PrivacyLevel.GIFTWRAPPED && amountSats >= 50000) {
+        return (
+          availableRoutes.find((r) => r.method === "lnproxy") ||
+          availableRoutes[0]
+        );
+      }
       return availableRoutes[0];
     };
 
@@ -188,7 +195,7 @@ describe("Privacy Frontend Integration", () => {
   describe("Privacy Score Calculation", () => {
     const calculatePrivacyScore = (
       privacyLevel: PrivacyLevel,
-      routingMethod: string
+      routingMethod: "lightning" | "cashu" | "lnproxy" | "fedimint"
     ): number => {
       const baseScores = {
         [PrivacyLevel.GIFTWRAPPED]: 90,
@@ -270,6 +277,8 @@ describe("Privacy Frontend Integration", () => {
       auto_upgrade_threshold: number;
       require_guardian_approval: boolean;
       guardian_approval_threshold: number;
+      require_adult_approval?: boolean;
+      adult_approval_threshold?: number;
     }
 
     const validatePreferences = (
@@ -325,6 +334,8 @@ describe("Privacy Frontend Integration", () => {
       const offspringPrefs: PrivacyPreferences = {
         default_privacy_level: PrivacyLevel.GIFTWRAPPED,
         auto_upgrade_threshold: 10000,
+        require_guardian_approval: true,
+        guardian_approval_threshold: 100000,
         require_adult_approval: false,
         adult_approval_threshold: 50000,
       };

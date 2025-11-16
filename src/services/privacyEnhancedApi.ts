@@ -391,6 +391,8 @@ export class PrivacyEnhancedApiService {
     context: string
   ): {
     valid: boolean;
+    score: number;
+    recommendations: string[];
     warning?: string;
     suggestedLevel?: PrivacyLevel;
   } {
@@ -400,18 +402,35 @@ export class PrivacyEnhancedApiService {
       PrivacyLevel.MINIMAL,
     ];
 
+    const baseScore =
+      privacyLevel === PrivacyLevel.GIFTWRAPPED
+        ? 95
+        : privacyLevel === PrivacyLevel.ENCRYPTED
+        ? 80
+        : 40;
+
+    // Invalid privacy level
     if (!validLevels.includes(privacyLevel)) {
       return {
         valid: false,
+        score: 0,
+        recommendations: ["Use one of the supported privacy levels"],
         warning: "Invalid privacy level",
         suggestedLevel: getDefaultPrivacyLevel(),
       };
     }
 
+    const recommendations: string[] = [];
+
     // Context-specific validation
     if (context === "large_payment" && privacyLevel === PrivacyLevel.MINIMAL) {
+      recommendations.push(
+        "Use Giftwrapped privacy for large payments to protect financial metadata."
+      );
       return {
         valid: true,
+        score: baseScore,
+        recommendations,
         warning:
           "Minimal privacy for large payments may expose financial information",
         suggestedLevel: PrivacyLevel.GIFTWRAPPED,
@@ -422,15 +441,30 @@ export class PrivacyEnhancedApiService {
       context === "family_communication" &&
       privacyLevel === PrivacyLevel.MINIMAL
     ) {
+      recommendations.push(
+        "Use Encrypted privacy for family communications to reduce metadata exposure."
+      );
       return {
         valid: true,
+        score: baseScore,
+        recommendations,
         warning:
           "Minimal privacy for family communications may expose personal information",
         suggestedLevel: PrivacyLevel.ENCRYPTED,
       };
     }
 
-    return { valid: true };
+    if (recommendations.length === 0) {
+      recommendations.push(
+        "Current privacy level is appropriate for the given context."
+      );
+    }
+
+    return {
+      valid: true,
+      score: baseScore,
+      recommendations,
+    };
   }
 
   getPrivacyRecommendation(

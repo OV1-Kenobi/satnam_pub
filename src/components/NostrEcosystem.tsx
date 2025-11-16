@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useState, type FC, type ReactNode } from "react";
 import { Helmet } from 'react-helmet-async';
+import SecureTokenManager from "../lib/auth/secure-token-manager";
 import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
 
 interface NostrEcosystemProps {
@@ -43,11 +44,38 @@ const NostrEcosystem: FC<NostrEcosystemProps> = ({
   onBack,
   userIdentity,
 }) => {
-  const { user } = useAuth();
+  const { user, sessionToken } = useAuth();
   const [copiedIdentity, setCopiedIdentity] = useState(false);
 
-  // Use actual user NIP-05 from authentication state (hashed_nip05 per privacy model), fallback to prop, then default
-  const actualUserIdentity = user?.hashed_nip05 || userIdentity || "yourname@my.satnam.pub";
+  // Derive the best-available NIP-05 identifier in a privacy-safe way:
+  //   1) explicit prop (if provided)
+  //   2) nip05 claim from the current JWT access token
+  //   3) compatibility: nip05 on auth.user (if present)
+  //   4) final placeholder
+  const actualUserIdentity = (() => {
+    if (userIdentity) {
+      return userIdentity;
+    }
+
+    if (sessionToken) {
+      try {
+        const payload = SecureTokenManager.parseTokenPayload(sessionToken);
+        if (payload?.nip05) {
+          return payload.nip05;
+        }
+      } catch (error) {
+        // Token parsing failed, fall through to next fallback
+        console.warn("Failed to parse session token:", error);
+      }
+    }
+
+    const authUser = user as unknown as { nip05?: string } | null;
+    if (authUser?.nip05) {
+      return authUser.nip05;
+    }
+
+    return "yourname@my.satnam.pub";
+  })();
 
   const copyIdentity = () => {
     navigator.clipboard.writeText(actualUserIdentity);

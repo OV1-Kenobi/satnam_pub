@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { usePrivacyFirstMessaging } from "../../hooks/usePrivacyFirstMessaging";
 
 import { resolvePlatformLightningDomain } from '../../config/domain.client';
+import SecureTokenManager from "../../lib/auth/secure-token-manager";
 
 interface NavigationProps {
   currentView: string;
@@ -40,12 +41,31 @@ const Navigation: React.FC<NavigationProps> = ({
   const rawUsername = userAny?.username as string | undefined;
   const rawNip05 = userAny?.nip05 as string | undefined;
 
-  // Display NIP-05 identifier in platform (or selected) domain; Lightning Address is shown elsewhere when relevant
+  // Derive display identifier with NIP-05 priority:
+  //   1) nip05 from current JWT token payload
+  //   2) nip05 on auth.user
+  //   3) username@platformDomain
+  //   4) shortened npub
+  //   5) generic "Signed in" label
   let displayId: string;
-  if (rawUsername) {
-    displayId = `${rawUsername}@${platformDomain}`;
+
+  let nip05FromToken: string | undefined;
+  if (auth.sessionToken) {
+    try {
+      const payload = SecureTokenManager.parseTokenPayload(auth.sessionToken);
+      nip05FromToken = payload?.nip05;
+    } catch (error) {
+      // Token parsing failed; fall back to other display ID sources
+      console.warn("Failed to parse session token:", error);
+    }
+  }
+
+  if (nip05FromToken) {
+    displayId = nip05FromToken;
   } else if (rawNip05 && typeof rawNip05 === "string") {
     displayId = rawNip05;
+  } else if (rawUsername) {
+    displayId = `${rawUsername}@${platformDomain}`;
   } else if (rawNpub) {
     displayId = `${rawNpub.slice(0, 8)}...${rawNpub.slice(-4)}`;
   } else {
