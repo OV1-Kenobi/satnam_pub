@@ -5,23 +5,15 @@
  */
 
 /**
- * Hybrid environment variable getter
- * Works in both browser (import.meta.env) and Netlify Functions (process.env)
- * CRITICAL: Use this for TOP-LEVEL module-level access to prevent TDZ errors
+ * Client-safe environment variable getter
+ * Uses process.env, which Vite populates at build time via define in vite.config.js.
+ * Safe for TOP-LEVEL module-level access in browser bundles.
  * @param key - Environment variable key
  * @returns Environment variable value or undefined
  */
 export function getEnvVar(key: string): string | undefined {
-  // Fallback to process.env (works in both Netlify Functions and Vite builds with define)
-  if (
-    typeof process !== "undefined" &&
-    process.env &&
-    process.env[key] !== undefined
-  ) {
-    return process.env[key];
-  }
-
-  return undefined;
+  const env = (process.env || {}) as Record<string, string | undefined>;
+  return env[key];
 }
 
 export type ClientConfig = {

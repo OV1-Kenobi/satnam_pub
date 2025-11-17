@@ -62,32 +62,18 @@ import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
 import { TapsignerPinEntry } from "./TapsignerPinEntry";
 
-// Feature flag: LNBits integration
-const rawLnBitsFlag =
-  (import.meta as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED ??
-  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_LNBITS_INTEGRATION_ENABLED : undefined);
-
-const LNBITS_ENABLED: boolean = String(rawLnBitsFlag ?? '').toLowerCase() === 'true';
-
-// Feature flags for SimpleProof and Iroh
+// Feature flags (from clientConfig.flags)
+const LNBITS_ENABLED: boolean = clientConfig.flags.lnbitsEnabled;
 const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
 const IROH_ENABLED: boolean = clientConfig.flags.irohEnabled ?? false;
-
-// Feature flag for PKARR attestation
-const rawPkarrFlag =
-  (import.meta as any)?.env?.VITE_PKARR_ENABLED ??
-  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_PKARR_ENABLED : undefined);
-const PKARR_ENABLED: boolean = String(rawPkarrFlag ?? '').toLowerCase() === 'true';
+const PKARR_ENABLED: boolean = clientConfig.flags.pkarrEnabled ?? false;
 
 // Task 7: Feature flags for NIP-03 attestation (Phase 2 Week 3 Day 9)
 const NIP03_ENABLED: boolean = clientConfig.flags.nip03Enabled ?? false;
 const NIP03_IDENTITY_CREATION_ENABLED: boolean = clientConfig.flags.nip03IdentityCreationEnabled ?? false;
 
 // Phase 3 Task 3.1: Feature flag for Tapsigner integration
-const rawTapsignerFlag =
-  (import.meta as any)?.env?.VITE_TAPSIGNER_ENABLED ??
-  (typeof process !== 'undefined' ? (process as any)?.env?.VITE_TAPSIGNER_ENABLED : undefined);
-const TAPSIGNER_ENABLED: boolean = String(rawTapsignerFlag ?? '').toLowerCase() === 'true';
+const TAPSIGNER_ENABLED: boolean = clientConfig.flags.tapsignerEnabled ?? false;
 
 
 
@@ -808,8 +794,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       if (npubDecoded.type !== 'npub') {
         throw new Error('Invalid npub format');
       }
-      const publicKeyBytes = npubDecoded.data as Uint8Array;
-      const publicKeyHex = Array.from(publicKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      const publicKeyHex = npubDecoded.data as string;
 
       // Create PKARR DNS records for NIP-05 verification
       const nip05Identifier = `${formData.username}@${selectedDomain}`;
