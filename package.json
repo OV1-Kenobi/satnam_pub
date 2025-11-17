@@ -58,6 +58,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.263.1",
     "nostr-tools": "^2.15.0",
+    "opentimestamps": "^0.4.9",
     "pg": "^8.16.3",
     "phoenix-server-js": "^1.1.1",
     "postcss": "^8.5.6",

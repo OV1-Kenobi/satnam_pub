@@ -21,6 +21,8 @@ export interface LogContext {
   userId?: string;
   verificationId?: string;
   eventType?: string;
+  /** Optional provider identifier (e.g., "simpleproof", "opentimestamps_fallback") */
+  provider?: string;
   metadata?: Record<string, any>;
 }
 
@@ -303,4 +305,3 @@ export function logApiCall(
     },
   });
 }
-

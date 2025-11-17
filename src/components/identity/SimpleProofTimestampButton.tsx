@@ -26,8 +26,9 @@
 import { AlertCircle, Bitcoin, CheckCircle, Loader2, Shield, X } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 import { clientConfig } from '../../config/env.client';
-import { withSentryErrorBoundary } from '../../lib/sentry';
+import { addSimpleProofBreadcrumb, captureSimpleProofError, withSentryErrorBoundary } from '../../lib/sentry';
 import { simpleProofService } from '../../services/simpleProofService';
+import type { LocalOtsValidationResult } from '../../lib/simpleproof/opentimestampsLocalValidator';
 import { showToast } from '../../services/toastService';
 
 interface SimpleProofTimestampButtonProps {
@@ -50,6 +51,40 @@ interface SimpleProofTimestampButtonProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
+const RETRY_DELAYS_TEST_MS = [10, 20, 30] as const;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetriableError = (errorMessage: string): boolean => {
+  const message = errorMessage.toLowerCase();
+
+  const nonRetriablePatterns = [
+    'simpleproof is disabled',
+    'simpleproof service not configured',
+    'rate limit exceeded',
+    'missing api key',
+    'api key',
+  ];
+
+  if (nonRetriablePatterns.some((pattern) => message.includes(pattern))) {
+    return false;
+  }
+
+  const status4xxMatch = errorMessage.match(/\b4\d{2}\b/);
+  if (status4xxMatch) {
+    const statusCode = parseInt(status4xxMatch[0], 10);
+    if (statusCode !== 408 && statusCode !== 429) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+
 const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonProps> = ({
   data,
   verificationId,
@@ -68,6 +103,9 @@ const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonPr
   const [timestampCreated, setTimestampCreated] = useState(alreadyTimestamped);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [userConfirmed, setUserConfirmed] = useState(false);
+  const [localValidationResult, setLocalValidationResult] = useState<LocalOtsValidationResult | null>(null);
+  const [currentAttempt, setCurrentAttempt] = useState<number>(1);
+
   const [dontAskAgain, setDontAskAgain] = useState(false);
 
   // Check feature flags
@@ -99,42 +137,158 @@ const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonPr
     setShowConfirmationModal(false);
 
     setIsLoading(true);
+    setCurrentAttempt(1);
 
-    try {
-      const result = await simpleProofService.createTimestamp({
-        data,
-        verification_id: verificationId,
-      });
+    const retryDelays =
+      typeof process !== 'undefined' && process.env.NODE_ENV === 'test'
+        ? RETRY_DELAYS_TEST_MS
+        : RETRY_DELAYS_MS;
 
-      if (result.success) {
-        setTimestampCreated(true);
-        showToast.success('Blockchain timestamp created successfully!', {
-          duration: 5000,
+    let lastErrorMessage = '';
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      setCurrentAttempt(attempt);
+
+      try {
+        const result = await simpleProofService.createTimestamp({
+          data,
+          verification_id: verificationId,
         });
 
-        if (onSuccess) {
-          onSuccess({
-            ots_proof: result.ots_proof,
-            bitcoin_block: result.bitcoin_block,
-            bitcoin_tx: result.bitcoin_tx,
-            verified_at: result.verified_at,
+        if (result.success) {
+          setTimestampCreated(true);
+          showToast.success('Blockchain timestamp created successfully!', {
+            duration: 5000,
           });
-        }
-      } else {
-        throw new Error(result.error || 'Failed to create timestamp');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      showToast.error(`Failed to create timestamp: ${errorMessage}`, {
-        duration: 5000,
-      });
 
-      if (onError) {
-        onError(errorMessage);
+          if (onSuccess) {
+            onSuccess({
+              ots_proof: result.ots_proof,
+              bitcoin_block: result.bitcoin_block,
+              bitcoin_tx: result.bitcoin_tx,
+              verified_at: result.verified_at,
+            });
+          }
+
+          // Best-effort local OpenTimestamps validation (non-blocking for UX)
+          try {
+            const validationResult = await simpleProofService.validateOtsProofLocally({
+              data,
+              ots_proof: result.ots_proof,
+            });
+            setLocalValidationResult(validationResult);
+          } catch (validationError) {
+            const validationErrorMessage =
+              validationError instanceof Error
+                ? validationError.message
+                : 'Unknown validation error';
+
+            // Non-blocking: log to console only, do not interrupt success flow
+            // eslint-disable-next-line no-console
+            console.warn('[SimpleProof] Local OTS validation failed', validationErrorMessage);
+          }
+
+          setIsLoading(false);
+          setCurrentAttempt(1);
+          return;
+        }
+
+        throw new Error(result.error || 'Failed to create timestamp');
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        lastErrorMessage = errorMessage;
+
+        addSimpleProofBreadcrumb(`Timestamp creation attempt ${attempt} failed`, {
+          attempt,
+          maxAttempts: MAX_ATTEMPTS,
+          verification_id: verificationId,
+        });
+
+        const retriable = isRetriableError(errorMessage);
+
+        if (!retriable) {
+          // eslint-disable-next-line no-console
+          console.error('[SimpleProof] Non-retriable error encountered', {
+            attempt,
+            error: errorMessage,
+          });
+
+          showToast.error(`SimpleProof attestation failed: ${errorMessage}`, {
+            duration: 5000,
+          });
+
+          if (onError) {
+            onError(errorMessage);
+          }
+
+          captureSimpleProofError(
+            error instanceof Error ? error : new Error(errorMessage),
+            {
+              component: 'SimpleProofTimestampButton',
+              action: 'createTimestamp',
+              metadata: {
+                attempt,
+                maxAttempts: MAX_ATTEMPTS,
+                retriable: false,
+                verificationId,
+              },
+            }
+          );
+
+          setIsLoading(false);
+          setCurrentAttempt(1);
+          return;
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          const nextRetryDelayMs = retryDelays[attempt - 1];
+
+          // eslint-disable-next-line no-console
+          console.warn('[SimpleProof] Retry attempt', {
+            attempt,
+            maxAttempts: MAX_ATTEMPTS,
+            error: errorMessage,
+            nextRetryDelayMs,
+          });
+
+          await sleep(nextRetryDelayMs);
+        }
       }
-    } finally {
-      setIsLoading(false);
     }
+
+    // All retry attempts exhausted
+    // eslint-disable-next-line no-console
+    console.error('[SimpleProof] All retry attempts exhausted', {
+      attempts: MAX_ATTEMPTS,
+      lastError: lastErrorMessage,
+    });
+
+    const finalErrorMessage =
+      lastErrorMessage || 'SimpleProof attestation failed after retries';
+
+    showToast.error(
+      `SimpleProof attestation failed after ${MAX_ATTEMPTS} attempts: ${finalErrorMessage}`,
+      {
+        duration: 5000,
+      }
+    );
+
+    if (onError) {
+      onError(finalErrorMessage);
+    }
+
+    captureSimpleProofError(new Error(finalErrorMessage), {
+      component: 'SimpleProofTimestampButton',
+      action: 'createTimestamp',
+      metadata: {
+        attempts: MAX_ATTEMPTS,
+        retriable: true,
+        verificationId,
+      },
+    });
+
+    setIsLoading(false);
+    setCurrentAttempt(1);
   }, [data, verificationId, simpleproofEnabled, onSuccess, onError]);
 
   // Get event type display name
@@ -193,7 +347,11 @@ const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonPr
         {isLoading ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            <span>Creating Timestamp...</span>
+            <span>
+              {currentAttempt === 1
+                ? 'Creating Timestamp...'
+                : `Retrying... attempt ${currentAttempt} of ${MAX_ATTEMPTS}`}
+            </span>
           </>
         ) : timestampCreated ? (
           <>
@@ -207,6 +365,27 @@ const SimpleProofTimestampButtonComponent: React.FC<SimpleProofTimestampButtonPr
           </>
         )}
       </button>
+
+      {timestampCreated && localValidationResult && (
+        <div
+          className={`mt-2 text-xs ${localValidationResult.status === 'valid'
+            ? 'text-green-400'
+            : localValidationResult.status === 'invalid'
+              ? 'text-orange-300'
+              : 'text-purple-200'
+            }`}
+        >
+          {localValidationResult.status === 'valid' && (
+            <>OpenTimestamps proof locally validated against your identity data.</>
+          )}
+          {localValidationResult.status === 'invalid' && (
+            <>Warning: local OpenTimestamps validation could not confirm this proof against your data.</>
+          )}
+          {localValidationResult.status === 'inconclusive' && (
+            <>OpenTimestamps local validation is inconclusive (you can retry verification later).</>
+          )}
+        </div>
+      )}
 
       {/* Fee Warning & Confirmation Modal */}
       {showConfirmationModal && (

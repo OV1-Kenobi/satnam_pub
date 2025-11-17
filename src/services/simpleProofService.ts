@@ -14,6 +14,10 @@ import {
   addSimpleProofBreadcrumb,
   captureSimpleProofError,
 } from "../lib/sentry";
+import {
+  localValidateOtsProof,
+  LocalOtsValidationResult,
+} from "../lib/simpleproof/opentimestampsLocalValidator";
 import { createLogger, logCacheEvent, logOperation } from "./loggingService";
 
 // ============================================================================
@@ -503,6 +507,68 @@ export class SimpleProofService {
         confidence: "unconfirmed",
         verified_at: Math.floor(Date.now() / 1000),
         error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Locally validate an OpenTimestamps proof against the original data.
+   * Uses a browser-safe validator and does NOT perform Bitcoin anchoring checks.
+   */
+  async validateOtsProofLocally(params: {
+    data: string;
+    ots_proof: string;
+  }): Promise<LocalOtsValidationResult> {
+    const { data, ots_proof } = params;
+    const context = {
+      action: "validateOtsProofLocally",
+      provider: "opentimestamps_local" as const,
+    };
+
+    try {
+      this.logger.info("Starting local OTS proof validation", context);
+
+      const result = await localValidateOtsProof({
+        data,
+        otsProofHex: ots_proof,
+      });
+
+      this.logger.info("Completed local OTS proof validation", {
+        ...context,
+        metadata: {
+          status: result.status,
+          reason: result.reason,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error("Local OTS proof validation failed", {
+        ...context,
+        metadata: {
+          error: errorMessage,
+        },
+      });
+
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: "simpleProofService",
+          action: "validateOtsProofLocally",
+          metadata: {
+            provider: "opentimestamps_local",
+            error: errorMessage,
+          },
+        }
+      );
+
+      return {
+        status: "inconclusive",
+        provider: "opentimestamps_local",
+        reason: errorMessage,
       };
     }
   }

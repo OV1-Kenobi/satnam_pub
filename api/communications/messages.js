@@ -6,7 +6,7 @@
  * grouped and filterable by conversation.
  */
 
-import { allowRequest } from "../../netlify/functions/utils/rate-limiter.js";
+
 
 function getEnvVar(key) {
   // Netlify Functions: always read from process.env
@@ -15,6 +15,16 @@ function getEnvVar(key) {
 
 function conversationKey(aHash, bHash) {
   return aHash < bHash ? `${aHash}:${bHash}` : `${bHash}:${aHash}`;
+}
+
+let allowRequestFn;
+async function allowRate(ip) {
+  if (!allowRequestFn) {
+    const mod = await import("../../netlify/functions/utils/rate-limiter.js");
+    allowRequestFn = mod.allowRequest;
+  }
+  // 30 requests per 60 seconds per IP
+  return allowRequestFn(ip, 30, 60_000);
 }
 
 async function getClientFromReq(req) {
@@ -62,14 +72,29 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "GET") { res.status(405).json({ success: false, error: "Method not allowed" }); return; }
 
-  // Best-effort IP rate limiting
-  const clientIP = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";
-  if (!allowRequest(String(clientIP))) {
-    res.status(429).json({ success: false, error: "Rate limit exceeded" });
-    return;
-  }
-
   try {
+    const clientIp =
+      req.headers["x-forwarded-for"] ||
+      req.headers["x-real-ip"] ||
+      req.headers["client-ip"] ||
+      req.socket?.remoteAddress ||
+      req.connection?.remoteAddress ||
+      req.ip;
+
+    if (!clientIp) {
+      res
+        .status(400)
+        .json({ success: false, error: "Client identification required" });
+      return;
+    }
+
+    if (!(await allowRate(String(clientIp)))) {
+      res
+        .status(429)
+        .json({ success: false, error: "Rate limit exceeded" });
+      return;
+    }
+
     const clientResult = await getClientFromReq(req);
     if (clientResult.error) {
       res.status(clientResult.error.statusCode).json({ success: false, error: clientResult.error.message });

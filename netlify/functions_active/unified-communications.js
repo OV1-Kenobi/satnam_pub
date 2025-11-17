@@ -10,7 +10,7 @@
  */
 
 // Security utilities (Phase 2 hardening)
-import { RATE_LIMITS, checkRateLimit, createRateLimitIdentifier, getClientIP } from './utils/enhanced-rate-limiter.ts';
+import { RATE_LIMITS, checkRateLimitStatus, createRateLimitIdentifier, getClientIP } from './utils/enhanced-rate-limiter.ts';
 import { createRateLimitErrorResponse, generateRequestId, logError } from './utils/error-handler.ts';
 import { errorResponse, getSecurityHeaders, preflightResponse } from './utils/security-headers.ts';
 
@@ -103,20 +103,20 @@ export const handler = async (event) => {
   }
 
   try {
-    // Database-backed rate limiting
+    // Database-backed rate limiting for communications traffic (per IP)
     const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
-    const rateLimitResult = await checkRateLimit(
+    const rateLimitResult = await checkRateLimitStatus(
       rateLimitKey,
-      RATE_LIMITS.IDENTITY_PUBLISH
+      RATE_LIMITS.DEFAULT
     );
 
     if (!rateLimitResult.allowed) {
-      logError(new Error('Rate limit exceeded'), {
+      logError(new Error("Rate limit exceeded"), {
         requestId,
-        endpoint: 'unified-communications',
+        endpoint: "unified-communications",
         method,
       });
-      return createRateLimitErrorResponse(rateLimitResult, requestId, requestOrigin);
+      return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
     const target = detectTarget(event);
@@ -127,7 +127,7 @@ export const handler = async (event) => {
     if (target === "messages") {
       const headers = getSecurityHeaders({ origin: requestOrigin });
       if (method !== "GET") {
-        return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+        return errorResponse(405, "Method not allowed", requestOrigin, requestId);
       }
       return callApiRouteHandler(
         event,
@@ -141,7 +141,7 @@ export const handler = async (event) => {
     if (target === "get-contacts") {
       const headers = getSecurityHeaders({ origin: requestOrigin });
       if (method !== "GET") {
-        return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+        return errorResponse(405, "Method not allowed", requestOrigin, requestId);
       }
       return callApiRouteHandler(
         event,
@@ -155,7 +155,7 @@ export const handler = async (event) => {
     if (target === "giftwrapped") {
       const headers = getSecurityHeaders({ origin: requestOrigin });
       if (method !== "POST") {
-        return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+        return errorResponse(405, "Method not allowed", requestOrigin, requestId);
       }
 
       try {
@@ -175,7 +175,7 @@ export const handler = async (event) => {
         return { statusCode, headers: respHeaders, body };
       } catch (e) {
         logError(e, { requestId, endpoint: 'unified-communications', route: 'giftwrapped' });
-        return errorResponse(500, "Internal error", requestId, requestOrigin);
+        return errorResponse(500, "Internal error", requestOrigin, requestId);
       }
     }
 
@@ -185,17 +185,17 @@ export const handler = async (event) => {
       // Validate session via SecureSessionManager
       const authHeader = event.headers?.authorization || event.headers?.Authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return errorResponse(401, "Authentication required", requestId, requestOrigin);
+        return errorResponse(401, "Authentication required", requestOrigin, requestId);
       }
       let session;
       try {
         session = await SecureSessionManager.validateSessionFromHeader(authHeader);
       } catch (e) {
         logError(e, { requestId, endpoint: 'unified-communications', route: 'groups' });
-        return errorResponse(500, "Session validation failed", requestId, requestOrigin);
+        return errorResponse(500, "Session validation failed", requestOrigin, requestId);
       }
       if (!session?.hashedId) {
-        return errorResponse(401, "Invalid token", requestId, requestOrigin);
+        return errorResponse(401, "Invalid token", requestOrigin, requestId);
       }
       const userHash = session.hashedId;
 
@@ -513,11 +513,11 @@ export const handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { group, members: memRows || [], details } }) };
     }
 
-      return errorResponse(405, "Method not allowed", requestId, requestOrigin);
+      return errorResponse(405, "Method not allowed", requestOrigin, requestId);
     }
 
     // Fallback 404
-    return errorResponse(404, "Not Found", requestId, requestOrigin);
+    return errorResponse(404, "Not Found", requestOrigin, requestId);
   } catch (error) {
     logError(error, {
       requestId,
@@ -525,7 +525,7 @@ export const handler = async (event) => {
       method,
       path: event.path,
     });
-    return errorResponse(500, "Internal server error", requestId, requestOrigin);
+    return errorResponse(500, "Internal server error", requestOrigin, requestId);
   }
 };
 

@@ -23,11 +23,15 @@
   VITE_PROFILE_ANALYTICS_ENABLED = "false"
   VITE_PROFILE_CUSTOMIZATION_ENABLED = "false"
   # Phase 2A/2B: PKARR Decentralized Identity Verification (default: false for production safety)
-  VITE_PKARR_ENABLED = "false"                          # Master PKARR feature flag
+  VITE_PKARR_ENABLED = "true"                           # Master PKARR feature flag
   VITE_HYBRID_IDENTITY_ENABLED = "false"                # Hybrid verification (PKARR + kind:0 + DNS)
   VITE_PKARR_AUTO_VERIFY_ON_ADD = "false"               # Auto-verify contacts on creation
   VITE_PKARR_ADMIN_ENABLED = "false"                    # Admin analytics dashboard
   VITE_MULTI_METHOD_VERIFICATION_ENABLED = "false"      # Parallel multi-method verification
+  # Phase 2B: SimpleProof Blockchain Attestation (Bitcoin timestamping)
+  VITE_SIMPLEPROOF_ENABLED = "true"                     # Master SimpleProof feature flag
+  # Phase 2B: Iroh Node Discovery (Decentralized DHT verification)
+  VITE_IROH_ENABLED = "true"                            # Master Iroh feature flag
   # Phase 1: Tapsigner NFC Card Integration (default: false for production safety)
   VITE_TAPSIGNER_ENABLED = "true"                       # Master Tapsigner feature flag
   VITE_TAPSIGNER_LNBITS_ENABLED = "true"                # LNbits integration for Tapsigner

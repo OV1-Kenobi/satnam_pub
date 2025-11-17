@@ -38,7 +38,14 @@ import {
   captureSimpleProofError,
   initializeSentry,
 } from "../functions/utils/sentry.server.js";
+import { supabaseAdmin } from "../functions/supabase.js";
 import { getEnvVar } from "./utils/env.js";
+import {
+  compressProof,
+  calculateCompressionRatio,
+} from "./utils/proof-compression.ts";
+import { Buffer } from "node:buffer";
+import OpenTimestamps from "opentimestamps";
 
 // Security: Input validation patterns
 const UUID_PATTERN =
@@ -70,6 +77,132 @@ interface SimpleProofApiResponse {
 
 // Old helper functions removed - now using centralized security utilities
 
+type SimpleProofProvider = "simpleproof" | "opentimestamps_fallback";
+
+type ProviderHealthProvider = "simpleproof" | "opentimestamps";
+
+const PROVIDER_HEALTH_WINDOW_MS = 60 * 60 * 1000; // 1 hour rolling window
+
+interface ProviderHealthRow {
+  provider: ProviderHealthProvider;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  success_count: number;
+  error_count: number;
+  window_start_at: string | null;
+}
+
+function mapToHealthProvider(
+  provider: SimpleProofProvider
+): ProviderHealthProvider {
+  return provider === "opentimestamps_fallback"
+    ? "opentimestamps"
+    : "simpleproof";
+}
+
+async function updateProviderHealth(
+  provider: ProviderHealthProvider,
+  outcome: "success" | "error"
+): Promise<void> {
+  try {
+    if (!supabaseAdmin) {
+      logger.warn(
+        "supabaseAdmin not configured; skipping provider health update",
+        {
+          provider,
+        }
+      );
+      return;
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    const selectResult = await supabaseAdmin
+      .from("attestation_provider_health")
+      .select(
+        "provider, window_start_at, success_count, error_count, last_success_at, last_error_at"
+      )
+      .eq("provider", provider)
+      .single();
+
+    const fetchError = selectResult.error;
+    if (fetchError && (fetchError as { code?: string }).code !== "PGRST116") {
+      const errorMsg =
+        fetchError instanceof Error
+          ? fetchError.message
+          : String((fetchError as { message?: unknown }).message ?? fetchError);
+      logger.error("Failed to load provider health row", {
+        provider,
+        metadata: { error: errorMsg },
+      });
+      return;
+    }
+
+    const existing = (selectResult.data as ProviderHealthRow | null) || null;
+
+    let windowStartMs: number | null = null;
+    if (existing?.window_start_at) {
+      const parsed = new Date(existing.window_start_at).getTime();
+      windowStartMs = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const windowExpired =
+      windowStartMs === null ||
+      now.getTime() - windowStartMs > PROVIDER_HEALTH_WINDOW_MS;
+
+    const isSuccess = outcome === "success";
+
+    const next: ProviderHealthRow = {
+      provider,
+      window_start_at: windowExpired
+        ? nowIso
+        : existing?.window_start_at ?? nowIso,
+      success_count:
+        (windowExpired ? 0 : existing?.success_count ?? 0) +
+        (isSuccess ? 1 : 0),
+      error_count:
+        (windowExpired ? 0 : existing?.error_count ?? 0) + (isSuccess ? 0 : 1),
+      last_success_at: isSuccess ? nowIso : existing?.last_success_at ?? null,
+      last_error_at: isSuccess ? existing?.last_error_at ?? null : nowIso,
+    };
+
+    const { error: upsertError } = await supabaseAdmin
+      .from("attestation_provider_health")
+      .upsert(next, { onConflict: "provider" });
+
+    if (upsertError) {
+      const errorMsg =
+        upsertError instanceof Error
+          ? upsertError.message
+          : String(
+              (upsertError as { message?: unknown }).message ?? upsertError
+            );
+      logger.error("Failed to upsert provider health row", {
+        provider,
+        metadata: { error: errorMsg },
+      });
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.error("Unexpected error while recording provider health", {
+      provider,
+      metadata: { error: errorMsg },
+    });
+  }
+}
+
+function recordProviderSuccess(provider: SimpleProofProvider): void {
+  const dbProvider = mapToHealthProvider(provider);
+  void updateProviderHealth(dbProvider, "success");
+}
+
+function recordProviderError(provider: SimpleProofProvider): void {
+  const dbProvider = mapToHealthProvider(provider);
+  void updateProviderHealth(dbProvider, "error");
+}
+
+// Primary SimpleProof API helper
 async function callSimpleProofApi(
   data: string,
   apiKey: string,
@@ -96,9 +229,92 @@ async function callSimpleProofApi(
     }
 
     const result = (await response.json()) as SimpleProofApiResponse;
+    recordProviderSuccess("simpleproof");
     return result;
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+// OpenTimestamps fallback helper - stamps data using default public calendars
+async function createOpenTimestampsFallbackProof(
+  data: string
+): Promise<SimpleProofApiResponse> {
+  // Heuristic: if the data looks like a hex-encoded hash, treat it as such.
+  const isHexLike =
+    /^[0-9a-fA-F]+$/.test(data) && data.length % 2 === 0 && data.length >= 64;
+
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(data, isHexLike ? "hex" : "utf8");
+  } catch (error) {
+    throw new Error(
+      `Failed to parse data: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+
+  // OpenTimestamps is a CommonJS module; its Ops namespace is available at runtime
+  // but not fully typed in the current TypeScript definitions.
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error - Ops is provided by the OpenTimestamps runtime module
+  const op = new OpenTimestamps.Ops.OpSHA256();
+
+  // DetachedTimestampFile helpers are also only exposed at runtime on the CJS module
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error - DetachedTimestampFile is provided by the OpenTimestamps runtime module
+  const detached = OpenTimestamps.DetachedTimestampFile[
+    isHexLike ? "fromHash" : "fromBytes"
+  ](op, buffer);
+
+  const fallbackStartTime = Date.now();
+  logger.info("Stamping data with OpenTimestamps fallback provider", {
+    action: "create",
+    provider: "opentimestamps_fallback",
+  });
+
+  try {
+    await OpenTimestamps.stamp(detached);
+    const fileOts = detached.serializeToBytes();
+    const otsProof = Buffer.from(fileOts as Uint8Array).toString("hex");
+    const duration = Date.now() - fallbackStartTime;
+
+    recordProviderSuccess("opentimestamps_fallback");
+    logger.info("OpenTimestamps fallback stamp completed", {
+      action: "create",
+      provider: "opentimestamps_fallback",
+      metadata: { duration },
+    });
+
+    return {
+      ots_proof: otsProof,
+      bitcoin_block: undefined,
+      bitcoin_tx: undefined,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+  } catch (error) {
+    recordProviderError("opentimestamps_fallback");
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    logger.error("OpenTimestamps fallback stamp failed", {
+      action: "create",
+      provider: "opentimestamps_fallback",
+      metadata: { error: errorMsg },
+    });
+
+    captureSimpleProofError(
+      error instanceof Error ? error : new Error(errorMsg),
+      {
+        component: "simpleproof-timestamp",
+        action: "createTimestampFallback",
+        metadata: {
+          provider: "opentimestamps_fallback",
+          error: errorMsg,
+        },
+      }
+    );
+
+    throw new Error(errorMsg);
   }
 }
 
@@ -288,6 +504,7 @@ async function handleCreateTimestamp(
 ) {
   // Phase 2: Performance tracking - capture start time for metrics
   const operationStartTime = Date.now();
+  let provider: SimpleProofProvider = "simpleproof";
 
   // Security: Validate input
   if (!body.data || typeof body.data !== "string") {
@@ -338,12 +555,13 @@ async function handleCreateTimestamp(
     );
   }
 
-  // Call SimpleProof API
-  let apiResult: SimpleProofApiResponse;
+  // Call SimpleProof API with OpenTimestamps fallback on failure
+  let apiResult: SimpleProofApiResponse | null = null;
   const apiStartTime = Date.now();
   try {
     logger.debug("Calling SimpleProof API", {
       action: "create",
+      provider: "simpleproof",
       verificationId: body.verification_id,
     });
     apiResult = await callSimpleProofApi(body.data!, apiKey, apiUrl);
@@ -351,13 +569,16 @@ async function handleCreateTimestamp(
     logApiCall("POST", apiUrl, 200, apiDuration, {
       component: "simpleproof-timestamp",
       action: "create",
+      provider: "simpleproof",
       verificationId: body.verification_id,
     });
   } catch (error) {
     const apiDuration = Date.now() - apiStartTime;
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    recordProviderError("simpleproof");
     logger.error("SimpleProof API call failed", {
       action: "create",
+      provider: "simpleproof",
       verificationId: body.verification_id,
       metadata: { error: errorMsg, duration: apiDuration },
     });
@@ -377,30 +598,53 @@ async function handleCreateTimestamp(
       }
     );
 
-    // Graceful degradation: return error but don't crash
-    if (errorMsg.includes("abort")) {
+    // Fallback: attempt local OpenTimestamps stamping
+    try {
+      logger.warn(
+        "SimpleProof API failed, attempting OpenTimestamps fallback provider",
+        {
+          action: "create",
+          provider: "opentimestamps_fallback",
+          verificationId: body.verification_id,
+        }
+      );
+      provider = "opentimestamps_fallback";
+      apiResult = await createOpenTimestampsFallbackProof(body.data!);
+    } catch (fallbackError) {
+      const fallbackErrorMsg =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : "Unknown fallback error";
+      logger.error(
+        "OpenTimestamps fallback provider failed after SimpleProof error",
+        {
+          action: "create",
+          provider: "opentimestamps_fallback",
+          verificationId: body.verification_id,
+          metadata: {
+            simpleProofError: errorMsg,
+            fallbackError: fallbackErrorMsg,
+          },
+        }
+      );
+
       return errorResponse(
         500,
-        "SimpleProof API timeout (>10s)",
+        "SimpleProof provider unavailable and OpenTimestamps fallback also failed. Please try again later.",
         requestOrigin
       );
     }
-    return errorResponse(
-      500,
-      `SimpleProof API error: ${errorMsg}`,
-      requestOrigin
-    );
   }
 
-  // Validate API response
-  if (!apiResult.ots_proof) {
-    logger.error("Invalid response from SimpleProof API", {
+  if (!apiResult || !apiResult.ots_proof) {
+    logger.error("Invalid response from timestamp provider", {
       action: "create",
+      provider,
       verificationId: body.verification_id,
     });
     return errorResponse(
       500,
-      "Invalid response from SimpleProof API",
+      "Invalid response from timestamp provider",
       requestOrigin
     );
   }
@@ -437,6 +681,7 @@ async function handleCreateTimestamp(
     logDatabaseOperation("INSERT", "simpleproof_timestamps", true, dbDuration, {
       component: "simpleproof-timestamp",
       action: "create",
+      provider,
       verificationId: body.verification_id,
     });
   } catch (error) {
@@ -450,16 +695,77 @@ async function handleCreateTimestamp(
       {
         component: "simpleproof-timestamp",
         action: "create",
+        provider,
         verificationId: body.verification_id,
         metadata: { error: errorMsg },
       }
     );
     logger.error("Failed to store timestamp", {
       action: "create",
+      provider,
       verificationId: body.verification_id,
       metadata: { error: errorMsg },
     });
     return errorResponse(500, `Database error: ${errorMsg}`, requestOrigin);
+  }
+
+  // Compress and store proof in attestation_records (non-blocking)
+  try {
+    const compressedProof = await compressProof(apiResult.ots_proof);
+    const compressionRatio = calculateCompressionRatio(
+      apiResult.ots_proof,
+      compressedProof
+    );
+
+    logger.info("Compressing OTS proof for attestation_records", {
+      action: "create",
+      provider,
+      verificationId: body.verification_id,
+      metadata: {
+        original_size: apiResult.ots_proof.length,
+        compressed_size: compressedProof.length,
+        compression_ratio: compressionRatio,
+        storage_reduction_pct: Math.round((1 - compressionRatio) * 100),
+      },
+    });
+
+    const { error: attestationError } = await supabase
+      .from("attestation_records")
+      .insert({
+        verification_id: body.verification_id!,
+        method:
+          provider === "opentimestamps_fallback"
+            ? "opentimestamps"
+            : "simpleproof",
+        proof_data: compressedProof,
+        proof_compressed: true,
+        is_valid: true,
+      });
+
+    if (attestationError) {
+      logger.error("Failed to store compressed proof in attestation_records", {
+        action: "create",
+        provider,
+        verificationId: body.verification_id,
+        metadata: {
+          error: attestationError.message,
+        },
+      });
+    }
+  } catch (compressionError) {
+    const errorMsg =
+      compressionError instanceof Error
+        ? compressionError.message
+        : "Unknown compression error";
+
+    logger.error("Proof compression failed", {
+      action: "create",
+      provider,
+      verificationId: body.verification_id,
+      metadata: {
+        error: errorMsg,
+      },
+    });
   }
 
   // Return success response
@@ -472,6 +778,7 @@ async function handleCreateTimestamp(
 
   logger.info("Timestamp created successfully", {
     action: "create",
+    provider,
     verificationId: body.verification_id,
     metadata: {
       timestampId,
