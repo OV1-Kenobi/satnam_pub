@@ -45,6 +45,9 @@ import {
   calculateCompressionRatio,
 } from "./utils/proof-compression.ts";
 import { Buffer } from "node:buffer";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error - 'opentimestamps' does not ship TypeScript types; using the CJS runtime module
 import OpenTimestamps from "opentimestamps";
 
 // Security: Input validation patterns
@@ -59,6 +62,12 @@ interface SimpleProofRequest {
   user_id?: string;
   timestamp_id?: string;
   limit?: number;
+  /**
+   * Optional provider hint for timestamp creation.
+   * - "opentimestamps" (default when omitted) uses local OTS stamping only.
+   * - "simpleproof" uses the remote SimpleProof API when SIMPLEPROOF_REMOTE_ENABLED=true.
+   */
+  provider?: "opentimestamps" | "simpleproof";
 }
 
 interface SimpleProofResponse {
@@ -257,13 +266,9 @@ async function createOpenTimestampsFallbackProof(
 
   // OpenTimestamps is a CommonJS module; its Ops namespace is available at runtime
   // but not fully typed in the current TypeScript definitions.
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-expect-error - Ops is provided by the OpenTimestamps runtime module
   const op = new OpenTimestamps.Ops.OpSHA256();
 
   // DetachedTimestampFile helpers are also only exposed at runtime on the CJS module
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-expect-error - DetachedTimestampFile is provided by the OpenTimestamps runtime module
   const detached = OpenTimestamps.DetachedTimestampFile[
     isHexLike ? "fromHash" : "fromBytes"
   ](op, buffer);
@@ -504,7 +509,6 @@ async function handleCreateTimestamp(
 ) {
   // Phase 2: Performance tracking - capture start time for metrics
   const operationStartTime = Date.now();
-  let provider: SimpleProofProvider = "simpleproof";
 
   // Security: Validate input
   if (!body.data || typeof body.data !== "string") {
@@ -541,96 +545,166 @@ async function handleCreateTimestamp(
     );
   }
 
-  // Get API credentials
-  const apiKey = getEnvVar("VITE_SIMPLEPROOF_API_KEY");
-  const apiUrl =
-    getEnvVar("VITE_SIMPLEPROOF_API_URL") || "https://api.simpleproof.com";
+  // Provider selection and remote SimpleProof gating
+  const requestedProvider =
+    body.provider === "simpleproof" ? "simpleproof" : "opentimestamps";
 
-  if (!apiKey) {
-    logger.error("SimpleProof API key not configured");
+  const simpleProofRemoteEnabled =
+    (getEnvVar("SIMPLEPROOF_REMOTE_ENABLED") || "false")
+      .toString()
+      .toLowerCase() === "true";
+
+  if (requestedProvider === "simpleproof" && !simpleProofRemoteEnabled) {
+    logger.warn("SimpleProof remote provider disabled via env flag", {
+      action: "create",
+      provider: "simpleproof",
+      verificationId: body.verification_id,
+      metadata: { envFlag: "SIMPLEPROOF_REMOTE_ENABLED=false" },
+    });
     return errorResponse(
-      500,
-      "SimpleProof service not configured",
+      400,
+      "SimpleProof remote provider is disabled",
       requestOrigin
     );
   }
 
-  // Call SimpleProof API with OpenTimestamps fallback on failure
+  let provider: SimpleProofProvider =
+    requestedProvider === "simpleproof"
+      ? "simpleproof"
+      : "opentimestamps_fallback";
+
+  // Call timestamp provider (OpenTimestamps primary, SimpleProof optional)
   let apiResult: SimpleProofApiResponse | null = null;
   const apiStartTime = Date.now();
-  try {
-    logger.debug("Calling SimpleProof API", {
-      action: "create",
-      provider: "simpleproof",
-      verificationId: body.verification_id,
-    });
-    apiResult = await callSimpleProofApi(body.data!, apiKey, apiUrl);
-    const apiDuration = Date.now() - apiStartTime;
-    logApiCall("POST", apiUrl, 200, apiDuration, {
-      component: "simpleproof-timestamp",
-      action: "create",
-      provider: "simpleproof",
-      verificationId: body.verification_id,
-    });
-  } catch (error) {
-    const apiDuration = Date.now() - apiStartTime;
-    const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    recordProviderError("simpleproof");
-    logger.error("SimpleProof API call failed", {
-      action: "create",
-      provider: "simpleproof",
-      verificationId: body.verification_id,
-      metadata: { error: errorMsg, duration: apiDuration },
-    });
 
-    // Capture error in Sentry
-    captureSimpleProofError(
-      error instanceof Error ? error : new Error(errorMsg),
-      {
-        component: "simpleproof-timestamp",
-        action: "createTimestamp",
-        verificationId: body.verification_id,
-        metadata: {
-          apiUrl,
-          duration: apiDuration,
-          status: "api_error",
-        },
-      }
-    );
+  if (provider === "simpleproof") {
+    // Get API credentials only when remote SimpleProof is used
+    const apiKey = getEnvVar("VITE_SIMPLEPROOF_API_KEY");
+    const apiUrl =
+      getEnvVar("VITE_SIMPLEPROOF_API_URL") || "https://api.simpleproof.com";
 
-    // Fallback: attempt local OpenTimestamps stamping
-    try {
-      logger.warn(
-        "SimpleProof API failed, attempting OpenTimestamps fallback provider",
-        {
-          action: "create",
-          provider: "opentimestamps_fallback",
-          verificationId: body.verification_id,
-        }
+    if (!apiKey) {
+      logger.error("SimpleProof API key not configured");
+      return errorResponse(
+        500,
+        "SimpleProof service not configured",
+        requestOrigin
       );
-      provider = "opentimestamps_fallback";
-      apiResult = await createOpenTimestampsFallbackProof(body.data!);
-    } catch (fallbackError) {
-      const fallbackErrorMsg =
-        fallbackError instanceof Error
-          ? fallbackError.message
-          : "Unknown fallback error";
-      logger.error(
-        "OpenTimestamps fallback provider failed after SimpleProof error",
+    }
+
+    try {
+      logger.debug("Calling SimpleProof API", {
+        action: "create",
+        provider: "simpleproof",
+        verificationId: body.verification_id,
+      });
+      apiResult = await callSimpleProofApi(body.data!, apiKey, apiUrl);
+      const apiDuration = Date.now() - apiStartTime;
+      logApiCall("POST", apiUrl, 200, apiDuration, {
+        component: "simpleproof-timestamp",
+        action: "create",
+        provider: "simpleproof",
+        verificationId: body.verification_id,
+      });
+    } catch (error) {
+      const apiDuration = Date.now() - apiStartTime;
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      recordProviderError("simpleproof");
+      logger.error("SimpleProof API call failed", {
+        action: "create",
+        provider: "simpleproof",
+        verificationId: body.verification_id,
+        metadata: { error: errorMsg, duration: apiDuration },
+      });
+
+      // Capture error in Sentry
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(errorMsg),
         {
-          action: "create",
-          provider: "opentimestamps_fallback",
+          component: "simpleproof-timestamp",
+          action: "createTimestamp",
           verificationId: body.verification_id,
           metadata: {
-            simpleProofError: errorMsg,
-            fallbackError: fallbackErrorMsg,
+            apiUrl,
+            duration: apiDuration,
+            status: "api_error",
+          },
+        }
+      );
+
+      // Fallback: attempt local OpenTimestamps stamping
+      try {
+        logger.warn(
+          "SimpleProof API failed, attempting OpenTimestamps fallback provider",
+          {
+            action: "create",
+            provider: "opentimestamps_fallback",
+            verificationId: body.verification_id,
+          }
+        );
+        provider = "opentimestamps_fallback";
+        apiResult = await createOpenTimestampsFallbackProof(body.data!);
+      } catch (fallbackError) {
+        const fallbackErrorMsg =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Unknown fallback error";
+        logger.error(
+          "OpenTimestamps fallback provider failed after SimpleProof error",
+          {
+            action: "create",
+            provider: "opentimestamps_fallback",
+            verificationId: body.verification_id,
+            metadata: {
+              simpleProofError: errorMsg,
+              fallbackError: fallbackErrorMsg,
+            },
+          }
+        );
+
+        return errorResponse(
+          500,
+          "SimpleProof provider unavailable and OpenTimestamps fallback also failed. Please try again later.",
+          requestOrigin
+        );
+      }
+    }
+  } else {
+    // Primary OpenTimestamps path (no SimpleProof API calls)
+    try {
+      logger.info("Stamping data with OpenTimestamps primary provider", {
+        action: "create",
+        provider: "opentimestamps_fallback",
+        verificationId: body.verification_id,
+      });
+      apiResult = await createOpenTimestampsFallbackProof(body.data!);
+    } catch (error) {
+      const apiDuration = Date.now() - apiStartTime;
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      logger.error("OpenTimestamps primary provider failed", {
+        action: "create",
+        provider: "opentimestamps_fallback",
+        verificationId: body.verification_id,
+        metadata: { error: errorMsg, duration: apiDuration },
+      });
+
+      captureSimpleProofError(
+        error instanceof Error ? error : new Error(errorMsg),
+        {
+          component: "simpleproof-timestamp",
+          action: "createTimestamp",
+          verificationId: body.verification_id,
+          metadata: {
+            provider: "opentimestamps_fallback",
+            duration: apiDuration,
+            status: "api_error",
           },
         }
       );
 
       return errorResponse(
         500,
-        "SimpleProof provider unavailable and OpenTimestamps fallback also failed. Please try again later.",
+        "OpenTimestamps provider failed. Please try again later.",
         requestOrigin
       );
     }

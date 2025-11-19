@@ -1,7 +1,7 @@
 /**
  * Attestation Manager
  * Handles creation, retrieval, and management of timestamped proofs
- * Integrates with SimpleProof and Iroh verification systems
+ * Integrates with Bitcoin-anchored timestamping (OpenTimestamps via Netlify) and Iroh verification systems
  *
  * @compliance Privacy-first, zero-knowledge, RLS policies
  */
@@ -53,8 +53,19 @@ export interface AttestationRequest {
   nodeId?: string;
 }
 
+function normalizeMetadataToString(metadata: unknown): string | undefined {
+  if (metadata === null || typeof metadata === "undefined") {
+    return undefined;
+  }
+  if (typeof metadata === "string") {
+    return metadata;
+  }
+  return JSON.stringify(metadata);
+}
+
 /**
- * Create a new attestation with optional SimpleProof and Iroh verification
+ * Create a new attestation with optional Bitcoin-anchored timestamping (OpenTimestamps via Netlify)
+ * and optional Iroh verification.
  */
 export async function createAttestation(
   request: AttestationRequest
@@ -66,7 +77,7 @@ export async function createAttestation(
     let simpleproofResult = null;
     let simpleproofError: string | null = null;
 
-    // Call SimpleProof timestamp function if requested
+    // Call timestamp Netlify function if requested (OpenTimestamps primary; remote SimpleProof optional server-side)
     if (request.includeSimpleproof) {
       try {
         const response = await fetch(
@@ -78,6 +89,8 @@ export async function createAttestation(
               verification_id: request.verificationId,
               event_type: request.eventType,
               metadata: request.metadata,
+              // Use verificationId as the data payload for timestamping
+              data: request.verificationId,
             }),
             // FIX-4: Add 30-second timeout to prevent indefinite waiting
             signal: AbortSignal.timeout(30000),
@@ -87,7 +100,19 @@ export async function createAttestation(
         if (response.ok) {
           simpleproofResult = await response.json();
         } else {
-          simpleproofError = `HTTP ${response.status}: ${response.statusText}`;
+          // Try to extract structured error from JSON response if available
+          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          try {
+            const errorBody = (await response.json().catch(() => null)) as {
+              error?: unknown;
+            } | null;
+            if (errorBody && typeof errorBody.error !== "undefined") {
+              errorMessage = String(errorBody.error);
+            }
+          } catch {
+            // Ignore JSON parsing errors and fall back to generic message
+          }
+          simpleproofError = errorMessage;
         }
       } catch (error) {
         simpleproofError =
@@ -158,7 +183,7 @@ export async function createAttestation(
       .insert({
         verification_id: request.verificationId,
         event_type: request.eventType,
-        metadata: request.metadata ? JSON.parse(request.metadata) : null,
+        metadata: request.metadata ?? null,
         simpleproof_timestamp_id: simpleproofTimestampId,
         iroh_discovery_id: irohDiscoveryId,
         status,
@@ -183,9 +208,7 @@ export async function createAttestation(
       id: attestationData.id,
       verificationId: attestationData.verification_id,
       eventType: attestationData.event_type as AttestationEventType,
-      metadata: attestationData.metadata
-        ? JSON.stringify(attestationData.metadata)
-        : undefined,
+      metadata: normalizeMetadataToString(attestationData.metadata),
       simpleproofTimestamp: simpleproofResult,
       irohNodeDiscovery: irohResult,
       status: attestationData.status as
@@ -265,9 +288,7 @@ export async function getAttestations(
           id: record.id,
           verificationId: record.verification_id,
           eventType: record.event_type as AttestationEventType,
-          metadata: record.metadata
-            ? JSON.stringify(record.metadata)
-            : undefined,
+          metadata: normalizeMetadataToString(record.metadata),
           simpleproofTimestamp: simpleproofData
             ? {
                 id: simpleproofData.id,
@@ -373,7 +394,7 @@ export async function getAttestation(
       id: record.id,
       verificationId: record.verification_id,
       eventType: record.event_type as AttestationEventType,
-      metadata: record.metadata ? JSON.stringify(record.metadata) : undefined,
+      metadata: normalizeMetadataToString(record.metadata),
       simpleproofTimestamp: simpleproofData
         ? {
             id: simpleproofData.id,

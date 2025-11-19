@@ -50,7 +50,7 @@ export type ClientConfig = {
     hybridIdentityEnabled: boolean; // Phase 1: Hybrid NIP-05 verification (kind:0 → PKARR → DNS)
     pkarrEnabled: boolean; // Phase 1: BitTorrent DHT PKARR integration
     multiMethodVerificationEnabled: boolean; // Phase 1 Week 4: Parallel multi-method verification with trust scoring
-    simpleproofEnabled: boolean; // Phase 1: SimpleProof timestamping with OpenTimestamps and Bitcoin anchoring
+    simpleproofEnabled: boolean; // Phase 1: Identity Forge timestamp verification UI (OpenTimestamps primary; remote SimpleProof premium only)
     irohEnabled: boolean; // Phase 2: Iroh node discovery via DHT for decentralized verification
     nip03Enabled: boolean; // Phase 2 Week 3: NIP-03 OpenTimestamps attestations (master toggle)
     nip03IdentityCreationEnabled: boolean; // Phase 2 Week 3: NIP-03 attestations for identity creation
@@ -116,7 +116,7 @@ const MULTI_METHOD_VERIFICATION_ENABLED =
     .toString()
     .toLowerCase() === "true";
 
-// Phase 1: SimpleProof timestamping with OpenTimestamps and Bitcoin anchoring; default: false
+// Phase 1: Identity Forge timestamp verification UI (OpenTimestamps-based Bitcoin anchoring); default: false
 const SIMPLEPROOF_ENABLED =
   (getEnvVar("VITE_SIMPLEPROOF_ENABLED") || "false")
     .toString()

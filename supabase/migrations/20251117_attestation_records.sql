@@ -17,13 +17,22 @@
 CREATE TABLE IF NOT EXISTS attestation_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   verification_id UUID NOT NULL REFERENCES multi_method_verification_results(id) ON DELETE CASCADE,
-  method TEXT NOT NULL CHECK (method IN ('simpleproof', 'pkarr', 'iroh', 'nip03')),
+  method TEXT NOT NULL CHECK (method IN ('simpleproof', 'opentimestamps', 'pkarr', 'iroh', 'nip03')),
   proof_data TEXT NOT NULL, -- Base64-encoded, gzip-compressed proof payload
   proof_compressed BOOLEAN NOT NULL DEFAULT true,
   is_valid BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ensure method CHECK constraint allows OpenTimestamps in existing databases
+ALTER TABLE attestation_records
+  DROP CONSTRAINT IF EXISTS attestation_records_method_check;
+
+ALTER TABLE attestation_records
+  ADD CONSTRAINT attestation_records_method_check
+    CHECK (method IN ('simpleproof', 'opentimestamps', 'pkarr', 'iroh', 'nip03'));
+
 
 -- ============================================================================
 -- UPDATED_AT TRIGGER

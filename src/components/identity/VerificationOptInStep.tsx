@@ -1,8 +1,8 @@
 /**
  * Verification Opt-In Step Component
- * Optional step in Identity Forge registration for SimpleProof/Iroh verification
+ * Optional step in Identity Forge registration for Bitcoin-anchored timestamping (OpenTimestamps) and optional Iroh verification
  * Displayed after profile creation, before completion screen
- * 
+ *
  * @compliance Privacy-first, zero-knowledge, feature flag gated
  */
 
@@ -107,7 +107,7 @@ export const VerificationOptInStep: React.FC<VerificationOptInStepProps> = ({
             Identity Verified! ✓
           </h3>
           <p className="text-green-200">
-            Your account has been timestamped on the blockchain
+            Your account has been timestamped using OpenTimestamps on the Bitcoin blockchain
           </p>
         </div>
 
@@ -174,8 +174,8 @@ export const VerificationOptInStep: React.FC<VerificationOptInStepProps> = ({
             <div className="flex items-center space-x-3 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
               <CheckCircle className="h-5 w-5 text-orange-400 flex-shrink-0" />
               <div>
-                <p className="text-orange-200 font-medium text-sm">SimpleProof</p>
-                <p className="text-orange-200/70 text-xs">Blockchain-anchored via Bitcoin</p>
+                <p className="text-orange-200 font-medium text-sm">OpenTimestamps (Bitcoin, free)</p>
+                <p className="text-orange-200/70 text-xs">Bitcoin-anchored via public OpenTimestamps calendars</p>
               </div>
             </div>
           )}

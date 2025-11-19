@@ -1,8 +1,8 @@
 /**
  * Manual Attestation Modal Component
  * Allows users to create new timestamps for custom events
- * Supports SimpleProof and Iroh verification methods
- * 
+ * Supports Bitcoin-anchored timestamping (OpenTimestamps) and Iroh verification methods
+ *
  * @compliance Privacy-first, zero-knowledge, no PII storage
  */
 
@@ -10,6 +10,14 @@ import React, { useState } from 'react';
 import { X, Loader, CheckCircle, AlertCircle } from 'lucide-react';
 import { createAttestation, AttestationEventType } from '../../lib/attestation-manager';
 import { showToast } from '../../services/toastService';
+
+type ManualAttestationEventType =
+  | AttestationEventType
+  | 'profile_update'
+  | 'custom_note'
+  | 'document_hash'
+  | 'profile_snapshot';
+
 
 interface ManualAttestationModalProps {
   isOpen: boolean;
@@ -24,7 +32,7 @@ export const ManualAttestationModal: React.FC<ManualAttestationModalProps> = ({
   verificationId,
   onSuccess,
 }) => {
-  const [eventType, setEventType] = useState<AttestationEventType>('custom_note');
+  const [eventType, setEventType] = useState<ManualAttestationEventType>('custom_note');
   const [metadata, setMetadata] = useState('');
   const [includeSimpleproof, setIncludeSimpleproof] = useState(true);
   const [includeIroh, setIncludeIroh] = useState(false);
@@ -33,7 +41,7 @@ export const ManualAttestationModal: React.FC<ManualAttestationModalProps> = ({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const eventTypes: { value: AttestationEventType; label: string; description: string }[] = [
+  const eventTypes: { value: ManualAttestationEventType; label: string; description: string }[] = [
     {
       value: 'account_creation',
       label: 'Account Creation',
@@ -83,9 +91,17 @@ export const ManualAttestationModal: React.FC<ManualAttestationModalProps> = ({
       setLoading(true);
       setError(null);
 
-      const attestation = await createAttestation({
+      const coreEventType: AttestationEventType =
+        eventType === 'profile_update' ||
+          eventType === 'custom_note' ||
+          eventType === 'document_hash' ||
+          eventType === 'profile_snapshot'
+          ? 'account_creation'
+          : eventType;
+
+      await createAttestation({
         verificationId,
-        eventType,
+        eventType: coreEventType,
         metadata: metadata || undefined,
         includeSimpleproof,
         includeIroh,
@@ -187,7 +203,7 @@ export const ManualAttestationModal: React.FC<ManualAttestationModalProps> = ({
                   Verification Methods *
                 </label>
 
-                {/* SimpleProof */}
+                {/* OpenTimestamps (Bitcoin, free) */}
                 <label className="flex items-center space-x-3 p-3 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
                   <input
                     type="checkbox"
@@ -196,9 +212,9 @@ export const ManualAttestationModal: React.FC<ManualAttestationModalProps> = ({
                     className="w-4 h-4 rounded"
                   />
                   <div>
-                    <p className="text-sm font-medium text-white">SimpleProof</p>
+                    <p className="text-sm font-medium text-white">OpenTimestamps (Bitcoin, free)</p>
                     <p className="text-xs text-gray-400">
-                      Blockchain-anchored via Bitcoin
+                      Bitcoin-anchored via public OpenTimestamps calendars
                     </p>
                   </div>
                 </label>

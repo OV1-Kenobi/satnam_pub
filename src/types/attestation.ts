@@ -18,6 +18,10 @@ export type AttestationStatus =
   | "success"
   | "failure"
   | "skipped";
+
+// NOTE: "simpleproof" here represents the Bitcoin-anchored timestamp provider slot.
+// In the current architecture this is backed primarily by OpenTimestamps (OTS),
+// with optional remote SimpleProof usage for premium flows.
 export type AttestationMethod = "kind0" | "simpleproof" | "nip03" | "pkarr";
 
 // ============================================================================
