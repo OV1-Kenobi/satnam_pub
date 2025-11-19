@@ -1312,6 +1312,9 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
+    // Baseline multi-method verification result ID used by downstream attestations
+    let verificationResultId: string | null = null;
+
     // ============================================================================
     // PHASE 2 WEEK 3 DAY 8: NIP-03 ATTESTATION INTEGRATION
     // ============================================================================
@@ -1634,8 +1637,78 @@ export const handler: Handler = async (event, context) => {
       type: "access", // Required by frontend SecureTokenManager
       sessionId: sessionId, // Required by frontend SecureTokenManager
     });
+    // Baseline multi-method verification record for attestations
+    // Create an initial multi_method_verification_results row so all
+    // downstream attestations (OpenTimestamps, Iroh, etc.) share a stable UUID.
+    try {
+      const nip05Identifier =
+        validatedData.nip05 ||
+        `${validatedData.username}@${resolvePlatformLightningDomainServer()}`;
 
-    const responseData: ResponseData = {
+      const identifierHash = crypto
+        .createHash("sha256")
+        .update(nip05Identifier)
+        .digest("hex");
+
+      const verificationAttemptId = crypto.randomUUID();
+
+      const { data: verificationRow, error: verificationInsertError } =
+        await supabase
+          .from("multi_method_verification_results")
+          .insert({
+            verification_attempt_id: verificationAttemptId,
+            identifier_hash: identifierHash,
+            kind0_verified: false,
+            kind0_response_time_ms: 0,
+            kind0_error: "not_run",
+            kind0_nip05: null,
+            kind0_pubkey: null,
+            pkarr_verified: false,
+            pkarr_response_time_ms: 0,
+            pkarr_error: "not_run",
+            pkarr_nip05: null,
+            pkarr_pubkey: null,
+            dns_verified: false,
+            dns_response_time_ms: 0,
+            dns_error: "not_run",
+            dns_nip05: null,
+            dns_pubkey: null,
+            trust_score: 0,
+            trust_level: "none",
+            agreement_count: 0,
+            methods_agree: false,
+            verified: false,
+            primary_method: "none",
+            user_duid: profileResult.data!.id,
+            ip_address_hash: null,
+          })
+          .select("id")
+          .single();
+
+      if (verificationInsertError) {
+        console.error(
+          "❌ Failed to log baseline multi-method verification result:",
+          verificationInsertError
+        );
+      } else if (verificationRow) {
+        verificationResultId = (verificationRow as { id: string }).id;
+        console.log(
+          "✅ Baseline multi-method verification result created:",
+          verificationResultId
+        );
+      }
+    } catch (verificationBootstrapError) {
+      const message =
+        verificationBootstrapError instanceof Error
+          ? verificationBootstrapError.message
+          : String(verificationBootstrapError);
+      console.error(
+        "❌ Unexpected error while bootstrapping multi-method verification result:",
+        message
+      );
+    }
+
+    const baseResponse: Omit<ResponseData, "verification_id"> = {
       success: true,
       message: "Identity registered successfully with sovereignty enforcement",
       user: {
@@ -1663,9 +1736,13 @@ export const handler: Handler = async (event, context) => {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || "production",
       },
-      // FIX-1: Include verification_id for SimpleProof/Iroh attestations during registration
-      verification_id: profileResult.data!.id,
     };
+
+    // FIX-1: Include verification_id for SimpleProof/Iroh attestations during registration
+    // using the UUID from multi_method_verification_results when available
+    const responseData: ResponseData = verificationResultId
+      ? { ...baseResponse, verification_id: verificationResultId }
+      : baseResponse;
 
     // Process peer invitation if provided
     if (userData.invitationToken) {
