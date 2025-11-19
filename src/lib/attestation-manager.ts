@@ -53,6 +53,13 @@ export interface AttestationRequest {
   nodeId?: string;
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
+
 function normalizeMetadataToString(metadata: unknown): string | undefined {
   if (metadata === null || typeof metadata === "undefined") {
     return undefined;
@@ -70,9 +77,13 @@ function normalizeMetadataToString(metadata: unknown): string | undefined {
 export async function createAttestation(
   request: AttestationRequest
 ): Promise<Attestation> {
-  try {
-    const now = Math.floor(Date.now() / 1000);
+  if (!isValidUuid(request.verificationId)) {
+    throw new Error(
+      "Invalid verificationId format (must be valid UUID from verification results)"
+    );
+  }
 
+  try {
     // FIX-4: Track errors separately for better error handling
     let simpleproofResult = null;
     let simpleproofError: string | null = null;
