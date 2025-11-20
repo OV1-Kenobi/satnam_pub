@@ -381,32 +381,3 @@ declare module "../api/auth/check-username-availability.js" {
 declare module "@noble/secp256k1" {
   export function generateSecretKey(): Uint8Array;
 }
-
-// Minimal typings for opentimestamps library used in Netlify functions
-declare module "opentimestamps" {
-  export interface DetachedTimestampFileInstance {
-    serializeToBytes(): Uint8Array;
-  }
-
-  export const DetachedTimestampFile: {
-    fromHash(op: any, hash: Uint8Array | Buffer): DetachedTimestampFileInstance;
-    fromBytes(
-      op: any,
-      data: Uint8Array | Buffer
-    ): DetachedTimestampFileInstance;
-  };
-
-  export const Ops: {
-    OpSHA256: new () => any;
-  };
-
-  export function stamp(detached: DetachedTimestampFileInstance): Promise<void>;
-
-  const OpenTimestamps: {
-    DetachedTimestampFile: typeof DetachedTimestampFile;
-    Ops: typeof Ops;
-    stamp: typeof stamp;
-  };
-
-  export default OpenTimestamps;
-}

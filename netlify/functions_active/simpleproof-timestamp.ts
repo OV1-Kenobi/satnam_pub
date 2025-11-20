@@ -45,10 +45,8 @@ import {
   calculateCompressionRatio,
 } from "./utils/proof-compression.ts";
 import { Buffer } from "node:buffer";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-expect-error - 'opentimestamps' does not ship TypeScript types; using the CJS runtime module
-import OpenTimestamps from "opentimestamps";
+import { createHash } from "node:crypto";
+import { OpenTimestampsClient } from "@alexalves87/opentimestamps-client";
 
 // Security: Input validation patterns
 const UUID_PATTERN =
@@ -99,6 +97,21 @@ interface ProviderHealthRow {
   success_count: number;
   error_count: number;
   window_start_at: string | null;
+}
+
+interface SerializeToBytesCapable {
+  serializeToBytes: () => Uint8Array | Buffer;
+}
+
+function isSerializeToBytesCapable(
+  value: unknown
+): value is SerializeToBytesCapable {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { serializeToBytes?: unknown }).serializeToBytes ===
+      "function"
+  );
 }
 
 function mapToHealthProvider(
@@ -247,31 +260,21 @@ async function callSimpleProofApi(
 
 // OpenTimestamps fallback helper - stamps data using default public calendars
 async function createOpenTimestampsFallbackProof(
-  data: string
+  data: string,
+  otsClient: OpenTimestampsClient
 ): Promise<SimpleProofApiResponse> {
-  // Heuristic: if the data looks like a hex-encoded hash, treat it as such.
-  const isHexLike =
-    /^[0-9a-fA-F]+$/.test(data) && data.length % 2 === 0 && data.length >= 64;
-
-  let buffer: Buffer;
+  let hashInput: Buffer;
   try {
-    buffer = Buffer.from(data, isHexLike ? "hex" : "utf8");
+    // Always treat data as UTF-8 text and hash with SHA-256 to derive the file digest
+    const messageBuffer = Buffer.from(data, "utf8");
+    hashInput = createHash("sha256").update(messageBuffer).digest();
   } catch (error) {
     throw new Error(
-      `Failed to parse data: ${
+      `Failed to prepare data for OpenTimestamps: ${
         error instanceof Error ? error.message : "Unknown error"
       }`
     );
   }
-
-  // OpenTimestamps is a CommonJS module; its Ops namespace is available at runtime
-  // but not fully typed in the current TypeScript definitions.
-  const op = new OpenTimestamps.Ops.OpSHA256();
-
-  // DetachedTimestampFile helpers are also only exposed at runtime on the CJS module
-  const detached = OpenTimestamps.DetachedTimestampFile[
-    isHexLike ? "fromHash" : "fromBytes"
-  ](op, buffer);
 
   const fallbackStartTime = Date.now();
   logger.info("Stamping data with OpenTimestamps fallback provider", {
@@ -280,9 +283,22 @@ async function createOpenTimestampsFallbackProof(
   });
 
   try {
-    await OpenTimestamps.stamp(detached);
-    const fileOts = detached.serializeToBytes();
-    const otsProof = Buffer.from(fileOts as Uint8Array).toString("hex");
+    const stampResult = (await otsClient.stamp(hashInput)) as unknown;
+
+    let proofBytes: Uint8Array | Buffer;
+    if (Buffer.isBuffer(stampResult)) {
+      proofBytes = stampResult;
+    } else if (isSerializeToBytesCapable(stampResult)) {
+      proofBytes = stampResult.serializeToBytes();
+    } else if (isSerializeToBytesCapable(hashInput)) {
+      proofBytes = hashInput.serializeToBytes();
+    } else {
+      throw new Error(
+        "Unexpected stamp() return type from OpenTimestamps client"
+      );
+    }
+
+    const otsProof = Buffer.from(proofBytes).toString("hex");
     const duration = Date.now() - fallbackStartTime;
 
     recordProviderSuccess("opentimestamps_fallback");
@@ -573,6 +589,9 @@ async function handleCreateTimestamp(
       ? "simpleproof"
       : "opentimestamps_fallback";
 
+  // Create a new OpenTimestamps client per request to avoid shared state
+  const otsClient = new OpenTimestampsClient();
+
   // Call timestamp provider (OpenTimestamps primary, SimpleProof optional)
   let apiResult: SimpleProofApiResponse | null = null;
   const apiStartTime = Date.now();
@@ -643,7 +662,10 @@ async function handleCreateTimestamp(
           }
         );
         provider = "opentimestamps_fallback";
-        apiResult = await createOpenTimestampsFallbackProof(body.data!);
+        apiResult = await createOpenTimestampsFallbackProof(
+          body.data!,
+          otsClient
+        );
       } catch (fallbackError) {
         const fallbackErrorMsg =
           fallbackError instanceof Error
@@ -677,7 +699,10 @@ async function handleCreateTimestamp(
         provider: "opentimestamps_fallback",
         verificationId: body.verification_id,
       });
-      apiResult = await createOpenTimestampsFallbackProof(body.data!);
+      apiResult = await createOpenTimestampsFallbackProof(
+        body.data!,
+        otsClient
+      );
     } catch (error) {
       const apiDuration = Date.now() - apiStartTime;
       const errorMsg = error instanceof Error ? error.message : "Unknown error";

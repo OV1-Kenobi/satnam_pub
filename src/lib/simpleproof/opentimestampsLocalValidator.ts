@@ -20,9 +20,9 @@ interface ValidationParams {
 }
 
 const HEADER_MAGIC: number[] = [
-  0x00, 0x4f, 0x70, 0x65, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61,
-  0x6d, 0x70, 0x73, 0x00, 0x00, 0x50, 0x72, 0x6f, 0x6f, 0x66, 0x00, 0xbf,
-  0x89, 0xe2, 0xe8, 0x84, 0xe8, 0x92, 0x94,
+  0x00, 0x4f, 0x70, 0x65, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d,
+  0x70, 0x73, 0x00, 0x00, 0x50, 0x72, 0x6f, 0x6f, 0x66, 0x00, 0xbf, 0x89, 0xe2,
+  0xe8, 0x84, 0xe8, 0x92, 0x94,
 ];
 
 const MAJOR_VERSION = 1;
@@ -41,13 +41,10 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function isHexLikeData(data: string): boolean {
-  return (
-    /^[0-9a-fA-F]+$/.test(data) && data.length % 2 === 0 && data.length >= 64
-  );
-}
-
-function readVaruint(bytes: Uint8Array, offset: number): {
+function readVaruint(
+  bytes: Uint8Array,
+  offset: number
+): {
   value: number;
   nextOffset: number;
 } {
@@ -106,18 +103,7 @@ function parseFileDigestFromOtsProof(otsBytes: Uint8Array): Uint8Array | null {
   return otsBytes.slice(offset, offset + SHA256_DIGEST_LENGTH);
 }
 
-async function computeExpectedDigest(
-  data: string,
-  treatAsHex: boolean
-): Promise<Uint8Array | null> {
-  if (treatAsHex) {
-    try {
-      return hexToBytes(data);
-    } catch {
-      return null;
-    }
-  }
-
+async function computeExpectedDigest(data: string): Promise<Uint8Array | null> {
   if (typeof crypto === "undefined" || !crypto.subtle) {
     return null;
   }
@@ -163,8 +149,7 @@ export async function localValidateOtsProof(
     };
   }
 
-  const treatAsHex = isHexLikeData(data);
-  const expectedDigest = await computeExpectedDigest(data, treatAsHex);
+  const expectedDigest = await computeExpectedDigest(data);
 
   if (!expectedDigest) {
     return {
@@ -198,4 +183,3 @@ export async function localValidateOtsProof(
     provider: "opentimestamps_local",
   };
 }
-
