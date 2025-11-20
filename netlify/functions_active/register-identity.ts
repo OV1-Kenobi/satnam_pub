@@ -1651,47 +1651,46 @@ export const handler: Handler = async (event, context) => {
         .digest("hex");
 
       const verificationAttemptId = crypto.randomUUID();
+      const baselineVerificationId = crypto.randomUUID();
 
-      const { data: verificationRow, error: verificationInsertError } =
-        await supabase
-          .from("multi_method_verification_results")
-          .insert({
-            verification_attempt_id: verificationAttemptId,
-            identifier_hash: identifierHash,
-            kind0_verified: false,
-            kind0_response_time_ms: 0,
-            kind0_error: "not_run",
-            kind0_nip05: null,
-            kind0_pubkey: null,
-            pkarr_verified: false,
-            pkarr_response_time_ms: 0,
-            pkarr_error: "not_run",
-            pkarr_nip05: null,
-            pkarr_pubkey: null,
-            dns_verified: false,
-            dns_response_time_ms: 0,
-            dns_error: "not_run",
-            dns_nip05: null,
-            dns_pubkey: null,
-            trust_score: 0,
-            trust_level: "none",
-            agreement_count: 0,
-            methods_agree: false,
-            verified: false,
-            primary_method: "none",
-            user_duid: profileResult.data!.id,
-            ip_address_hash: null,
-          })
-          .select("id")
-          .single();
+      const { error: verificationInsertError } = await supabase
+        .from("multi_method_verification_results")
+        .insert({
+          id: baselineVerificationId,
+          verification_attempt_id: verificationAttemptId,
+          identifier_hash: identifierHash,
+          kind0_verified: false,
+          kind0_response_time_ms: 0,
+          kind0_error: "not_run",
+          kind0_nip05: null,
+          kind0_pubkey: null,
+          pkarr_verified: false,
+          pkarr_response_time_ms: 0,
+          pkarr_error: "not_run",
+          pkarr_nip05: null,
+          pkarr_pubkey: null,
+          dns_verified: false,
+          dns_response_time_ms: 0,
+          dns_error: "not_run",
+          dns_nip05: null,
+          dns_pubkey: null,
+          trust_score: 0,
+          trust_level: "none",
+          agreement_count: 0,
+          methods_agree: false,
+          verified: false,
+          primary_method: "none",
+          user_duid: profileResult.data!.id,
+          ip_address_hash: null,
+        });
 
       if (verificationInsertError) {
         console.error(
           "❌ Failed to log baseline multi-method verification result:",
           verificationInsertError
         );
-      } else if (verificationRow) {
-        verificationResultId = (verificationRow as { id: string }).id;
+      } else {
+        verificationResultId = baselineVerificationId;
         console.log(
           "✅ Baseline multi-method verification result created:",
           verificationResultId
