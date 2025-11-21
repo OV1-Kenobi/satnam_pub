@@ -38,6 +38,8 @@ export const RATE_LIMITS = {
   ADMIN_DASHBOARD: { limit: 10, windowMs: 60 * 1000 }, // 10 req/min
   IDENTITY_PUBLISH: { limit: 10, windowMs: 60 * 60 * 1000 }, // 10 req/hr
   IDENTITY_VERIFY: { limit: 50, windowMs: 60 * 60 * 1000 }, // 50 req/hr
+  ATTESTATION_CREATE: { limit: 20, windowMs: 60 * 60 * 1000 }, // 20 req/hr for creating attestations
+  ATTESTATION_READ: { limit: 200, windowMs: 60 * 60 * 1000 }, // 200 req/hr for reading attestations
   NFC_OPERATIONS: { limit: 20, windowMs: 60 * 60 * 1000 }, // 20 req/hr
   WALLET_OPERATIONS: { limit: 30, windowMs: 60 * 60 * 1000 }, // 30 req/hr
   TAPSIGNER_NOSTR_SIGNING: { limit: 10, windowMs: 60 * 1000 }, // 10 req/min per card

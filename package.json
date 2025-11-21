@@ -79,7 +79,19 @@
     "z32": "^1.1.0"
   },
   "overrides": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "rimraf": {
+      "glob": "11.1.0"
+    },
+    "@vercel/nft": {
+      "glob": "10.5.0"
+    },
+    "archiver-utils": {
+      "glob": "10.5.0"
+    },
+    "sucrase": {
+      "glob": "10.5.0"
+    }
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",

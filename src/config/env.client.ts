@@ -389,6 +389,15 @@ export const clientConfig: ClientConfig = {
   },
 } as const;
 
+/**
+ * Get the browser API base URL for frontend requests.
+ * Wrapper around clientConfig.api.baseUrl.
+ * Defaults to "/api" when VITE_API_BASE_URL is not set.
+ */
+export function getApiBaseUrlFromClientEnv(): string {
+  return clientConfig.api.baseUrl;
+}
+
 // Validation (fail fast during app startup)
 // VITE_LNBITS_BASE_URL is required only if LNbits integration is enabled
 if (clientConfig.flags.lnbitsEnabled && !clientConfig.lnbits.baseUrl) {

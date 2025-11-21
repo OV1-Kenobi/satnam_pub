@@ -28,7 +28,7 @@ const REGISTER_IDENTITY_BUILD =
 // Import centralized security utilities
 import {
   RATE_LIMITS,
-  checkRateLimit,
+  checkRateLimitStatus,
   createRateLimitIdentifier,
   getClientIP,
 } from "./utils/enhanced-rate-limiter.js";
@@ -44,6 +44,56 @@ import {
   jsonResponse,
   preflightResponse,
 } from "./utils/security-headers.js";
+
+type RegisterIdentityAction =
+  | "register"
+  | "create_attestation"
+  | "get_attestations"
+  | "get_attestation";
+
+interface RateLimitConfig {
+  limit: number;
+  windowMs: number;
+}
+
+async function enforceRateLimitForAction(
+  action: RegisterIdentityAction,
+  clientIP: string,
+  requestId: string,
+  requestOrigin: string | undefined,
+  method: string,
+  userId?: string
+): Promise<boolean> {
+  const configMap: Partial<Record<RegisterIdentityAction, RateLimitConfig>> = {
+    register: RATE_LIMITS.AUTH_REGISTER,
+    create_attestation: RATE_LIMITS.ATTESTATION_CREATE,
+    get_attestations: RATE_LIMITS.ATTESTATION_READ,
+    get_attestation: RATE_LIMITS.ATTESTATION_READ,
+  };
+
+  const config = configMap[action];
+  if (!config) {
+    return true;
+  }
+
+  const identifier = createRateLimitIdentifier(userId, clientIP);
+  const status = await checkRateLimitStatus(identifier, config);
+
+  if (!status.allowed) {
+    logError(new Error("Rate limit exceeded"), {
+      requestId,
+      endpoint: "register-identity",
+      action,
+      userId,
+      method,
+      clientIP,
+    });
+
+    return false;
+  }
+
+  return true;
+}
 
 // ---- Type definitions for strict TypeScript mode ----
 export type Role = "private" | "offspring" | "adult" | "steward" | "guardian";
@@ -1001,6 +1051,514 @@ export const handler: Handler = async (event, context) => {
   let reservedNameDuid: string | null = null;
   let reservedDomain: string | null = null;
 
+  // Shared helper to extract and verify JWT and return userId
+  async function getUserIdFromAuthHeader(
+    event: any,
+    requestOrigin: string | undefined
+  ): Promise<
+    { success: true; userId: string } | { success: false; response: any }
+  > {
+    const headers = (event.headers || {}) as Record<string, string | string[]>;
+    const authHeader =
+      (headers["authorization"] as string) ||
+      (headers["Authorization"] as string);
+
+    if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+      return {
+        success: false,
+        response: errorResponse(
+          401,
+          "Missing or invalid authorization header",
+          requestOrigin
+        ),
+      };
+    }
+
+    const token = authHeader.slice(7).trim();
+
+    const { jwtVerify } = await import("jose");
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const JWT_ISSUER = process.env.JWT_ISSUER || "satnam.pub";
+    const JWT_AUDIENCE = process.env.JWT_AUDIENCE || "satnam.pub";
+
+    if (!JWT_SECRET) {
+      console.error("JWT_SECRET is not configured for attestation operations");
+      return {
+        success: false,
+        response: errorResponse(
+          500,
+          "Server configuration error",
+          requestOrigin
+        ),
+      };
+    }
+
+    let payload: any;
+    try {
+      const secret = new TextEncoder().encode(JWT_SECRET);
+      const result = await jwtVerify(token, secret, {
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+        clockTolerance: 30,
+      });
+      payload = result.payload;
+    } catch (err) {
+      console.error("JWT verification failed for attestation operation", err);
+      return {
+        success: false,
+        response: errorResponse(401, "Invalid or expired token", requestOrigin),
+      };
+    }
+
+    const userId = payload?.userId as string | undefined;
+    if (!userId) {
+      return {
+        success: false,
+        response: errorResponse(401, "Invalid token payload", requestOrigin),
+      };
+    }
+
+    return { success: true, userId };
+  }
+
+  // Shared helper to load and verify ownership of a verification record
+  async function getOwnedVerificationRecord(
+    verificationId: string,
+    userId: string,
+    requestOrigin: string | undefined,
+    contextLabel: string
+  ): Promise<
+    | { success: true; verificationId: string }
+    | { success: false; response: any }
+  > {
+    const { supabaseAdmin } = await import(
+      "../../netlify/functions/supabase.js"
+    );
+    if (!supabaseAdmin) {
+      console.error(
+        "supabaseAdmin is not configured for attestation verification checks"
+      );
+      return {
+        success: false,
+        response: errorResponse(
+          500,
+          "Server configuration error",
+          requestOrigin
+        ),
+      };
+    }
+
+    const { data: verificationRow, error: verificationError } =
+      await supabaseAdmin
+        .from("multi_method_verification_results")
+        .select("id, user_duid")
+        .eq("id", verificationId)
+        .single();
+
+    if (verificationError || !verificationRow) {
+      console.error(
+        `Failed to load verification record for ${contextLabel}`,
+        verificationError
+      );
+      return {
+        success: false,
+        response: errorResponse(
+          404,
+          "Verification record not found",
+          requestOrigin
+        ),
+      };
+    }
+
+    if (verificationRow.user_duid !== userId) {
+      console.warn(`${contextLabel} ownership mismatch`, {
+        tokenUserId: userId,
+        verificationUserDuid: verificationRow.user_duid,
+      });
+      return {
+        success: false,
+        response: errorResponse(403, "Forbidden", requestOrigin),
+      };
+    }
+
+    return { success: true, verificationId: verificationRow.id as string };
+  }
+
+  // Server-mediated attestation creation handler
+  async function handleCreateAttestationRequest(
+    event: any,
+    requestOrigin: string | undefined,
+    corsHeaders: Record<string, string>,
+    userData: any,
+    requestId: string,
+    clientIP: string
+  ) {
+    try {
+      const authResult = await getUserIdFromAuthHeader(event, requestOrigin);
+      if (!authResult.success) {
+        return authResult.response;
+      }
+
+      const userId = authResult.userId;
+
+      const allowed = await enforceRateLimitForAction(
+        "create_attestation",
+        clientIP,
+        requestId,
+        requestOrigin,
+        event.httpMethod,
+        userId
+      );
+
+      if (!allowed) {
+        return createRateLimitErrorResponse(requestId, requestOrigin);
+      }
+
+      // Validate minimal attestation payload
+      const verificationIdRaw =
+        userData?.verification_id || userData?.verificationId;
+      const eventType = userData?.event_type || userData?.eventType;
+      const status = userData?.status;
+      const metadata = userData?.metadata ?? null;
+
+      // Validate metadata structure if provided
+      if (
+        metadata !== null &&
+        (typeof metadata !== "object" || Array.isArray(metadata))
+      ) {
+        return errorResponse(
+          400,
+          "metadata must be an object or null",
+          requestOrigin
+        );
+      }
+
+      const simpleproofTimestampId = userData?.simpleproof_timestamp_id;
+      const irohDiscoveryId = userData?.iroh_discovery_id;
+      const errorDetails = userData?.error_details ?? null;
+
+      if (!verificationIdRaw || typeof verificationIdRaw !== "string") {
+        return errorResponse(
+          400,
+          "Missing or invalid verification_id",
+          requestOrigin
+        );
+      }
+      if (!eventType || typeof eventType !== "string") {
+        return errorResponse(
+          400,
+          "Missing or invalid event_type",
+          requestOrigin
+        );
+      }
+      if (!status || typeof status !== "string") {
+        return errorResponse(400, "Missing or invalid status", requestOrigin);
+      }
+
+      const ownershipResult = await getOwnedVerificationRecord(
+        verificationIdRaw,
+        userId,
+        requestOrigin,
+        "attestation creation"
+      );
+      if (!ownershipResult.success) {
+        return ownershipResult.response;
+      }
+
+      const verificationId = ownershipResult.verificationId;
+
+      const { supabaseAdmin } = await import(
+        "../../netlify/functions/supabase.js"
+      );
+      if (!supabaseAdmin) {
+        console.error(
+          "supabaseAdmin is not configured for attestation creation"
+        );
+        return errorResponse(500, "Server configuration error", requestOrigin);
+      }
+
+      // Insert attestation using service-role client, with application-level ownership enforcement
+      const { data: attestationData, error: insertError } = await supabaseAdmin
+        .from("attestations")
+        .insert({
+          verification_id: verificationId,
+          event_type: eventType,
+          metadata,
+          simpleproof_timestamp_id: simpleproofTimestampId ?? null,
+          iroh_discovery_id: irohDiscoveryId ?? null,
+          status,
+          error_details: errorDetails,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error(
+          "Failed to create attestation (server-mediated)",
+          insertError
+        );
+        return errorResponse(
+          500,
+          "Failed to create attestation",
+          requestOrigin
+        );
+      }
+
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: true,
+          attestation: attestationData,
+        }),
+      };
+    } catch (err) {
+      console.error("Unexpected error in handleCreateAttestationRequest", err);
+      return errorResponse(500, "Internal server error", requestOrigin);
+    }
+  }
+
+  // Server-mediated attestation retrieval handler (multiple records)
+  async function handleGetAttestationsRequest(
+    event: any,
+    requestOrigin: string | undefined,
+    corsHeaders: Record<string, string>,
+    userData: any,
+    requestId: string,
+    clientIP: string
+  ) {
+    try {
+      const authResult = await getUserIdFromAuthHeader(event, requestOrigin);
+      if (!authResult.success) {
+        return authResult.response;
+      }
+
+      const userId = authResult.userId;
+
+      const allowed = await enforceRateLimitForAction(
+        "get_attestations",
+        clientIP,
+        requestId,
+        requestOrigin,
+        event.httpMethod,
+        userId
+      );
+
+      if (!allowed) {
+        return createRateLimitErrorResponse(requestId, requestOrigin);
+      }
+
+      const verificationIdRaw =
+        userData?.verification_id || userData?.verificationId;
+
+      if (!verificationIdRaw || typeof verificationIdRaw !== "string") {
+        return errorResponse(
+          400,
+          "Missing or invalid verification_id",
+          requestOrigin
+        );
+      }
+
+      const ownershipResult = await getOwnedVerificationRecord(
+        verificationIdRaw,
+        userId,
+        requestOrigin,
+        "attestation retrieval"
+      );
+      if (!ownershipResult.success) {
+        return ownershipResult.response;
+      }
+
+      const verificationId = ownershipResult.verificationId;
+
+      const { supabaseAdmin } = await import(
+        "../../netlify/functions/supabase.js"
+      );
+      if (!supabaseAdmin) {
+        console.error(
+          "supabaseAdmin is not configured for attestation retrieval"
+        );
+        return errorResponse(500, "Server configuration error", requestOrigin);
+      }
+
+      const { data: attestationsData, error: dbError } = await supabaseAdmin
+        .from("attestations")
+        .select(
+          `
+	        id,
+	        verification_id,
+	        event_type,
+	        metadata,
+	        status,
+	        error_details,
+	        created_at,
+	        updated_at,
+	        simpleproof_timestamp_id,
+	        iroh_discovery_id,
+	        simpleproof_timestamps (
+	          id,
+	          ots_proof,
+	          bitcoin_block,
+	          bitcoin_tx,
+	          created_at,
+	          verified_at,
+	          is_valid
+	        ),
+	        iroh_node_discovery (
+	          id,
+	          node_id,
+	          relay_url,
+	          direct_addresses,
+	          discovered_at,
+	          last_seen,
+	          is_reachable
+	        )
+	      `
+        )
+        .eq("verification_id", verificationId);
+
+      if (dbError) {
+        console.error(
+          "Failed to retrieve attestations (server-mediated)",
+          dbError
+        );
+        return errorResponse(500, "Failed to load attestations", requestOrigin);
+      }
+
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: true,
+          attestations: attestationsData || [],
+        }),
+      };
+    } catch (err) {
+      console.error("Unexpected error in handleGetAttestationsRequest", err);
+      return errorResponse(500, "Internal server error", requestOrigin);
+    }
+  }
+
+  // Server-mediated attestation retrieval handler (single record)
+  async function handleGetAttestationRequest(
+    event: any,
+    requestOrigin: string | undefined,
+    corsHeaders: Record<string, string>,
+    userData: any,
+    requestId: string,
+    clientIP: string
+  ) {
+    try {
+      const authResult = await getUserIdFromAuthHeader(event, requestOrigin);
+      if (!authResult.success) {
+        return authResult.response;
+      }
+
+      const userId = authResult.userId;
+
+      const allowed = await enforceRateLimitForAction(
+        "get_attestation",
+        clientIP,
+        requestId,
+        requestOrigin,
+        event.httpMethod,
+        userId
+      );
+
+      if (!allowed) {
+        return createRateLimitErrorResponse(requestId, requestOrigin);
+      }
+
+      const attestationId = userData?.attestation_id || userData?.attestationId;
+
+      if (!attestationId || typeof attestationId !== "string") {
+        return errorResponse(
+          400,
+          "Missing or invalid attestation_id",
+          requestOrigin
+        );
+      }
+
+      const { supabaseAdmin } = await import(
+        "../../netlify/functions/supabase.js"
+      );
+      if (!supabaseAdmin) {
+        console.error(
+          "supabaseAdmin is not configured for attestation retrieval"
+        );
+        return errorResponse(500, "Server configuration error", requestOrigin);
+      }
+
+      const { data: attestationRow, error: attestationError } =
+        await supabaseAdmin
+          .from("attestations")
+          .select(
+            `
+	        id,
+	        verification_id,
+	        event_type,
+	        metadata,
+	        status,
+	        error_details,
+	        created_at,
+	        updated_at,
+	        simpleproof_timestamps (
+	          id,
+	          ots_proof,
+	          bitcoin_block,
+	          bitcoin_tx,
+	          created_at,
+	          verified_at,
+	          is_valid
+	        ),
+	        iroh_node_discovery (
+	          id,
+	          node_id,
+	          relay_url,
+	          direct_addresses,
+	          discovered_at,
+	          last_seen,
+	          is_reachable
+	        ),
+	        multi_method_verification_results!inner (
+	          id,
+	          user_duid
+	        )
+	      `
+          )
+          .eq("id", attestationId)
+          .eq("multi_method_verification_results.user_duid", userId)
+          .single();
+
+      if (attestationError) {
+        if ((attestationError as any).code === "PGRST116") {
+          return errorResponse(404, "Attestation not found", requestOrigin);
+        }
+        console.error(
+          "Failed to load attestation (server-mediated)",
+          attestationError
+        );
+        return errorResponse(500, "Failed to load attestation", requestOrigin);
+      }
+
+      if (!attestationRow) {
+        return errorResponse(404, "Attestation not found", requestOrigin);
+      }
+
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: true,
+          attestation: attestationRow,
+        }),
+      };
+    } catch (err) {
+      console.error("Unexpected error in handleGetAttestationRequest", err);
+      return errorResponse(500, "Internal server error", requestOrigin);
+    }
+  }
+
   try {
     // Parse request body
     let userData;
@@ -1020,19 +1578,56 @@ export const handler: Handler = async (event, context) => {
       );
     }
 
-    // Use centralized database-backed rate limiting
-    const rateLimitKey = createRateLimitIdentifier(undefined, clientIP);
-    const rateLimitAllowed = await checkRateLimit(
-      rateLimitKey,
-      RATE_LIMITS.AUTH_REGISTER
+    // ACTION ROUTING: support both registration and attestation operations
+    const action: RegisterIdentityAction =
+      typeof (userData as any)?.action === "string"
+        ? ((userData as any).action as RegisterIdentityAction)
+        : "register";
+
+    if (action === "create_attestation") {
+      return await handleCreateAttestationRequest(
+        event,
+        requestOrigin,
+        corsHeaders,
+        userData,
+        requestId,
+        clientIP
+      );
+    }
+
+    if (action === "get_attestations") {
+      return await handleGetAttestationsRequest(
+        event,
+        requestOrigin,
+        corsHeaders,
+        userData,
+        requestId,
+        clientIP
+      );
+    }
+
+    if (action === "get_attestation") {
+      return await handleGetAttestationRequest(
+        event,
+        requestOrigin,
+        corsHeaders,
+        userData,
+        requestId,
+        clientIP
+      );
+    }
+
+    // Registration-specific logic continues...
+
+    const registrationAllowed = await enforceRateLimitForAction(
+      "register",
+      clientIP,
+      requestId,
+      requestOrigin,
+      event.httpMethod
     );
 
-    if (!rateLimitAllowed) {
-      logError(new Error("Rate limit exceeded"), {
-        requestId,
-        endpoint: "register-identity",
-        method: event.httpMethod,
-      });
+    if (!registrationAllowed) {
       return createRateLimitErrorResponse(requestId, requestOrigin);
     }
 
