@@ -749,8 +749,10 @@ async function handleCreateTimestamp(
   }
 
   // Store in database
-  const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
-  const supabaseKey = getEnvVar("VITE_SUPABASE_ANON_KEY");
+  const supabaseUrl =
+    getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL");
+  const supabaseKey =
+    getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY");
 
   if (!supabaseUrl || !supabaseKey) {
     logger.error("Missing Supabase configuration", {

@@ -1219,18 +1219,24 @@ export const handler: Handler = async (event, context) => {
         userData?.verification_id || userData?.verificationId;
       const eventType = userData?.event_type || userData?.eventType;
       const status = userData?.status;
-      const metadata = userData?.metadata ?? null;
+      const rawMetadata = userData?.metadata ?? null;
 
-      // Validate metadata structure if provided
+      // Normalize and validate metadata
+      let metadata = rawMetadata;
       if (
         metadata !== null &&
-        (typeof metadata !== "object" || Array.isArray(metadata))
+        typeof metadata !== "object" &&
+        typeof metadata !== "string"
       ) {
         return errorResponse(
           400,
-          "metadata must be an object or null",
+          "metadata must be an object, string, or null",
           requestOrigin
         );
+      }
+
+      if (typeof metadata === "string") {
+        metadata = { description: metadata };
       }
 
       const simpleproofTimestampId = userData?.simpleproof_timestamp_id;
