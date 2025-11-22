@@ -1243,6 +1243,14 @@ export const handler: Handler = async (event, context) => {
       const irohDiscoveryId = userData?.iroh_discovery_id;
       const errorDetails = userData?.error_details ?? null;
 
+      // Debug logging for attestation method IDs
+      console.info("[create_attestation] Received attestation method IDs", {
+        verificationId: verificationIdRaw,
+        eventType,
+        simpleproofTimestampId,
+        irohDiscoveryId,
+      });
+
       if (!verificationIdRaw || typeof verificationIdRaw !== "string") {
         return errorResponse(
           400,
@@ -1259,6 +1267,15 @@ export const handler: Handler = async (event, context) => {
       }
       if (!status || typeof status !== "string") {
         return errorResponse(400, "Missing or invalid status", requestOrigin);
+      }
+
+      // Application-level guard mirroring DB CHECK constraint
+      if (!simpleproofTimestampId && !irohDiscoveryId) {
+        return errorResponse(
+          400,
+          "At least one attestation method ID is required",
+          requestOrigin
+        );
       }
 
       const ownershipResult = await getOwnedVerificationRecord(
@@ -1309,6 +1326,14 @@ export const handler: Handler = async (event, context) => {
           requestOrigin
         );
       }
+
+      console.info("[create_attestation] Attestation created successfully", {
+        verificationId,
+        eventType,
+        simpleproofTimestampId,
+        irohDiscoveryId,
+        attestationId: attestationData?.id,
+      });
 
       return {
         statusCode: 200,

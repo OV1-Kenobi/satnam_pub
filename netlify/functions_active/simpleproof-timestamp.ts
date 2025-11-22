@@ -69,6 +69,10 @@ interface SimpleProofRequest {
 }
 
 interface SimpleProofResponse {
+  /** Primary key of the simpleproof_timestamps row */
+  id: string;
+  /** Backwards-compatible alias for clients expecting timestamp_id */
+  timestamp_id?: string;
   ots_proof: string;
   bitcoin_block: number | null;
   bitcoin_tx: string | null;
@@ -869,8 +873,19 @@ async function handleCreateTimestamp(
     });
   }
 
-  // Return success response
+  // Return success response (include timestampId for downstream consumers)
+  logger.info("Preparing timestamp response", {
+    action: "create",
+    provider,
+    verificationId: body.verification_id,
+    metadata: {
+      timestampId,
+    },
+  });
+
   const response: SimpleProofResponse = {
+    id: timestampId,
+    timestamp_id: timestampId,
     ots_proof: apiResult.ots_proof,
     bitcoin_block: apiResult.bitcoin_block || null,
     bitcoin_tx: apiResult.bitcoin_tx || null,
