@@ -32,12 +32,12 @@ import {
   createLogger,
   logApiCall,
   logDatabaseOperation,
-} from "../functions/utils/logging.js";
+} from "../functions/utils/logging.ts";
 import {
   addSimpleProofBreadcrumb,
   captureSimpleProofError,
   initializeSentry,
-} from "../functions/utils/sentry.server.js";
+} from "../functions/utils/sentry.server.ts";
 import { supabaseAdmin } from "../functions/supabase.js";
 import { getEnvVar } from "./utils/env.js";
 import {
@@ -767,6 +767,7 @@ async function handleCreateTimestamp(
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
+  const timestampClient = supabaseAdmin || supabase;
 
   let timestampId: string;
   const dbStartTime = Date.now();
@@ -775,7 +776,7 @@ async function handleCreateTimestamp(
     const performanceMs = Date.now() - operationStartTime;
 
     timestampId = await storeTimestamp(
-      supabase,
+      timestampClient,
       body.verification_id!,
       apiResult.ots_proof,
       apiResult.bitcoin_block || null,
@@ -834,7 +835,7 @@ async function handleCreateTimestamp(
       },
     });
 
-    const { error: attestationError } = await supabase
+    const { error: attestationError } = await timestampClient
       .from("attestation_records")
       .insert({
         verification_id: body.verification_id!,

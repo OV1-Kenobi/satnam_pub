@@ -17,12 +17,12 @@ import {
   createLogger,
   logApiCall,
   logCacheEvent,
-} from "../functions/utils/logging.js";
+} from "../functions/utils/logging.ts";
 import {
   addSimpleProofBreadcrumb,
   captureSimpleProofError,
   initializeSentry,
-} from "../functions/utils/sentry.server.js";
+} from "../functions/utils/sentry.server.ts";
 import { getEnvVar } from "./utils/env.js";
 
 // Security utilities (Phase 3 hardening)
