@@ -1322,9 +1322,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         }
       }
 
-      // CRITICAL: Secure cleanup of ephemeral nsec from memory immediately after encryption
-      secureMemoryCleanup(ephemeralNsec);
-      setEphemeralNsecProtected('', true); // Force clear after successful registration
 
       for (let i = 30; i <= 80; i++) {
         setGenerationProgress(i);
@@ -1518,6 +1515,15 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
               15 * 60 * 1000
             );
             setNsecRetentionSessionId(retentionSessionId);
+
+            // SECURITY: Now that a post-registration session is established from the ephemeral nsec,
+            // we can safely clear the in-memory secret to maintain zero-knowledge guarantees.
+            try {
+              secureMemoryCleanup(ephemeralNsec);
+              setEphemeralNsecProtected('', true);
+            } catch (cleanupError) {
+              console.warn('Post-registration ephemeral nsec cleanup failed:', cleanupError);
+            }
 
             // Automatic LNBits wallet provisioning (feature-gated)
             try {
