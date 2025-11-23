@@ -376,8 +376,10 @@ async function storeTimestamp(
       ots_proof: otsProof,
       bitcoin_block: bitcoinBlock,
       bitcoin_tx: bitcoinTx,
-      verified_at: Math.floor(Date.now() / 1000),
-      is_valid: true,
+      // NOTE: Leave verified_at and is_valid NULL on insert to avoid
+      // cross-system clock skew issues with the timestamps_valid CHECK
+      // constraint. These fields will be set later by dedicated
+      // verification flows once on-chain confirmation is available.
       performance_ms: performanceMs || null, // Store actual operation duration
     })
     .select("id")

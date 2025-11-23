@@ -14,7 +14,9 @@ import {
   Sparkles,
   User,
   Users,
-  X
+  X,
+  CreditCard,
+  Zap,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -57,10 +59,9 @@ import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/e
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
 import { ActionContextSelector } from "./ActionContextSelector";
-import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimationWrapper";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
-import { TapsignerPinEntry } from "./TapsignerPinEntry";
+import NFCProvisioningGuide from "./NFCProvisioningGuide";
 
 // Feature flags (from clientConfig.flags)
 const LNBITS_ENABLED: boolean = clientConfig.flags.lnbitsEnabled;
@@ -312,19 +313,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const [attestationStatus, setAttestationStatus] = useState<'pending' | 'success' | 'failure' | 'skipped' | null>(null);
   const [nip03AttestationError, setNip03AttestationError] = useState<string | null>(null);
 
-  // Phase 3 Task 3.1: Tapsigner Setup State
-  const [showTapsignerSetup, setShowTapsignerSetup] = useState(false);
-  const [tapsignerCardId, setTapsignerCardId] = useState<string | null>(null);
-  const [tapsignerSetupComplete, setTapsignerSetupComplete] = useState(false);
-
-  // Phase 3 Task 3.3: Tapsigner Integration State (Action Selection, PIN Entry, Completion)
-  const [tapsignerStep, setTapsignerStep] = useState<'action' | 'pin' | 'complete'>('action');
-  const [selectedTapsignerAction, setSelectedTapsignerAction] = useState<'payment' | 'event' | 'login' | null>(null);
-  const [tapsignerActionContext, setTapsignerActionContext] = useState<Record<string, unknown> | null>(null);
-  const [tapsignerError, setTapsignerError] = useState<string | null>(null);
-  const [tapsignerAttempts, setTapsignerAttempts] = useState(3);
-  const [tapsignerLocked, setTapsignerLocked] = useState(false);
-  const [tapsignerLockoutExpires, setTapsignerLockoutExpires] = useState<string | null>(null);
+  // Step 5: Optional NFC hardware setup selection state
+  const [nfcBoltcardSelected, setNfcBoltcardSelected] = useState<boolean>(false);
+  const [nfcSatscardSelected, setNfcSatscardSelected] = useState<boolean>(false);
+  const [showNfcProvisioningGuide, setShowNfcProvisioningGuide] = useState<boolean>(false);
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   // Use refs to track current values for cleanup without triggering effect re-runs
@@ -1898,26 +1890,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             </div>
             <h2 className="text-4xl font-bold text-white mb-6">
               Identity Claimed Successfully!
-
-              {LNBITS_ENABLED && (
-                <div className="flex flex-col items-center gap-3 mt-6">
-                  <button
-                    onClick={handleProvisionNameTag}
-                    disabled={isProvisioningCard}
-                    className={`px-6 py-3 rounded-lg font-semibold transition ${isProvisioningCard ? 'bg-white/10 text-purple-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
-                    aria-label="Provision Name Tag (Boltcard)"
-                  >
-                    {isProvisioningCard ? 'Provisioning Name Tag…' : 'Provision Name Tag (optional)'}
-                  </button>
-                  {boltcardInfo?.authQr && (
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                      <p className="text-sm text-purple-200 mb-2">Scan this QR in the Boltcard app to program your Name Tag</p>
-                      <img src={boltcardInfo.authQr} alt="Boltcard Auth QR" className="w-48 h-48 object-contain rounded" />
-                    </div>
-                  )}
-                </div>
-              )}
-
             </h2>
             <p className="text-xl text-purple-200 mb-8">
               Welcome to true digital sovereignty,{" "}
@@ -3154,128 +3126,133 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
             )
           }
 
-          {/* Step 5: Tapsigner Setup (Phase 3 Task 3.3 - Integrated with ActionContextSelector & TapsignerPinEntry) */}
-          {
-            TAPSIGNER_ENABLED && currentStep === 5 && (
-              <div className="space-y-6">
-                {/* Header */}
-                <div className="text-center">
-                  <Shield className="h-16 w-16 text-purple-500 mx-auto mb-4" />
-                  <h3 className="text-2xl font-bold text-white mb-4">
-                    {tapsignerStep === 'action' && 'Select Your Tapsigner Action'}
-                    {tapsignerStep === 'pin' && 'Enter Your Tapsigner PIN'}
-                    {tapsignerStep === 'complete' && 'Tapsigner Setup Complete!'}
-                  </h3>
-                  <p className="text-purple-200">
-                    {tapsignerStep === 'action' && 'Choose what you want to authorize with your Tapsigner card'}
-                    {tapsignerStep === 'pin' && 'Verify your identity with your 6-digit PIN'}
-                    {tapsignerStep === 'complete' && 'Your Tapsigner card is now registered and ready to use'}
-                  </p>
+          {/* Step 5: Optional NFC Hardware Setup (Boltcard / Satscard) */}
+          {currentStep === 5 && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <Shield className="h-16 w-16 text-purple-500 mx-auto mb-4" />
+                <h3 className="text-2xl font-bold text-white mb-4">
+                  Set Up Your Physical NFC Security (Optional)
+                </h3>
+                <p className="text-purple-200 max-w-xl mx-auto">
+                  Link NFC hardware for passwordless multi-factor authentication and secure payments.
+                  You can skip this for now and set it up later from your account settings.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 bg-white/5 border border-white/10 rounded-2xl p-4">
+                  <input
+                    type="checkbox"
+                    id="nfc-boltcard-setup"
+                    checked={nfcBoltcardSelected}
+                    onChange={(e) => setNfcBoltcardSelected(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-purple-500 border-purple-400 rounded focus:ring-purple-500"
+                  />
+                  <label htmlFor="nfc-boltcard-setup" className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="h-5 w-5 text-yellow-400" />
+                      <span className="text-white font-semibold">Boltcard (Lightning NFC payments + MFA)</span>
+                    </div>
+                    <p className="text-sm text-purple-200">
+                      Create or link a Boltcard via LNbits for Lightning payments and NFC-based message signing.
+                    </p>
+                  </label>
                 </div>
 
-                {/* Sub-step 1: Action Selection */}
-                {tapsignerStep === 'action' && (
-                  <div className="space-y-6">
-                    <ActionContextSelector
-                      availableActions={['payment', 'event', 'login']}
-                      onActionSelect={async (actionType: 'payment' | 'event' | 'login', context: Record<string, unknown>) => {
-                        setSelectedTapsignerAction(actionType);
-                        setTapsignerActionContext(context);
-                        setTapsignerStep('pin');
-                        setTapsignerError(null);
-                      }}
-                      onCancel={() => {
-                        setCurrentStep(6);
-                      }}
-                      defaultAction="event"
-                      isLoading={false}
-                      error={tapsignerError}
-                    />
-                  </div>
-                )}
-
-                {/* Sub-step 2: PIN Entry */}
-                {tapsignerStep === 'pin' && selectedTapsignerAction && (
-                  <div className="space-y-6">
-                    <TapsignerPinEntry
-                      onSubmit={async (pin: string) => {
-                        try {
-                          setTapsignerError(null);
-                          // PIN validation happens on card hardware
-                          // For now, simulate successful PIN entry
-                          setTapsignerCardId(`card_${Date.now()}`);
-                          setTapsignerStep('complete');
-                        } catch (error) {
-                          const errorMsg = error instanceof Error ? error.message : 'PIN validation failed';
-                          setTapsignerError(errorMsg);
-                          // Update attempt counter
-                          setTapsignerAttempts(prev => Math.max(0, prev - 1));
-                        }
-                      }}
-                      onCancel={() => {
-                        setTapsignerStep('action');
-                        setSelectedTapsignerAction(null);
-                        setTapsignerActionContext(null);
-                      }}
-                      attemptNumber={4 - tapsignerAttempts}
-                      attemptsRemaining={tapsignerAttempts}
-                      isLocked={tapsignerLocked}
-                      lockoutExpiresAt={tapsignerLockoutExpires || undefined}
-                      isLoading={false}
-                      error={tapsignerError}
-                      helpText="Enter the 6-digit PIN from your Tapsigner card"
-                    />
-                  </div>
-                )}
-
-                {/* Sub-step 3: Completion */}
-                {tapsignerStep === 'complete' && tapsignerCardId && (
-                  <div className="space-y-6">
-                    <div className="bg-green-500/20 border border-green-500/50 rounded-2xl p-6 text-center">
-                      <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
-                      <h4 className="text-xl font-bold text-green-200 mb-2">Tapsigner Registered Successfully!</h4>
-                      <p className="text-green-200/80 mb-4">
-                        Your Tapsigner card is now registered and ready for secure operations.
-                      </p>
-                      <div className="bg-black/20 rounded-lg p-3 mb-4">
-                        <p className="text-sm text-green-300 font-mono break-all">{tapsignerCardId}</p>
-                      </div>
-                      <p className="text-sm text-green-200/60">
-                        You can now use your card to authorize payments, sign events, and participate in threshold signing.
-                      </p>
+                <div className="flex items-start gap-3 bg-white/5 border border-white/10 rounded-2xl p-4 opacity-70">
+                  <input
+                    type="checkbox"
+                    id="nfc-satscard-setup"
+                    checked={nfcSatscardSelected}
+                    onChange={(e) => setNfcSatscardSelected(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-purple-500 border-purple-400 rounded focus:ring-purple-500"
+                  />
+                  <label htmlFor="nfc-satscard-setup" className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CreditCard className="h-5 w-5 text-blue-400" />
+                      <span className="text-white font-semibold">Satscard (on-chain NFC signing)</span>
                     </div>
+                    <p className="text-sm text-purple-200">
+                      Plan ahead for future Satscard support for on-chain Bitcoin signing via NFC.
+                    </p>
+                    <p className="text-xs text-purple-300 mt-1">
+                      Roadmap only: Satscard support will be enabled in a future release.
+                    </p>
+                  </label>
+                </div>
+              </div>
 
-                    <div className="flex gap-4">
+              {nfcBoltcardSelected && LNBITS_ENABLED && (
+                <div className="space-y-4">
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <h4 className="text-lg font-semibold text-white mb-2">Provision your Name Tag Boltcard</h4>
+                    <p className="text-sm text-purple-200 mb-3">
+                      Well guide you through creating a Boltcard in LNbits and programming your NFC Name Tag.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <button
-                        onClick={() => {
-                          setTapsignerSetupComplete(true);
-                          setCurrentStep(6);
-                        }}
-                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                        type="button"
+                        onClick={handleProvisionNameTag}
+                        disabled={isProvisioningCard}
+                        className={`flex-1 px-4 py-2 rounded-lg font-semibold transition ${isProvisioningCard ? 'bg-white/10 text-purple-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
                       >
-                        Continue to Completion
+                        {isProvisioningCard ? 'Provisioning Name Tag…' : 'Start Boltcard Setup'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowNfcProvisioningGuide(true)}
+                        className="flex-1 px-4 py-2 rounded-lg font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                      >
+                        View Detailed NFC Provisioning Guide
                       </button>
                     </div>
                   </div>
-                )}
 
-                {/* Skip Option - Always Available */}
-                {tapsignerStep !== 'complete' && (
-                  <div className="text-center pt-4 border-t border-white/10">
-                    <button
-                      onClick={() => {
-                        setTapsignerSetupComplete(false);
-                        setCurrentStep(6);
-                      }}
-                      className="text-purple-300 hover:text-purple-200 text-sm font-medium transition-colors"
-                    >
-                      Skip Tapsigner Setup for Now
-                    </button>
-                  </div>
-                )}
+                  {showNfcProvisioningGuide && (
+                    <div className="mt-4 border border-white/10 rounded-2xl overflow-hidden bg-black/40">
+                      <NFCProvisioningGuide onBack={() => setShowNfcProvisioningGuide(false)} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!nfcBoltcardSelected && !nfcSatscardSelected && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 text-yellow-100 text-sm flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5" />
+                  <p>
+                    You havent selected any NFC hardware. You can continue without NFC security and set it up later.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-between pt-4 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(4)}
+                  className="text-purple-300 hover:text-purple-200 text-sm font-medium"
+                >
+                  Back to Verification
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // If no device selected, auto-skip
+                    if (!nfcBoltcardSelected && !nfcSatscardSelected) {
+                      setCurrentStep(6);
+                      return;
+                    }
+                    // For now, Boltcard setup is handled via LNbits + NFC guide;
+                    // when provisioning completes or user is done, move to completion.
+                    setCurrentStep(6);
+                  }}
+                  className="px-6 py-2 rounded-lg font-semibold bg-orange-500 hover:bg-orange-600 text-white"
+                >
+                  Continue
+                </button>
               </div>
-            )
-          }
+            </div>
+          )}
 
           {/* Step 6: Final Completion Screen */}
           {
@@ -3364,39 +3341,6 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                         )}
                       </div>
                     </div>
-
-                    {/* SimpleProof Blockchain Attestation (Optional) */}
-                    {SIMPLEPROOF_ENABLED && verificationId && (
-                      <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-6">
-                        <h4 className="text-orange-200 font-bold mb-3">🔐 Blockchain Attestation (Optional)</h4>
-                        <p className="text-purple-200 text-sm mb-4">
-                          Create a permanent, verifiable record of your account creation on the Bitcoin blockchain.
-                          This is optional but recommended for maximum identity verification.
-                        </p>
-                        <SimpleProofFeeEstimationWrapper
-                          data={JSON.stringify({
-                            username: registrationResult.user.username,
-                            nip05: registrationResult.user.nip05 || `${registrationResult.user.username}@${selectedDomain}`,
-                            lightningAddress: getDisplayLightningAddress(registrationResult.user.lightningAddress),
-                            createdAt: new Date().toISOString(),
-                          })}
-                          verificationId={verificationId}
-                          eventType="account_creation"
-                          onSuccess={(result: any) => {
-                            console.log('✅ SimpleProof attestation created for account creation:', result);
-                          }}
-                          onError={(error: any) => {
-                            console.error('❌ SimpleProof attestation failed:', error);
-                          }}
-                          variant="primary"
-                          size="md"
-                          className="w-full"
-                        />
-                        <p className="text-purple-300 text-xs mt-3 text-center">
-                          You can skip this step and continue with your sovereignty journey
-                        </p>
-                      </div>
-                    )}
 
                     <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-6">
                       <h4 className="text-purple-200 font-bold mb-3">🎯 Your Sovereignty Journey Begins</h4>

@@ -340,8 +340,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
         message: 'Authentication successful!'
       });
 
-      // Get session info and show invitation modal
-      // Schedule showing the invitation modal slightly after success
+      // Get session info and show invitation + NFC setup modal
+      // Schedule showing the post-auth flow slightly after success
       // Store timer so it can be cancelled on unmount/close
       postAuthTimerRef.current = window.setTimeout(() => {
         const loadSessionInfo = async () => {
