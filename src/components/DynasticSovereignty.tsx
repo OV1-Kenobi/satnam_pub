@@ -36,7 +36,7 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
         <div className="space-y-6">
           <div className="bg-blue-500/20 rounded-xl p-4 border border-blue-400/30 mb-6">
             <p className="text-black text-base font-bold">
-              🎯 <strong>Your Family's Values:</strong> These examples show the foundation of Truth, Honor, Justice, Work, and Service. 
+              🎯 <strong>Your Family's Values:</strong> These examples show the foundation of Truth, Honor, Justice, Work, and Service.
               You will define what values guide your family's decisions and actions.
             </p>
           </div>
@@ -98,7 +98,7 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
         <div className="space-y-6">
           <div className="bg-green-500/20 rounded-xl p-4 border border-green-400/30 mb-6">
             <p className="text-black text-base font-bold">
-              ⚔️ <strong>Your Family's Round Table:</strong> These example roles show how to structure your family's governance. 
+              ⚔️ <strong>Your Family's Round Table:</strong> These example roles show how to structure your family's governance.
               You will define who does what, who decides what, and how your family operates as a sovereign unit.
             </p>
           </div>
@@ -107,7 +107,7 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
             <p className="text-black mb-6 text-lg font-bold">
               These roles demonstrate how to establish rights, responsibilities, and rewards for each position in your family's hierarchy.
             </p>
-            
+
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-purple-800/30 rounded-xl p-4 border border-purple-500/30">
                 <div className="flex items-center space-x-3 mb-3">
@@ -202,7 +202,7 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
         <div className="space-y-6">
           <div className="bg-purple-500/20 rounded-xl p-4 border border-purple-400/30 mb-6">
             <p className="text-black text-base font-bold">
-              🤝 <strong>Your Family's Alliances:</strong> These examples show how to build strategic partnerships. 
+              🤝 <strong>Your Family's Alliances:</strong> These examples show how to build strategic partnerships.
               You will identify which families share your values and how to create mutual prosperity through collaboration.
             </p>
           </div>
@@ -212,10 +212,10 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
               <span>Example Alliance Framework</span>
             </h3>
             <p className="text-black mb-6 text-lg font-bold">
-              These examples demonstrate how to invite trusted peers who share your values, vision, and mission. 
+              These examples demonstrate how to invite trusted peers who share your values, vision, and mission.
               You will create your own alliance criteria and partnership structures.
             </p>
-            
+
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-blue-800/30 rounded-xl p-6 border border-blue-500/30">
                 <h4 className="font-bold text-black mb-3 text-lg">Example: Value Alignment</h4>
@@ -276,7 +276,7 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
   ];
 
   return (
-    <div 
+    <div
       className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700"
       style={{
         backgroundImage: 'url(/citadel-fortress-bg.jpg)',
@@ -287,105 +287,106 @@ const DynasticSovereignty: React.FC<DynasticSovereigntyProps> = ({ onBack, onSta
       }}
     >
       {/* Overlay for better text readability */}
-      <div 
+      <div
         className="absolute inset-0 bg-gradient-to-br from-purple-900/40 via-purple-800/30 to-purple-700/40"
         style={{ zIndex: 0 }}
       />
       <div className="relative z-10 w-full">
-      {/* Header */}
-      <div className="bg-purple-800/40 backdrop-blur-sm border-b border-white/30 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={onBack}
-                className="text-white hover:text-purple-200 transition-colors duration-200"
-              >
-                <ArrowLeft className="h-6 w-6" />
-              </button>
-              <div>
-                <h1 className="text-4xl font-bold text-white font-medieval">Dynastic Sovereignty</h1>
-                <p className="text-purple-200 text-lg font-bold">Family Federation Founders - Craft Your Dynasty's Foundation</p>
+        {/* Header */}
+        <div className="bg-purple-800/40 backdrop-blur-sm border-b border-white/30 shadow-sm">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={onBack}
+                  className="text-white hover:text-purple-200 transition-colors duration-200"
+                >
+                  <ArrowLeft className="h-6 w-6" />
+                </button>
+                <div>
+                  <h1 className="text-4xl font-bold text-white font-medieval">Dynastic Sovereignty</h1>
+                  <p className="text-purple-200 text-lg font-bold">Family Federation Founders - Craft Your Dynasty's Foundation</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Progress Steps */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center space-x-4">
-            {steps.map((step, index) => (
-              <div key={step.id} className="flex items-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${
-                    step.id <= activeStep
-                      ? "bg-yellow-500 text-white"
-                      : "bg-white/20 text-purple-200"
-                  }`}
-                >
-                  {step.id < activeStep ? <CheckCircle className="h-6 w-6" /> : step.id}
-                </div>
-                {index < steps.length - 1 && (
+        {/* Progress Steps */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-center mb-8">
+            <div className="flex items-center space-x-4">
+              {steps.map((step, index) => (
+                <div key={step.id} className="flex items-center">
                   <div
-                    className={`h-1 w-8 mx-2 transition-all duration-300 ${
-                      step.id < activeStep ? "bg-yellow-500" : "bg-white/20"
-                    }`}
-                  />
-                )}
-              </div>
-            ))}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${step.id <= activeStep
+                        ? "bg-yellow-500 text-white"
+                        : "bg-white/20 text-purple-200"
+                      }`}
+                  >
+                    {step.id < activeStep ? <CheckCircle className="h-6 w-6" /> : step.id}
+                  </div>
+                  {index < steps.length - 1 && (
+                    <div
+                      className={`h-1 w-8 mx-2 transition-all duration-300 ${step.id < activeStep ? "bg-yellow-500" : "bg-white/20"
+                        }`}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-        <div className="bg-purple-100/20 backdrop-blur-sm rounded-2xl p-8 border border-white/30 shadow-lg">
-          <div className="text-center mb-8">
-            <div className="bg-purple-800/40 backdrop-blur-sm rounded-xl p-6 border border-white/30 shadow-lg mb-4">
-              <h2 className="text-3xl font-bold text-black mb-2 font-medieval">{steps[activeStep - 1].title}</h2>
-              <p className="text-black text-lg font-bold">{steps[activeStep - 1].subtitle}</p>
-              {activeStep === 1 && (
-                <div className="mt-4 p-4 bg-yellow-500/20 rounded-lg border border-yellow-400/30">
-                  <p className="text-black text-base font-bold">
-                    💎 <strong>Family Federation Founders:</strong> These are examples to inspire your own family's charter. 
-                    You will craft your unique values, vision, mission, and roles that reflect your family's sovereign path.
-                  </p>
+        {/* Content */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+          <div className="bg-purple-100/20 backdrop-blur-sm rounded-2xl p-8 border border-white/30 shadow-lg">
+            <div className="text-center mb-8">
+              <div className="bg-purple-800/40 backdrop-blur-sm rounded-xl p-6 border border-white/30 shadow-lg mb-4">
+                <h2 className="text-3xl font-bold text-black mb-2 font-medieval">{steps[activeStep - 1].title}</h2>
+                <p className="text-black text-lg font-bold">{steps[activeStep - 1].subtitle}</p>
+                {activeStep === 1 && (
+                  <div className="mt-4 p-4 bg-yellow-500/20 rounded-lg border border-yellow-400/30">
+                    <p className="text-black text-base font-bold">
+                      💎 <strong>Family Federation Founders:</strong> These are examples to inspire your own family's charter.
+                      You will craft your unique values, vision, mission, and roles that reflect your family's sovereign path.
+                      <span className="block mt-2">
+                        After these 3 educational steps, you'll continue into the secure Family Foundry setup to configure your real family federation.
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {steps[activeStep - 1].content}
+
+            {/* Navigation */}
+            <div className="flex justify-end items-center mt-8 pt-6 border-t border-white/20">
+
+              {activeStep === steps.length ? (
+                <div className="w-full flex justify-center mt-8">
+                  <button
+                    onClick={onAuthRequired}
+                    className="flex items-center space-x-3 px-12 py-4 rounded-xl font-bold transition-all duration-300 bg-purple-800 hover:bg-purple-900 text-black transform hover:scale-105 shadow-lg hover:shadow-xl text-xl"
+                  >
+                    <Crown className="h-6 w-6 text-yellow-400" />
+                    <span>Found Your Family's Dynasty</span>
+                    <ArrowRight className="h-6 w-6" />
+                  </button>
                 </div>
+              ) : (
+                <button
+                  onClick={() => setActiveStep(activeStep + 1)}
+                  className="flex items-center space-x-2 px-6 py-3 rounded-lg font-bold transition-all duration-300 bg-purple-700 hover:bg-purple-800 text-white"
+                >
+                  <span>Next</span>
+                  <ArrowRight className="h-5 w-5" />
+                </button>
               )}
             </div>
           </div>
-          
-          {steps[activeStep - 1].content}
-
-          {/* Navigation */}
-          <div className="flex justify-end items-center mt-8 pt-6 border-t border-white/20">
-
-            {activeStep === steps.length ? (
-              <div className="w-full flex justify-center mt-8">
-                <button
-                  onClick={onAuthRequired}
-                  className="flex items-center space-x-3 px-12 py-4 rounded-xl font-bold transition-all duration-300 bg-purple-800 hover:bg-purple-900 text-black transform hover:scale-105 shadow-lg hover:shadow-xl text-xl"
-                >
-                  <Crown className="h-6 w-6 text-yellow-400" />
-                  <span>Found Your Family's Dynasty</span>
-                  <ArrowRight className="h-6 w-6" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setActiveStep(activeStep + 1)}
-                className="flex items-center space-x-2 px-6 py-3 rounded-lg font-bold transition-all duration-300 bg-purple-700 hover:bg-purple-800 text-white"
-              >
-                <span>Next</span>
-                <ArrowRight className="h-5 w-5" />
-              </button>
-            )}
-          </div>
         </div>
-      </div>
       </div>
     </div>
   );

@@ -94,6 +94,7 @@ interface FormData {
 interface IdentityForgeProps {
   onComplete: () => void;
   onBack: () => void;
+  onStartFamilyFoundry?: () => void;
   invitationToken?: string | null;
   invitationDetails?: any;
   isInvitedUser?: boolean;
@@ -110,6 +111,7 @@ interface IdentityForgeProps {
 const IdentityForge: React.FC<IdentityForgeProps> = ({
   onComplete,
   onBack,
+  onStartFamilyFoundry,
   invitationToken = null,
   invitationDetails = null,
   isInvitedUser = false,
@@ -3397,8 +3399,16 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                       <div className="text-center">
                         <button
                           onClick={() => {
-                            // Navigate via app-level event to Dynastic Sovereignty view
-                            window.dispatchEvent(new CustomEvent('satnam:navigate', { detail: { view: 'dynastic-sovereignty' } }));
+                            if (onStartFamilyFoundry) {
+                              onStartFamilyFoundry();
+                            } else {
+                              // Fallback: navigate via app-level event to Dynastic Sovereignty view
+                              window.dispatchEvent(
+                                new CustomEvent('satnam:navigate', {
+                                  detail: { view: 'dynastic-sovereignty' },
+                                })
+                              );
+                            }
                           }}
                           className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-4 px-10 rounded-xl transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-3 mx-auto text-lg shadow-lg hover:shadow-xl"
                         >

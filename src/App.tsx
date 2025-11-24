@@ -409,6 +409,7 @@ function App() {
           <IdentityForge
             onComplete={() => setCurrentView("nostr-ecosystem")}
             onBack={() => setCurrentView("landing")}
+            onStartFamilyFoundry={() => setShowFamilyFoundryAuthModal(true)}
             invitationToken={invitationToken}
             invitationDetails={invitationDetails}
             isInvitedUser={isInvitedUser}
@@ -575,11 +576,25 @@ function App() {
 
   if (currentView === "dynastic-sovereignty") {
     return (
-      <DynasticSovereignty
-        onBack={() => setCurrentView("landing")}
-        onStartFoundry={() => handleProtectedRoute("family-foundry")}
-        onAuthRequired={() => setShowFamilyFoundryAuthModal(true)}
-      />
+      <>
+        <DynasticSovereignty
+          onBack={() => setCurrentView("landing")}
+          onStartFoundry={() => handleProtectedRoute("family-foundry")}
+          onAuthRequired={() => setShowFamilyFoundryAuthModal(true)}
+        />
+        <FamilyFoundryAuthModal
+          isOpen={showFamilyFoundryAuthModal}
+          onClose={() => setShowFamilyFoundryAuthModal(false)}
+          onAuthSuccess={() => {
+            setShowFamilyFoundryAuthModal(false);
+            handleProtectedRoute("family-foundry");
+          }}
+          onExistingUserSignIn={() => {
+            setShowFamilyFoundryAuthModal(false);
+            setSignInModalOpen(true);
+          }}
+        />
+      </>
     );
   }
 
