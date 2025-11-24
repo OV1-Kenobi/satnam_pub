@@ -130,18 +130,28 @@ export function NIP05PasswordAuth({
   };
 
   // Validate NIP-05 format and domain
-  const validateNIP05 = (nip05: string): { valid: boolean; error?: string } => {
-    const nip05Regex = /^([a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/;
+  const validateNIP05 = (
+    nip05: string
+  ): { valid: boolean; error?: string } => {
+    const nip05Regex =
+      /^([a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/;
 
     if (!nip05Regex.test(nip05)) {
-      return { valid: false, error: 'Invalid NIP-05 format. Use format: user@domain.com' };
+      return {
+        valid: false,
+        error: "Invalid NIP-05 format. Use format: user@domain.com",
+      };
     }
 
-    const [, domain] = nip05.split('@');
+    const [, domain] = nip05.split("@");
     const whitelistedDomains = config.nip05?.allowedDomains;
 
     if (!whitelistedDomains?.includes(domain)) {
-      return { valid: false, error: 'Domain not whitelisted. Use satnam.pub or citadel.academy' };
+      const allowedList = whitelistedDomains?.join(", ") || "my.satnam.pub";
+      return {
+        valid: false,
+        error: `Domain not whitelisted. Allowed domains: ${allowedList}`,
+      };
     }
 
     return { valid: true };

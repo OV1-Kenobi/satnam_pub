@@ -247,10 +247,23 @@ class PasswordUtils {
  * NIP-05 validation utilities
  */
 class NIP05Utils {
-  private static readonly WHITELISTED_DOMAINS = [
-    "satnam.pub",
-    "citadel.academy",
-  ];
+  /**
+   * Resolve the allowed NIP-05 domain list for authentication.
+   * Uses the platform lightning domain as the canonical identity domain.
+   */
+  private static getWhitelistedDomains(): string[] {
+    // Resolve the canonical identity domain from client config
+    const platformDomain = resolvePlatformLightningDomain();
+    const domains: string[] = [];
+
+    if (platformDomain && platformDomain.trim()) {
+      domains.push(platformDomain.trim().toLowerCase());
+    }
+
+    // NOTE: For greenfield auth, @my.satnam.pub (platform lightning domain)
+    // is the only required domain for NIP-05/password authentication.
+    return domains;
+  }
 
   /**
    * Validate NIP-05 format and domain whitelist
@@ -287,11 +300,12 @@ class NIP05Utils {
       };
     }
 
-    // Validate domain whitelist
-    if (!this.WHITELISTED_DOMAINS.includes(domain)) {
+    // Validate domain whitelist using platform lightning domain
+    const whitelistedDomains = this.getWhitelistedDomains();
+    if (!whitelistedDomains.includes(domain)) {
       return {
         valid: false,
-        error: `Domain ${domain} is not whitelisted. Allowed domains: ${this.WHITELISTED_DOMAINS.join(
+        error: `Domain ${domain} is not whitelisted. Allowed domains: ${whitelistedDomains.join(
           ", "
         )}`,
       };

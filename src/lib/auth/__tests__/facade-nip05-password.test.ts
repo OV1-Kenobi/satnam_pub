@@ -158,33 +158,24 @@ describe("Client auth facade - NIP-05/password", () => {
       sessionId: "s1",
     });
 
-    // First: NIP-05 resolution fetch to /.well-known/nostr.json
-    // Second: server-side signin
+    // Server-side signin response for /api/auth/signin
     // @ts-ignore
-    (global.fetch as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-        json: async () => ({
-          names: { alice: "npub1aliceexample0000000000000000000000000000000" },
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-        json: async () => ({
-          success: true,
-          user: { id: "u1" },
-          sessionToken: token,
-        }),
-      });
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "Content-Type": "application/json" }),
+      json: async () => ({
+        success: true,
+        user: { id: "u1" },
+        sessionToken: token,
+      }),
+    });
 
     const res = await userIdentitiesAuth.authenticateNIP05Password({
-      nip05: "alice@satnam.pub",
+      nip05: "alice@my.satnam.pub",
       password: "secret",
     });
+    expect(res).toBeDefined();
     expect(res.success).toBe(true);
     expect(res.sessionToken).toBeDefined();
 

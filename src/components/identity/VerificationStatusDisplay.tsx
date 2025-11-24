@@ -9,7 +9,7 @@ import { CheckCircle, AlertCircle, Clock, Zap } from "lucide-react";
 
 export interface VerificationStatus {
   verified: boolean;
-  verificationMethod: "kind:0" | "pkarr" | "dns" | "none";
+  verificationMethod: "kind:0" | "pkarr" | "dns" | "iroh" | "none";
   nip05?: string;
   pubkey?: string;
   name?: string;
@@ -30,6 +30,7 @@ const methodColors: Record<string, string> = {
   "kind:0": "bg-purple-100 text-purple-800 border-purple-300",
   pkarr: "bg-blue-100 text-blue-800 border-blue-300",
   dns: "bg-amber-100 text-amber-800 border-amber-300",
+  iroh: "bg-green-100 text-green-800 border-green-300",
   none: "bg-gray-100 text-gray-800 border-gray-300",
 };
 
@@ -37,6 +38,7 @@ const methodIcons: Record<string, React.ReactNode> = {
   "kind:0": <Zap className="w-4 h-4" />,
   pkarr: <Zap className="w-4 h-4" />,
   dns: <Clock className="w-4 h-4" />,
+  iroh: <Zap className="w-4 h-4" />,
   none: <AlertCircle className="w-4 h-4" />,
 };
 
@@ -44,6 +46,7 @@ const methodLabels: Record<string, string> = {
   "kind:0": "Nostr Metadata",
   pkarr: "BitTorrent DHT",
   dns: "DNS (NIP-05)",
+  iroh: "Iroh DHT",
   none: "Not Verified",
 };
 
@@ -67,9 +70,8 @@ export const VerificationStatusDisplay: React.FC<
           {status.verified ? "Verified" : "Not Verified"}
         </span>
         <span
-          className={`text-xs px-2 py-1 rounded border ${
-            methodColors[status.verificationMethod]
-          }`}
+          className={`text-xs px-2 py-1 rounded border ${methodColors[status.verificationMethod]
+            }`}
         >
           {methodLabels[status.verificationMethod]}
         </span>
@@ -107,9 +109,8 @@ export const VerificationStatusDisplay: React.FC<
             Verification Method:
           </span>
           <div
-            className={`flex items-center gap-2 px-3 py-1 rounded-full border ${
-              methodColors[status.verificationMethod]
-            }`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-full border ${methodColors[status.verificationMethod]
+              }`}
           >
             {methodIcons[status.verificationMethod]}
             <span className="text-sm font-medium">
