@@ -11,10 +11,23 @@
  * - Standardized error handling
  */
 
-// Import centralized security utilities
+// Import centralized security and rate limiting utilities
 import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.server.js";
 import {
-    getSecurityHeaders
+    RATE_LIMITS,
+    checkRateLimit,
+    createRateLimitIdentifier,
+    getClientIP,
+} from "./utils/enhanced-rate-limiter.js";
+import {
+    createRateLimitErrorResponse,
+    generateRequestId,
+    logError,
+} from "./utils/error-handler.js";
+import {
+    errorResponse,
+    getSecurityHeaders,
+    preflightResponse,
 } from "./utils/security-headers.js";
 
 // Inline check-refresh implementation (moved above handler for scope availability)
