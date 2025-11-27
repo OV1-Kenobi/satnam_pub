@@ -26,6 +26,10 @@ export const ACTION_WEIGHTS = {
   message_sent: { weight: 1, category: "engagement" },
   contact_added: { weight: 2, category: "engagement" },
   profile_updated: { weight: 3, category: "engagement" },
+
+  // Phase 3: Geo-Room Contacts & Physical MFA
+  geo_contact_added: { weight: 3, category: "social" },
+  contact_verified_via_physical_mfa: { weight: 15, category: "social" },
 };
 
 export class ActionReputationService {

@@ -22,7 +22,7 @@ import {
   X,
   Zap
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Contact } from '../../types/contacts'
 import { PrivacyLevel, calculatePrivacyMetrics, getDefaultPrivacyLevel } from '../../types/privacy'
 import { ContactsManagerModal } from '../ContactsManagerModal'
@@ -35,6 +35,9 @@ import { central_event_publishing_service as CEPS } from '../../../lib/central_e
 import type { MessageSendResult } from '../../lib/messaging/client-message-service'
 import { getPrivacyMethodLabel } from '../../lib/messaging/utils'
 import { PeerInvitationModal } from './PeerInvitationModal'
+import { NOISE_EXPERIMENTAL_ENABLED } from '../../config/env.client'
+import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging'
+import { getAuthHeaders } from '../../lib/auth/fetch-with-auth'
 
 
 
@@ -145,6 +148,10 @@ export function PrivateCommunicationModal({
     anonymityLevel: 0
   })
 
+  // Phase 5: Noise Protocol state
+  const messaging = usePrivacyFirstMessaging()
+  const [noiseEnabled, setNoiseEnabled] = useState(false)
+
 
 
   /**
@@ -152,9 +159,9 @@ export function PrivateCommunicationModal({
    * Stores communication operations in user's local encrypted storage (localStorage)
    * NEVER stored in external databases - user maintains full control
    */
-  const logCommunicationOperation = async (operationData: {
+  const logCommunicationOperation = useCallback(async (operationData: {
     operation: string;
-    details: any;
+    details: Record<string, unknown>;
     timestamp: Date;
   }): Promise<void> => {
     try {
@@ -179,31 +186,26 @@ export function PrivateCommunicationModal({
     } catch (error) {
       // Silent fail for privacy - no external logging
     }
-  }
+  }, [])
 
   // Calculate privacy metrics based on privacy level
   useEffect(() => {
     setPrivacyMetrics(calculatePrivacyMetrics(privacyLevel))
   }, [privacyLevel])
 
-  // Load groups and message history on mount
-  useEffect(() => {
-    if (isOpen && isAuthenticated) {
-      loadGroups()
-      loadMessageHistory()
-    }
-  }, [isOpen, isAuthenticated])
-
-  // Load user groups
-  const loadGroups = async () => {
+  // Load user groups with proper JWT authentication
+  const loadGroups = useCallback(async () => {
     try {
       setLoading(true)
+      // Get proper JWT token from SecureTokenManager
+      const authHeaders = getAuthHeaders()
+
       // This would call the group messaging API
       const response = await fetch('/.netlify/functions/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userProfile.npub}`, // In production, use proper JWT
+          ...authHeaders,
         },
         body: JSON.stringify({ action: 'get_user_groups' }),
       })
@@ -222,16 +224,16 @@ export function PrivateCommunicationModal({
     } finally {
       setLoading(false)
     }
-  }
+  }, [logCommunicationOperation])
 
   // Load message history
-  const loadMessageHistory = async () => {
+  const loadMessageHistory = useCallback(async () => {
     try {
       setLoading(true)
       // This would load from local storage or API
       const storedHistory = localStorage.getItem(`satnam_messages_${userProfile.npub}`)
       if (storedHistory) {
-        const history = JSON.parse(storedHistory).map((msg: any) => ({
+        const history = JSON.parse(storedHistory).map((msg: MessageHistory) => ({
           ...msg,
           timestamp: new Date(msg.timestamp)
         }))
@@ -247,7 +249,15 @@ export function PrivateCommunicationModal({
     } finally {
       setLoading(false)
     }
-  }
+  }, [userProfile.npub, logCommunicationOperation])
+
+  // Load groups and message history on mount
+  useEffect(() => {
+    if (isOpen && isAuthenticated) {
+      loadGroups()
+      loadMessageHistory()
+    }
+  }, [isOpen, isAuthenticated, loadGroups, loadMessageHistory])
 
   // Save message to history
   const saveMessageToHistory = async (messageData: Omit<MessageHistory, 'id' | 'timestamp'>) => {
@@ -293,7 +303,7 @@ export function PrivateCommunicationModal({
     }
   }
 
-  // Create new group
+  // Create new group with proper JWT authentication
   const createGroup = async () => {
     if (!newGroupData.name.trim()) {
       setError('Group name is required')
@@ -302,11 +312,14 @@ export function PrivateCommunicationModal({
 
     try {
       setLoading(true)
+      // Get proper JWT token from SecureTokenManager
+      const authHeaders = getAuthHeaders()
+
       const response = await fetch('/.netlify/functions/group-messaging', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userProfile.npub}`,
+          ...authHeaders,
         },
         body: JSON.stringify({
           action: 'create_group',
@@ -970,6 +983,49 @@ export function PrivateCommunicationModal({
                 showMetrics={false}
                 variant="modal"
               />
+
+              {/* Phase 5: Noise Protocol Toggle (Experimental) */}
+              {NOISE_EXPERIMENTAL_ENABLED && (
+                <div className="bg-white/5 rounded-lg p-4 border border-white/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Shield className="h-5 w-5 text-emerald-400" />
+                      <div>
+                        <h4 className="font-medium text-white">Noise Protocol Encryption</h4>
+                        <p className="text-sm text-purple-300">
+                          Forward-secure end-to-end encryption with perfect forward secrecy
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const newValue = !noiseEnabled
+                        setNoiseEnabled(newValue)
+                        if (newValue) {
+                          messaging.enableNoiseEncryption('XX')
+                        } else {
+                          messaging.disableNoiseEncryption()
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${noiseEnabled ? 'bg-emerald-500' : 'bg-gray-600'
+                        }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${noiseEnabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                      />
+                    </button>
+                  </div>
+                  {noiseEnabled && (
+                    <div className="mt-3 p-2 bg-emerald-500/10 rounded border border-emerald-500/30">
+                      <p className="text-xs text-emerald-300">
+                        <Lock className="h-3 w-3 inline mr-1" />
+                        Noise XX handshake active - messages have forward secrecy
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Privacy Metrics */}
               <div className="bg-white/5 rounded-lg p-4 border border-white/20">

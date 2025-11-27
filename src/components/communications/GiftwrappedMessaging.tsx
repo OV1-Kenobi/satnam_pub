@@ -21,6 +21,8 @@ import { VideoMeetingLauncher } from './VideoMeetingLauncher';
 
 import fetchWithAuth from '../../lib/auth/fetch-with-auth';
 import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service';
+import { clientConfig } from '../../config/env.client';
+import { GeoRoomTab } from './GeoRoomTab';
 
 
 
@@ -1519,6 +1521,19 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               className="flex-1 p-2 border border-purple-300 rounded-lg text-sm bg-white mb-2"
             />
 
+            {/* Standard messaging toggle for external Nostr clients */}
+            {!isGroupMessage && (
+              <label className="flex items-center gap-2 text-xs text-purple-900">
+                <input
+                  type="checkbox"
+                  checked={useStandardDm}
+                  onChange={(e) => setUseStandardDm(e.target.checked)}
+                  className="rounded"
+                />
+                <span>Use standard messaging for external Nostr clients (NIP-04)</span>
+              </label>
+            )}
+
             <div className="flex space-x-2">
               <input
                 type="text"
@@ -1538,11 +1553,16 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               </label>
             </div>
 
-            <div className="flex space-x-2 items-start">
+            <div className="space-y-2">
               <textarea
                 placeholder="Type your private message..."
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = `${target.scrollHeight}px`;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -1551,88 +1571,77 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                     }
                   }
                 }}
-                className="flex-1 p-2 border border-purple-300 rounded-lg text-sm resize-none bg-white"
-                rows={2}
+                className="w-full p-2 border border-purple-300 rounded-lg text-sm bg-white resize-none"
+                rows={3}
               />
-              {/* Media buttons */}
-              <div className="flex items-center space-x-2">
-                {/* Paperclip */}
-                <button
-                  onClick={() => document.getElementById('gm-file-input')?.click()}
-                  className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
-                  title="Attach file"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79V7a5 5 0 00-10 0v10a3 3 0 006 0V8" />
-                  </svg>
-                </button>
-                <input id="gm-file-input" type="file" multiple className="hidden" onChange={(e) => {
-                  const files = e.target.files;
-                  if (files && files.length) {
-                    showToast.info(`${files.length} file(s) selected`, { title: 'Attachments' });
-                  }
-                }} />
-                {/* Microphone */}
-                <button
-                  onClick={() => showToast.info('Voice recording UI coming next', { title: 'Voice Note' })}
-                  className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
-                  title="Record voice note"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a3 3 0 003-3V5a3 3 0 10-6 0v6a3 3 0 003 3z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m7 7v3m-4 0h8" />
-                  </svg>
-                </button>
-                {/* Video */}
 
-                {/* Protocol selector */}
-                {!isGroupMessage && (
-                  <label className="flex items-center gap-2 text-xs text-purple-900 mr-3">
-                    <input
-                      type="checkbox"
-                      checked={useStandardDm}
-                      onChange={(e) => setUseStandardDm(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span>Use standard messaging for external Nostr clients (NIP-04)</span>
-                  </label>
-                )}
+              <div className="flex items-center justify-between">
+                {/* Media buttons */}
+                <div className="flex items-center space-x-2">
+                  {/* Paperclip */}
+                  <button
+                    onClick={() => document.getElementById('gm-file-input')?.click()}
+                    className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                    title="Attach file"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79V7a5 5 0 00-10 0v10a3 3 0 006 0V8" />
+                    </svg>
+                  </button>
+                  <input id="gm-file-input" type="file" multiple className="hidden" onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length) {
+                      showToast.info(`${files.length} file(s) selected`, { title: 'Attachments' });
+                    }
+                  }} />
+                  {/* Microphone */}
+                  <button
+                    onClick={() => showToast.info('Voice recording UI coming next', { title: 'Voice Note' })}
+                    className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                    title="Record voice note"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a3 3 0 003-3V5a3 3 0 10-6 0v6a3 3 0 003 3z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m7 7v3m-4 0h8" />
+                    </svg>
+                  </button>
+                  {/* Video */}
+                  <button
+                    onClick={() => showToast.info('Video recorder UI coming next', { title: 'Video Message' })}
+                    className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                    title="Record video message"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-3 2H6a2 2 0 01-2-2V8a2 2 0 012-2h6a2 2 0 012 2v6z" />
+                    </svg>
+                  </button>
+                  {/* Live Meeting (Jitsi) */}
+                  <VideoMeetingLauncher
+                    currentUser={{ npub: familyMember.npub, nip05: undefined }}
+                    selectedContact={recipient && recipient.startsWith('npub1') ? { npub: recipient, displayName: (contactsByNpub.get(recipient)?.username) || `${recipient.slice(0, 12)}…` } : undefined}
+                    buttonClassName="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                    iconClassName="w-4 h-4"
+                  />
+                  <button
+                    onClick={() => setShowProtocolHelp((v) => !v)}
+                    className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
+                    title="Protocol order: NIP-17 → NIP-59 → NIP-44. Click for setup help."
+                    aria-label="Messaging protocol help"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+                    </svg>
+                  </button>
+                </div>
 
                 <button
-                  onClick={() => showToast.info('Video recorder UI coming next', { title: 'Video Message' })}
-                  className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
-                  title="Record video message"
+                  onClick={sendGiftwrappedMessage}
+                  disabled={!newMessage.trim() || !recipient || isLoading}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-3 2H6a2 2 0 01-2-2V8a2 2 0 012-2h6a2 2 0 012 2v6z" />
-                  </svg>
+                  {isLoading ? 'Sending...' : 'Send'}
                 </button>
-                {/* Live Meeting (Jitsi) */}
-                <VideoMeetingLauncher
-                  currentUser={{ npub: familyMember.npub, nip05: undefined }}
-                  selectedContact={recipient && recipient.startsWith('npub1') ? { npub: recipient, displayName: (contactsByNpub.get(recipient)?.username) || `${recipient.slice(0, 12)}…` } : undefined}
-                  buttonClassName="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
-                  iconClassName="w-4 h-4"
-                />
-                <button
-                  onClick={() => setShowProtocolHelp((v) => !v)}
-                  className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
-                  title="Protocol order: NIP-17 → NIP-59 → NIP-44. Click for setup help."
-                  aria-label="Messaging protocol help"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
-                  </svg>
-                </button>
-
               </div>
-              <button
-                onClick={sendGiftwrappedMessage}
-                disabled={!newMessage.trim() || !recipient || isLoading}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
-              >
-                {isLoading ? 'Sending...' : 'Send'}
-              </button>
             </div>
             {showProtocolHelp && (
               <div className="mt-2 p-3 border border-purple-200 rounded-lg bg-purple-50/60 text-[12px] text-purple-900 space-y-2">
@@ -1758,14 +1767,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {currentTab === 'bitchat' ? (
-              <div className="text-xs text-purple-900 space-y-2">
-                <div className="font-medium">Bitchat</div>
-                <div className="flex items-center gap-2">
-                  <input type="text" placeholder="Enter geohash (e.g. 9q8yy)" className="border border-purple-300 rounded px-2 py-1 text-xs" />
-                  <button className="text-xs bg-purple-600 text-white rounded px-2 py-1 hover:bg-purple-700">Connect</button>
-                </div>
-                <div className="text-[11px] text-purple-700">Public geo-rooms with minimal privacy. Use for discovery only.</div>
-              </div>
+              <GeoRoomTab isEnabled={clientConfig.flags.geochatEnabled || bitchatEnabled} />
             ) : currentTab === 'groups' ? (
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -1935,7 +1937,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             sessionInfo={{
               sessionToken: auth.sessionToken,
               user: {
-                npub: auth.user.hashed_npub || familyMember.npub,
+                npub: familyMember.npub,
                 nip05: undefined,
                 authMethod: 'nip07',
                 federationRole: 'adult'
@@ -1950,7 +1952,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             onClose={() => setShowPeerInvitationModal(false)}
             onSendInvitation={() => { }}
             senderProfile={{
-              npub: auth.user?.hashed_npub || familyMember.npub,
+              npub: familyMember.npub,
             }}
           />
         )}

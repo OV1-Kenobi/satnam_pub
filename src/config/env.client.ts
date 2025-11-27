@@ -4,6 +4,13 @@
  * - No secrets here; safe for bundling in browser JS
  */
 
+import type {
+  PnsNoiseConfig,
+  PnsSecurityMode,
+  PnsFsSecretStorageMode,
+  NoiseSecurityTier,
+} from "../lib/noise/types";
+
 /**
  * Client-safe environment variable getter
  * Uses process.env, which Vite populates at build time via define in vite.config.js.
@@ -85,6 +92,32 @@ export type ClientConfig = {
     tapsignerLnbitsEnabled: boolean; // Phase 1: LNbits integration for Tapsigner cards
     tapsignerTapToSpendEnabled: boolean; // Phase 1: Tap-to-spend payment functionality
     tapsignerDebugEnabled: boolean; // Phase 1: Debug logging for Tapsigner operations
+    // Phase 1 Bitchat: Geo-room discovery
+    geochatEnabled: boolean; // Phase 1 Bitchat: Read-only geo-room discovery (default: false)
+    // Phase 2 Bitchat: Live geo-room messaging
+    geochatLiveEnabled: boolean; // Phase 2 Bitchat: Live messaging in geo-rooms (default: false)
+    geochatDefaultRelayCount: number; // Phase 2 Bitchat: Number of relays per geo-room (default: 3)
+    // Phase 3 Bitchat: Trust, Contacts, and Private Messaging
+    geochatContactsEnabled: boolean; // Phase 3 Bitchat: Add contact/start DM from geo-rooms (default: false)
+    geochatTrustWeight: number; // Phase 3 Bitchat: Trust weight for geo-originated contacts (default: 1.5)
+    geochatPhysicalMfaTrustWeight: number; // Phase 3 Bitchat: Trust weight for Physical MFA verified contacts (default: 3.0)
+    // Phase 4 Bitchat: Payment Integration
+    geochatPaymentsEnabled: boolean; // Phase 4 Bitchat: Enable payments from geo-rooms (default: false)
+    // Phase 5 Bitchat: Noise Protocol Overlay
+    noiseExperimentalEnabled: boolean; // Phase 5 Bitchat: Enable Noise-encrypted high-security chats (default: false)
+    noiseRekeyMessages: number; // Phase 5 Bitchat: Messages before automatic rekey (default: 100)
+    noiseRekeySeconds: number; // Phase 5 Bitchat: Seconds before automatic rekey (default: 3600)
+    // NIP-PNS + Noise-FS Integration
+    pnsNoiseFsEnabled: boolean; // NIP-PNS: Enable Noise-FS forward secrecy for private notes (default: false)
+    pnsDefaultSecurityMode: "none" | "noise-fs"; // NIP-PNS: Default security mode for new notes
+    pnsDefaultSecurityTier:
+      | "ephemeral-standard"
+      | "everlasting-standard"
+      | "hardened"; // NIP-PNS: Default security tier for Noise-FS notes
+    pnsFsSecretStorageMode: "local-only" | "relay-sync"; // NIP-PNS: Storage mode for pns_fs_root secret
+    pnsEphemeralDefaultTtl: number; // NIP-PNS: Default TTL for ephemeral notes (seconds)
+    pnsAutoMigrateExistingNotes: boolean; // NIP-PNS: Auto-migrate existing notes when Noise-FS enabled
+    pnsRequireHardwareMfa: boolean; // NIP-PNS: Require NFC for hardened tier
   };
 };
 
@@ -301,6 +334,199 @@ const TAPSIGNER_DEBUG_ENABLED =
   (getEnvVar("VITE_TAPSIGNER_DEBUG") || "false").toString().toLowerCase() ===
   "true";
 
+// Phase 1 Bitchat: Geochat geo-room discovery; default: false (opt-in)
+const GEOCHAT_ENABLED =
+  (getEnvVar("VITE_GEOCHAT_ENABLED") || "false").toString().toLowerCase() ===
+  "true";
+
+/**
+ * Phase 2 Bitchat: Live geo-room messaging; default: false (opt-in)
+ * When enabled, users can send/receive messages in public geo-rooms.
+ * Requires geochatEnabled to be true for full functionality.
+ */
+const GEOCHAT_LIVE_ENABLED =
+  (getEnvVar("VITE_GEOCHAT_LIVE_ENABLED") || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+/**
+ * Phase 2 Bitchat: Number of relays to select per geo-room; default: 3
+ * Controls how many relays GeoRelaySelector returns for each geohash.
+ * Higher values increase redundancy but also network overhead.
+ */
+const GEOCHAT_DEFAULT_RELAY_COUNT = parseInt(
+  getEnvVar("VITE_GEOCHAT_DEFAULT_RELAY_COUNT") || "3",
+  10
+);
+
+/**
+ * Phase 3 Bitchat: Enable contact actions in geo-rooms; default: false (opt-in)
+ * When enabled, users can add contacts and start private chats from geo-room messages.
+ * Gates all Phase 3 contact-related functionality including Physical MFA verification.
+ */
+export const GEOCHAT_CONTACTS_ENABLED =
+  (getEnvVar("VITE_GEOCHAT_CONTACTS_ENABLED") ?? "false")
+    .toString()
+    .toLowerCase() === "true";
+
+/**
+ * Phase 3 Bitchat: Trust weight multiplier for geo-originated contacts; default: 1.5
+ * Applied to trust score contributions from contacts added via geo-room messages.
+ * Higher values increase the trust impact of in-person geographic encounters.
+ */
+export const GEOCHAT_TRUST_WEIGHT = parseFloat(
+  getEnvVar("VITE_GEOCHAT_TRUST_WEIGHT") ?? "1.5"
+);
+
+/**
+ * Phase 3 Bitchat: Trust weight for Physical MFA verified contacts; default: 3.0
+ * Additional multiplier applied when a contact is verified via the Name Tag Reading Ritual.
+ * Significantly higher than standard geo weight to reflect in-person identity verification.
+ */
+export const GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT = parseFloat(
+  getEnvVar("VITE_GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT") ?? "3.0"
+);
+
+/**
+ * Phase 4 Bitchat: Enable payments from geo-rooms; default: false (opt-in)
+ * When enabled, users can initiate Lightning/Cashu/Fedimint payments to geo-room contacts.
+ * Uses context-aware modal routing: individual or federation payment flows.
+ */
+export const GEOCHAT_PAYMENTS_ENABLED =
+  (getEnvVar("VITE_GEOCHAT_PAYMENTS_ENABLED") ?? "false")
+    .toString()
+    .toLowerCase() === "true";
+
+/**
+ * Phase 5 Bitchat: Noise Protocol Overlay (experimental).
+ * When enabled, users can establish Noise-encrypted sessions for high-security private chats.
+ * Uses advanced handshake patterns (XX, IK, NK) with forward secrecy.
+ */
+export const NOISE_EXPERIMENTAL_ENABLED =
+  (getEnvVar("VITE_NOISE_EXPERIMENTAL_ENABLED") ?? "false")
+    .toString()
+    .toLowerCase() === "true";
+
+/**
+ * Phase 5 Bitchat: Noise rekey message threshold.
+ * Number of messages before automatic session rekeying.
+ * Default: 100 messages.
+ */
+export const NOISE_REKEY_MESSAGES = parseInt(
+  getEnvVar("VITE_NOISE_REKEY_MESSAGES") ?? "100",
+  10
+);
+
+/**
+ * Phase 5 Bitchat: Noise rekey time threshold.
+ * Seconds before automatic session rekeying.
+ * Default: 3600 seconds (1 hour).
+ */
+export const NOISE_REKEY_SECONDS = parseInt(
+  getEnvVar("VITE_NOISE_REKEY_SECONDS") ?? "3600",
+  10
+);
+
+// =============================================================================
+// NIP-PNS + Noise-FS Integration Configuration
+// =============================================================================
+
+/**
+ * NIP-PNS Noise-FS: Master feature flag for Noise-FS PNS integration.
+ * When enabled, users can protect private notes with forward secrecy.
+ * DEPENDENCY: Requires VITE_NOISE_EXPERIMENTAL_ENABLED=true.
+ * Default: false (opt-in)
+ */
+export const PNS_NOISE_FS_ENABLED =
+  NOISE_EXPERIMENTAL_ENABLED &&
+  (getEnvVar("VITE_PNS_NOISE_FS_ENABLED") ?? "false")
+    .toString()
+    .toLowerCase() === "true";
+
+/**
+ * NIP-PNS Noise-FS: Default security mode for new notes.
+ * - "none": Standard NIP-PNS encryption (nsec-derived keys only)
+ * - "noise-fs": Noise Protocol forward secrecy layer (inner encryption)
+ * Default: "none" (backward compatible)
+ */
+export const PNS_DEFAULT_SECURITY_MODE = (() => {
+  const value = getEnvVar("VITE_PNS_DEFAULT_SECURITY_MODE") ?? "none";
+  if (value === "noise-fs" || value === "none") {
+    return value;
+  }
+  console.warn(
+    `Invalid VITE_PNS_DEFAULT_SECURITY_MODE: "${value}", using "none"`
+  );
+  return "none" as const;
+})();
+
+/**
+ * NIP-PNS Noise-FS: Default security tier for Noise-FS notes.
+ * - "ephemeral-standard": Session-based keys, cleared on tab close (3-factor)
+ * - "everlasting-standard": Long-lived FS for archival (3-factor)
+ * - "hardened": Adds NFC hardware MFA (5-factor)
+ * Default: "everlasting-standard" (best balance of security and usability)
+ */
+export const PNS_DEFAULT_SECURITY_TIER = (() => {
+  const value =
+    getEnvVar("VITE_PNS_DEFAULT_SECURITY_TIER") ?? "everlasting-standard";
+  const validTiers = ["ephemeral-standard", "everlasting-standard", "hardened"];
+  if (validTiers.includes(value)) {
+    return value as "ephemeral-standard" | "everlasting-standard" | "hardened";
+  }
+  console.warn(
+    `Invalid VITE_PNS_DEFAULT_SECURITY_TIER: "${value}", using "everlasting-standard"`
+  );
+  return "everlasting-standard" as const;
+})();
+
+/**
+ * NIP-PNS Noise-FS: Storage mode for pns_fs_root secret.
+ * - "local-only": Secret stored only in ClientSessionVault (maximum privacy)
+ * - "relay-sync": Secret encrypted and stored on relays (cross-device sync)
+ * Default: "local-only" (privacy-first)
+ */
+export const PNS_FS_SECRET_STORAGE_MODE = (() => {
+  const value = getEnvVar("VITE_PNS_FS_SECRET_STORAGE_MODE") ?? "local-only";
+  if (value === "local-only" || value === "relay-sync") {
+    return value;
+  }
+  console.warn(
+    `Invalid VITE_PNS_FS_SECRET_STORAGE_MODE: "${value}", using "local-only"`
+  );
+  return "local-only" as const;
+})();
+
+/**
+ * NIP-PNS Noise-FS: Default TTL for ephemeral notes (in seconds).
+ * Ephemeral notes are automatically deleted after this duration.
+ * Default: 604800 (7 days)
+ */
+export const PNS_EPHEMERAL_DEFAULT_TTL = parseInt(
+  getEnvVar("VITE_PNS_EPHEMERAL_DEFAULT_TTL") ?? "604800",
+  10
+);
+
+/**
+ * NIP-PNS Noise-FS: Auto-migrate existing standard PNS notes.
+ * When enabled and user activates Noise-FS, existing notes are re-encrypted.
+ * Default: false (manual migration)
+ */
+export const PNS_AUTO_MIGRATE_EXISTING_NOTES =
+  (getEnvVar("VITE_PNS_AUTO_MIGRATE_EXISTING_NOTES") ?? "false")
+    .toString()
+    .toLowerCase() === "true";
+
+/**
+ * NIP-PNS Noise-FS: Require hardware MFA for hardened tier.
+ * When true, hardened tier notes require NFC token verification.
+ * Default: true (security best practice)
+ */
+export const PNS_REQUIRE_HARDWARE_MFA =
+  (getEnvVar("VITE_PNS_REQUIRE_HARDWARE_MFA") ?? "true")
+    .toString()
+    .toLowerCase() === "true";
+
 export const clientConfig: ClientConfig = {
   lnbits: {
     // Only required when LNbits integration is enabled
@@ -386,6 +612,29 @@ export const clientConfig: ClientConfig = {
     tapsignerLnbitsEnabled: TAPSIGNER_LNBITS_ENABLED,
     tapsignerTapToSpendEnabled: TAPSIGNER_TAP_TO_SPEND_ENABLED,
     tapsignerDebugEnabled: TAPSIGNER_DEBUG_ENABLED,
+    // Phase 1 Bitchat: Geo-room discovery
+    geochatEnabled: GEOCHAT_ENABLED,
+    // Phase 2 Bitchat: Live geo-room messaging
+    geochatLiveEnabled: GEOCHAT_LIVE_ENABLED,
+    geochatDefaultRelayCount: GEOCHAT_DEFAULT_RELAY_COUNT,
+    // Phase 3 Bitchat: Trust, Contacts, and Private Messaging
+    geochatContactsEnabled: GEOCHAT_CONTACTS_ENABLED,
+    geochatTrustWeight: GEOCHAT_TRUST_WEIGHT,
+    geochatPhysicalMfaTrustWeight: GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT,
+    // Phase 4 Bitchat: Payment Integration
+    geochatPaymentsEnabled: GEOCHAT_PAYMENTS_ENABLED,
+    // Phase 5 Bitchat: Noise Protocol Overlay
+    noiseExperimentalEnabled: NOISE_EXPERIMENTAL_ENABLED,
+    noiseRekeyMessages: NOISE_REKEY_MESSAGES,
+    noiseRekeySeconds: NOISE_REKEY_SECONDS,
+    // NIP-PNS + Noise-FS Integration
+    pnsNoiseFsEnabled: PNS_NOISE_FS_ENABLED,
+    pnsDefaultSecurityMode: PNS_DEFAULT_SECURITY_MODE,
+    pnsDefaultSecurityTier: PNS_DEFAULT_SECURITY_TIER,
+    pnsFsSecretStorageMode: PNS_FS_SECRET_STORAGE_MODE,
+    pnsEphemeralDefaultTtl: PNS_EPHEMERAL_DEFAULT_TTL,
+    pnsAutoMigrateExistingNotes: PNS_AUTO_MIGRATE_EXISTING_NOTES,
+    pnsRequireHardwareMfa: PNS_REQUIRE_HARDWARE_MFA,
   },
 } as const;
 
@@ -404,4 +653,46 @@ if (clientConfig.flags.lnbitsEnabled && !clientConfig.lnbits.baseUrl) {
   throw new Error(
     "Missing required public environment variable: VITE_LNBITS_BASE_URL (required when VITE_LNBITS_INTEGRATION_ENABLED=true)"
   );
+}
+
+// =============================================================================
+// NIP-PNS + Noise-FS Configuration Helper
+// =============================================================================
+
+/**
+ * Get the complete PNS Noise configuration object.
+ * Uses environment variables with fallback to DEFAULT_PNS_NOISE_CONFIG.
+ *
+ * @returns PnsNoiseConfig object with all configuration values
+ *
+ * @example
+ * ```typescript
+ * import { getPnsNoiseConfig } from './config/env.client';
+ *
+ * const config = getPnsNoiseConfig();
+ * if (config.enabled) {
+ *   // Initialize Noise-FS for private notes
+ * }
+ * ```
+ */
+export function getPnsNoiseConfig(): PnsNoiseConfig {
+  return {
+    enabled: PNS_NOISE_FS_ENABLED,
+    defaultSecurityMode: PNS_DEFAULT_SECURITY_MODE as PnsSecurityMode,
+    defaultSecurityTier: PNS_DEFAULT_SECURITY_TIER as NoiseSecurityTier,
+    secretStorageMode: PNS_FS_SECRET_STORAGE_MODE as PnsFsSecretStorageMode,
+    defaultEphemeralTtl: PNS_EPHEMERAL_DEFAULT_TTL,
+    requireHardwareMfa: PNS_REQUIRE_HARDWARE_MFA,
+    autoMigrateExistingNotes: PNS_AUTO_MIGRATE_EXISTING_NOTES,
+  };
+}
+
+/**
+ * Check if PNS Noise-FS feature is available.
+ * Returns true only if both NOISE_EXPERIMENTAL_ENABLED and PNS_NOISE_FS_ENABLED are true.
+ *
+ * @returns boolean indicating if Noise-FS for PNS is enabled
+ */
+export function isPnsNoiseFsAvailable(): boolean {
+  return NOISE_EXPERIMENTAL_ENABLED && PNS_NOISE_FS_ENABLED;
 }

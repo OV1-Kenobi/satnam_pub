@@ -356,12 +356,18 @@ function validateGiftwrappedMessage(messageData) {
     return { success: false, errors };
   }
 
+  // Sender may be omitted for standard DM logging flows; treat as optional here
+  const senderValue =
+    typeof messageData.sender === 'string'
+      ? messageData.sender.trim()
+      : '';
+
   return {
     success: true,
     data: {
       content: messageData.content.trim(),
       recipient: messageData.recipient.trim(),
-      sender: messageData.sender.trim(),
+      sender: senderValue,
       encryptionLevel: messageData.encryptionLevel || 'enhanced',
       communicationType: messageData.communicationType || 'individual',
       messageType: messageData.messageType || 'direct',
