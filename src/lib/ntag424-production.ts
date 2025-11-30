@@ -94,6 +94,14 @@ export interface NTAG424SignOperation {
   signature: string;
 }
 
+// Internal signature envelope for NTAG424 operations
+// Stores the curve, public key and raw signature used for verification
+interface NTAG424OperationSignatureEnvelope {
+  curve: "P-256" | "secp256k1";
+  publicKey: string;
+  signature: string;
+}
+
 /**
  * NTAG424 Production Manager
  * Handles physical NFC tag registration, authentication, and operations
@@ -110,7 +118,10 @@ export class NTAG424ProductionManager {
     phoenixdClient?: PhoenixdClient
   ) {
     // Use provided clients or create new instances
-    this.supabase = supabaseClient || supabase;
+    // Supabase client is resolved lazily via getSupabaseClient() to avoid
+    // creating a client at module import time. Tests and callers may provide
+    // an explicit client; otherwise we defer to the shared singleton.
+    this.supabase = supabaseClient || null;
     this.lightningClient = lightningClient || new LightningClient();
     this.phoenixdClient = phoenixdClient || new PhoenixdClient();
 
@@ -236,19 +247,19 @@ export class NTAG424ProductionManager {
       // Encrypt configuration
       const encryptedConfig = this.encryptConfig(config);
 
+      const supabase = this.supabase || (await getSupabaseClient());
+
       // Store in Supabase with RLS policies
-      const { error } = await this.supabase
-        .from("ntag424_registrations")
-        .insert([
-          {
-            uid,
-            encrypted_config: encryptedConfig,
-            user_npub: userNpub,
-            family_role: familyRole,
-            created_at: new Date().toISOString(),
-            last_used: new Date().toISOString(),
-          },
-        ]);
+      const { error } = await supabase.from("ntag424_registrations").insert([
+        {
+          uid,
+          encrypted_config: encryptedConfig,
+          user_npub: userNpub,
+          family_role: familyRole,
+          created_at: new Date().toISOString(),
+          last_used: new Date().toISOString(),
+        },
+      ]);
 
       if (error) {
         console.error("❌ Failed to store NTAG424 registration:", error);
@@ -277,8 +288,10 @@ export class NTAG424ProductionManager {
     try {
       console.log("🔐 Authenticating NTAG424 production tag:", uid);
 
+      const supabase = this.supabase || (await getSupabaseClient());
+
       // Retrieve registration from database
-      const { data, error } = await this.supabase
+      const { data, error } = await supabase
         .from("ntag424_registrations")
         .select("*")
         .eq("uid", uid)
@@ -640,7 +653,9 @@ export class NTAG424ProductionManager {
    */
   private async updateLastUsed(uid: string): Promise<void> {
     try {
-      await this.supabase
+      const supabase = this.supabase || (await getSupabaseClient());
+
+      await supabase
         .from("ntag424_registrations")
         .update({ last_used: new Date().toISOString() })
         .eq("uid", uid);
@@ -656,11 +671,282 @@ export class NTAG424ProductionManager {
     operation: NTAG424SpendOperation | NTAG424SignOperation
   ): Promise<boolean> {
     try {
-      // Implement signature verification based on NTAG424 DNA specification
-      // This would verify the signature using the authentication key
-      return true; // Placeholder implementation
+      const truncatedUid = operation.uid
+        ? operation.uid.substring(0, 8)
+        : "unknown";
+
+      if (!operation.signature || operation.signature.length === 0) {
+        console.warn("⚠️ Operation signature missing", {
+          uid: truncatedUid,
+        });
+        return false;
+      }
+
+      let envelope: NTAG424OperationSignatureEnvelope;
+      try {
+        envelope = JSON.parse(
+          operation.signature
+        ) as NTAG424OperationSignatureEnvelope;
+      } catch (parseError) {
+        console.error("❌ Failed to parse operation signature envelope", {
+          uid: truncatedUid,
+          error:
+            parseError instanceof Error ? parseError.message : "Unknown error",
+        });
+        return false;
+      }
+
+      if (!envelope) {
+        console.warn("⚠️ Empty operation signature envelope", {
+          uid: truncatedUid,
+        });
+        return false;
+      }
+
+      if (envelope.curve !== "P-256" && envelope.curve !== "secp256k1") {
+        console.warn("⚠️ Unsupported signature curve for NTAG424 operation", {
+          uid: truncatedUid,
+          curve: envelope.curve,
+        });
+        return false;
+      }
+
+      if (
+        typeof envelope.publicKey !== "string" ||
+        typeof envelope.signature !== "string"
+      ) {
+        console.warn(
+          "⚠️ Operation signature envelope missing publicKey or signature",
+          {
+            uid: truncatedUid,
+          }
+        );
+        return false;
+      }
+
+      const hexRegex = /^[0-9a-fA-F]+$/;
+      if (
+        !hexRegex.test(envelope.publicKey) ||
+        !hexRegex.test(envelope.signature)
+      ) {
+        console.warn("⚠️ Operation signature envelope contains non-hex data", {
+          uid: truncatedUid,
+        });
+        return false;
+      }
+
+      // Compute deterministic operation hash (without signature field)
+      const operationHashHex = await this.computeOperationHash(operation);
+
+      let isValid = false;
+      if (envelope.curve === "P-256") {
+        isValid = await this.verifyP256Signature(
+          operationHashHex,
+          envelope.signature,
+          envelope.publicKey,
+          truncatedUid
+        );
+      } else {
+        isValid = await this.verifySecp256k1Signature(
+          operationHashHex,
+          envelope.signature,
+          envelope.publicKey,
+          truncatedUid
+        );
+      }
+
+      if (!isValid) {
+        console.warn("⚠️ NTAG424 operation signature verification failed", {
+          uid: truncatedUid,
+          curve: envelope.curve,
+        });
+      }
+
+      return isValid;
     } catch (error) {
       console.error("❌ Operation signature verification failed:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Compute deterministic SHA-256 hash of an NTAG424 operation
+   *
+   * The hash is computed over a canonical JSON representation that
+   * excludes the signature field and distinguishes spend vs sign
+   * operations via an explicit "type" tag.
+   */
+  private async computeOperationHash(
+    operation: NTAG424SpendOperation | NTAG424SignOperation
+  ): Promise<string> {
+    const encoder = new TextEncoder();
+
+    const isSpendOperation = (
+      op: NTAG424SpendOperation | NTAG424SignOperation
+    ): op is NTAG424SpendOperation => {
+      return (op as NTAG424SpendOperation).amount !== undefined;
+    };
+
+    let canonicalPayload: Record<string, unknown>;
+
+    if (isSpendOperation(operation)) {
+      canonicalPayload = {
+        type: "spend",
+        uid: operation.uid,
+        amount: operation.amount,
+        recipient: operation.recipient,
+        memo: operation.memo || "",
+        paymentType: operation.paymentType,
+        requiresGuardianApproval: operation.requiresGuardianApproval,
+        guardianThreshold: operation.guardianThreshold,
+        privacyLevel: operation.privacyLevel,
+        timestamp: operation.timestamp,
+      };
+    } else {
+      canonicalPayload = {
+        type: "sign",
+        uid: operation.uid,
+        message: operation.message,
+        purpose: operation.purpose,
+        requiresGuardianApproval: operation.requiresGuardianApproval,
+        guardianThreshold: operation.guardianThreshold,
+        timestamp: operation.timestamp,
+      };
+    }
+
+    const serialized = JSON.stringify(canonicalPayload);
+
+    try {
+      if (typeof crypto !== "undefined" && crypto.subtle) {
+        const data = encoder.encode(serialized);
+        const digest = await crypto.subtle.digest("SHA-256", data);
+        return this.bytesToHex(new Uint8Array(digest));
+      }
+    } catch (error) {
+      console.error(
+        "❌ Web Crypto SHA-256 hash failed, falling back to CryptoJS:",
+        error
+      );
+    }
+
+    // Fallback to CryptoJS for environments without Web Crypto
+    const hash = CryptoJS.SHA256(serialized).toString();
+    return hash;
+  }
+
+  /**
+   * Public wrapper for deterministic operation hashing
+   *
+   * This allows client-side producers (e.g. NFCAuthService) to compute
+   * exactly the same canonical hash that verifyOperationSignature() will
+   * verify, without duplicating hashing logic outside this manager.
+   */
+  async getOperationHashForClient(
+    operation: NTAG424SpendOperation | NTAG424SignOperation
+  ): Promise<string> {
+    return this.computeOperationHash(operation);
+  }
+
+  /**
+   * Verify ECDSA signature using P-256 via @noble/curves
+   *
+   * CRITICAL FIX: Uses @noble/curves for raw hash verification instead of Web Crypto API.
+   * This prevents double-hashing: messageHashHex is already a SHA-256 hash, and Web Crypto
+   * would hash it again if we used { hash: { name: "SHA-256" } }.
+   *
+   * The signature was created by signing the pre-computed hash (not the raw data),
+   * so we verify against the hash directly using @noble/curves which supports raw verification.
+   */
+  private async verifyP256Signature(
+    messageHashHex: string,
+    signatureHex: string,
+    publicKeyHex: string,
+    uidHint: string
+  ): Promise<boolean> {
+    try {
+      // Import p256 from @noble/curves/nist for raw hash verification
+      const { p256 } = await import("@noble/curves/nist");
+
+      const publicKeyBytes = this.hexToBytes(publicKeyHex);
+      const signatureBytes = this.hexToBytes(signatureHex);
+      const messageBytes = this.hexToBytes(messageHashHex);
+
+      if (
+        publicKeyBytes.length === 0 ||
+        signatureBytes.length === 0 ||
+        messageBytes.length === 0
+      ) {
+        console.warn("⚠️ Empty data for P-256 signature verification", {
+          uid: uidHint,
+        });
+        return false;
+      }
+
+      // Validate signature length: ECDSA signatures are 64 bytes (r + s components, 32 bytes each)
+      if (signatureBytes.length !== 64) {
+        console.warn("⚠️ Invalid P-256 signature length", {
+          uid: uidHint,
+          expected: 64,
+          actual: signatureBytes.length,
+        });
+        return false;
+      }
+
+      // Validate message hash length: SHA-256 produces 32 bytes
+      if (messageBytes.length !== 32) {
+        console.warn("⚠️ Invalid message hash length for P-256 verification", {
+          uid: uidHint,
+          expected: 32,
+          actual: messageBytes.length,
+        });
+        return false;
+      }
+
+      // Use @noble/curves for raw hash verification (no double-hashing)
+      // messageBytes is already the SHA-256 hash, so we verify directly
+      const isValid = p256.verify(signatureBytes, messageBytes, publicKeyBytes);
+
+      return isValid;
+    } catch (error) {
+      console.error("❌ P-256 signature verification error:", error, {
+        uid: uidHint,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Verify ECDSA signature using secp256k1 via @noble/curves
+   */
+  private async verifySecp256k1Signature(
+    messageHashHex: string,
+    signatureHex: string,
+    publicKeyHex: string,
+    uidHint: string
+  ): Promise<boolean> {
+    try {
+      const { secp256k1 } = await import("@noble/curves/secp256k1");
+
+      const messageBytes = this.hexToBytes(messageHashHex);
+      const signatureBytes = this.hexToBytes(signatureHex);
+      const publicKeyBytes = this.hexToBytes(publicKeyHex);
+
+      if (
+        messageBytes.length === 0 ||
+        signatureBytes.length === 0 ||
+        publicKeyBytes.length === 0
+      ) {
+        console.warn("⚠️ Empty data for secp256k1 signature verification", {
+          uid: uidHint,
+        });
+        return false;
+      }
+
+      return secp256k1.verify(signatureBytes, messageBytes, publicKeyBytes);
+    } catch (error) {
+      console.error("❌ secp256k1 signature verification error:", error, {
+        uid: uidHint,
+      });
       return false;
     }
   }
@@ -672,8 +958,10 @@ export class NTAG424ProductionManager {
     operation: NTAG424SpendOperation
   ): Promise<boolean> {
     try {
+      const supabase = this.supabase || (await getSupabaseClient());
+
       // Get user's spending limits from database
-      const { data } = await this.supabase
+      const { data } = await supabase
         .from("ntag424_registrations")
         .select("encrypted_config")
         .eq("uid", operation.uid)
@@ -864,7 +1152,9 @@ export class NTAG424ProductionManager {
     error?: Error
   ): Promise<void> {
     try {
-      await this.supabase.from("ntag424_operations_log").insert([
+      const supabase = this.supabase || (await getSupabaseClient());
+
+      await supabase.from("ntag424_operations_log").insert([
         {
           uid: operation.uid,
           operation_type: type,
@@ -884,7 +1174,9 @@ export class NTAG424ProductionManager {
    */
   private async getDailySpending(uid: string, date: string): Promise<number> {
     try {
-      const { data } = await this.supabase
+      const supabase = this.supabase || (await getSupabaseClient());
+
+      const { data } = await supabase
         .from("ntag424_operations_log")
         .select("metadata")
         .eq("uid", uid)
@@ -915,7 +1207,9 @@ export class NTAG424ProductionManager {
     weekStart: string
   ): Promise<number> {
     try {
-      const { data } = await this.supabase
+      const supabase = this.supabase || (await getSupabaseClient());
+
+      const { data } = await supabase
         .from("ntag424_operations_log")
         .select("metadata")
         .eq("uid", uid)

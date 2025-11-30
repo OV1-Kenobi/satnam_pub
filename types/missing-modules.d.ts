@@ -23,6 +23,15 @@ declare module "@noble/curves/secp256k1" {
     ): Uint8Array;
     sign(msgHash: Uint8Array, privateKey: Uint8Array): any;
     verify(signature: any, msgHash: Uint8Array, publicKey: Uint8Array): boolean;
+    schnorr: {
+      verify(
+        signature: Uint8Array,
+        msgHash: Uint8Array,
+        publicKey: Uint8Array
+      ): boolean;
+      sign(msgHash: Uint8Array, privateKey: Uint8Array): Uint8Array;
+      getPublicKey(privateKey: Uint8Array | string): Uint8Array;
+    };
     Point: WeierstrassPointConstructor;
     CURVE: {
       n: bigint;

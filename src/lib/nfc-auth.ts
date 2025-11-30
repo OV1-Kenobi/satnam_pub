@@ -5,6 +5,17 @@
  * @security Hardware-backed authentication with encrypted bearer instruments
  */
 
+import CryptoJS from "crypto-js";
+import { getEnvVar } from "../config/env.client";
+import {
+  ntag424Manager,
+  type NTAG424SpendOperation,
+  type NTAG424SignOperation,
+} from "./ntag424-production";
+import { secureNsecManager } from "./secure-nsec-manager";
+import fetchWithAuth from "./auth/fetch-with-auth";
+import { stewardApprovalClient } from "./steward/approval-client";
+
 // NFC Web API types
 interface NFCReader {
   addEventListener(event: string, listener: EventListener): void;
@@ -70,6 +81,40 @@ interface GuardianApprovalResponse {
   reason?: string;
 }
 
+interface CardConfig {
+  uid: string;
+  signingPublicKey: string;
+  encryptedPrivateKey?: string; // Optional encrypted private key for recovery scenarios
+  aesKeys: {
+    authentication: string;
+    encryption: string;
+    sun: string;
+  };
+  pinHash: string;
+  userNpub: string;
+  familyRole: "offspring" | "adult" | "steward" | "guardian" | "private";
+  spendingLimits?: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+    perTransaction: number;
+  };
+  individual: string;
+  createdAt: number;
+  lastUsed: number;
+  // Application-layer P-256 keypair for NTAG424 operation signing (encrypted at rest in encrypted_config)
+  p256PrivateKey?: string; // 64-char hex (32 bytes), used for spend + non-Nostr sign operations
+  p256PublicKey?: string; // 130-char hex (uncompressed) or 66-char (compressed), for integrity verification
+}
+
+interface StewardPolicy {
+  requiresStewardApproval: boolean;
+  stewardThreshold: number;
+  eligibleApproverPubkeys: string[];
+  eligibleCount: number;
+  federationDuid: string | null;
+}
+
 interface TapToSpendRequest {
   amount: number;
   recipient: string;
@@ -81,9 +126,15 @@ interface TapToSpendRequest {
 
 interface TapToSignRequest {
   message: string;
-  purpose: "transaction" | "communication" | "recovery" | "identity";
+  purpose: "transaction" | "communication" | "recovery" | "identity" | "nostr";
   requiresGuardianApproval: boolean;
   guardianThreshold: number;
+  /**
+   * When purpose === "nostr", a valid SecureNsecManager session ID must be
+   * provided so that signing uses the user's Nostr key via zero-knowledge
+   * session handling instead of ephemeral keys.
+   */
+  signingSessionId?: string;
 }
 
 // NFC Web API type definitions for better type safety
@@ -127,6 +178,23 @@ declare global {
     NDEFWriter?: new () => NDEFWriter;
   }
 }
+
+// CRITICAL: Use getEnvVar() for module-level env access to avoid TDZ issues
+const API_BASE: string = getEnvVar("VITE_API_BASE_URL") || "/api";
+
+// Steward approval client-side timeouts (ms) and request expiry (seconds)
+const STEWARD_APPROVAL_TIMEOUT_MS = 60_000; // 60s to wait for approvals
+const STEWARD_APPROVAL_WINDOW_SECONDS = 120; // 2 minutes validity for requests
+
+// Lazy import to prevent client creation on page load
+let supabaseClient: any = null;
+const getSupabaseClient = async () => {
+  if (!supabaseClient) {
+    const { supabase } = await import("./supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+};
 
 /**
  * NFC Authentication Service for NTAG424 DNA
@@ -589,6 +657,24 @@ export class NFCAuthService {
         }
       }
 
+      // Fetch steward policy before performing any NFC operations
+      let policy: StewardPolicy | null = null;
+      try {
+        policy = await this.fetchStewardPolicy("spend");
+      } catch (err) {
+        console.error(
+          "❌ Tap-to-Spend: failed to fetch steward policy",
+          err instanceof Error ? err.message : "Unknown error"
+        );
+        // Abort cleanly without attempting NFC operation when policy cannot be determined
+        return false;
+      }
+
+      const needsStewardApproval =
+        !!policy &&
+        policy.requiresStewardApproval === true &&
+        policy.stewardThreshold > 0;
+
       // Start listening for NFC tag
       await this.startListening();
 
@@ -607,8 +693,80 @@ export class NFCAuthService {
       const auth = await authPromise;
       console.log("✅ NFC authentication for tap-to-spend successful");
 
-      // Execute the spend operation
-      const success = await this.executeSpendOperation(request, auth);
+      // If steward approval is required, gate the spend on sufficient approvals
+      if (needsStewardApproval && policy) {
+        console.log("🛡️ Steward approval required for tap-to-spend", {
+          threshold: policy.stewardThreshold,
+          eligibleCount: policy.eligibleCount,
+        });
+
+        const unsignedOperation: NTAG424SpendOperation = {
+          uid: auth.uid,
+          amount: request.amount,
+          recipient: request.recipient,
+          memo: request.memo,
+          paymentType: "lightning",
+          requiresGuardianApproval: request.requiresGuardianApproval,
+          guardianThreshold: request.guardianThreshold,
+          privacyLevel: request.privacyLevel,
+          timestamp: Date.now(),
+          signature: "",
+        };
+
+        const operationHash = await ntag424Manager.getOperationHashForClient(
+          unsignedOperation
+        );
+
+        // Best-effort publish of steward approval requests; failures are logged but do not leak sensitive data
+        try {
+          const expiresAt =
+            Math.floor(Date.now() / 1000) + STEWARD_APPROVAL_WINDOW_SECONDS;
+          await stewardApprovalClient.publishApprovalRequests({
+            operationHash,
+            operationKind: "ntag424_spend",
+            uidHint: auth.uid.substring(0, 8) + "...",
+            stewardThreshold: policy.stewardThreshold,
+            federationDuid: policy.federationDuid || undefined,
+            expiresAt,
+            recipients: policy.eligibleApproverPubkeys.map((pubkey) => ({
+              pubkeyHex: pubkey,
+            })),
+          });
+        } catch (publishErr) {
+          console.warn("⚠️ Steward approval request publish failed", {
+            error:
+              publishErr instanceof Error
+                ? publishErr.message
+                : String(publishErr),
+          });
+        }
+
+        const approvalResult = await stewardApprovalClient.awaitApprovals(
+          operationHash,
+          {
+            required: policy.stewardThreshold,
+            timeoutMs: STEWARD_APPROVAL_TIMEOUT_MS,
+            federationDuid: policy.federationDuid || undefined,
+            eligibleApproverPubkeys: policy.eligibleApproverPubkeys,
+          }
+        );
+
+        if (approvalResult.status !== "approved") {
+          console.warn("⚠️ Tap-to-spend steward approvals not satisfied", {
+            status: approvalResult.status,
+          });
+          await this.stopListening();
+          return false;
+        }
+
+        console.log("✅ Steward approvals satisfied for tap-to-spend");
+      }
+
+      // Build and sign NTAG424 spend operation
+      const operation = await this.createSignedSpendOperation(request, auth);
+
+      // Execute the spend operation via NTAG424 production manager
+      const success = await ntag424Manager.executeTapToSpend(operation);
 
       // Stop listening
       await this.stopListening();
@@ -644,6 +802,23 @@ export class NFCAuthService {
         }
       }
 
+      // Fetch steward policy before performing any NFC operations
+      let policy: StewardPolicy | null = null;
+      try {
+        policy = await this.fetchStewardPolicy("sign");
+      } catch (err) {
+        console.error(
+          "❌ Tap-to-Sign: failed to fetch steward policy",
+          err instanceof Error ? err.message : "Unknown error"
+        );
+        return null;
+      }
+
+      const needsStewardApproval =
+        !!policy &&
+        policy.requiresStewardApproval === true &&
+        policy.stewardThreshold > 0;
+
       // Start listening for NFC tag
       await this.startListening();
 
@@ -662,8 +837,75 @@ export class NFCAuthService {
       const auth = await authPromise;
       console.log("✅ NFC authentication for tap-to-sign successful");
 
-      // Generate signature
-      const signature = await this.generateSignature(request.message, auth);
+      if (needsStewardApproval && policy) {
+        console.log("🛡️ Steward approval required for tap-to-sign", {
+          threshold: policy.stewardThreshold,
+          eligibleCount: policy.eligibleCount,
+        });
+
+        const unsignedOperation: NTAG424SignOperation = {
+          uid: auth.uid,
+          message: request.message,
+          purpose: request.purpose,
+          requiresGuardianApproval: request.requiresGuardianApproval,
+          guardianThreshold: request.guardianThreshold,
+          timestamp: Date.now(),
+          signature: "",
+        };
+
+        const operationHash = await ntag424Manager.getOperationHashForClient(
+          unsignedOperation
+        );
+
+        try {
+          const expiresAt =
+            Math.floor(Date.now() / 1000) + STEWARD_APPROVAL_WINDOW_SECONDS;
+          await stewardApprovalClient.publishApprovalRequests({
+            operationHash,
+            operationKind: "ntag424_sign",
+            uidHint: auth.uid.substring(0, 8) + "...",
+            stewardThreshold: policy.stewardThreshold,
+            federationDuid: policy.federationDuid || undefined,
+            expiresAt,
+            recipients: policy.eligibleApproverPubkeys.map((pubkey) => ({
+              pubkeyHex: pubkey,
+            })),
+          });
+        } catch (publishErr) {
+          console.warn("⚠️ Steward approval request publish failed", {
+            error:
+              publishErr instanceof Error
+                ? publishErr.message
+                : String(publishErr),
+          });
+        }
+
+        const approvalResult = await stewardApprovalClient.awaitApprovals(
+          operationHash,
+          {
+            required: policy.stewardThreshold,
+            timeoutMs: STEWARD_APPROVAL_TIMEOUT_MS,
+            federationDuid: policy.federationDuid || undefined,
+            eligibleApproverPubkeys: policy.eligibleApproverPubkeys,
+          }
+        );
+
+        if (approvalResult.status !== "approved") {
+          console.warn("⚠️ Tap-to-sign steward approvals not satisfied", {
+            status: approvalResult.status,
+          });
+          await this.stopListening();
+          return null;
+        }
+
+        console.log("✅ Steward approvals satisfied for tap-to-sign");
+      }
+
+      // Build and sign NTAG424 sign operation (for Nostr, this will use secureNsecManager)
+      const operation = await this.createSignedSignOperation(request, auth);
+
+      // Execute the sign operation via NTAG424 production manager
+      const signature = await ntag424Manager.executeTapToSign(operation);
 
       // Stop listening
       await this.stopListening();
@@ -698,26 +940,660 @@ export class NFCAuthService {
       console.error("❌ Spend operation failed:", error);
       return false;
     }
+
+    // End of executeSpendOperation
+  }
+
+  /**
+   * Build and sign an NTAG424 spend operation using deterministic hashing
+   * and a JSON signature envelope compatible with NTAG424ProductionManager.
+   */
+  async createSignedSpendOperation(
+    request: TapToSpendRequest,
+    auth: NTAG424DNAAuth
+  ): Promise<NTAG424SpendOperation> {
+    const truncatedUid = auth.uid.substring(0, 8) + "...";
+
+    // Base operation without signature; paymentType is currently limited
+    // to Lightning for browser-side NFC tap-to-spend.
+    const operation: NTAG424SpendOperation = {
+      uid: auth.uid,
+      amount: request.amount,
+      recipient: request.recipient,
+      memo: request.memo,
+      paymentType: "lightning",
+      requiresGuardianApproval: request.requiresGuardianApproval,
+      guardianThreshold: request.guardianThreshold,
+      privacyLevel: request.privacyLevel,
+      timestamp: Date.now(),
+      signature: "",
+    };
+
+    // Compute deterministic operation hash via NTAG424ProductionManager
+    const operationHashHex = await ntag424Manager.getOperationHashForClient(
+      operation
+    );
+
+    // Sign with per-card P-256 key for hardware-backed spend operations
+    const { publicKeyHex, signatureHex } = await this.signOperationHashWithP256(
+      operationHashHex,
+      auth
+    );
+
+    operation.signature = JSON.stringify({
+      curve: "P-256" as const,
+      publicKey: publicKeyHex,
+      signature: signatureHex,
+    });
+
+    console.log("🔏 NTAG424 spend operation signed", {
+      uid: truncatedUid,
+      amount: request.amount,
+      paymentType: operation.paymentType,
+    });
+
+    return operation;
+  }
+
+  /**
+   * Build and sign an NTAG424 sign operation using deterministic hashing
+   * and a JSON signature envelope. Uses secp256k1 for Nostr purposes
+   * and P-256 for all other signing purposes.
+   */
+  async createSignedSignOperation(
+    request: TapToSignRequest,
+    auth: NTAG424DNAAuth
+  ): Promise<NTAG424SignOperation> {
+    const truncatedUid = auth.uid.substring(0, 8) + "...";
+
+    const operation: NTAG424SignOperation = {
+      uid: auth.uid,
+      message: request.message,
+      purpose: request.purpose,
+      requiresGuardianApproval: request.requiresGuardianApproval,
+      guardianThreshold: request.guardianThreshold,
+      timestamp: Date.now(),
+      signature: "",
+    };
+
+    const operationHashHex = await ntag424Manager.getOperationHashForClient(
+      operation
+    );
+
+    let curve: "P-256" | "secp256k1";
+    let publicKeyHex: string;
+    let signatureHex: string;
+
+    if (request.purpose === "nostr") {
+      curve = "secp256k1";
+      const result = await this.signOperationHashWithSecp256k1(
+        operationHashHex,
+        request.signingSessionId
+      );
+      publicKeyHex = result.publicKeyHex;
+      signatureHex = result.signatureHex;
+    } else {
+      curve = "P-256";
+      const result = await this.signOperationHashWithP256(
+        operationHashHex,
+        auth
+      );
+      publicKeyHex = result.publicKeyHex;
+      signatureHex = result.signatureHex;
+    }
+
+    operation.signature = JSON.stringify({
+      curve,
+      publicKey: publicKeyHex,
+      signature: signatureHex,
+    });
+
+    console.log("🔏 NTAG424 sign operation prepared", {
+      uid: truncatedUid,
+      purpose: request.purpose,
+      curve,
+    });
+
+    return operation;
   }
 
   /**
    * Generate signature after NFC authentication
+   * SECURITY: Verifies signature using @noble/curves/secp256k1 before returning
+   * @param message - Message to sign
+   * @param auth - NTAG424 DNA authentication data including uid
+   * @returns Hex-encoded verified signature (128 characters for 64 bytes)
+   * @throws Error if card not registered, signature read fails, or verification fails
    */
   private async generateSignature(
     message: string,
     auth: NTAG424DNAAuth
   ): Promise<string> {
     try {
-      // This would use the authenticated NFC key to sign
       console.log("✍️ Generating signature with NFC key:", {
         message: message.substring(0, 50) + "...",
-        nfcAuth: auth.uid,
+        nfcAuth: auth.uid.substring(0, 8) + "...",
       });
 
-      // For now, return a placeholder signature
-      return "placeholder_signature_" + Date.now();
+      // 1. Get card configuration with signing public key
+      const cardConfig = await this.getCardConfig(auth.uid);
+      if (!cardConfig || !cardConfig.signingPublicKey) {
+        throw new Error(
+          "Card not registered for signing - no public key found"
+        );
+      }
+
+      // 2. Create message hash using Web Crypto API
+      const messageBytes = new TextEncoder().encode(message);
+      const messageHashBuffer = await crypto.subtle.digest(
+        "SHA-256",
+        messageBytes
+      );
+      const messageHash = new Uint8Array(messageHashBuffer);
+      const messageHashHex = Array.from(messageHash)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // 3. Request signature from NFC card
+      const signatureHex = await this.requestCardSignature(
+        auth.uid,
+        messageHashHex
+      );
+
+      // 4. Validate signature format (must be 128 hex characters = 64 bytes)
+      if (!/^[a-fA-F0-9]{128}$/.test(signatureHex)) {
+        throw new Error(
+          `Invalid signature format - expected 128 hex characters, got ${signatureHex.length}`
+        );
+      }
+
+      // 5. Verify signature using secp256k1 before returning
+      const { secp256k1 } = await import("@noble/curves/secp256k1");
+
+      // Convert signature hex to bytes (64 bytes)
+      const signatureBytes = new Uint8Array(
+        signatureHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
+      // Convert public key hex to bytes (32 bytes for x-only pubkey)
+      const publicKeyHex = cardConfig.signingPublicKey;
+      if (!/^[a-fA-F0-9]{64}$/.test(publicKeyHex)) {
+        throw new Error("Invalid signing public key format in card config");
+      }
+      const publicKeyBytes = new Uint8Array(
+        publicKeyHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
+      // Verify signature
+      const isValid = secp256k1.verify(
+        signatureBytes,
+        messageHash,
+        publicKeyBytes
+      );
+
+      if (!isValid) {
+        console.error(
+          "❌ NFC signature verification failed - signature invalid"
+        );
+        throw new Error(
+          "Card signature verification failed - signature invalid"
+        );
+      }
+
+      // Log success metadata only (zero-knowledge: don't log actual signature)
+      console.log("✅ NFC signature generated and verified:", {
+        cardUid: auth.uid.substring(0, 8) + "...",
+        signatureLength: signatureHex.length,
+        verified: true,
+      });
+
+      return signatureHex;
     } catch (error) {
-      console.error("❌ Signature generation failed:", error);
+      console.error(
+        "❌ Signature generation failed:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Sign a deterministic NTAG424 operation hash using Web Crypto P-256
+   * and return public key and signature as hex strings.
+   */
+  private async signOperationHashWithP256(
+    operationHashHex: string,
+    auth: NTAG424DNAAuth
+  ): Promise<{
+    publicKeyHex: string;
+    signatureHex: string;
+  }> {
+    if (typeof crypto === "undefined" || !crypto.subtle) {
+      throw new Error("Web Crypto API is not available for P-256 signing");
+    }
+
+    const messageBytes = this.secureHexToBytes(operationHashHex);
+    if (!messageBytes) {
+      throw new Error("Invalid NTAG424 operation hash for P-256 signing");
+    }
+
+    // Retrieve per-card P-256 key material from encrypted card config
+    const cardConfig = await this.getCardConfig(auth.uid);
+    if (!cardConfig || !cardConfig.p256PrivateKey) {
+      console.error(
+        "❌ P-256 signing key not found in card config",
+        auth.uid.substring(0, 8) + "..."
+      );
+      throw new Error(
+        "Card configuration missing required P-256 signing key; please re-provision this card."
+      );
+    }
+
+    const privHex = cardConfig.p256PrivateKey;
+    if (!/^[0-9a-fA-F]{64}$/.test(privHex)) {
+      console.error(
+        "❌ Invalid P-256 private key format in card config",
+        auth.uid.substring(0, 8) + "..."
+      );
+      throw new Error("Invalid P-256 signing key format in card configuration");
+    }
+
+    const privBytes = this.secureHexToBytes(privHex);
+    if (!privBytes) {
+      throw new Error(
+        "Failed to parse P-256 private key from card configuration"
+      );
+    }
+
+    try {
+      // Validate and extract P-256 public key coordinates from card config
+      if (!cardConfig.p256PublicKey) {
+        console.error(
+          "❌ P-256 public key missing in card config for operation envelope",
+          auth.uid.substring(0, 8) + "..."
+        );
+        throw new Error(
+          "Card configuration missing P-256 public key required for operation envelope."
+        );
+      }
+
+      const pubKeyHex = cardConfig.p256PublicKey;
+
+      // Validate uncompressed format: 0x04 prefix (1 byte) + x (32 bytes) + y (32 bytes) = 130 hex chars
+      if (pubKeyHex.length !== 130) {
+        throw new Error(
+          `Invalid p256PublicKey: must be 130 hex characters (uncompressed format with 0x04 prefix), got ${pubKeyHex.length}`
+        );
+      }
+
+      if (!pubKeyHex.startsWith("04")) {
+        throw new Error(
+          "Invalid p256PublicKey: must start with 0x04 prefix for uncompressed format"
+        );
+      }
+
+      // Extract x and y coordinates from uncompressed format
+      // Format: 0x04 (2 hex chars) + x (64 hex chars) + y (64 hex chars)
+      const xHex = pubKeyHex.slice(2, 66); // Skip 0x04 prefix, get x (32 bytes = 64 hex chars)
+      const yHex = pubKeyHex.slice(66, 130); // Get y (32 bytes = 64 hex chars)
+
+      const xBytes = this.secureHexToBytes(xHex);
+      const yBytes = this.secureHexToBytes(yHex);
+
+      if (!xBytes || !yBytes || xBytes.length !== 32 || yBytes.length !== 32) {
+        throw new Error(
+          "Failed to parse P-256 public key coordinates from card configuration"
+        );
+      }
+
+      // Build complete JWK with x and y coordinates for proper P-256 key import
+      const jwk: JsonWebKey = {
+        kty: "EC",
+        crv: "P-256",
+        d: this.bytesToBase64Url(privBytes),
+        x: this.bytesToBase64Url(xBytes),
+        y: this.bytesToBase64Url(yBytes),
+        ext: true,
+      };
+
+      const privateKey = await crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["sign"]
+      );
+
+      const signatureBuffer = await crypto.subtle.sign(
+        { name: "ECDSA", hash: { name: "SHA-256" } },
+        privateKey,
+        new Uint8Array(messageBytes)
+      );
+
+      const signatureHex = this.bytesToHex(new Uint8Array(signatureBuffer));
+      return { publicKeyHex: pubKeyHex, signatureHex };
+    } finally {
+      // Best-effort cleanup of raw private key bytes
+      privBytes.fill(0);
+    }
+  }
+
+  /**
+   * Sign a deterministic NTAG424 operation hash using secp256k1 via
+   * @noble/curves and return public key and signature as hex strings.
+   * Used for Nostr-related signing purposes.
+   */
+  private async signOperationHashWithSecp256k1(
+    operationHashHex: string,
+    signingSessionId?: string
+  ): Promise<{
+    publicKeyHex: string;
+    signatureHex: string;
+  }> {
+    if (!signingSessionId) {
+      throw new Error(
+        "Nostr signing session required. Please authenticate with your Nostr account before using tap-to-sign for Nostr operations."
+      );
+    }
+
+    const messageBytes = this.secureHexToBytes(operationHashHex);
+    if (!messageBytes) {
+      throw new Error("Invalid NTAG424 operation hash for secp256k1 signing");
+    }
+
+    const { secp256k1 } = await import("@noble/curves/secp256k1");
+
+    const result = await secureNsecManager.useTemporaryNsec(
+      signingSessionId,
+      async (nsecHex: string) => {
+        // nsecHex may be raw hex or bech32-encoded; for NTAG424 operation
+        // signing we expect a 64-char hex private key.
+        if (!/^[0-9a-fA-F]{64}$/.test(nsecHex)) {
+          throw new Error(
+            "Unsupported Nostr key format for NTAG424 secp256k1 signing"
+          );
+        }
+
+        const privBytes = this.secureHexToBytes(nsecHex);
+        if (!privBytes) {
+          throw new Error("Failed to parse Nostr private key for signing");
+        }
+
+        try {
+          const signatureBytes = secp256k1.sign(messageBytes, privBytes);
+          const publicKeyBytes = secp256k1.getPublicKey(privBytes);
+
+          const signatureHex = this.bytesToHex(signatureBytes);
+          const publicKeyHex = this.bytesToHex(publicKeyBytes);
+
+          return { publicKeyHex, signatureHex };
+        } finally {
+          // Best-effort cleanup of raw private key material
+          privBytes.fill(0);
+        }
+      }
+    );
+
+    return result;
+  }
+
+  /**
+   * Convert a byte array to a hex string
+   */
+  private bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * Convert bytes to base64url string for JWK encoding
+   */
+  private bytesToBase64Url(bytes: Uint8Array): string {
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    return base64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  }
+
+  /**
+   * Get master key from environment
+   * SECURITY: Uses same key source as NTAG424ProductionManager
+   */
+  private getMasterKey(): string {
+    const vaultKey = getEnvVar("VITE_NTAG424_MASTER_KEY");
+    if (vaultKey && vaultKey !== "your-master-key-here") {
+      return vaultKey;
+    }
+
+    // Development fallback - matches NTAG424ProductionManager
+    console.warn(
+      "⚠️ Using development NTAG424 master key. Use Supabase Vault in production."
+    );
+    return "dev-ntag424-master-key-32-chars";
+  }
+
+  /**
+   * Decrypt card configuration using AES-256
+   * SECURITY: Uses CryptoJS.AES matching NTAG424ProductionManager.encryptConfig()
+   * @throws Error if decryption fails (invalid key or corrupted data)
+   */
+  private decryptCardConfig(encryptedConfig: string): CardConfig {
+    try {
+      const masterKey = this.getMasterKey();
+      const bytes = CryptoJS.AES.decrypt(encryptedConfig, masterKey);
+      const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
+
+      if (!decryptedString) {
+        throw new Error(
+          "Decryption produced empty result - invalid key or corrupted data"
+        );
+      }
+
+      const config = JSON.parse(decryptedString) as CardConfig;
+
+      // Validate required fields
+      if (!config.uid || !config.pinHash) {
+        throw new Error(
+          "Decrypted config missing required fields (uid, pinHash)"
+        );
+      }
+
+      // Derive signing public key from authentication key if not explicitly set
+      if (!config.signingPublicKey && config.aesKeys?.authentication) {
+        config.signingPublicKey = config.aesKeys.authentication;
+      }
+
+      return config;
+    } catch (error) {
+      // Log security event without exposing sensitive data
+      console.error(
+        "❌ Card config decryption failed:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+      throw new Error("Configuration decryption failed - check master key");
+    }
+  }
+
+  /**
+   * Fetch card configuration from database
+   * @param uid - Card unique identifier
+   * @returns CardConfig or null if not found
+   * @throws Error if database or decryption fails
+   */
+  private async getCardConfig(uid: string): Promise<CardConfig | null> {
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase
+        .from("ntag424_registrations")
+        .select("encrypted_config, user_npub, family_role")
+        .eq("uid", uid)
+        .single();
+
+      if (error) {
+        // Not found is not an error, just return null
+        if (error.code === "PGRST116") {
+          console.log("⚠️ Card not registered:", uid.substring(0, 8) + "...");
+          return null;
+        }
+        throw new Error(`Database query failed: ${error.message}`);
+      }
+
+      if (!data?.encrypted_config) {
+        console.log("⚠️ Card registration missing encrypted config");
+        return null;
+      }
+
+      // Decrypt configuration using shared master key
+      const config = this.decryptCardConfig(data.encrypted_config);
+
+      // Merge database fields with decrypted config
+      return {
+        ...config,
+        userNpub: data.user_npub || config.userNpub,
+        familyRole: data.family_role || config.familyRole,
+      };
+    } catch (error) {
+      console.error(
+        "❌ Failed to fetch card config:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+      throw error; // Re-throw to signal failure to caller
+    }
+  }
+
+  /**
+   * Request signature from NFC card
+   * Uses Web NFC API to scan for NTAG424 DNA signature records
+   * @param uid - Card unique identifier (for validation)
+   * @param messageHash - Hash to be signed (for future challenge-response)
+   * @returns Hex-encoded signature string (64 characters for 32 bytes)
+   * @throws Error if NFC not supported, timeout, or no signature found
+   */
+  private async requestCardSignature(
+    uid: string,
+    _messageHash: string
+  ): Promise<string> {
+    // Check if NFC is supported
+    if (!("NDEFReader" in window)) {
+      throw new Error("NFC not supported in this browser");
+    }
+
+    const TIMEOUT_MS = 10000; // 10 seconds
+    const abortController = new AbortController();
+    let reader: NDEFReader | null = null;
+
+    try {
+      reader = new (window as any).NDEFReader();
+      console.log(
+        "📡 Starting NFC signature scan for card:",
+        uid.substring(0, 8) + "..."
+      );
+
+      // Create promise for NFC reading
+      const readPromise = new Promise<string>((resolve, reject) => {
+        reader!.onreading = (event: NDEFReadingEvent) => {
+          try {
+            // Look for NTAG424 DNA record
+            const ntagRecord = event.message.records.find(
+              (record) => record.recordType === "application/vnd.ntag424.dna"
+            );
+
+            if (!ntagRecord || !ntagRecord.data) {
+              reject(new Error("No signature record found on card"));
+              return;
+            }
+
+            // Parse NTAG424 DNA structure
+            const data = new Uint8Array(ntagRecord.data);
+
+            // Validate UID matches (first 7 bytes)
+            const cardUid = Array.from(data.slice(0, 7))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+
+            if (cardUid.toLowerCase() !== uid.toLowerCase()) {
+              reject(new Error("Card UID mismatch - wrong card presented"));
+              return;
+            }
+
+            // Extract signature (bytes 17-81, 64 bytes for ECDSA r+s components)
+            // ECDSA signatures are always 64 bytes: r component (32 bytes) + s component (32 bytes)
+            // This matches the expected 128 hex characters in generateSignature()
+            const signatureBytes = data.slice(17, 81);
+            if (signatureBytes.length !== 64) {
+              reject(
+                new Error(
+                  `Invalid signature length on card: expected 64 bytes, got ${signatureBytes.length}`
+                )
+              );
+              return;
+            }
+
+            const signature = Array.from(signatureBytes)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+
+            // Log metadata only (zero-knowledge: don't log actual signature)
+            console.log("✅ Signature read successfully:", {
+              cardUid: cardUid.substring(0, 8) + "...",
+              signatureLength: signature.length,
+            });
+
+            resolve(signature);
+          } catch (error) {
+            reject(
+              new Error(
+                `Failed to parse signature: ${
+                  error instanceof Error ? error.message : "Unknown error"
+                }`
+              )
+            );
+          }
+        };
+
+        reader!.onerror = (_event: Event) => {
+          reject(new Error("NFC read cancelled by user"));
+        };
+      });
+
+      // Create timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          abortController.abort();
+          reject(new Error("NFC signature read timeout after 10s"));
+        }, TIMEOUT_MS);
+
+        // Clean up timeout if reading completes
+        abortController.signal.addEventListener("abort", () => {
+          clearTimeout(timeoutId);
+        });
+      });
+
+      // Start scanning
+      if (!reader) {
+        throw new Error("NFC reader initialization failed");
+      }
+      await reader.scan();
+      console.log("👂 NFC scan active, waiting for card tap...");
+
+      // Race between read and timeout
+      const signature = await Promise.race([readPromise, timeoutPromise]);
+
+      // Signal completion to clean up timeout
+      abortController.abort();
+
+      return signature;
+    } catch (error) {
+      // Clean up on any error
+      abortController.abort();
+
+      console.error(
+        "❌ NFC signature request failed:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
       throw error;
     }
   }
@@ -745,6 +1621,73 @@ export class NFCAuthService {
     } catch (error) {
       console.error("❌ Guardian approval request failed:", error);
       return false;
+    }
+  }
+
+  /**
+   * Fetch steward policy from the Netlify steward-policy endpoint using the
+   * existing JWT-based authentication. This method never logs raw DUIDs,
+   * federation IDs, or pubkeys; only high-level error messages.
+   */
+  private async fetchStewardPolicy(
+    operationType: "spend" | "sign"
+  ): Promise<StewardPolicy> {
+    const url = `${API_BASE}/steward-policy`;
+    try {
+      const res = await fetchWithAuth(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ operation_type: operationType }),
+        timeoutMs: 15_000,
+      });
+
+      let payload: any = null;
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        payload = await res.json().catch(() => ({}));
+      } else {
+        const text = await res.text().catch(() => "");
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch {
+          payload = {};
+        }
+      }
+
+      if (!res.ok) {
+        const baseError =
+          (payload && typeof payload.error === "string" && payload.error) ||
+          `Steward policy request failed with HTTP ${res.status}`;
+
+        if (res.status === 409) {
+          throw new Error(
+            payload?.error ||
+              "Steward policy misconfigured. Please contact support before using steward-gated NFC flows."
+          );
+        }
+        if (res.status >= 500) {
+          throw new Error(
+            payload?.error ||
+              "Steward policy service is temporarily unavailable. Please try again later."
+          );
+        }
+
+        throw new Error(baseError);
+      }
+
+      if (!payload || !payload.success || !payload.policy) {
+        throw new Error("Invalid steward policy response from server.");
+      }
+
+      const policy = payload.policy as StewardPolicy;
+      return policy;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch steward policy";
+      console.error("❌ Steward policy fetch failed", { message });
+      throw new Error(message);
     }
   }
 

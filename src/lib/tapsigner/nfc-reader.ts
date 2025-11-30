@@ -7,6 +7,7 @@
  */
 
 import { getEnvVar } from "../../config/env.client";
+import CryptoJS from "crypto-js";
 
 /**
  * Card data extracted from NFC tag
@@ -15,6 +16,134 @@ export interface CardData {
   cardId: string;
   publicKey: string;
   timestamp: number;
+}
+
+/**
+ * Result of scanning for a card when raw NDEF message is requested
+ */
+export interface ScanForCardResult {
+  cardData: CardData;
+  rawMessage?: unknown;
+}
+
+interface CardConfig {
+  uid: string;
+  signingPublicKey: string;
+  encryptedPrivateKey?: string; // Optional encrypted private key for recovery scenarios
+  aesKeys: {
+    authentication: string;
+    encryption: string;
+    sun: string;
+  };
+  pinHash: string;
+  userNpub: string;
+  familyRole: "offspring" | "adult" | "steward" | "guardian" | "private";
+  spendingLimits?: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+    perTransaction: number;
+  };
+  individual: string;
+  createdAt: number;
+  lastUsed: number;
+  // Application-layer P-256 keypair for NTAG424 operation signing (encrypted at rest in encrypted_config)
+  p256PrivateKey?: string; // 64-char hex (32 bytes), used for spend + non-Nostr sign operations
+  p256PublicKey?: string; // 130-char hex (uncompressed) or 66-char (compressed), for integrity verification
+}
+
+// Lazy import to prevent Supabase client creation on page load
+let supabaseClient: any = null;
+
+async function getSupabaseClient() {
+  if (!supabaseClient) {
+    const { supabase } = await import("../supabase");
+    supabaseClient = supabase;
+  }
+  return supabaseClient;
+}
+
+function getMasterKey(): string {
+  const vaultKey = getEnvVar("VITE_NTAG424_MASTER_KEY");
+
+  if (vaultKey && vaultKey !== "your-master-key-here") {
+    return vaultKey;
+  }
+
+  console.warn(
+    "[TapSigner NFC Reader] Using development NTAG424 master key. Configure VITE_NTAG424_MASTER_KEY for production."
+  );
+  return "dev-ntag424-master-key-32-chars";
+}
+
+function decryptCardConfig(encryptedConfig: string): CardConfig {
+  if (!encryptedConfig) {
+    throw new Error("Encrypted card config is empty");
+  }
+
+  const masterKey = getMasterKey();
+  const bytes = CryptoJS.AES.decrypt(encryptedConfig, masterKey);
+  const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
+
+  if (!decryptedString) {
+    throw new Error("Failed to decrypt card config - empty result");
+  }
+
+  let config: unknown;
+  try {
+    config = JSON.parse(decryptedString);
+  } catch {
+    throw new Error("Failed to parse decrypted card config JSON");
+  }
+
+  if (!config || typeof config !== "object") {
+    throw new Error("Decrypted card config is not an object");
+  }
+
+  const typed = config as CardConfig;
+
+  if (!typed.signingPublicKey) {
+    throw new Error("Card config missing signingPublicKey");
+  }
+
+  return typed;
+}
+
+export async function fetchCardPublicKey(
+  cardId: string
+): Promise<string | null> {
+  if (!cardId || cardId.length === 0) {
+    throw new Error("Card ID is required to fetch public key");
+  }
+
+  const supabase = await getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("ntag424_registrations")
+    .select("encrypted_config, uid")
+    .eq("uid", cardId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "[TapSigner NFC Reader] Supabase error fetching card public key:",
+      error.message
+    );
+    throw new Error("Failed to fetch card public key from backend");
+  }
+
+  if (!data || !data.encrypted_config) {
+    if (getEnvVar("VITE_TAPSIGNER_DEBUG") === "true") {
+      console.warn(
+        "[TapSigner NFC Reader] No registration found for cardId:",
+        cardId.substring(0, 8) + "..."
+      );
+    }
+    return null;
+  }
+
+  const config = decryptCardConfig(data.encrypted_config as string);
+  return config.signingPublicKey || null;
 }
 
 /**
@@ -45,7 +174,8 @@ export async function initializeNFCReader(): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "NFC initialization failed";
+    const message =
+      error instanceof Error ? error.message : "NFC initialization failed";
     console.error("[NFC Reader] Initialization error:", message);
     throw error;
   }
@@ -54,9 +184,18 @@ export async function initializeNFCReader(): Promise<boolean> {
 /**
  * Scan for NFC card with timeout
  * @param timeoutMs - Timeout in milliseconds (default: 10000)
- * @returns Promise resolving to card data
+ * @param includeRawMessage - When true, also return the raw NDEF message
+ * @returns Promise resolving to card data, optionally with raw message
  */
-export async function scanForCard(timeoutMs: number = 10000): Promise<CardData> {
+export async function scanForCard(timeoutMs?: number): Promise<CardData>;
+export async function scanForCard(
+  timeoutMs: number | undefined,
+  includeRawMessage: true
+): Promise<ScanForCardResult>;
+export async function scanForCard(
+  timeoutMs: number = 10000,
+  includeRawMessage: boolean = false
+): Promise<CardData | ScanForCardResult> {
   try {
     if (!isNFCSupported()) {
       throw new Error("Web NFC API not supported on this device");
@@ -78,39 +217,46 @@ export async function scanForCard(timeoutMs: number = 10000): Promise<CardData> 
     });
 
     // Create card detection promise
-    const cardDetectionPromise = new Promise<CardData>((resolve, reject) => {
-      reader.onreading = (event: any) => {
-        try {
-          if (debugEnabled) {
-            console.log("[NFC Reader] Card detected, parsing NDEF message");
+    const cardDetectionPromise = new Promise<CardData | ScanForCardResult>(
+      (resolve, reject) => {
+        reader.onreading = (event: any) => {
+          try {
+            if (debugEnabled) {
+              console.log("[NFC Reader] Card detected, parsing NDEF message");
+            }
+
+            const message = event.message;
+            if (!message || !message.records || message.records.length === 0) {
+              throw new Error("Invalid NDEF message format");
+            }
+
+            const cardData = extractCardData(message);
+            if (debugEnabled) {
+              console.log("[NFC Reader] Card data extracted successfully");
+            }
+
+            if (includeRawMessage) {
+              resolve({ cardData, rawMessage: message });
+            } else {
+              resolve(cardData);
+            }
+          } catch (err) {
+            const errorMsg =
+              err instanceof Error ? err.message : "Failed to parse card data";
+            if (debugEnabled) {
+              console.error("[NFC Reader] Card parsing error:", errorMsg);
+            }
+            reject(err);
           }
+        };
 
-          const message = event.message;
-          if (!message || !message.records || message.records.length === 0) {
-            throw new Error("Invalid NDEF message format");
-          }
+        reader.onerror = () => {
+          reject(new Error("NFC read error - please try again"));
+        };
 
-          const cardData = extractCardData(message);
-          if (debugEnabled) {
-            console.log("[NFC Reader] Card data extracted successfully");
-          }
-
-          resolve(cardData);
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : "Failed to parse card data";
-          if (debugEnabled) {
-            console.error("[NFC Reader] Card parsing error:", errorMsg);
-          }
-          reject(err);
-        }
-      };
-
-      reader.onerror = () => {
-        reject(new Error("NFC read error - please try again"));
-      };
-
-      reader.scan().catch(reject);
-    });
+        reader.scan().catch(reject);
+      }
+    );
 
     // Race between card detection and timeout
     return await Promise.race([cardDetectionPromise, timeoutPromise]);
@@ -147,7 +293,8 @@ export function parseNDEFMessage(message: any): any {
       timestamp: Date.now(),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "NDEF parsing failed";
+    const message =
+      error instanceof Error ? error.message : "NDEF parsing failed";
     console.error("[NFC Reader] NDEF parsing error:", message);
     throw error;
   }
@@ -183,9 +330,23 @@ export function extractCardData(message: any): CardData {
       publicKey = decoder.decode(records[1].data).trim();
     }
 
-    // If no public key in records, use placeholder (will be fetched from backend)
+    // If no public key in records, we set a placeholder that callers
+    // must replace via fetchCardPublicKey(cardId) before using it for
+    // any cryptographic verification.
     if (!publicKey) {
       publicKey = "0".repeat(64); // 64-character hex placeholder
+    }
+
+    const isPlaceholder = publicKey === "0".repeat(64);
+
+    if (!/^[a-fA-F0-9]{64}$/.test(publicKey)) {
+      throw new Error("Invalid public key format from card or backend");
+    }
+
+    if (isPlaceholder && getEnvVar("VITE_TAPSIGNER_DEBUG") === "true") {
+      console.warn(
+        "[TapSigner NFC Reader] Placeholder public key is still being used. Backend lookup required for production."
+      );
     }
 
     return {
@@ -194,7 +355,8 @@ export function extractCardData(message: any): CardData {
       timestamp: Date.now(),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Card data extraction failed";
+    const message =
+      error instanceof Error ? error.message : "Card data extraction failed";
     console.error("[NFC Reader] Extraction error:", message);
     throw error;
   }
@@ -248,10 +410,7 @@ export function validateCardData(cardData: CardData): boolean {
 
     // Validate public key format (should be 64-character hex string)
     if (!/^[a-fA-F0-9]{64}$/.test(cardData.publicKey)) {
-      // Allow placeholder (all zeros) for now
-      if (cardData.publicKey !== "0".repeat(64)) {
-        return false;
-      }
+      return false;
     }
 
     return true;
@@ -259,4 +418,3 @@ export function validateCardData(cardData: CardData): boolean {
     return false;
   }
 }
-

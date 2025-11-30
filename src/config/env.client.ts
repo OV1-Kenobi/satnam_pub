@@ -92,6 +92,10 @@ export type ClientConfig = {
     tapsignerLnbitsEnabled: boolean; // Phase 1: LNbits integration for Tapsigner cards
     tapsignerTapToSpendEnabled: boolean; // Phase 1: Tap-to-spend payment functionality
     tapsignerDebugEnabled: boolean; // Phase 1: Debug logging for Tapsigner operations
+    // NFC Authentication and MFA flags
+    nfcAuthEnabled: boolean; // NFC-based authentication (default: false)
+    nfcMfaEnabled: boolean; // NFC-based multi-factor authentication (default: false)
+    nfcTimeoutMs: number; // NFC operation timeout in milliseconds (default: 10000, range: 3000-60000)
     // Phase 1 Bitchat: Geo-room discovery
     geochatEnabled: boolean; // Phase 1 Bitchat: Read-only geo-room discovery (default: false)
     // Phase 2 Bitchat: Live geo-room messaging
@@ -333,6 +337,23 @@ const TAPSIGNER_TAP_TO_SPEND_ENABLED =
 const TAPSIGNER_DEBUG_ENABLED =
   (getEnvVar("VITE_TAPSIGNER_DEBUG") || "false").toString().toLowerCase() ===
   "true";
+
+// NFC Authentication: Master toggle for NFC-based authentication; default: false
+const NFC_AUTH_ENABLED =
+  (getEnvVar("VITE_ENABLE_NFC_AUTH") || "false").toString().toLowerCase() ===
+  "true";
+
+// NFC MFA: Enable NFC-based multi-factor authentication; default: false
+const NFC_MFA_ENABLED =
+  (getEnvVar("VITE_ENABLE_NFC_MFA") || "false").toString().toLowerCase() ===
+  "true";
+
+// NFC Timeout: Operation timeout in milliseconds; default: 10000, range: 3000-60000
+const NFC_TIMEOUT_MS = (() => {
+  const value = parseInt(getEnvVar("VITE_NFC_TIMEOUT_MS") || "10000", 10);
+  if (Number.isNaN(value)) return 10000;
+  return Math.min(Math.max(value, 3000), 60000);
+})();
 
 // Phase 1 Bitchat: Geochat geo-room discovery; default: false (opt-in)
 const GEOCHAT_ENABLED =
@@ -612,6 +633,10 @@ export const clientConfig: ClientConfig = {
     tapsignerLnbitsEnabled: TAPSIGNER_LNBITS_ENABLED,
     tapsignerTapToSpendEnabled: TAPSIGNER_TAP_TO_SPEND_ENABLED,
     tapsignerDebugEnabled: TAPSIGNER_DEBUG_ENABLED,
+    // NFC Authentication and MFA flags
+    nfcAuthEnabled: NFC_AUTH_ENABLED,
+    nfcMfaEnabled: NFC_MFA_ENABLED,
+    nfcTimeoutMs: NFC_TIMEOUT_MS,
     // Phase 1 Bitchat: Geo-room discovery
     geochatEnabled: GEOCHAT_ENABLED,
     // Phase 2 Bitchat: Live geo-room messaging

@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { schnorr } from "@noble/curves/secp256k1";
 import {
   constantTimeCompare,
   formatCardId,
@@ -20,6 +21,23 @@ import {
   type Challenge,
 } from "../../../src/lib/tapsigner/card-protocol";
 import { cleanupTestEnv, setupTestEnv } from "../../setup/tapsigner-test-setup";
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const normalized = hex.trim();
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < normalized.length; i += 2) {
+    bytes[i / 2] = parseInt(normalized.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+const TEST_PRIVATE_KEY = "1".repeat(64);
 
 describe("Card Protocol Library", () => {
   beforeEach(() => {
@@ -244,14 +262,216 @@ describe("Card Protocol Library", () => {
   });
 
   describe("generateSignature", () => {
-    it("should generate signature", async () => {
+    it("should generate hardware signature via NFC", async () => {
       const eventHash = "a".repeat(64);
+      const encoder = new TextEncoder();
+      const globalAny = globalThis as any;
+      if (!globalAny.window) {
+        globalAny.window = globalAny;
+      }
+      const win = globalAny.window as any;
+
+      const privateKey = hexToBytes(TEST_PRIVATE_KEY);
+      const messageBytes = hexToBytes(eventHash);
+      const signatureBytes = await schnorr.sign(messageBytes, privateKey);
+      const publicKeyBytes = await schnorr.getPublicKey(privateKey);
+      const signatureHex = bytesToHex(signatureBytes);
+      const publicKeyHex = bytesToHex(publicKeyBytes);
+
+      win.NDEFReader = class NDEFReaderMock {
+        onreading: ((event: any) => void) | null = null;
+        onerror: ((event: any) => void) | null = null;
+
+        async scan() {
+          const message = {
+            records: [
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("test-card-id"),
+              },
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("a".repeat(64)),
+              },
+              {
+                recordType: "application/vnd.coinkite.signature",
+                mediaType: "application/json",
+                data: encoder.encode(
+                  JSON.stringify({
+                    signature: signatureHex,
+                    publicKey: publicKeyHex,
+                  })
+                ),
+              },
+            ],
+          };
+          this.onreading?.({ message });
+        }
+
+        abort() {
+          // no-op for tests
+        }
+      };
+
       const result = await generateSignature(eventHash, "test-card-id");
 
       expect(result).toBeDefined();
-      expect(result.signature).toBeDefined();
-      expect(result.publicKey).toBeDefined();
+      expect(result.signature).toBe(signatureHex);
+      expect(result.publicKey).toBe(publicKeyHex);
       expect(result.timestamp).toBeGreaterThan(0);
+    });
+
+    it("should throw when card does not return a signature record", async () => {
+      const eventHash = "a".repeat(64);
+      const encoder = new TextEncoder();
+      const globalAny = globalThis as any;
+      if (!globalAny.window) {
+        globalAny.window = globalAny;
+      }
+      const win = globalAny.window as any;
+
+      win.NDEFReader = class NDEFReaderMock {
+        onreading: ((event: any) => void) | null = null;
+        onerror: ((event: any) => void) | null = null;
+
+        async scan() {
+          const message = {
+            records: [
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("test-card-id"),
+              },
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("a".repeat(64)),
+              },
+            ],
+          };
+          this.onreading?.({ message });
+        }
+
+        abort() {
+          // no-op for tests
+        }
+      };
+
+      await expect(
+        generateSignature(eventHash, "test-card-id")
+      ).rejects.toThrow(/hardware signature/i);
+    });
+
+    it("should throw on invalid signature format", async () => {
+      const eventHash = "a".repeat(64);
+      const encoder = new TextEncoder();
+      const globalAny = globalThis as any;
+      if (!globalAny.window) {
+        globalAny.window = globalAny;
+      }
+      const win = globalAny.window as any;
+
+      win.NDEFReader = class NDEFReaderMock {
+        onreading: ((event: any) => void) | null = null;
+        onerror: ((event: any) => void) | null = null;
+
+        async scan() {
+          const message = {
+            records: [
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("test-card-id"),
+              },
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("a".repeat(64)),
+              },
+              {
+                recordType: "application/vnd.coinkite.signature",
+                mediaType: "application/json",
+                data: encoder.encode(
+                  JSON.stringify({
+                    signature: "not-a-valid-hex-signature",
+                    publicKey: "a".repeat(64),
+                  })
+                ),
+              },
+            ],
+          };
+          this.onreading?.({ message });
+        }
+
+        abort() {
+          // no-op for tests
+        }
+      };
+
+      await expect(
+        generateSignature(eventHash, "test-card-id")
+      ).rejects.toThrow(/hardware signature/i);
+    });
+
+    it("should throw when signature verification fails", async () => {
+      const correctHash = "b".repeat(64);
+      const eventHash = "a".repeat(64);
+      const encoder = new TextEncoder();
+      const globalAny = globalThis as any;
+      if (!globalAny.window) {
+        globalAny.window = globalAny;
+      }
+      const win = globalAny.window as any;
+
+      const privateKey = hexToBytes(TEST_PRIVATE_KEY);
+      const messageBytes = hexToBytes(correctHash);
+      const signatureBytes = await schnorr.sign(messageBytes, privateKey);
+      const publicKeyBytes = await schnorr.getPublicKey(privateKey);
+      const signatureHex = bytesToHex(signatureBytes);
+      const publicKeyHex = bytesToHex(publicKeyBytes);
+
+      win.NDEFReader = class NDEFReaderMock {
+        onreading: ((event: any) => void) | null = null;
+        onerror: ((event: any) => void) | null = null;
+
+        async scan() {
+          const message = {
+            records: [
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("test-card-id"),
+              },
+              {
+                recordType: "text",
+                mediaType: "text/plain",
+                data: encoder.encode("a".repeat(64)),
+              },
+              {
+                recordType: "application/vnd.coinkite.signature",
+                mediaType: "application/json",
+                data: encoder.encode(
+                  JSON.stringify({
+                    signature: signatureHex,
+                    publicKey: publicKeyHex,
+                  })
+                ),
+              },
+            ],
+          };
+          this.onreading?.({ message });
+        }
+
+        abort() {
+          // no-op for tests
+        }
+      };
+
+      await expect(
+        generateSignature(eventHash, "test-card-id")
+      ).rejects.toThrow(/signature verification failed/i);
     });
 
     it("should reject empty event hash", async () => {

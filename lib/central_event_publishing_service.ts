@@ -2805,6 +2805,102 @@ export class CentralEventPublishingService {
     return result;
   }
 
+  // Open NIP-17 sealed DM (kind 13, optionally gift-wrapped in kind 1059)
+  // using the active SecureNsecManager session and nip44.
+  async openNip17DmWithActiveSession(
+    outerOrInner: Event
+  ): Promise<{ senderPubHex: string; content: string } | null> {
+    try {
+      // Step 1: Normalize to a sealed kind:13 event
+      let sealed: Event | null = null;
+      if (outerOrInner.kind === 1059) {
+        sealed = await this.unwrapGift59WithActiveSession(outerOrInner);
+      } else if (outerOrInner.kind === 13) {
+        sealed = outerOrInner;
+      } else {
+        return null;
+      }
+      if (!sealed || sealed.kind !== 13) return null;
+
+      const ciphertext = sealed.content;
+      const senderPubHex = sealed.pubkey;
+      if (typeof ciphertext !== "string" || !ciphertext) return null;
+      if (!senderPubHex || typeof senderPubHex !== "string") return null;
+
+      const sessionId = this.getActiveSigningSessionId();
+      if (!sessionId) return null;
+
+      // Step 2: Decrypt sealed nip44 payload using the active session
+      const decrypted = await secureNsecManager.useTemporaryNsec(
+        sessionId,
+        async (nsecHex: string) => {
+          try {
+            type Nip44V2Api = {
+              getConversationKey?: (
+                secretKey: string,
+                pubkey: string
+              ) => Promise<Uint8Array>;
+              decrypt?: (
+                payload: string,
+                conversationKey: Uint8Array
+              ) => string;
+            };
+            type Nip44Module = {
+              v2?: Nip44V2Api;
+              decrypt?: (
+                secretKey: string,
+                pubkey: string,
+                ciphertext: string
+              ) => Promise<string>;
+            };
+            const nip44Mod = (await import(
+              "nostr-tools/nip44"
+            )) as unknown as Nip44Module;
+            const v2 = nip44Mod.v2;
+            // Prefer nip44 v2 API if available
+            if (v2 && v2.getConversationKey && v2.decrypt) {
+              const convKey = await v2.getConversationKey(
+                nsecHex,
+                senderPubHex
+              );
+              return v2.decrypt(ciphertext, convKey);
+            }
+            if (typeof nip44Mod.decrypt === "function") {
+              return await nip44Mod.decrypt(nsecHex, senderPubHex, ciphertext);
+            }
+            throw new Error("nip44 decrypt not available");
+          } catch (e) {
+            throw new Error(
+              `nip17_nip44_decrypt_failed: ${
+                e instanceof Error ? e.message : String(e)
+              }`
+            );
+          }
+        }
+      );
+
+      // Step 3: Parse decrypted JSON back into the original unsigned DM
+      let inner: unknown;
+      try {
+        inner = JSON.parse(decrypted);
+      } catch {
+        return null;
+      }
+      if (!inner || typeof inner !== "object") {
+        return null;
+      }
+      const maybeContent = (inner as { content?: unknown }).content;
+      const content = typeof maybeContent === "string" ? maybeContent : "";
+      if (!content) return null;
+      return { senderPubHex, content };
+    } catch (e) {
+      console.warn("[CEPS] openNip17DmWithActiveSession failed", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return null;
+    }
+  }
+
   // ---- OTP (merged) ----
   private otpMessage(
     otp: string,
