@@ -69,6 +69,35 @@ export interface FrostSession {
   failed_at?: number;
   expires_at: number;
   error_message?: string;
+
+  // NFC MFA Configuration (Phase 2)
+  requires_nfc_mfa?: boolean;
+  nfc_mfa_policy?:
+    | "disabled"
+    | "optional"
+    | "required"
+    | "required_for_high_value";
+
+  // NFC Signature Storage
+  nfc_signatures?: Record<
+    string,
+    {
+      signature: string;
+      publicKey: string;
+      timestamp: number;
+      cardUid: string;
+    }
+  >;
+
+  // NFC Verification Status
+  nfc_verification_status?: Record<
+    string,
+    {
+      verified: boolean;
+      error?: string;
+      verified_at?: number;
+    }
+  >;
 }
 
 export interface NonceCommitment {
@@ -868,6 +897,79 @@ export class FrostSessionManager {
         success: false,
         error:
           error instanceof Error ? error.message : "Unknown aggregation error",
+      };
+    }
+  }
+
+  /**
+   * Verify NFC MFA signatures for a FROST session (Phase 2)
+   * Called AFTER signature aggregation to add physical MFA layer
+   *
+   * Returns verification result with status and errors
+   * Does NOT block operation if NFC MFA is optional
+   */
+  static async verifyNfcMfaSignatures(
+    sessionId: string,
+    operationHash: string,
+    nfcSignatures: Record<string, any>
+  ): Promise<
+    SessionResult<{ verified: number; failed: number; allVerified: boolean }>
+  > {
+    try {
+      // Import NFC MFA integration methods
+      const { verifyNfcMfaSignatures: verifyNfc, getNfcMfaPolicy } =
+        await import("../../src/lib/steward/frost-nfc-mfa-integration");
+
+      // Get session to retrieve family_id
+      const sessionResult = await this.getSession(sessionId);
+      if (!sessionResult.success || !sessionResult.data) {
+        return {
+          success: false,
+          error: sessionResult.error || "Session not found",
+        };
+      }
+
+      const session = sessionResult.data;
+
+      // Get NFC MFA policy for this family
+      const policy = await getNfcMfaPolicy(session.family_id);
+
+      // Verify NFC signatures
+      const verifyResult = await verifyNfc(
+        sessionId,
+        operationHash,
+        nfcSignatures,
+        policy
+      );
+
+      if (!verifyResult.success) {
+        return {
+          success: false,
+          error: verifyResult.errors?._global || "NFC MFA verification failed",
+        };
+      }
+
+      console.log("✅ NFC MFA verification complete", {
+        sessionId: sessionId.substring(0, 8) + "...",
+        verified: verifyResult.verified,
+        failed: verifyResult.failed,
+        allVerified: verifyResult.allVerified,
+      });
+
+      return {
+        success: true,
+        data: {
+          verified: verifyResult.verified,
+          failed: verifyResult.failed,
+          allVerified: verifyResult.allVerified || false,
+        },
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      console.error("❌ NFC MFA verification error", { error: errorMsg });
+      return {
+        success: false,
+        error: errorMsg,
       };
     }
   }

@@ -3,6 +3,10 @@
 
 import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 import type { Event } from "nostr-tools";
+import {
+  shouldRequireNfcMfaForApproval,
+  type ApprovalRequestWithNfcMfa,
+} from "./approval-nfc-mfa-integration";
 
 // Decisions made by stewards for a given operation
 export type StewardApprovalDecision = "approved" | "rejected";
@@ -29,6 +33,8 @@ export interface PublishApprovalRequestsInput {
   federationDuid?: string;
   expiresAt: number; // unix seconds
   recipients: ApprovalRecipient[];
+  operationAmount?: number; // NEW: for NFC MFA high-value detection
+  familyId?: string; // NEW: for NFC MFA policy lookup
 }
 
 export interface AwaitApprovalsOptions {
@@ -68,11 +74,32 @@ export class StewardApprovalClient {
     input: PublishApprovalRequestsInput
   ): Promise<{ sent: number; failed: number }> {
     const { operationHash, operationKind, uidHint, stewardThreshold } = input;
-    const { federationDuid, expiresAt, recipients } = input;
+    const { federationDuid, expiresAt, recipients, operationAmount, familyId } =
+      input;
     const opPrefix = operationHash.slice(0, 8);
 
     let sent = 0;
     let failed = 0;
+
+    // Determine if NFC MFA should be required for this approval
+    let nfcMfaRequired = false;
+    if (familyId) {
+      try {
+        nfcMfaRequired = await shouldRequireNfcMfaForApproval(
+          familyId,
+          operationAmount
+        );
+      } catch (error) {
+        console.warn(
+          "[StewardApproval] NFC MFA check failed, defaulting to safe",
+          {
+            op: opPrefix,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
+        nfcMfaRequired = true; // Safe default
+      }
+    }
 
     await Promise.all(
       recipients.map(async (recipient) => {
@@ -83,11 +110,14 @@ export class StewardApprovalClient {
         const nonce = crypto
           .getRandomValues(new Uint32Array(1))[0]
           .toString(16);
-        const payload = {
-          type: "steward_approval_request" as const,
-          version: 1 as const,
+        const payload: ApprovalRequestWithNfcMfa = {
+          type: "steward_approval_request",
+          version: 1,
           operationHash,
           operationKind,
+          operationAmount, // NEW: for NFC MFA high-value detection
+          nfcMfaRequired, // NEW: policy enforcement flag
+          nfcMfaPolicy: nfcMfaRequired ? "required" : "disabled", // NEW: policy type
           uidHint,
           stewardThreshold,
           federationDuid,

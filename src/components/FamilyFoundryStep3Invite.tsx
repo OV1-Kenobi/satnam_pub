@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Users, Plus, X, ArrowLeft, ArrowRight, Mail, Crown, Shield, User, Baby } from 'lucide-react';
+import { Users, Plus, X, ArrowLeft, ArrowRight, Mail, Crown, Shield, User, Baby, AlertCircle, CheckCircle } from 'lucide-react';
+import { mapNpubToUserDuid } from '../lib/family-foundry-integration';
 
 interface TrustedPeer {
   id: string;
@@ -29,6 +30,9 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
     role: '',
     relationship: ''
   });
+  const [validationErrors, setValidationErrors] = useState<Map<string, string>>(new Map());
+  const [isValidating, setIsValidating] = useState(false);
+  const [validatedPeers, setValidatedPeers] = useState<Set<string>>(new Set());
 
   const defaultSuggestions = [
     {
@@ -83,19 +87,53 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
     offspring: 'from-yellow-600 to-orange-600'
   };
 
-  const addPeer = () => {
-    if (newPeer.name.trim() && newPeer.npub.trim() && newPeer.role && newPeer.relationship) {
-      const peer: TrustedPeer = {
-        id: Date.now().toString(),
-        name: newPeer.name.trim(),
-        npub: newPeer.npub.trim(),
-        role: newPeer.role,
-        relationship: newPeer.relationship,
-        invited: false
-      };
-      onPeersChange([...trustedPeers, peer]);
-      setNewPeer({ name: '', npub: '', role: '', relationship: '' });
+  /**
+   * Validate that an npub exists in the system
+   */
+  const validateNpubExists = async (npub: string): Promise<boolean> => {
+    try {
+      // Import supabase dynamically to avoid circular dependencies
+      const { supabase } = await import('../lib/supabase');
+      await mapNpubToUserDuid(npub, supabase);
+      return true;
+    } catch (error) {
+      return false;
     }
+  };
+
+  const addPeer = async () => {
+    if (!newPeer.name.trim() || !newPeer.npub.trim() || !newPeer.role || !newPeer.relationship) {
+      return;
+    }
+
+    // Validate npub exists
+    setIsValidating(true);
+    const npubExists = await validateNpubExists(newPeer.npub.trim());
+    setIsValidating(false);
+
+    if (!npubExists) {
+      const errors = new Map(validationErrors);
+      errors.set(newPeer.npub, 'User not found for this npub');
+      setValidationErrors(errors);
+      return;
+    }
+
+    const peer: TrustedPeer = {
+      id: Date.now().toString(),
+      name: newPeer.name.trim(),
+      npub: newPeer.npub.trim(),
+      role: newPeer.role,
+      relationship: newPeer.relationship,
+      invited: false
+    };
+    onPeersChange([...trustedPeers, peer]);
+    setValidatedPeers(new Set([...validatedPeers, newPeer.npub.trim()]));
+    setNewPeer({ name: '', npub: '', role: '', relationship: '' });
+
+    // Clear any validation errors for this npub
+    const errors = new Map(validationErrors);
+    errors.delete(newPeer.npub);
+    setValidationErrors(errors);
   };
 
   const removePeer = (id: string) => {
@@ -147,11 +185,10 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
             return (
               <div
                 key={index}
-                className={`border rounded-lg p-4 transition-all duration-300 ${
-                  isAdded 
-                    ? 'border-green-500/50 bg-green-500/10' 
-                    : 'border-white/20 bg-white/5 hover:bg-white/10'
-                }`}
+                className={`border rounded-lg p-4 transition-all duration-300 ${isAdded
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : 'border-white/20 bg-white/5 hover:bg-white/10'
+                  }`}
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className={`inline-flex items-center justify-center w-8 h-8 bg-gradient-to-br ${colorClass} rounded-full`}>
@@ -166,11 +203,10 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
                 <button
                   onClick={() => addSuggestion(suggestion)}
                   disabled={isAdded}
-                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                    isAdded
-                      ? 'bg-green-600/50 text-green-200 cursor-not-allowed'
-                      : 'bg-purple-600 hover:bg-purple-700 text-white'
-                  }`}
+                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors ${isAdded
+                    ? 'bg-green-600/50 text-green-200 cursor-not-allowed'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    }`}
                 >
                   {isAdded ? 'Added' : 'Add'}
                 </button>
@@ -232,13 +268,30 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
             </select>
           </div>
         </div>
+        {validationErrors.has(newPeer.npub) && (
+          <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
+            <AlertCircle className="h-4 w-4 text-red-400" />
+            <span className="text-red-300 text-sm">{validationErrors.get(newPeer.npub)}</span>
+          </div>
+        )}
         <button
           onClick={addPeer}
-          disabled={!newPeer.name.trim() || !newPeer.npub.trim() || !newPeer.role || !newPeer.relationship}
+          disabled={!newPeer.name.trim() || !newPeer.npub.trim() || !newPeer.role || !newPeer.relationship || isValidating}
           className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Plus className="h-4 w-4" />
-          Add Family Member
+          {isValidating ? (
+            <>
+              <div className="animate-spin">
+                <Plus className="h-4 w-4" />
+              </div>
+              Validating...
+            </>
+          ) : (
+            <>
+              <Plus className="h-4 w-4" />
+              Add Family Member
+            </>
+          )}
         </button>
       </div>
 
@@ -253,11 +306,11 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
 
               return (
                 <div key={peer.id} className="flex items-center justify-between bg-white/10 rounded-lg p-4">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 flex-1">
                     <div className={`inline-flex items-center justify-center w-10 h-10 bg-gradient-to-br ${colorClass} rounded-full`}>
                       <IconComponent className="h-5 w-5 text-white" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <h4 className="text-white font-semibold">{peer.name}</h4>
                       <p className="text-purple-200 text-sm">{peer.npub}</p>
                       <div className="flex gap-2 mt-1">
@@ -270,12 +323,20 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => removePeer(peer.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {validatedPeers.has(peer.npub) && (
+                      <div className="flex items-center gap-1 text-green-400">
+                        <CheckCircle className="h-4 w-4" />
+                        <span className="text-xs">Verified</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => removePeer(peer.id)}
+                      className="text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -305,4 +366,4 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
   );
 };
 
-export default FamilyFoundryStep3Invite; 
+export default FamilyFoundryStep3Invite;

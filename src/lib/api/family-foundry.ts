@@ -34,6 +34,7 @@ export interface RBACDefinition {
     rewards: string[];
     hierarchyLevel: number;
   }[];
+  frostThreshold?: number; // User-configurable FROST signing threshold (1-5)
 }
 
 export interface CreateFamilyFoundryRequest {

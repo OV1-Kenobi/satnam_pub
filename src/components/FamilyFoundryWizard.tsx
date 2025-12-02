@@ -12,6 +12,10 @@ import { clientConfig } from '../config/env.client';
 import { CharterDefinition, RBACDefinition } from '../lib/api/family-foundry.js';
 import { FeatureFlags } from '../lib/feature-flags';
 import { PaymentCascadeNode } from '../lib/payment-automation';
+import { createFamilyFoundry, mapTrustedPeersToMembers } from '../lib/family-foundry-api';
+import { createFrostSession } from '../lib/family-foundry-frost';
+import { createNfcMfaPolicy, calculateHighValueThreshold } from '../lib/family-foundry-nfc-mfa';
+import { sendFederationApprovalRequests, generateFederationOperationHash } from '../lib/family-foundry-steward-approval';
 import FamilyFederationCreationModal from "./FamilyFederationCreationModal";
 import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
@@ -52,7 +56,14 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   const [showCascadeModal, setShowCascadeModal] = useState(false);
   const [paymentCascade, setPaymentCascade] = useState<PaymentCascadeNode[]>([]);
   const [federationId, setFederationId] = useState<string | null>(null);
+  const [federationDuid, setFederationDuid] = useState<string | null>(null);
+  const [charterId, setCharterId] = useState<string | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
+  const [frostSessionId, setFrostSessionId] = useState<string | null>(null);
+  const [frostThreshold, setFrostThreshold] = useState<number | null>(null);
+  const [nfcMfaPolicyId, setNfcMfaPolicyId] = useState<string | null>(null);
+  const [stewardApprovalStatus, setStewardApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
+  const [stewardApprovalsReceived, setStewardApprovalsReceived] = useState(0);
 
   // Step 1: Charter Definition
   const [charter, setCharter] = useState<CharterDefinition>({
@@ -172,7 +183,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
         ],
         hierarchyLevel: 1
       }
-    ]
+    ],
+    frostThreshold: 2 // Default: 2-of-3 threshold (user-configurable)
   });
 
   // Step 3: Trusted Peers
@@ -185,8 +197,14 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
     { id: 'federation', name: 'Create Federation', icon: Zap }
   ];
 
-  const nextStep = () => {
+  const nextStep = async () => {
     setError(null);
+
+    // After RBAC step (Step 2), call backend to create federation
+    if (currentStep === 'rbac') {
+      await createFederationBackend();
+      return;
+    }
 
     if (currentStep === 'invites') {
       setShowInviteModal(true);
@@ -201,6 +219,135 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
     const currentIndex = steps.findIndex(step => step.id === currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1].id as WizardStep);
+    }
+  };
+
+  /**
+   * Create federation on backend after RBAC configuration
+   * Maps trusted peers to user_duids, creates FROST session, and configures NFC MFA
+   */
+  const createFederationBackend = async () => {
+    try {
+      setIsCreatingFederation(true);
+      setFederationProgress(10);
+
+      // Map trusted peers to family members with user_duids
+      setFederationProgress(30);
+      const members = await mapTrustedPeersToMembers(trustedPeers);
+      setFederationProgress(50);
+
+      // Prepare federation creation request
+      const request = {
+        charter: {
+          familyName: charter.familyName,
+          familyMotto: charter.familyMotto || '',
+          foundingDate: charter.foundingDate,
+          missionStatement: charter.missionStatement || '',
+          values: charter.values || []
+        },
+        rbac: rbac,
+        members: members
+      };
+
+      setFederationProgress(70);
+
+      // Call backend API
+      const response = await createFamilyFoundry(request);
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to create federation');
+      }
+
+      setFederationProgress(75);
+
+      // Store federation details
+      if (!response.data) {
+        throw new Error('No federation data returned');
+      }
+
+      const newFederationId = response.data.federationId;
+      const newFederationDuid = response.data.federationDuid;
+      const newCharterId = response.data.charterId;
+
+      setFederationId(newFederationId);
+      setFederationDuid(newFederationDuid);
+      setCharterId(newCharterId);
+
+      // Phase 3: Create FROST session for federation operations
+      setFederationProgress(80);
+      const frostResult = await createFrostSession({
+        federationDuid: newFederationDuid,
+        familyName: charter.familyName,
+        creatorUserDuid: 'current-user-duid', // Will be replaced with actual user DUID
+        participants: members.map(m => ({
+          user_duid: m.user_duid,
+          role: m.role
+        })),
+        messageHash: '', // Will be set per operation
+        eventTemplate: 'federation_creation',
+        eventType: 'federation_setup',
+        customThreshold: rbac.frostThreshold // User-configurable FROST threshold (1-5)
+      });
+
+      if (frostResult.success && frostResult.sessionId) {
+        setFrostSessionId(frostResult.sessionId);
+        setFrostThreshold(frostResult.threshold || 2);
+      }
+
+      // Phase 3: Configure NFC MFA policy
+      setFederationProgress(85);
+      const nfcPolicyResult = await createNfcMfaPolicy({
+        federationDuid: newFederationDuid,
+        policy: 'required_for_high_value',
+        amountThreshold: calculateHighValueThreshold(members.length),
+        stewardThreshold: frostResult.threshold || 2
+      });
+
+      if (nfcPolicyResult.success && nfcPolicyResult.policyId) {
+        setNfcMfaPolicyId(nfcPolicyResult.policyId);
+      }
+
+      // Phase 3: Send steward approval requests
+      setFederationProgress(90);
+      const operationHash = await generateFederationOperationHash(
+        newFederationDuid,
+        charter.familyName,
+        'current-user-duid' // Will be replaced with actual user DUID
+      );
+
+      // Get steward pubkeys from members (placeholder - would need actual pubkey mapping)
+      const stewardPubkeys = members
+        .filter(m => m.role === 'steward' || m.role === 'guardian')
+        .map(m => m.user_duid); // Placeholder - would need actual pubkey conversion
+
+      if (stewardPubkeys.length > 0) {
+        const approvalResult = await sendFederationApprovalRequests({
+          federationDuid: newFederationDuid,
+          federationName: charter.familyName,
+          creatorUserDuid: 'current-user-duid',
+          stewardThreshold: frostResult.threshold || 2,
+          stewardPubkeys,
+          operationHash,
+          expiresAtSeconds: Math.floor(Date.now() / 1000) + 300 // 5 minutes
+        });
+
+        if (approvalResult.success) {
+          setStewardApprovalStatus('pending');
+        }
+      }
+
+      setFederationProgress(100);
+
+      // Move to next step
+      setTimeout(() => {
+        setCurrentStep('invites');
+        setIsCreatingFederation(false);
+      }, 500);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      setIsCreatingFederation(false);
+      setFederationProgress(0);
     }
   };
 
@@ -287,12 +434,32 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
 
       case 'rbac':
         return (
-          <FamilyFoundryStep2RBAC
-            rbac={rbac}
-            onRBACChange={setRbac}
-            onNext={nextStep}
-            onBack={prevStep}
-          />
+          <div>
+            {isCreatingFederation && (
+              <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="animate-spin">
+                    <Zap className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <span className="text-blue-200 font-semibold">Creating Federation...</span>
+                </div>
+                <div className="w-full bg-blue-900/30 rounded-full h-2">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${federationProgress}%` }}
+                  />
+                </div>
+                <p className="text-blue-300 text-sm mt-2">{federationProgress}% complete</p>
+              </div>
+            )}
+            <FamilyFoundryStep2RBAC
+              rbac={rbac}
+              onRBACChange={setRbac}
+              onNext={nextStep}
+              onBack={prevStep}
+              disabled={isCreatingFederation}
+            />
+          </div>
         );
 
       case 'invites':

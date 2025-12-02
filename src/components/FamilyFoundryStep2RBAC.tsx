@@ -7,13 +7,15 @@ interface FamilyFoundryStep2RBACProps {
   onRBACChange: (rbac: RBACDefinition) => void;
   onNext: () => void;
   onBack: () => void;
+  disabled?: boolean;
 }
 
 const FamilyFoundryStep2RBAC: React.FC<FamilyFoundryStep2RBACProps> = ({
   rbac,
   onRBACChange,
   onNext,
-  onBack
+  onBack,
+  disabled = false
 }) => {
   const [editingRole, setEditingRole] = useState<string | null>(null);
 
@@ -53,12 +55,12 @@ const FamilyFoundryStep2RBAC: React.FC<FamilyFoundryStep2RBACProps> = ({
 
   const handleNext = () => {
     // Validate that all roles have at least basic configuration
-    const isValid = rbac.roles.every(role => 
-      role.name.trim() && 
-      role.description.trim() && 
+    const isValid = rbac.roles.every(role =>
+      role.name.trim() &&
+      role.description.trim() &&
       role.rights.length > 0
     );
-    
+
     if (isValid) {
       onNext();
     }
@@ -245,18 +247,52 @@ const FamilyFoundryStep2RBAC: React.FC<FamilyFoundryStep2RBACProps> = ({
         })}
       </div>
 
+      {/* FROST Threshold Configuration */}
+      <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-6 mt-8">
+        <div className="flex items-center gap-3 mb-4">
+          <Shield className="h-5 w-5 text-blue-400" />
+          <h3 className="text-xl font-bold text-white">FROST Signing Threshold</h3>
+        </div>
+        <p className="text-purple-200 mb-4">
+          Configure how many family members must approve critical operations (1-5 signatures required)
+        </p>
+        <div className="flex items-center gap-4">
+          <label className="text-white font-semibold">Signatures Required:</label>
+          <select
+            value={rbac.frostThreshold || 2}
+            onChange={(e) => onRBACChange({
+              ...rbac,
+              frostThreshold: parseInt(e.target.value)
+            })}
+            disabled={disabled}
+            className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value={1}>1 of 2 (Minimum)</option>
+            <option value={2}>2 of 3 (Recommended)</option>
+            <option value={3}>3 of 4</option>
+            <option value={4}>4 of 5</option>
+            <option value={5}>5 of 7 (Maximum)</option>
+          </select>
+        </div>
+        <p className="text-blue-300 text-sm mt-3">
+          ℹ️ Higher thresholds require more approvals but provide stronger security. Lower thresholds are faster but less secure.
+        </p>
+      </div>
+
       {/* Navigation */}
       <div className="flex justify-between pt-6">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+          disabled={disabled}
+          className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
         <button
           onClick={handleNext}
-          className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+          disabled={disabled}
+          className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next Step
           <ArrowRight className="h-4 w-4" />

@@ -57,6 +57,7 @@ function getEnvVar(key) {
  * RBAC definition for family structure
  * @typedef {Object} RBACDefinition
  * @property {RoleDefinition[]} roles - Array of role definitions
+ * @property {number} [frostThreshold] - User-configurable FROST signing threshold (1-5)
  */
 
 /**
@@ -132,51 +133,99 @@ function validateCharter(charter) {
 }
 
 /**
+ * Validate FROST threshold configuration
+ * @param {number} threshold - FROST threshold (1-5)
+ * @param {number} participantCount - Number of federation members
+ * @returns {Object} Validation result
+ */
+function validateFrostThreshold(threshold, participantCount) {
+  const errors = [];
+
+  if (threshold === undefined || threshold === null) {
+    // Default to 2-of-3 if not provided
+    return { success: true, data: 2 };
+  }
+
+  if (typeof threshold !== 'number' || !Number.isInteger(threshold)) {
+    errors.push({ field: 'frostThreshold', message: 'FROST threshold must be an integer' });
+  }
+
+  if (threshold < 1) {
+    errors.push({ field: 'frostThreshold', message: 'FROST threshold must be at least 1' });
+  }
+
+  if (threshold > 5) {
+    errors.push({ field: 'frostThreshold', message: 'FROST threshold cannot exceed 5' });
+  }
+
+  if (threshold > participantCount) {
+    errors.push({
+      field: 'frostThreshold',
+      message: `FROST threshold (${threshold}) cannot exceed participant count (${participantCount})`
+    });
+  }
+
+  if (participantCount < 2) {
+    errors.push({ field: 'members', message: 'At least 2 participants required for FROST' });
+  }
+
+  if (participantCount > 7) {
+    errors.push({ field: 'members', message: 'Maximum 7 participants supported' });
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+
+  return { success: true, data: threshold };
+}
+
+/**
  * Validate RBAC definition with Master Context role hierarchy
  * @param {RBACDefinition} rbac - RBAC to validate
  * @returns {Object} Validation result
  */
 function validateRBAC(rbac) {
   const errors = [];
-  
+
   if (!rbac || typeof rbac !== 'object') {
     errors.push({ field: 'rbac', message: 'RBAC must be an object' });
     return { success: false, errors };
   }
-  
+
   if (!Array.isArray(rbac.roles)) {
     errors.push({ field: 'roles', message: 'RBAC roles must be an array' });
     return { success: false, errors };
   }
-  
+
   // Master Context standardized role hierarchy validation
   const validRoles = ['guardian', 'steward', 'adult', 'offspring'];
   const providedRoles = rbac.roles.map(role => role.id);
-  
+
   for (const role of rbac.roles) {
     if (!validRoles.includes(role.id)) {
-      errors.push({ 
-        field: 'roles', 
-        message: `Invalid role '${role.id}'. Must be one of: ${validRoles.join(', ')}` 
+      errors.push({
+        field: 'roles',
+        message: `Invalid role '${role.id}'. Must be one of: ${validRoles.join(', ')}`
       });
     }
-    
+
     if (!role.name || typeof role.name !== 'string') {
       errors.push({ field: 'roles', message: `Role '${role.id}' must have a name` });
     }
-    
+
     if (typeof role.hierarchyLevel !== 'number' || role.hierarchyLevel < 1 || role.hierarchyLevel > 4) {
-      errors.push({ 
-        field: 'roles', 
-        message: `Role '${role.id}' hierarchy level must be between 1-4` 
+      errors.push({
+        field: 'roles',
+        message: `Role '${role.id}' hierarchy level must be between 1-4`
       });
     }
   }
-  
+
   if (errors.length > 0) {
     return { success: false, errors };
   }
-  
+
   return { success: true, data: rbac };
 }
 
@@ -237,33 +286,51 @@ async function createFamilyCharter(charter, rbac, userId) {
 }
 
 /**
- * Create family federation record
+ * Create family federation record with FROST and NFC MFA configuration
  * @param {string} charterId - Charter ID
  * @param {string} familyName - Family name
  * @param {string} userId - User ID creating the federation
+ * @param {number} frostThreshold - FROST signing threshold (1-5)
+ * @param {number} memberCount - Number of federation members
  * @returns {Promise<Object>} Database operation result
  */
-async function createFamilyFederation(charterId, familyName, userId) {
+async function createFamilyFederation(charterId, familyName, userId, frostThreshold, memberCount) {
   try {
+    // Generate federation DUID (privacy-first identifier)
+    const federationDuid = await generateFamilyIdentifier(familyName);
+
+    // Calculate NFC MFA amount threshold based on member count
+    let nfcAmountThreshold = 100000; // Default: 100k sats
+    if (memberCount >= 4 && memberCount <= 6) {
+      nfcAmountThreshold = 250000; // 250k sats for 4-6 members
+    } else if (memberCount >= 7) {
+      nfcAmountThreshold = 500000; // 500k sats for 7+ members
+    }
+
     const { data: federationData, error: federationError } = await supabase
       .from('family_federations')
       .insert({
         charter_id: charterId,
         federation_name: familyName,
-        status: 'creating',
-        progress: 0,
+        federation_duid: federationDuid,
+        status: 'active',
+        progress: 100,
         created_by: userId,
+        frost_threshold: frostThreshold || 2,
+        nfc_mfa_policy: 'required_for_high_value',
+        nfc_mfa_amount_threshold: nfcAmountThreshold,
+        nfc_mfa_threshold: Math.min(frostThreshold || 2, memberCount),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .select()
       .single();
-    
+
     if (federationError) {
       console.error('Federation creation failed:', federationError);
       return { success: false, error: 'Failed to create family federation' };
     }
-    
+
     return { success: true, data: federationData };
   } catch (error) {
     console.error('Federation creation error:', error);
@@ -385,6 +452,26 @@ export default async function handler(event, context) {
     const validatedCharter = charterValidation.data;
     const validatedRBAC = rbacValidation.data;
 
+    // Validate FROST threshold (if provided)
+    const memberCount = requestData.members ? requestData.members.length : 0;
+    const frostThresholdValidation = validateFrostThreshold(validatedRBAC.frostThreshold, memberCount);
+    if (!frostThresholdValidation.success) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'Invalid FROST threshold configuration',
+          details: frostThresholdValidation.errors,
+          meta: {
+            timestamp: new Date().toISOString()
+          }
+        })
+      };
+    }
+
+    const frostThreshold = frostThresholdValidation.data;
+
     // Create family charter in database
     const charterResult = await createFamilyCharter(validatedCharter, validatedRBAC, userId);
     if (!charterResult.success) {
@@ -401,11 +488,13 @@ export default async function handler(event, context) {
       };
     }
 
-    // Create family federation record
+    // Create family federation record with FROST and NFC MFA configuration
     const federationResult = await createFamilyFederation(
       charterResult.data.id,
       validatedCharter.familyName,
-      userId
+      userId,
+      frostThreshold,
+      memberCount
     );
 
     if (!federationResult.success) {
@@ -419,9 +508,13 @@ export default async function handler(event, context) {
       data: {
         charterId: charterResult.data.id,
         federationId: federationResult.success ? federationResult.data.id : null,
+        federationDuid: federationResult.success ? federationResult.data.federation_duid : null,
         familyName: validatedCharter.familyName,
         foundingDate: validatedCharter.foundingDate,
-        status: 'active'
+        status: 'active',
+        frostThreshold: frostThreshold,
+        nfcMfaPolicy: federationResult.success ? federationResult.data.nfc_mfa_policy : 'required_for_high_value',
+        nfcMfaAmountThreshold: federationResult.success ? federationResult.data.nfc_mfa_amount_threshold : 100000
       },
       meta: {
         timestamp: new Date().toISOString(),
