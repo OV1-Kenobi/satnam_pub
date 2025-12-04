@@ -1331,38 +1331,70 @@ function App() {
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
-              {/* Video 1: Jeff Booth & Walker Podcast */}
+              {/* Video 1: Jeff Booth & Walker Podcast - Clickable thumbnail */}
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20 shadow-lg">
-                <div className="aspect-video mb-3 rounded-lg overflow-hidden">
-                  <iframe
-                    className="w-full h-full"
-                    src="https://www.youtube.com/embed/7omuPt42Ep8?si=25Jo4EecZaAOLn7t"
-                    title="Jeff Booth & Walker Podcast"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
+                <a
+                  href="https://www.youtube.com/watch?v=7omuPt42Ep8"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Watch Jeff Booth & Walker Podcast on YouTube"
+                  className="block aspect-video mb-3 rounded-lg overflow-hidden relative group cursor-pointer"
+                >
+                  {/* Thumbnail image */}
+                  <img
+                    src="https://img.youtube.com/vi/7omuPt42Ep8/hqdefault.jpg"
+                    alt="Jeff Booth & Walker Podcast - YouTube video thumbnail"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
-                </div>
+                  {/* Dark overlay on hover */}
+                  <div className="absolute inset-0 bg-black/30 group-hover:bg-black/40 transition-colors duration-300" />
+                  {/* Play button overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg group-hover:bg-red-500 group-hover:scale-110 transition-all duration-300">
+                      <Play className="w-7 h-7 text-white ml-1" fill="white" />
+                    </div>
+                  </div>
+                  {/* "Watch on YouTube" label */}
+                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <ExternalLink className="w-3 h-3" />
+                    Watch on YouTube
+                  </div>
+                </a>
                 <h4 className="text-lg font-bold text-white mb-1">Jeff Booth & Walker Podcast</h4>
                 <p className="text-purple-100 text-xs">
                   Jeff Booth discusses Fedimint/Fedi, what's happening in El Salvador, and why Bitcoin provides humanities' best solution for preserving value across generations.
                 </p>
               </div>
 
-              {/* Video 2: What's The Problem? */}
+              {/* Video 2: What's The Problem? - Clickable thumbnail */}
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20 shadow-lg">
-                <div className="aspect-video mb-3 rounded-lg overflow-hidden">
-                  <iframe
-                    className="w-full h-full"
-                    src="https://www.youtube.com/embed/YtFOxNbmD38?si=IPjRvOkJfPLOOlQU"
-                    title="What's The Problem? - Demystifying Why We All Need Bitcoin"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
+                <a
+                  href="https://www.youtube.com/watch?v=YtFOxNbmD38"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Watch What's The Problem? on YouTube"
+                  className="block aspect-video mb-3 rounded-lg overflow-hidden relative group cursor-pointer"
+                >
+                  {/* Thumbnail image */}
+                  <img
+                    src="https://img.youtube.com/vi/YtFOxNbmD38/hqdefault.jpg"
+                    alt="What's The Problem? - YouTube video thumbnail"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
-                </div>
+                  {/* Dark overlay on hover */}
+                  <div className="absolute inset-0 bg-black/30 group-hover:bg-black/40 transition-colors duration-300" />
+                  {/* Play button overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg group-hover:bg-red-500 group-hover:scale-110 transition-all duration-300">
+                      <Play className="w-7 h-7 text-white ml-1" fill="white" />
+                    </div>
+                  </div>
+                  {/* "Watch on YouTube" label */}
+                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <ExternalLink className="w-3 h-3" />
+                    Watch on YouTube
+                  </div>
+                </a>
                 <h4 className="text-lg font-bold text-white mb-1">'What's The Problem?'</h4>
                 <p className="text-purple-100 text-xs">
                   An accessible explanation from SatsVsFiat.com demystifying why Bitcoin matters for everyone—not just technologists—and the fundamental problems it solves.
