@@ -18,15 +18,15 @@ import { resolvePlatformLightningDomainServer } from "../functions/utils/domain.
 
 // Security utilities (Phase 3 hardening)
 import {
-  RATE_LIMITS,
-  checkRateLimit,
-  createRateLimitIdentifier,
-  getClientIP,
+    RATE_LIMITS,
+    checkRateLimit,
+    createRateLimitIdentifier,
+    getClientIP,
 } from "./utils/enhanced-rate-limiter.ts";
 import {
-  createRateLimitErrorResponse,
-  generateRequestId,
-  logError,
+    createRateLimitErrorResponse,
+    generateRequestId,
+    logError,
 } from "./utils/error-handler.ts";
 import { errorResponse, preflightResponse } from "./utils/security-headers.ts";
 
@@ -119,6 +119,24 @@ async function checkUsernameAvailability(username) {
         }
       } catch (duidErr) {
         console.warn('DUID availability cross-check failed; relying on nip05_records only:', duidErr);
+      }
+    }
+
+    // Check against federation_lightning_config to prevent user/federation namespace collisions
+    // Federations use the same handle@my.satnam.pub namespace as individual users
+    if (isAvailable) {
+      try {
+        const { data: federations, error: fedErr } = await supabase
+          .from('federation_lightning_config')
+          .select('federation_duid')
+          .eq('federation_handle', local)
+          .limit(1);
+        if (!fedErr && federations && federations.length > 0) {
+          isAvailable = false;
+          console.log(`[USERNAME_AVAILABILITY] Handle "${local}" is already taken by a federation`);
+        }
+      } catch (fedCheckErr) {
+        console.warn('Federation handle cross-check failed; relying on nip05_records only:', fedCheckErr);
       }
     }
 

@@ -1,14 +1,19 @@
 /**
- * QR Code Generation API Endpoint (Privacy-First)
- * 
+ * Invitation Token Validation API Endpoint (Privacy-First)
+ *
  * FOLLOWS SATNAM.PUB PRIVACY PROTOCOLS:
- * - Generates QR codes for educational invitation links
- * - NO sensitive data included in QR codes
+ * - Validates educational invitation tokens
+ * - Returns invitation URL for client-side QR code generation
+ * - NO sensitive data included in responses
  * - Privacy-safe invitation validation
  * - Dynamic route: /api/qr/[token]
+ *
+ * ARCHITECTURE NOTE:
+ * QR code generation is handled client-side using qr-code-browser.ts
+ * to maintain browser-only serverless architecture and avoid Node.js dependencies.
+ * The client should generate QR codes from the returned `url` field.
  */
 
-// Use maintained 'qrcode' lib for server-side QR generation (backward compatible, no util._extend)
 import { config } from '../../config/config.js';
 import db from '../../lib/db';
 
@@ -38,7 +43,7 @@ export default async function handler(req, res) {
 
     // Validate that the invitation token exists and is valid
     const { data: invitation, error: invitationError } = await db.models.educationalInvitations.getByToken(token);
-    
+
     if (invitationError || !invitation) {
       return res.status(404).json({ error: 'Invalid invitation token' });
     }
@@ -54,38 +59,39 @@ export default async function handler(req, res) {
     // Generate the invitation URL (Master Context compliant)
     const baseUrl = config.api.baseUrl;
     const tokenStr = Array.isArray(token) ? token[0] : token;
-    const invitationUrl = `${baseUrl}?invite=${encodeURIComponent(tokenStr)}`;    
-    // Generate real QR assets server-side for backward compatibility
-    const qrOptions = {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 256,
-      color: { dark: '#000000', light: '#FFFFFF' }
-    };
-    const qrCodeDataUrl = await QRCode.toDataURL(invitationUrl, qrOptions);
-    const qrCodeSvg     = await QRCode.toString(invitationUrl, { ...qrOptions, type: 'svg' });
-    const qrCodeResponse = {
+    const invitationUrl = `${baseUrl}?invite=${encodeURIComponent(tokenStr)}`;
+
+    // Return URL and metadata for client-side QR generation
+    // Client uses qr-code-browser.ts to generate scannable QR codes
+    const response = {
       url: invitationUrl,
-      token: token,
-      qrCodeDataUrl: qrCodeDataUrl,
-      qrCodeSvg: qrCodeSvg,
+      token: tokenStr,
+      // Null values indicate client should generate QR from url
+      qrCodeDataUrl: null,
+      qrCodeSvg: null,
+      // Recommended QR options for client-side generation
+      qrOptions: {
+        size: 256,
+        margin: 4,
+        errorCorrectionLevel: 'M'
+      },
       invitationData: {
         courseCredits: invitation.course_credits,
         expiresAt: invitation.expires_at,
         personalMessage: invitation.invitation_data?.personalMessage || 'Join me on Satnam.pub for Bitcoin education!',
         isValid: true
-        // PRIVACY: NO sensitive data exposed in QR codes
+        // PRIVACY: NO sensitive data exposed
       }
     };
 
     // Set appropriate headers
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
-    res.status(200).json(qrCodeResponse);
+    res.status(200).json(response);
   } catch (error) {
-    console.error('QR code generation error:', error);
-    res.status(500).json({ 
-      error: 'Failed to generate QR code',
+    console.error('Invitation validation error:', error);
+    res.status(500).json({
+      error: 'Failed to validate invitation',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

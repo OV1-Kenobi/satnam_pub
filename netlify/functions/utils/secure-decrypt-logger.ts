@@ -22,7 +22,10 @@ export type DecryptOperation =
 
 export interface DecryptAuditEntry {
   request_id: string;
+  /** User identifier. For federation operations, use federation_id instead. */
   user_id?: string;
+  /** Federation identifier for federation-specific operations. */
+  federation_id?: string;
   wallet_id?: string;
   caller: string; // function/endpoint name
   operation: DecryptOperation;
@@ -98,6 +101,48 @@ export async function getAdminKey(
   return data as string;
 }
 
+// Federation-specific key getters (uses federation_lightning_config table)
+
+export async function getFederationInvoiceKey(
+  walletId: string,
+  caller: string,
+  requestId: string
+): Promise<string> {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase admin client not available");
+  }
+  const { data, error } = await supabaseAdmin.rpc(
+    "private.get_federation_invoice_key_for_wallet",
+    {
+      p_wallet_id: walletId,
+      p_caller: caller,
+      p_request_id: requestId,
+    }
+  );
+  if (error) throw error;
+  return data as string;
+}
+
+export async function getFederationAdminKey(
+  walletId: string,
+  caller: string,
+  requestId: string
+): Promise<string> {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase admin client not available");
+  }
+  const { data, error } = await supabaseAdmin.rpc(
+    "private.get_federation_admin_key_for_wallet",
+    {
+      p_wallet_id: walletId,
+      p_caller: caller,
+      p_request_id: requestId,
+    }
+  );
+  if (error) throw error;
+  return data as string;
+}
+
 // Memory safety guard: ensures decrypted keys are released within a short window
 // We use a WeakMap keyed by an opaque token object; we never retain the actual key value.
 const memoryGuards: WeakMap<
@@ -149,6 +194,8 @@ export async function withMemorySafetyCheck(
   ctx: {
     requestId: string;
     userId?: string;
+    /** Federation identifier for federation-specific operations. */
+    federationId?: string;
     walletId?: string;
     caller: string;
     sourceIp?: string;
@@ -210,6 +257,36 @@ export async function getAdminKeyWithSafety(
     sourceIp,
     timeoutMs,
   });
+}
+
+// Federation-specific key safety wrappers
+
+export async function getFederationInvoiceKeyWithSafety(
+  walletId: string,
+  caller: string,
+  requestId: string,
+  federationId?: string,
+  sourceIp?: string,
+  timeoutMs = 1000
+): Promise<{ key: string; release: () => Promise<void> }> {
+  return withMemorySafetyCheck(
+    () => getFederationInvoiceKey(walletId, caller, requestId),
+    { requestId, federationId, walletId, caller, sourceIp, timeoutMs }
+  );
+}
+
+export async function getFederationAdminKeyWithSafety(
+  walletId: string,
+  caller: string,
+  requestId: string,
+  federationId?: string,
+  sourceIp?: string,
+  timeoutMs = 1000
+): Promise<{ key: string; release: () => Promise<void> }> {
+  return withMemorySafetyCheck(
+    () => getFederationAdminKey(walletId, caller, requestId),
+    { requestId, federationId, walletId, caller, sourceIp, timeoutMs }
+  );
 }
 
 // Scenario A: lnurlp-platform.ts — generate invoice (needs invoice_key)

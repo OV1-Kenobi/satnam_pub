@@ -2,15 +2,18 @@
  * Profile URL Display Component
  * Phase 3: Public Profile URL System - UI Integration
  * Sub-Phase 3B: Profile Sharing UI
- * 
+ *
  * Displays shareable profile URLs with copy-to-clipboard functionality
  * and QR code generation for easy sharing.
+ *
+ * FIXED: Uses browser-compatible qr-code-browser utility instead of qrcode.react
+ * to avoid Node.js util._extend deprecation warnings
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Copy, Check, QrCode, ExternalLink } from 'lucide-react';
-import QRCode from 'qrcode.react';
 import { ProfileVisibility } from '../lib/services/profile-service';
+import { generateQRCodeDataURL, getRecommendedErrorCorrection } from '../utils/qr-code-browser';
 
 interface ProfileURLDisplayProps {
   username: string;
@@ -30,6 +33,7 @@ export const ProfileURLDisplay: React.FC<ProfileURLDisplayProps> = ({
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'username' | 'npub' | 'short'>('username');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
   // Generate URLs in different formats
   const urls = {
@@ -39,6 +43,40 @@ export const ProfileURLDisplay: React.FC<ProfileURLDisplayProps> = ({
   };
 
   const currentURL = urls[selectedFormat] || urls.username;
+
+  // Generate QR code when URL changes or QR visibility changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const generateQR = async () => {
+      if (!showQR || !currentURL) {
+        setQrDataUrl('');
+        return;
+      }
+
+      try {
+        const dataUrl = await generateQRCodeDataURL(currentURL, {
+          size: 200,
+          margin: 4,
+          errorCorrectionLevel: getRecommendedErrorCorrection('url'),
+        });
+        if (isMounted) {
+          setQrDataUrl(dataUrl);
+        }
+      } catch (error) {
+        console.error('Failed to generate QR code:', error);
+        if (isMounted) {
+          setQrDataUrl('');
+        }
+      }
+    };
+
+    generateQR();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentURL, showQR]);
 
   const handleCopy = async () => {
     try {
@@ -102,33 +140,30 @@ export const ProfileURLDisplay: React.FC<ProfileURLDisplayProps> = ({
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedFormat('username')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                selectedFormat === 'username'
-                  ? 'bg-purple-600 text-white border-2 border-purple-500'
-                  : 'bg-gray-700 text-gray-300 border border-gray-600 hover:border-purple-500'
-              }`}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${selectedFormat === 'username'
+                ? 'bg-purple-600 text-white border-2 border-purple-500'
+                : 'bg-gray-700 text-gray-300 border border-gray-600 hover:border-purple-500'
+                }`}
             >
               Username
             </button>
             {npub && (
               <button
                 onClick={() => setSelectedFormat('npub')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  selectedFormat === 'npub'
-                    ? 'bg-purple-600 text-white border-2 border-purple-500'
-                    : 'bg-gray-700 text-gray-300 border border-gray-600 hover:border-purple-500'
-                }`}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${selectedFormat === 'npub'
+                  ? 'bg-purple-600 text-white border-2 border-purple-500'
+                  : 'bg-gray-700 text-gray-300 border border-gray-600 hover:border-purple-500'
+                  }`}
               >
                 Npub
               </button>
             )}
             <button
               onClick={() => setSelectedFormat('short')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                selectedFormat === 'short'
-                  ? 'bg-purple-600 text-white border-2 border-purple-500'
-                  : 'bg-gray-700 text-gray-300 border border-gray-600 hover:border-purple-500'
-              }`}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${selectedFormat === 'short'
+                ? 'bg-purple-600 text-white border-2 border-purple-500'
+                : 'bg-gray-700 text-gray-300 border border-gray-600 hover:border-purple-500'
+                }`}
             >
               Short URL
             </button>
@@ -189,12 +224,17 @@ export const ProfileURLDisplay: React.FC<ProfileURLDisplayProps> = ({
 
           {showQR && (
             <div className="mt-4 p-4 bg-white rounded-lg inline-block">
-              <QRCode
-                value={currentURL}
-                size={200}
-                level="H"
-                includeMargin={true}
-              />
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt={`QR code for profile URL`}
+                  className="w-[200px] h-[200px]"
+                />
+              ) : (
+                <div className="w-[200px] h-[200px] flex items-center justify-center bg-gray-100 rounded">
+                  <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full"></div>
+                </div>
+              )}
               <p className="text-center text-xs text-gray-600 mt-2">
                 Scan to view profile
               </p>

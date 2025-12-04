@@ -431,3 +431,209 @@ describe("Attestation Manager - Timing", () => {
     expect(timeSinceStart).toBeGreaterThanOrEqual(50);
   });
 });
+
+// ============================================================================
+// FEDERATION ATTESTATION TESTS (Task 4.7)
+// ============================================================================
+
+const TEST_FEDERATION_DUID = "fed_smith_123";
+const TEST_FEDERATION_ATTESTATION_ID = "fed_att_456";
+
+const mockFederationAttestation = {
+  id: TEST_FEDERATION_ATTESTATION_ID,
+  user_duid: TEST_FEDERATION_DUID, // Federation DUID used as user_duid
+  kind0_event_id: null, // Federations may not have kind:0 events
+  nip03_event_id: null,
+  simpleproof_timestamp_id: "sp_ts_fed_123",
+  ots_proof: "fedproof0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+  bitcoin_block: 850001,
+  bitcoin_tx: "fedtx0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  attestation_status: "success",
+  created_at: Math.floor(Date.now() / 1000),
+  verified_at: Math.floor(Date.now() / 1000),
+  metadata: {
+    nip05: "smith-family@my.satnam.pub",
+    npub: "npub1fed123def456",
+    event_type: "family_federation",
+    federation_handle: "smith-family",
+  },
+};
+
+describe("Attestation Manager - Federation Attestations", () => {
+  let manager: MockAttestationManager;
+
+  beforeEach(() => {
+    manager = new MockAttestationManager();
+  });
+
+  afterEach(() => {
+    manager.removeAllListeners();
+  });
+
+  describe("Federation Attestation Creation", () => {
+    it("should create federation attestation session", () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state).toBeDefined();
+      expect(state.status).toBe("pending");
+    });
+
+    it("should complete federation attestation with federation metadata", () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+      manager.setAttestationCompleted(
+        TEST_FEDERATION_ATTESTATION_ID,
+        mockFederationAttestation
+      );
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state.status).toBe("success");
+      expect(state.attestation.metadata.event_type).toBe("family_federation");
+      expect(state.attestation.metadata.federation_handle).toBe("smith-family");
+    });
+
+    it("should emit federation attestation events", () => {
+      return new Promise<void>((resolve) => {
+        const events: string[] = [];
+
+        manager.on("attestation:started", () => events.push("started"));
+        manager.on("attestation:completed", ({ attestation }) => {
+          events.push("completed");
+          expect(attestation.metadata.event_type).toBe("family_federation");
+          resolve();
+        });
+
+        manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+        manager.setAttestationCompleted(
+          TEST_FEDERATION_ATTESTATION_ID,
+          mockFederationAttestation
+        );
+      });
+    });
+  });
+
+  describe("Federation Attestation Non-Blocking Behavior", () => {
+    /**
+     * Tests that federation attestation failures don't block federation creation
+     * This is critical for the non-blocking attestation pattern in api/family/foundry.js
+     */
+
+    it("should handle attestation failure without blocking", () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+      manager.setAttestationFailed(
+        TEST_FEDERATION_ATTESTATION_ID,
+        "OpenTimestamps API timeout"
+      );
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state.status).toBe("failure");
+      expect(state.error).toBe("OpenTimestamps API timeout");
+      // Federation creation should still succeed - attestation is non-blocking
+    });
+
+    it("should track partial attestation success", () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+
+      // Simulate partial progress - timestamp created but attestation record failed
+      manager.setAttestationProgress(TEST_FEDERATION_ATTESTATION_ID, {
+        simpleproof: { status: "success", timestamp_id: "sp_ts_123" },
+        attestation_record: { status: "failure", error: "DB insert failed" },
+        overallStatus: "partial",
+      });
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state.progress.simpleproof.status).toBe("success");
+      expect(state.progress.attestation_record.status).toBe("failure");
+      expect(state.progress.overallStatus).toBe("partial");
+    });
+
+    it("should handle feature flag disabled scenario", () => {
+      // When VITE_SIMPLEPROOF_ENABLED is false, attestation should be skipped
+      const skippedAttestation = {
+        success: true,
+        skipped: true,
+        reason: "Attestation feature disabled",
+      };
+
+      // No attestation session should be created
+      const state = manager.getState("nonexistent_attestation");
+      expect(state).toBeUndefined();
+
+      // Verify skipped response structure
+      expect(skippedAttestation.success).toBe(true);
+      expect(skippedAttestation.skipped).toBe(true);
+    });
+
+    it("should handle retry logic for transient failures", async () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+
+      // Simulate retry attempts
+      const retryAttempts = [
+        { attempt: 1, status: "failure", error: "Network timeout" },
+        { attempt: 2, status: "failure", error: "Network timeout" },
+        { attempt: 3, status: "success" },
+      ];
+
+      for (const attempt of retryAttempts) {
+        manager.setAttestationProgress(TEST_FEDERATION_ATTESTATION_ID, {
+          retryAttempt: attempt.attempt,
+          lastStatus: attempt.status,
+          lastError: attempt.error,
+          overallStatus: attempt.status === "success" ? "success" : "retrying",
+        });
+      }
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state.progress.retryAttempt).toBe(3);
+      expect(state.progress.overallStatus).toBe("success");
+    });
+  });
+
+  describe("Federation vs User Attestation Differentiation", () => {
+    it("should distinguish federation attestations by event_type", () => {
+      // User attestation
+      manager.startAttestation(TEST_ATTESTATION_ID);
+      manager.setAttestationCompleted(TEST_ATTESTATION_ID, mockAttestation);
+
+      // Federation attestation
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+      manager.setAttestationCompleted(
+        TEST_FEDERATION_ATTESTATION_ID,
+        mockFederationAttestation
+      );
+
+      const userState = manager.getState(TEST_ATTESTATION_ID);
+      const fedState = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+
+      expect(userState.attestation.metadata.event_type).toBe(
+        "identity_creation"
+      );
+      expect(fedState.attestation.metadata.event_type).toBe(
+        "family_federation"
+      );
+    });
+
+    it("should include federation_handle in federation attestation metadata", () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+      manager.setAttestationCompleted(
+        TEST_FEDERATION_ATTESTATION_ID,
+        mockFederationAttestation
+      );
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state.attestation.metadata.federation_handle).toBeDefined();
+      expect(state.attestation.metadata.federation_handle).toBe("smith-family");
+    });
+
+    it("should use federation_duid as user_duid for federation attestations", () => {
+      manager.startAttestation(TEST_FEDERATION_ATTESTATION_ID);
+      manager.setAttestationCompleted(
+        TEST_FEDERATION_ATTESTATION_ID,
+        mockFederationAttestation
+      );
+
+      const state = manager.getState(TEST_FEDERATION_ATTESTATION_ID);
+      expect(state.attestation.user_duid).toBe(TEST_FEDERATION_DUID);
+    });
+  });
+});

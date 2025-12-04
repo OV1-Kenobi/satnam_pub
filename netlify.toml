@@ -265,6 +265,14 @@
   status = 301
   force = true
 
+# CRITICAL: Exclude browser-side ESM client modules from API proxy
+# These are client-side JavaScript files, NOT Netlify Functions
+[[redirects]]
+  from = "/api/endpoints/*"
+  to = "/api/endpoints/:splat"
+  status = 200
+  force = false
+
 # Generic mapping for other API endpoints (excluding auth which is handled above)
 [[redirects]]
   from = "/api/*"

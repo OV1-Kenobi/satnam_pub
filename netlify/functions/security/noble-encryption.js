@@ -75,6 +75,14 @@ function b64urlDecode(s) {
   return new Uint8Array(Buffer.from(normalized, 'base64'));
 }
 
+// Small helper to concatenate two Uint8Array instances
+function concatBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
 // Serialize as Noble V2: noble-v2.<salt_b64url>.<iv_b64url>.<cipher_b64url>
 function serializeNobleV2(iv, cipher, randomSaltBytes) {
   const saltSeg = b64urlEncode(randomSaltBytes);
@@ -234,3 +242,71 @@ export async function decryptField(cipherB64, ivB64, tagB64, userSalt) {
   }
 }
 
+/**
+ * Decrypt a federation identity envelope produced by api/family/foundry.js
+ *
+ * The envelope has the shape:
+ *   { encrypted: string, salt: string, iv: string, tag: string }
+ * where all fields are base64url-encoded. Encryption uses Noble V2 AES-GCM
+ * with key = PBKDF2-SHA256(PRIVACY_MASTER_KEY, salt, 100k, 32 bytes).
+ *
+ * IMPORTANT:
+ * - This helper MUST only be used in Netlify Functions (server-side).
+ * - Never log the decrypted plaintext; callers should treat it as sensitive.
+ *
+ * @param {string|object} envelope - JSON string or parsed object envelope
+ * @param {string} [fieldName] - Optional label for error messages only
+ * @returns {Promise<string>} Decrypted plaintext value
+ */
+export async function decryptFederationFieldEnvelope(
+  envelope,
+  fieldName = 'federation_field'
+) {
+  try {
+    if (!envelope) {
+      throw new Error('decryptFederationFieldEnvelope: missing envelope');
+    }
+    const masterKey = process.env.PRIVACY_MASTER_KEY;
+    if (!masterKey) {
+      throw new Error(
+        'decryptFederationFieldEnvelope: PRIVACY_MASTER_KEY is not configured'
+      );
+    }
+
+    // Accept either a JSON string or a parsed object
+    const envObj = typeof envelope === 'string' ? JSON.parse(envelope) : envelope;
+    const { encrypted, salt, iv, tag } = envObj || {};
+    if (!encrypted || !salt || !iv) {
+      throw new Error(
+        'decryptFederationFieldEnvelope: envelope missing required fields'
+      );
+    }
+
+    await ensureLibs();
+
+    const saltBytes = b64urlDecode(String(salt));
+    const ivBytes = b64urlDecode(String(iv));
+    const ctBytes = b64urlDecode(String(encrypted));
+    const tagBytes = tag ? b64urlDecode(String(tag)) : new Uint8Array(0);
+
+    // Derive key using the same PBKDF2 parameters as api/family/foundry.js
+    const key = _pbkdf2(_sha256, String(masterKey), saltBytes, {
+      c: 100000,
+      dkLen: 32,
+    });
+
+    // Reconstruct cipher+tag buffer expected by Noble AES-GCM
+    const cipherWithTag = tagBytes.length
+      ? concatBytes(ctBytes, tagBytes)
+      : ctBytes;
+
+    const aead = _gcm(key, ivBytes);
+    const pt = aead.decrypt(cipherWithTag);
+    return new TextDecoder().decode(pt);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `decryptFederationFieldEnvelope failed for ${fieldName}: ${msg}`
+    );
+  }
+}

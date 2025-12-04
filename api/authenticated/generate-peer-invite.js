@@ -382,24 +382,17 @@ async function generateHashedInviteId() {
 }
 
 /**
-/**
- * Generate QR code placeholder for invitation URL
- * FIXED: QR generation moved to frontend for browser compatibility
- * @param {string} inviteUrl - URL to encode in QR code
- * @returns {Promise<string>} QR code placeholder data URL (image/svg+xml)
+ * QR code generation has been moved to client-side for browser-only architecture.
+ * This function now returns null to signal the client should generate QR codes
+ * from the inviteUrl using qr-code-browser.ts utility.
+ *
+ * @param {string} _inviteUrl - URL to encode (unused, for API compatibility)
+ * @returns {Promise<null>} Always returns null - client generates real QR
  */
-async function generateQRCode(inviteUrl) {
-  try {
-    // Preserve API compatibility by returning an IMAGE data URL placeholder.
-    // Real QR is generated on the client using `inviteUrl`.
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" role="img" aria-label="QR will be generated on the client"><rect width="100%" height="100%" fill="#ffffff"/><rect x="8" y="8" width="240" height="240" rx="12" ry="12" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" fill="#222">QR generated on client</text></svg>`;
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-  } catch (error) {
-    const err = new Error("Failed to generate QR code placeholder");
-    // @ts-ignore - Error.cause is supported in ES2022+
-    err.cause = error;
-    throw err;
-  }
+async function generateQRCode(_inviteUrl) {
+  // Return null to indicate client should generate QR code
+  // Client uses qr-code-browser.ts with the inviteUrl from response
+  return null;
 }
 
 /**

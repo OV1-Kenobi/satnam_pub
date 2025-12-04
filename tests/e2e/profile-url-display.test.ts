@@ -23,14 +23,14 @@ Object.defineProperty(global.navigator, "clipboard", {
   writable: true,
 });
 
-// Mock QRCode component
-vi.mock("qrcode.react", () => ({
-  default: vi.fn(({ value, size, level }: any) => ({
-    value,
-    size,
-    level,
-    type: "QRCode",
-  })),
+// Mock browser-compatible QR code utility (ProfileURLDisplay uses qr-code-browser.ts)
+vi.mock("../src/utils/qr-code-browser", () => ({
+  generateQRCodeDataURL: vi.fn(
+    async (text: string, options?: Record<string, unknown>) => {
+      return `data:image/png;base64,mockQRCodeFor${encodeURIComponent(text)}`;
+    }
+  ),
+  getRecommendedErrorCorrection: vi.fn((type: string) => "M" as const),
 }));
 
 // Test Helpers
@@ -43,7 +43,9 @@ interface URLDisplayState {
   copySuccess: boolean;
 }
 
-function createURLDisplayState(overrides?: Partial<URLDisplayState>): URLDisplayState {
+function createURLDisplayState(
+  overrides?: Partial<URLDisplayState>
+): URLDisplayState {
   return {
     username: "testuser",
     npub: "npub1test123456789abcdefghijklmnopqrstuvwxyz",
@@ -61,7 +63,7 @@ function generateURL(
   format: "username" | "npub" | "short"
 ): string {
   const PLATFORM_DOMAIN = "https://www.satnam.pub";
-  
+
   switch (format) {
     case "username":
       return `${PLATFORM_DOMAIN}/profile/${username}`;
@@ -135,7 +137,9 @@ describe("ProfileURLDisplay Component E2E", () => {
       const state = createURLDisplayState({ selectedFormat: "npub" });
       const url = generateURL(state.username, state.npub, state.selectedFormat);
 
-      expect(url).toBe("https://www.satnam.pub/profile/npub/npub1test123456789abcdefghijklmnopqrstuvwxyz");
+      expect(url).toBe(
+        "https://www.satnam.pub/profile/npub/npub1test123456789abcdefghijklmnopqrstuvwxyz"
+      );
     });
 
     it("should generate short format URL correctly", () => {
@@ -146,7 +150,10 @@ describe("ProfileURLDisplay Component E2E", () => {
     });
 
     it("should return empty string for npub format when npub is undefined", () => {
-      const state = createURLDisplayState({ selectedFormat: "npub", npub: undefined });
+      const state = createURLDisplayState({
+        selectedFormat: "npub",
+        npub: undefined,
+      });
       const url = generateURL(state.username, state.npub, state.selectedFormat);
 
       expect(url).toBe("");
@@ -170,8 +177,12 @@ describe("ProfileURLDisplay Component E2E", () => {
 
       await mockClipboard.writeText(url);
 
-      expect(mockClipboard.writeText).toHaveBeenCalledWith("https://www.satnam.pub/profile/testuser");
-      expect(mockClipboard._lastCopied).toBe("https://www.satnam.pub/profile/testuser");
+      expect(mockClipboard.writeText).toHaveBeenCalledWith(
+        "https://www.satnam.pub/profile/testuser"
+      );
+      expect(mockClipboard._lastCopied).toBe(
+        "https://www.satnam.pub/profile/testuser"
+      );
     });
 
     it("should show success message after copy", async () => {
@@ -205,7 +216,9 @@ describe("ProfileURLDisplay Component E2E", () => {
       state.selectedFormat = "username";
       let url = generateURL(state.username, state.npub, state.selectedFormat);
       await mockClipboard.writeText(url);
-      expect(mockClipboard._lastCopied).toBe("https://www.satnam.pub/profile/testuser");
+      expect(mockClipboard._lastCopied).toBe(
+        "https://www.satnam.pub/profile/testuser"
+      );
 
       // Copy npub format
       state.selectedFormat = "npub";
@@ -217,7 +230,9 @@ describe("ProfileURLDisplay Component E2E", () => {
       state.selectedFormat = "short";
       url = generateURL(state.username, state.npub, state.selectedFormat);
       await mockClipboard.writeText(url);
-      expect(mockClipboard._lastCopied).toBe("https://www.satnam.pub/p/testuser");
+      expect(mockClipboard._lastCopied).toBe(
+        "https://www.satnam.pub/p/testuser"
+      );
     });
   });
 
@@ -233,7 +248,10 @@ describe("ProfileURLDisplay Component E2E", () => {
     });
 
     it("should generate QR code with correct URL", () => {
-      const state = createURLDisplayState({ showQR: true, selectedFormat: "username" });
+      const state = createURLDisplayState({
+        showQR: true,
+        selectedFormat: "username",
+      });
       const url = generateURL(state.username, state.npub, state.selectedFormat);
 
       // QR code should contain the URL
@@ -319,7 +337,9 @@ describe("ProfileURLDisplay Component E2E", () => {
       const status = getVisibilityStatus("trusted_contacts_only");
 
       expect(status.color).toBe("purple");
-      expect(status.text).toBe("Trusted Contacts Only - Only verified/trusted contacts can view");
+      expect(status.text).toBe(
+        "Trusted Contacts Only - Only verified/trusted contacts can view"
+      );
       expect(status.shareable).toBe(true);
     });
 
@@ -327,7 +347,9 @@ describe("ProfileURLDisplay Component E2E", () => {
       const status = getVisibilityStatus("private");
 
       expect(status.color).toBe("gray");
-      expect(status.text).toBe("Private - Only you can view (URL not shareable)");
+      expect(status.text).toBe(
+        "Private - Only you can view (URL not shareable)"
+      );
       expect(status.shareable).toBe(false);
     });
 
@@ -368,7 +390,8 @@ describe("ProfileURLDisplay Component E2E", () => {
 
   describe("Privacy Notice", () => {
     it("should display privacy notice about analytics", () => {
-      const privacyNotice = "Profile views are tracked anonymously using hashed identifiers. No personal information is stored.";
+      const privacyNotice =
+        "Profile views are tracked anonymously using hashed identifiers. No personal information is stored.";
 
       expect(privacyNotice).toContain("anonymously");
       expect(privacyNotice).toContain("hashed");
@@ -376,7 +399,12 @@ describe("ProfileURLDisplay Component E2E", () => {
     });
 
     it("should show privacy notice for all visibility modes", () => {
-      const visibilities: ProfileVisibility[] = ["public", "contacts_only", "trusted_contacts_only", "private"];
+      const visibilities: ProfileVisibility[] = [
+        "public",
+        "contacts_only",
+        "trusted_contacts_only",
+        "private",
+      ];
 
       visibilities.forEach((visibility) => {
         const state = createURLDisplayState({ visibility });
@@ -411,4 +439,3 @@ describe("ProfileURLDisplay Component E2E", () => {
     });
   });
 });
-

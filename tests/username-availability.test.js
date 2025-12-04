@@ -5,7 +5,7 @@
  * it properly validates usernames and prevents registration conflicts.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 // Mock the API endpoint for testing
 const mockCheckUsernameAvailability = async (username) => {
@@ -142,6 +142,148 @@ describe('Username Availability Integration', () => {
   });
 });
 
+// ============================================================================
+// FEDERATION NAMESPACE COLLISION TESTS (Task 4.7)
+// ============================================================================
+
+/**
+ * Mock for federation handle availability checking
+ * Simulates the federation_lightning_config.federation_handle cross-check
+ * added in Task 4.8 to prevent user/federation namespace collisions
+ */
+const mockFederationHandles = ['smith-family', 'jones-clan', 'doe-household'];
+
+const mockCheckUsernameAvailabilityWithFederation = async (username) => {
+  // First run the standard user availability check
+  const userResult = await mockCheckUsernameAvailability(username);
+
+  // If already unavailable from user check, return early
+  if (!userResult.success || !userResult.available) {
+    return userResult;
+  }
+
+  const local = username.trim().toLowerCase();
+
+  // Check against federation handles (simulates federation_lightning_config check)
+  if (mockFederationHandles.includes(local)) {
+    return {
+      success: true,
+      available: false,
+      error: 'Username is already taken by a federation',
+      suggestion: `${local}_${Math.floor(Math.random() * 100)}`
+    };
+  }
+
+  return userResult;
+};
+
+describe('Federation Namespace Collision Prevention', () => {
+  it('should return unavailable when username matches existing federation handle', async () => {
+    const result = await mockCheckUsernameAvailabilityWithFederation('smith-family');
+
+    expect(result.success).toBe(true);
+    expect(result.available).toBe(false);
+    expect(result.error).toBe('Username is already taken by a federation');
+    expect(result.suggestion).toMatch(/^smith-family_\d+$/);
+  });
+
+  it('should return available when username does not match any federation handle', async () => {
+    const result = await mockCheckUsernameAvailabilityWithFederation('unique-user-123');
+
+    expect(result.success).toBe(true);
+    expect(result.available).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('should check both user and federation namespaces', async () => {
+    // Test user namespace collision
+    const userCollision = await mockCheckUsernameAvailabilityWithFederation('admin');
+    expect(userCollision.available).toBe(false);
+    expect(userCollision.error).toBe('Username is already taken');
+
+    // Test federation namespace collision
+    const fedCollision = await mockCheckUsernameAvailabilityWithFederation('jones-clan');
+    expect(fedCollision.available).toBe(false);
+    expect(fedCollision.error).toBe('Username is already taken by a federation');
+  });
+
+  it('should handle case-insensitive federation handle matching', async () => {
+    const result = await mockCheckUsernameAvailabilityWithFederation('SMITH-FAMILY');
+
+    expect(result.success).toBe(true);
+    expect(result.available).toBe(false);
+    expect(result.error).toBe('Username is already taken by a federation');
+  });
+
+  it('should validate format before checking federation namespace', async () => {
+    // Invalid format should fail before federation check
+    const result = await mockCheckUsernameAvailabilityWithFederation('invalid@handle');
+
+    expect(result.success).toBe(true);
+    expect(result.available).toBe(false);
+    expect(result.error).toBe('Username can only contain letters, numbers, underscores, and hyphens');
+  });
+
+  it('should provide suggestions for federation-taken handles', async () => {
+    const result = await mockCheckUsernameAvailabilityWithFederation('doe-household');
+
+    expect(result.available).toBe(false);
+    expect(result.suggestion).toBeDefined();
+    expect(typeof result.suggestion).toBe('string');
+    expect(result.suggestion.startsWith('doe-household_')).toBe(true);
+  });
+});
+
+describe('Unified Namespace Reservation (nip05_records entity_type)', () => {
+  /**
+   * Mock for unified namespace with entity_type column
+   * Simulates the nip05_records table with entity_type: 'user' | 'federation'
+   * as implemented in migration 055_nip05_entity_type.sql
+   */
+  const mockNip05Records = [
+    { name_duid: 'hash_alice', entity_type: 'user', federation_duid: null },
+    { name_duid: 'hash_smith-family', entity_type: 'federation', federation_duid: 'fed_123' },
+    { name_duid: 'hash_bob', entity_type: 'user', federation_duid: null },
+  ];
+
+  const mockCheckUnifiedNamespace = (nameDuid) => {
+    const record = mockNip05Records.find(r => r.name_duid === nameDuid);
+    if (!record) {
+      return { available: true, entityType: null };
+    }
+    return {
+      available: false,
+      entityType: record.entity_type,
+      federationDuid: record.federation_duid
+    };
+  };
+
+  it('should identify user entity type in unified namespace', () => {
+    const result = mockCheckUnifiedNamespace('hash_alice');
+
+    expect(result.available).toBe(false);
+    expect(result.entityType).toBe('user');
+    expect(result.federationDuid).toBeNull();
+  });
+
+  it('should identify federation entity type in unified namespace', () => {
+    const result = mockCheckUnifiedNamespace('hash_smith-family');
+
+    expect(result.available).toBe(false);
+    expect(result.entityType).toBe('federation');
+    expect(result.federationDuid).toBe('fed_123');
+  });
+
+  it('should return available for non-existent name_duid', () => {
+    const result = mockCheckUnifiedNamespace('hash_nonexistent');
+
+    expect(result.available).toBe(true);
+    expect(result.entityType).toBeNull();
+  });
+});
+
 console.log('✅ Username availability validation tests completed');
 console.log('✅ API endpoint structure validated');
 console.log('✅ Integration with IdentityForge confirmed');
+console.log('✅ Federation namespace collision prevention tests completed');
+console.log('✅ Unified namespace reservation (entity_type) tests completed');

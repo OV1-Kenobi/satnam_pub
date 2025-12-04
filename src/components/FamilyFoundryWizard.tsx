@@ -23,6 +23,9 @@ import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";
 import { SimpleProofTimestampButton } from "./identity/SimpleProofTimestampButton";
 import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimationWrapper";
 import PaymentCascadeModal from './PaymentCascadeModal';
+import { useCryptoOperations } from "../hooks/useCrypto";
+import { NobleEncryption } from "../lib/crypto/noble-encryption";
+import { supabase } from "../lib/supabase";
 
 // Feature flag for SimpleProof
 const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
@@ -47,6 +50,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   onComplete,
   onBack,
 }) => {
+  const cryptoOps = useCryptoOperations();
+  const identityDomain = clientConfig.domains.platformLightning ?? "my.satnam.pub";
   const [currentStep, setCurrentStep] = useState<WizardStep>('charter');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showFederationModal, setShowFederationModal] = useState(false);
@@ -64,6 +69,9 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   const [nfcMfaPolicyId, setNfcMfaPolicyId] = useState<string | null>(null);
   const [stewardApprovalStatus, setStewardApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
   const [stewardApprovalsReceived, setStewardApprovalsReceived] = useState(0);
+  // Phase 3: Federation identity setup (frontend)
+  const [federationHandle, setFederationHandle] = useState<string>("");
+  const [federationHandleError, setFederationHandleError] = useState<string | null>(null);
 
   // Step 1: Charter Definition
   const [charter, setCharter] = useState<CharterDefinition>({
@@ -226,15 +234,111 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
    * Create federation on backend after RBAC configuration
    * Maps trusted peers to user_duids, creates FROST session, and configures NFC MFA
    */
+  // Local validator that mirrors backend NIP-05 handle rules
+  const validateFederationHandle = (handle: string): string | null => {
+    const trimmed = handle.trim().toLowerCase();
+    if (!trimmed) {
+      // Empty handle is allowed (federation identity setup is optional)
+      return null;
+    }
+    // Match backend rules: 2-64 chars, lowercase letters, digits, dot, underscore, hyphen
+    const pattern = /^[a-z0-9._-]{2,64}$/;
+    if (!pattern.test(trimmed)) {
+      return "Federation handle must be 2-64 characters and use only lowercase letters, numbers, dots, underscores, or hyphens.";
+    }
+    return null;
+  };
+
   const createFederationBackend = async () => {
     try {
       setIsCreatingFederation(true);
       setFederationProgress(10);
 
+      // Validate federation identity handle (optional)
+      const normalizedHandle = federationHandle.trim().toLowerCase();
+      if (normalizedHandle) {
+        const handleError = validateFederationHandle(normalizedHandle);
+        if (handleError) {
+          setFederationHandleError(handleError);
+          throw new Error(handleError);
+        }
+      }
+      setFederationHandleError(null);
+
       // Map trusted peers to family members with user_duids
       setFederationProgress(30);
       const members = await mapTrustedPeersToMembers(trustedPeers);
       setFederationProgress(50);
+
+      // Optionally prepare federation identity payload (npub + encrypted nsec)
+      let identityPayload: {
+        federation_npub?: string;
+        federation_nsec_encrypted?: string;
+        federation_handle?: string;
+      } = {};
+
+      if (normalizedHandle) {
+        try {
+          if (!cryptoOps) {
+            throw new Error("Crypto operations not initialized");
+          }
+          // Phase 3: Generate federation-level Nostr keys fully in the browser
+          const keyPair = await cryptoOps.generateNostrKeyPair();
+          if (!keyPair?.npub || !keyPair?.nsec) {
+            throw new Error("Failed to generate federation Nostr keypair");
+          }
+
+          // Look up founding user's user_salt so we can reuse the same
+          // zero-knowledge encryption secret as their personal identity.
+          const {
+            data: { user },
+            error: authError,
+          } = await supabase.auth.getUser();
+          if (authError) {
+            throw authError;
+          }
+          if (!user || !user.id) {
+            throw new Error("Unable to resolve current user for federation identity encryption");
+          }
+
+          const { data: identityRow, error: identityError } = await supabase
+            .from("user_identities")
+            .select("user_salt")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (identityError) {
+            throw identityError;
+          }
+          if (!identityRow) {
+            throw new Error("User identity record not found");
+          }
+          const userSalt = identityRow.user_salt;
+          if (!userSalt || typeof userSalt !== 'string') {
+            throw new Error("Missing user_salt for federation identity encryption");
+          }
+
+          // Encrypt federation nsec using Noble V2 with the same user_salt
+          // that protects the founding user's personal nsec. This keeps
+          // recovery flows aligned while still treating federation identity
+          // as a separate logical context tied to the family_federations row.
+          const encryptedFederationNsec = await NobleEncryption.encryptNsec(
+            keyPair.nsec,
+            userSalt
+          );
+
+          identityPayload = {
+            federation_npub: keyPair.npub,
+            federation_nsec_encrypted: encryptedFederationNsec,
+            federation_handle: normalizedHandle,
+          };
+        } catch (identityError) {
+          // Best-effort only: log locally and continue federation creation
+          console.error(
+            "Federation identity setup failed; proceeding without federation-level npub/nsec:",
+            identityError
+          );
+        }
+      }
 
       // Prepare federation creation request
       const request = {
@@ -246,7 +350,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
           values: charter.values || []
         },
         rbac: rbac,
-        members: members
+        members: members,
+        ...identityPayload,
       };
 
       setFederationProgress(70);
@@ -459,6 +564,61 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
               onBack={prevStep}
               disabled={isCreatingFederation}
             />
+            {/* Phase 3: Federation Identity Setup (handle + previews) */}
+            <div className="mt-8 bg-white/5 border border-white/10 rounded-xl p-6">
+              <h3 className="text-xl font-bold text-white mb-3">Federation Identity Setup (Optional)</h3>
+              <p className="text-purple-200 text-sm mb-4">
+                Configure a federation-wide Nostr identity for your family. This handle will be used to
+                derive the federation&apos;s NIP-05 identifier and Lightning address on
+                <span className="font-mono"> {identityDomain}</span>. Leave this blank if you prefer to
+                configure federation identity later.
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-purple-100 mb-1" htmlFor="federation-handle">
+                    Federation Handle
+                  </label>
+                  <input
+                    id="federation-handle"
+                    type="text"
+                    className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/20 text-white placeholder-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="e.g. smith-family"
+                    value={federationHandle}
+                    onChange={(e) => {
+                      const value = e.target.value.toLowerCase();
+                      setFederationHandle(value);
+                      const validationError = validateFederationHandle(value);
+                      setFederationHandleError(validationError);
+                    }}
+                  />
+                  {federationHandleError && (
+                    <p className="mt-1 text-sm text-red-400">{federationHandleError}</p>
+                  )}
+                </div>
+                {federationHandle.trim() && !federationHandleError && (
+                  <div className="bg-black/30 border border-white/10 rounded-lg p-4">
+                    <p className="text-sm text-purple-200 mb-1 font-semibold">Derived Federation Identity</p>
+                    <p className="text-sm text-purple-100">
+                      NIP-05:&nbsp;
+                      <span className="font-mono">
+                        {federationHandle.trim().toLowerCase()}@{identityDomain}
+                      </span>
+                    </p>
+                    <p className="text-sm text-purple-100 mt-1">
+                      Lightning Address:&nbsp;
+                      <span className="font-mono">
+                        {federationHandle.trim().toLowerCase()}@{identityDomain}
+                      </span>
+                    </p>
+                    <p className="text-xs text-purple-300 mt-2">
+                      The federation&apos;s private key (nsec) will be generated in your browser and encrypted
+                      using your account&apos;s encryption key before being sent to the server. You can recover
+                      it using the same credentials you use for your personal identity.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         );
 

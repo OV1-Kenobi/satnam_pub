@@ -43,13 +43,14 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-purple-900">
-      {/* Background Image - Different images for different page types */}
+    <div className="min-h-screen relative bg-purple-900">
+      {/* Fixed Background Image - stays stationary while content scrolls */}
       <div
-        className="absolute inset-0 bg-contain md:bg-cover bg-center bg-no-repeat z-0"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0"
         style={{
           backgroundImage: getBackgroundImage(),
           backgroundColor: '#581c87', // fallback purple color
+          backgroundAttachment: 'fixed',
         }}
       >
         {/* Gradient overlay with 50% reduced opacity compared to landing page */}

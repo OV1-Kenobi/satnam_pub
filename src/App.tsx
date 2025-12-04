@@ -1,10 +1,13 @@
 import {
   Bitcoin,
   BookOpen,
+  ChevronRight,
   Copy,
   ExternalLink,
   Network,
+  Play,
   Users,
+  X,
   Zap
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -342,7 +345,7 @@ function App() {
           setShowCommunications(false);
           setCurrentView('communications');
         } else if (dest === 'family-foundry') {
-          setCurrentView("onboarding");
+          setCurrentView("family-foundry");
         } else if (dest === 'educational-dashboard') {
           setCurrentView("education");
         } else if (dest === 'sovereignty-controls') {
@@ -591,6 +594,8 @@ function App() {
           }}
           onExistingUserSignIn={() => {
             setShowFamilyFoundryAuthModal(false);
+            // Set pending destination so handleAuthSuccess knows where to redirect after sign-in
+            setPendingDestination('family-foundry');
             setSignInModalOpen(true);
           }}
         />
@@ -1128,13 +1133,17 @@ function App() {
     return <AmberIntentCallback />;
   }
 
+  // Mobile footer drawer state
+  const [mobileFooterDrawerOpen, setMobileFooterDrawerOpen] = useState(false);
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Hero Background Image with Overlay */}
+    <div className="min-h-screen relative">
+      {/* Fixed Background Image - stays stationary while content scrolls */}
       <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage: `url('/BitcoinCitadelValley.jpg')`,
+          backgroundAttachment: 'fixed',
         }}
       >
         {/* Gradient overlay with 50% reduced opacity */}
@@ -1230,9 +1239,10 @@ function App() {
             Control Your Digital Dynasty
           </h2>
           <p className="text-xl text-purple-100 mb-12 max-w-4xl mx-auto leading-relaxed drop-shadow-lg">
-            Create decentralized interoperable identities and human-readable
-            bitcoin addresses for your family. No custodians, no compromises,
-            pure Bitcoin sovereignty.
+            Full-spectrum custody, ranging from fully custodial keys held by us to fully self-custodial keys held by you.
+            Keys for your Nostr, Lightning Network, Bitcoin, your mints, nodes, and home/remote servers (ultimately, AI agents & databases, too),
+            custodied by the users of this system when you complete your journey to full self-sovereignty over your decentralized identity,
+            communications, finances, and data infrastructure.
           </p>
 
           {/* Primary CTA */}
@@ -1307,6 +1317,93 @@ function App() {
               <span>Access Advanced Training</span>
               <ExternalLink className="h-3 w-3" />
             </a>
+          </div>
+
+          {/* Educational Videos Section - Why Bitcoin Matters */}
+          <div className="mt-10 mb-10">
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-bold text-white mb-3">
+                Why Bitcoin Matters
+              </h3>
+              <p className="text-purple-100 max-w-3xl mx-auto">
+                What's The Problem, Why RIGHT NOW Matters More Than Any Time in History, and What To Do About It
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* Video 1: Jeff Booth & Walker Podcast */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20 shadow-lg">
+                <div className="aspect-video mb-3 rounded-lg overflow-hidden">
+                  <iframe
+                    className="w-full h-full"
+                    src="https://www.youtube.com/embed/7omuPt42Ep8?si=25Jo4EecZaAOLn7t"
+                    title="Jeff Booth & Walker Podcast"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
+                </div>
+                <h4 className="text-lg font-bold text-white mb-1">Jeff Booth & Walker Podcast</h4>
+                <p className="text-purple-100 text-xs">
+                  Jeff Booth discusses Fedimint/Fedi, what's happening in El Salvador, and why Bitcoin provides humanities' best solution for preserving value across generations.
+                </p>
+              </div>
+
+              {/* Video 2: What's The Problem? */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20 shadow-lg">
+                <div className="aspect-video mb-3 rounded-lg overflow-hidden">
+                  <iframe
+                    className="w-full h-full"
+                    src="https://www.youtube.com/embed/YtFOxNbmD38?si=IPjRvOkJfPLOOlQU"
+                    title="What's The Problem? - Demystifying Why We All Need Bitcoin"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
+                </div>
+                <h4 className="text-lg font-bold text-white mb-1">'What's The Problem?'</h4>
+                <p className="text-purple-100 text-xs">
+                  An accessible explanation from SatsVsFiat.com demystifying why Bitcoin matters for everyone—not just technologists—and the fundamental problems it solves.
+                </p>
+              </div>
+
+              {/* Video 3: Get on the Bitcoin Ark - Clickable thumbnail (embedding disabled) */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20 shadow-lg">
+                <a
+                  href="https://www.youtube.com/watch?v=uYO5L88h26Y"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Watch Get on the Bitcoin Ark on YouTube"
+                  className="block aspect-video mb-3 rounded-lg overflow-hidden relative group cursor-pointer"
+                >
+                  {/* Thumbnail image */}
+                  <img
+                    src="https://img.youtube.com/vi/uYO5L88h26Y/hqdefault.jpg"
+                    alt="Get on the Bitcoin Ark - YouTube video thumbnail"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  {/* Dark overlay on hover */}
+                  <div className="absolute inset-0 bg-black/30 group-hover:bg-black/40 transition-colors duration-300" />
+                  {/* Play button overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg group-hover:bg-red-500 group-hover:scale-110 transition-all duration-300">
+                      <Play className="w-7 h-7 text-white ml-1" fill="white" />
+                    </div>
+                  </div>
+                  {/* "Watch on YouTube" label */}
+                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <ExternalLink className="w-3 h-3" />
+                    Watch on YouTube
+                  </div>
+                </a>
+                <h4 className="text-lg font-bold text-white mb-1">Get on the Bitcoin Ark</h4>
+                <p className="text-purple-100 text-xs">
+                  An entertaining meme video suggesting what is happening now as information on what, why, and how "get on the Bitcoin Ark", and why now is the time to secure your family's financial future on the Bitcoin network BEFORE the next wave of adoption.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* NFC Name Tag provisioning */}
@@ -1561,7 +1658,7 @@ function App() {
             <div>
               <h3 className="font-bold text-white mb-3">SatNam.pub: Your Self-Custodied & Credentialed Digital Identity Wallet</h3>
               <p>
-                You control your keys, your identity, and your dynasty. No
+                You control your keys, your identity, and your networks that you've not trusted, you've verified. No
                 intermediaries, no dependencies. Your Responsibility!
               </p>
             </div>
@@ -1583,11 +1680,102 @@ function App() {
         </div>
       </div>
 
-      {/* Enhanced Footer with Navigation */}
+      {/* Mobile Footer Drawer - Slide out from left */}
+      <div className="md:hidden">
+        {/* Backdrop overlay when drawer is open */}
+        {mobileFooterDrawerOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setMobileFooterDrawerOpen(false)}
+          />
+        )}
+
+        {/* Slide-out drawer */}
+        <div
+          className={`fixed top-0 left-0 h-full w-80 bg-purple-900/95 backdrop-blur-md z-50 transform transition-transform duration-300 ease-in-out overflow-y-auto ${mobileFooterDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setMobileFooterDrawerOpen(false)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-2"
+            aria-label="Close menu"
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {/* Drawer content */}
+          <div className="p-6 pt-16 space-y-6">
+            {/* Quick Links */}
+            <div>
+              <h3 className="text-white font-bold mb-3 text-lg">Quick Links</h3>
+              <div className="space-y-2">
+                <button onClick={() => { handleProtectedRoute("dashboard"); setMobileFooterDrawerOpen(false); }} className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200">Family Financials</button>
+                <button onClick={() => { handleProtectedRoute("individual-finances"); setMobileFooterDrawerOpen(false); }} className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200">Individual Finances</button>
+                <button onClick={() => { handleProtectedRoute("payment-automation"); setMobileFooterDrawerOpen(false); }} className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200">Automated Payments</button>
+                {auth.authenticated && (
+                  <>
+                    <button onClick={() => { setCurrentView('settings'); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Settings</button>
+                    <button onClick={async () => { try { const npub = (auth.user as any)?.npub; if (npub) { await navigator.clipboard.writeText(npub); showToast.success("Copied your npub", { duration: 2500 }); } } catch { showToast.error("Failed to copy npub", { duration: 3000 }); } }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Copy Npub</button>
+                  </>
+                )}
+                <button onClick={() => { setCurrentView('nfc-provisioning-guide'); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Prepare Your Name Tag/s</button>
+                <button onClick={() => { handleProtectedRoute("contacts"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Contacts</button>
+              </div>
+            </div>
+
+            {/* Features */}
+            <div>
+              <h3 className="text-white font-bold mb-3 text-lg">Features</h3>
+              <div className="space-y-2">
+                <button onClick={() => { handleProtectedRoute("cross-mint-operations"); setMobileFooterDrawerOpen(false); }} className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200">Cross-Mint Operations</button>
+                <button onClick={() => { handleProtectedRoute("payment-cascade"); setMobileFooterDrawerOpen(false); }} className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200">Payment Cascade System</button>
+                <button onClick={() => { handleProtectedRoute("ln-node-management"); setMobileFooterDrawerOpen(false); }} className="block text-orange-400 hover:text-yellow-400 transition-colors duration-200">LN Node Management</button>
+                <button onClick={() => { handleProtectedRoute("educational-dashboard"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Educational Dashboard</button>
+                <button onClick={() => { handleProtectedRoute("sovereignty-controls"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Sovereignty Controls</button>
+              </div>
+            </div>
+
+            {/* Resources */}
+            <div>
+              <h3 className="text-white font-bold mb-3 text-lg">Resources</h3>
+              <div className="space-y-2">
+                <button onClick={() => { setCurrentView("features-overview"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Features Overview</button>
+                <button onClick={() => { setCurrentView("dynastic-sovereignty"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Dynastic Sovereignty</button>
+                <button onClick={() => { setCurrentView("nostr-ecosystem"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Nostr Resources</button>
+                <button onClick={() => { setCurrentView("recovery"); setMobileFooterDrawerOpen(false); }} className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200">Recovery Help</button>
+                <a href="https://citadel.academy" target="_blank" rel="noopener noreferrer" className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"><span>Citadel Academy</span><ExternalLink className="h-3 w-3" /></a>
+              </div>
+            </div>
+
+            {/* Connect */}
+            <div>
+              <h3 className="text-white font-bold mb-3 text-lg">Connect</h3>
+              <div className="space-y-2">
+                <a href="https://iris.to/npub1p9a5sclpw5prjhx0c0u4ufjnwmnt2pxcvpa4lxnf4wn53vawuatqkmzxyt" target="_blank" rel="noopener noreferrer" className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"><span>Follow us on Nostr</span><ExternalLink className="h-3 w-3" /></a>
+                <a href="https://t.me/rebuilding_camelot" target="_blank" rel="noopener noreferrer" className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"><span>Join on Telegram</span><ExternalLink className="h-3 w-3" /></a>
+                <a href="https://iris.to/npub1qq50zturtx4ns2uf2adt26pcpmez47ur9ds6a4fwaax5u5evr3nsnu2qvm" target="_blank" rel="noopener noreferrer" className="text-purple-200 hover:text-yellow-400 transition-colors duration-200 flex items-center space-x-1"><span>Follow Founder Ov1</span><ExternalLink className="h-3 w-3" /></a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Floating arrow trigger - always visible on left edge */}
+        <button
+          onClick={() => setMobileFooterDrawerOpen(!mobileFooterDrawerOpen)}
+          className={`fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-purple-800/60 hover:bg-purple-700/80 backdrop-blur-sm p-2 rounded-r-lg transition-all duration-300 ${mobileFooterDrawerOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
+          aria-label="Open navigation menu"
+        >
+          <ChevronRight className="h-6 w-6 text-white/80" />
+        </button>
+      </div>
+
+      {/* Enhanced Footer with Navigation - Desktop only */}
       <footer className="relative z-10 bg-purple-900/80 backdrop-blur-sm border-t border-yellow-400/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          {/* Quick Links Section */}
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
+          {/* Quick Links Section - Hidden on mobile, shown on md+ */}
+          <div className="hidden md:grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <h3 className="text-white font-bold mb-4">Quick Links</h3>
               <div className="space-y-2">

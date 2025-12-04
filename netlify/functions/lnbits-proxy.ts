@@ -25,6 +25,7 @@ import {
 } from "./supabase.js";
 import {
   getInvoiceKeyWithSafety,
+  getFederationInvoiceKeyWithSafety,
   logDecryptAudit,
   newRequestId,
 } from "./utils/secure-decrypt-logger.js";
@@ -213,9 +214,74 @@ function parseInvoiceAmountSats(invoice: string): number | null {
   return sats > 0 ? sats : null;
 }
 
+/**
+ * Unified handle resolution for LNURL-pay.
+ * Checks both user_lightning_config and federation_lightning_config tables.
+ * Returns data indicating whether it's a user or federation handle.
+ *
+ * @param adminSupabase - Service-role Supabase client
+ * @param handle - The handle to look up (username or federation_handle)
+ * @returns {Promise<{ found: boolean, type: 'user'|'federation'|null, data: any, error?: string }>}
+ */
+async function resolveHandleForLnurl(
+  adminSupabase: NonNullable<typeof import("./supabase.js").supabaseAdmin>,
+  handle: string
+): Promise<{
+  found: boolean;
+  type: "user" | "federation" | null;
+  data: any;
+  error?: string;
+}> {
+  const normalizedHandle = handle.trim().toLowerCase();
+
+  // First, try user lookup
+  const { data: userData, error: userError } = await adminSupabase.rpc(
+    "public.get_ln_proxy_data",
+    { p_username: normalizedHandle }
+  );
+
+  if (userError) {
+    return { found: false, type: null, data: null, error: userError.message };
+  }
+
+  if (userData) {
+    return { found: true, type: "user", data: userData };
+  }
+
+  // Not found as user, try federation lookup
+  const { data: fedData, error: fedError } = await adminSupabase.rpc(
+    "public.get_federation_ln_proxy_data",
+    { p_handle: normalizedHandle }
+  );
+
+  if (fedError) {
+    return { found: false, type: null, data: null, error: fedError.message };
+  }
+
+  if (fedData) {
+    // Normalize federation data to match user data structure for easier handling
+    return {
+      found: true,
+      type: "federation",
+      data: {
+        ...fedData,
+        // Map federation fields to user-compatible names where needed
+        wallet_id: fedData.lnbits_wallet_id,
+        invoice_key: fedData.lnbits_invoice_key,
+        // federation_duid serves as the "owner" identifier
+        user_id: fedData.federation_duid,
+      },
+    };
+  }
+
+  // Not found in either table
+  return { found: false, type: null, data: null };
+}
+
 const ACTIONS = {
   // Admin-scoped operation: create LNbits user/wallet
   provisionWallet: { scope: "admin" as const },
+  provisionFederationWallet: { scope: "admin" as const },
   // Public-scoped operations (no auth required; rate-limited; GET allowed where noted)
   lnurlpWellKnown: { scope: "public" as const },
   lnurlpDirect: { scope: "public" as const },
@@ -446,46 +512,54 @@ export const handler = async (event: any) => {
     if (scope === "public") {
       switch (action) {
         case "lnurlpWellKnown": {
-          const usernameRaw =
+          // Handle can be a user username or federation handle
+          const handleRaw =
             typeof payload?.username === "string" ? payload.username : "";
-          const username = usernameRaw.trim().toLowerCase();
-          if (!username || !/^[a-z0-9._-]+$/i.test(username)) {
+          const handle = handleRaw.trim().toLowerCase();
+          if (!handle || !/^[a-z0-9._-]+$/i.test(handle)) {
             return createValidationErrorResponse(
-              "Invalid username",
+              "Invalid username/handle",
               requestId,
               requestOrigin
             );
           }
           try {
-            const { data, error } = await adminSupabase.rpc(
-              "public.get_ln_proxy_data",
-              { p_username: username }
-            );
-            if (error)
+            // Use unified resolver to check both user and federation tables
+            const resolved = await resolveHandleForLnurl(adminSupabase, handle);
+
+            if (resolved.error) {
               return json(500, {
                 success: false,
-                error: error.message || "RPC error",
+                error: resolved.error || "RPC error",
               });
-            if (!data)
+            }
+            if (!resolved.found || !resolved.data) {
               return errorResponse(
                 404,
-                "User not found",
+                "Handle not found",
                 requestId,
                 requestOrigin
               );
+            }
 
+            const { data, type } = resolved;
             const domain = resolvePlatformLightningDomainServer();
             const origin =
               process.env.PRODUCTION_ORIGIN || "https://www.satnam.pub";
             const baseUrl = (origin || "").replace(/\/$/, "");
             const directCb = `${baseUrl}/api/lnurlp/direct/${encodeURIComponent(
-              username
+              handle
             )}`;
             const platformCb = `${baseUrl}/api/lnurlp/platform/${encodeURIComponent(
-              username
+              handle
             )}`;
-            const callback = data?.external_ln_address ? directCb : platformCb; // Option B
-            const description = `Satnam tips for ${username}@${domain}`;
+
+            // Route based on external_ln_address presence (Scrub forwarding pattern)
+            const callback = data?.external_ln_address ? directCb : platformCb;
+
+            // Description includes type indicator for clarity
+            const typeLabel = type === "federation" ? "Federation" : "User";
+            const description = `Satnam ${typeLabel} tips for ${handle}@${domain}`;
             const metadata = JSON.stringify([["text/plain", description]]);
 
             const lnurl = {
@@ -508,15 +582,16 @@ export const handler = async (event: any) => {
         }
 
         case "lnurlpDirect": {
-          const usernameRaw =
+          // Handle can be a user username or federation handle
+          const handleRaw =
             typeof payload?.username === "string" ? payload.username : "";
-          const username = usernameRaw.trim().toLowerCase();
+          const handle = handleRaw.trim().toLowerCase();
           const amount = Number(payload?.amount);
           const comment =
             typeof payload?.comment === "string" ? payload.comment : undefined;
-          if (!username || !/^[a-z0-9._-]+$/i.test(username))
+          if (!handle || !/^[a-z0-9._-]+$/i.test(handle))
             return createValidationErrorResponse(
-              "Invalid username",
+              "Invalid username/handle",
               requestId,
               requestOrigin
             );
@@ -527,21 +602,29 @@ export const handler = async (event: any) => {
               requestOrigin
             );
 
-          // Load external LN address for this username
-          const { data, error } = await adminSupabase.rpc(
-            "public.get_ln_proxy_data",
-            { p_username: username }
-          );
-          if (error)
+          // Use unified resolver to check both user and federation tables
+          const resolved = await resolveHandleForLnurl(adminSupabase, handle);
+
+          if (resolved.error) {
             return json(500, {
               success: false,
-              error: error.message || "RPC error",
+              error: resolved.error || "RPC error",
             });
-          if (!data || !data.external_ln_address)
+          }
+          if (!resolved.found || !resolved.data) {
+            return json(404, {
+              success: false,
+              error: "Handle not found",
+            });
+          }
+
+          const { data } = resolved;
+          if (!data.external_ln_address) {
             return json(404, {
               success: false,
               error: "No external address configured",
             });
+          }
 
           const addr = String(data.external_ln_address);
           const [name, domain] = addr.split("@");
@@ -577,7 +660,6 @@ export const handler = async (event: any) => {
             if (!invRes.ok)
               return json(502, {
                 success: false,
-
                 error: `Provider invoice ${invRes.status}`,
               });
             const inv = await invRes.json();
@@ -591,15 +673,16 @@ export const handler = async (event: any) => {
         }
 
         case "lnurlpPlatform": {
-          const usernameRaw =
+          // Handle can be a user username or federation handle
+          const handleRaw =
             typeof payload?.username === "string" ? payload.username : "";
-          const username = usernameRaw.trim().toLowerCase();
+          const handle = handleRaw.trim().toLowerCase();
           const amountMsats = Number(payload?.amount);
           const comment =
             typeof payload?.comment === "string" ? payload.comment : undefined;
-          if (!username || !/^[a-z0-9._-]+$/i.test(username))
+          if (!handle || !/^[a-z0-9._-]+$/i.test(handle))
             return createValidationErrorResponse(
-              "Invalid username",
+              "Invalid username/handle",
               requestId,
               requestOrigin
             );
@@ -617,28 +700,32 @@ export const handler = async (event: any) => {
               requestOrigin
             );
 
-          const { data, error } = await adminSupabase.rpc(
-            "public.get_ln_proxy_data",
-            { p_username: username }
-          );
-          if (error)
+          // Use unified resolver to check both user and federation tables
+          const resolved = await resolveHandleForLnurl(adminSupabase, handle);
+
+          if (resolved.error) {
             return json(500, {
               success: false,
-              error: error.message || "RPC error",
+              error: resolved.error || "RPC error",
             });
-          if (!data)
+          }
+          if (!resolved.found || !resolved.data) {
             return errorResponse(
               404,
-              "User not found",
+              "Handle not found",
               requestId,
               requestOrigin
             );
+          }
 
+          const { data, type } = resolved;
           const walletId: string = String(
             data.lnbits_wallet_id || data.wallet_id || ""
           );
-          const userId: string | undefined = (data.user_id ||
-            data.user_duid) as string | undefined;
+          // For federations, user_id is the federation_duid
+          const ownerId: string | undefined = (data.user_id ||
+            data.user_duid ||
+            data.federation_duid) as string | undefined;
           if (!walletId)
             return json(404, {
               success: false,
@@ -646,20 +733,25 @@ export const handler = async (event: any) => {
             });
 
           const auditRequestId = newRequestId();
+          const callerName =
+            type === "federation"
+              ? "lnurlpPlatform:federation"
+              : "lnurlpPlatform";
+
           // Log start of custody event (audit + rpc)
           try {
             await logDecryptAudit({
               request_id: auditRequestId,
-              user_id: userId,
+              user_id: ownerId,
               wallet_id: walletId,
-              caller: "lnurlpPlatform",
+              caller: callerName,
               operation: "lnurlp_invoice",
               source_ip: clientIP,
             });
           } catch {}
           try {
             await adminSupabase.rpc("public.log_custody_event", {
-              p_username: username,
+              p_username: handle,
               p_amount_msats: Math.floor(amountMsats),
               p_status: "pending",
               p_wallet_id: walletId,
@@ -667,16 +759,26 @@ export const handler = async (event: any) => {
           } catch {}
 
           // Decrypt invoice key with memory safety
+          // Use appropriate function based on handle type
           let release: (() => Promise<void>) | undefined;
           let invoiceKey: string = "";
           try {
-            const res = await getInvoiceKeyWithSafety(
-              walletId,
-              "lnurlpPlatform",
-              requestId,
-              userId,
-              clientIP
-            );
+            const res =
+              type === "federation"
+                ? await getFederationInvoiceKeyWithSafety(
+                    walletId,
+                    callerName,
+                    requestId,
+                    ownerId,
+                    clientIP
+                  )
+                : await getInvoiceKeyWithSafety(
+                    walletId,
+                    callerName,
+                    requestId,
+                    ownerId,
+                    clientIP
+                  );
             invoiceKey = res.key;
             release = res.release;
 
@@ -887,6 +989,158 @@ export const handler = async (event: any) => {
         );
         return json(200, { success: true, data: { user, wallet } });
       }
+
+      // Federation wallet provisioning with encrypted key storage
+      if (action === "provisionFederationWallet") {
+        const federation_duid = String(payload?.federation_duid || "").trim();
+        const federation_handle = String(payload?.federation_handle || "")
+          .trim()
+          .toLowerCase();
+        const wallet_name = String(
+          payload?.wallet_name || `Federation Treasury (${federation_handle})`
+        ).trim();
+
+        if (!federation_duid || !federation_handle) {
+          return json(400, {
+            success: false,
+            error: "federation_duid and federation_handle are required",
+          });
+        }
+
+        // Validate federation handle format (matches DB constraint)
+        if (
+          !/^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$/.test(federation_handle)
+        ) {
+          return json(400, {
+            success: false,
+            error:
+              "Invalid federation_handle format. Must be lowercase alphanumeric with hyphens/underscores.",
+          });
+        }
+
+        // Create LNbits user + wallet via User Manager
+        const username = `federation_${federation_duid}`;
+        const password = randomUUID();
+
+        const lnUser = await lnbitsFetch(
+          "/usermanager/api/v1/users",
+          ADMIN_KEY as string,
+          {
+            method: "POST",
+            body: JSON.stringify({ username, password }),
+          }
+        );
+        const userId = lnUser?.id || lnUser?.data?.id;
+
+        const lnWallet = await lnbitsFetch(
+          "/usermanager/api/v1/wallets",
+          ADMIN_KEY as string,
+          {
+            method: "POST",
+            body: JSON.stringify({ user_id: userId, wallet_name }),
+          }
+        );
+
+        // Extract wallet data from LNbits response
+        const wallet_id: string = String(
+          lnWallet?.id ||
+            lnWallet?.wallet_id ||
+            lnWallet?.data?.id ||
+            lnWallet?.data?.wallet_id
+        );
+        const admin_key: string | undefined =
+          lnWallet?.adminkey ||
+          lnWallet?.admin_key ||
+          lnWallet?.data?.adminkey ||
+          lnWallet?.data?.admin_key;
+        const invoice_key: string | undefined =
+          lnWallet?.inkey ||
+          lnWallet?.invoice_key ||
+          lnWallet?.data?.inkey ||
+          lnWallet?.data?.invoice_key;
+
+        if (!wallet_id || !admin_key || !invoice_key) {
+          return json(502, {
+            success: false,
+            error: "LNbits did not return wallet keys",
+          });
+        }
+
+        // Encrypt keys server-side using DB function private.enc
+        if (!supabaseAdmin)
+          return json(500, {
+            success: false,
+            error: "Service-role Supabase client unavailable",
+          });
+
+        const { data: encAdmin, error: encAdminErr } = await (
+          supabaseAdmin as any
+        ).rpc("private.enc", { p_text: String(admin_key) });
+        if (encAdminErr)
+          return json(500, {
+            success: false,
+            error: encAdminErr.message || "Encrypt admin key failed",
+          });
+
+        const { data: encInvoice, error: encInvErr } = await (
+          supabaseAdmin as any
+        ).rpc("private.enc", { p_text: String(invoice_key) });
+        if (encInvErr)
+          return json(500, {
+            success: false,
+            error: encInvErr.message || "Encrypt invoice key failed",
+          });
+
+        // Insert into federation_lightning_config table
+        const row = {
+          federation_duid,
+          federation_handle,
+          lnbits_wallet_id: wallet_id,
+          lnbits_admin_key_enc: encAdmin as string,
+          lnbits_invoice_key_enc: encInvoice as string,
+          scrub_enabled: false,
+          scrub_percent: 100,
+        };
+
+        const { error: insertErr } = await (supabaseAdmin as any)
+          .from("federation_lightning_config")
+          .insert(row);
+
+        if (insertErr) {
+          console.error(
+            "Failed to insert federation_lightning_config:",
+            insertErr
+          );
+          return json(500, {
+            success: false,
+            error:
+              insertErr.message ||
+              "Failed to store federation lightning config",
+          });
+        }
+
+        // Also update family_federations.federation_lnbits_wallet_id for backward compat
+        await (supabaseAdmin as any)
+          .from("family_federations")
+          .update({ federation_lnbits_wallet_id: wallet_id })
+          .eq("federation_duid", federation_duid);
+
+        console.log(
+          `✓ Federation wallet provisioned: ${federation_handle}@my.satnam.pub, wallet_id=${wallet_id}`
+        );
+
+        const domain = resolvePlatformLightningDomainServer();
+
+        return json(200, {
+          success: true,
+          data: {
+            wallet_id,
+            federation_handle,
+            platform_ln_address: `${federation_handle}@${domain}`,
+          },
+        });
+      }
+
       return createValidationErrorResponse(
         "Unsupported admin action",
         requestId,

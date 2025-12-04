@@ -1,6 +1,7 @@
-import { ArrowLeft, Crown, Key, Shield, Users } from 'lucide-react';
+import { ArrowLeft, Crown, Key, RefreshCw, Shield, Users } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import IdentityForge from '../IdentityForge';
+import { useAuth } from './AuthProvider';
 
 interface FamilyFoundryAuthModalProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
   const [currentStep, setCurrentStep] = useState<'intro' | 'identity-forge'>('intro');
   const mountedRef = useRef(true);
   const transitionTimerRef = useRef<number | null>(null);
+  const authCheckDoneRef = useRef(false);
+  const auth = useAuth();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -30,7 +33,68 @@ const FamilyFoundryAuthModal: React.FC<FamilyFoundryAuthModalProps> = ({
     };
   }, []);
 
+  // Reset auth check when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      authCheckDoneRef.current = false;
+    }
+  }, [isOpen]);
+
+  // Check if user is already authenticated when modal opens
+  useEffect(() => {
+    if (!isOpen || authCheckDoneRef.current) return;
+
+    // Skip if auth is still loading
+    if (auth.loading) {
+      console.log('🔄 FamilyFoundryAuthModal: Auth still loading, waiting...');
+      return;
+    }
+
+    authCheckDoneRef.current = true;
+
+    // If user is authenticated with valid session, skip auth modal and proceed
+    if (auth.authenticated && auth.sessionValid && auth.user) {
+      console.log('✅ FamilyFoundryAuthModal: User already authenticated, proceeding to foundry');
+      onAuthSuccess();
+      return;
+    }
+
+    console.log('🔐 FamilyFoundryAuthModal: User not authenticated, showing auth options', {
+      authenticated: auth.authenticated,
+      sessionValid: auth.sessionValid,
+      hasUser: !!auth.user
+    });
+  }, [isOpen, auth.loading, auth.authenticated, auth.sessionValid, auth.user, onAuthSuccess]);
+
   if (!isOpen) return null;
+
+  // Show loading state while auth is being checked
+  if (auth.loading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-8">
+          <div className="flex flex-col items-center space-y-4">
+            <RefreshCw className="h-8 w-8 text-purple-400 animate-spin" />
+            <p className="text-white text-lg">Checking authentication status...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated, show brief transition message (the useEffect will handle redirect)
+  if (auth.authenticated && auth.sessionValid && auth.user) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-8">
+          <div className="flex flex-col items-center space-y-4">
+            <Crown className="h-8 w-8 text-yellow-400" />
+            <p className="text-white text-lg">Welcome back! Proceeding to Family Foundry...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleIdentityForgeComplete = () => {
     // After Identity Forge is complete, proceed to Family Foundry

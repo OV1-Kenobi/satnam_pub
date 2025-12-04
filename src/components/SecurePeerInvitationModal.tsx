@@ -6,12 +6,17 @@
  * 2. Password-based nsec decryption (fallback)
  * 3. Temporary nsec from Identity Forge (new users)
  * 4. Batch invitation creation for Family Foundry
+ *
+ * QR GENERATION:
+ * Uses browser-compatible qr-code-browser.ts utility for client-side QR generation.
+ * Server API returns inviteUrl; this component generates scannable QR codes locally.
  */
 
-import { CheckCircle, Copy, Key, Mail, Shield, Users, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CheckCircle, Copy, Key, Loader2, Mail, Shield, Users, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { secureNsecManager } from '../lib/secure-nsec-manager';
 import { showToast } from '../services/toastService';
+import { generateQRCodeDataURL, getRecommendedErrorCorrection } from '../utils/qr-code-browser';
 
 interface SecurePeerInvitationModalProps {
   isOpen: boolean;
@@ -139,9 +144,55 @@ export function SecurePeerInvitationModal({
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<InvitationResult[]>([]);
   const [currentStep, setCurrentStep] = useState<'config' | 'auth' | 'signing' | 'results'>('config');
+  // Client-generated QR codes keyed by inviteUrl
+  const [generatedQRCodes, setGeneratedQRCodes] = useState<Record<string, string>>({});
+  const [qrGenerating, setQrGenerating] = useState<Record<string, boolean>>({});
 
   const mountedRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Generate QR codes client-side for results that don't have qrCodeImage
+  const generateQRForResult = useCallback(async (inviteUrl: string): Promise<string | null> => {
+    if (!inviteUrl) return null;
+
+    try {
+      const dataUrl = await generateQRCodeDataURL(inviteUrl, {
+        size: 256,
+        margin: 4,
+        errorCorrectionLevel: getRecommendedErrorCorrection('url'),
+      });
+      return dataUrl;
+    } catch (err) {
+      console.error('Failed to generate QR code:', err);
+      return null;
+    }
+  }, []);
+
+  // Effect to generate QR codes when results change
+  useEffect(() => {
+    const generateMissingQRCodes = async () => {
+      for (const result of results) {
+        // Only generate if we have inviteUrl but no qrCodeImage and not already generated
+        if (result.inviteUrl && !result.qrCodeImage && !generatedQRCodes[result.inviteUrl] && !qrGenerating[result.inviteUrl]) {
+          setQrGenerating(prev => ({ ...prev, [result.inviteUrl!]: true }));
+
+          const qrDataUrl = await generateQRForResult(result.inviteUrl);
+
+          if (mountedRef.current && qrDataUrl) {
+            setGeneratedQRCodes(prev => ({ ...prev, [result.inviteUrl!]: qrDataUrl }));
+          }
+
+          if (mountedRef.current) {
+            setQrGenerating(prev => ({ ...prev, [result.inviteUrl!]: false }));
+          }
+        }
+      }
+    };
+
+    if (currentStep === 'results' && results.length > 0) {
+      generateMissingQRCodes();
+    }
+  }, [results, currentStep, generatedQRCodes, qrGenerating, generateQRForResult]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -788,11 +839,36 @@ export function SecurePeerInvitationModal({
                         </p>
                       )}
 
-                      {result.qrCodeImage && (
-                        <div className="flex justify-center">
-                          <img src={result.qrCodeImage} alt="Invitation QR Code" className="w-32 h-32" />
-                        </div>
-                      )}
+                      {/* QR Code Display - prefer API-provided, fallback to client-generated */}
+                      {(() => {
+                        const qrSrc = result.qrCodeImage || (result.inviteUrl ? generatedQRCodes[result.inviteUrl] : null);
+                        const isGenerating = result.inviteUrl ? qrGenerating[result.inviteUrl] : false;
+
+                        if (qrSrc) {
+                          return (
+                            <div className="flex justify-center">
+                              <img src={qrSrc} alt="Invitation QR Code" className="w-32 h-32 rounded-lg" />
+                            </div>
+                          );
+                        } else if (isGenerating) {
+                          return (
+                            <div className="flex justify-center">
+                              <div className="w-32 h-32 bg-white/10 rounded-lg flex items-center justify-center">
+                                <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
+                              </div>
+                            </div>
+                          );
+                        } else if (result.inviteUrl) {
+                          return (
+                            <div className="flex justify-center">
+                              <div className="w-32 h-32 bg-red-500/10 rounded-lg flex items-center justify-center border border-red-500/30">
+                                <p className="text-red-300 text-xs text-center px-2">QR generation failed</p>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {result.inviteUrl && (
                         <div className="flex items-center space-x-2">
@@ -844,49 +920,62 @@ export function SecurePeerInvitationModal({
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {/* Share (hosted preferred) */}
-                        <button
-                          onClick={() => handleShare(result.inviteUrl || result.hostedQrUrl)}
-                          className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded"
-                        >
-                          Share
-                        </button>
+                      {/* Action Buttons */}
+                      {(() => {
+                        // Determine best QR source: hosted > API-provided > client-generated
+                        const qrSrc = result.hostedQrUrl || result.qrCodeImage || (result.inviteUrl ? generatedQRCodes[result.inviteUrl] : null);
+                        const hasQR = !!qrSrc;
 
-                        {/* Copy About Template */}
-                        <button
-                          onClick={() => navigator.clipboard.writeText(buildAboutTemplate(result.inviteUrl || '', result.hostedQrUrl))}
-                          className="px-3 py-2 text-xs bg-slate-700 hover:bg-slate-800 text-white rounded"
-                        >
-                          Copy Profile About Template
-                        </button>
+                        return (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {/* Share (hosted preferred) */}
+                            <button
+                              onClick={() => handleShare(result.inviteUrl || result.hostedQrUrl)}
+                              className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded"
+                            >
+                              Share
+                            </button>
 
-                        {/* Downloads */}
-                        <button
-                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 512, 512, 'satnam-invite-qr-512.png')}
-                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-                        >
-                          Square 512
-                        </button>
-                        <button
-                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1080, 'satnam-invite-qr-1080.png')}
-                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-                        >
-                          Square 1080
-                        </button>
-                        <button
-                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1080, 1920, 'satnam-invite-qr-story.png')}
-                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-                        >
-                          Story 9:16
-                        </button>
-                        <button
-                          onClick={() => downloadQrImage(result.hostedQrUrl || result.qrCodeImage!, 1920, 1080, 'satnam-invite-qr-banner.png')}
-                          className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
-                        >
-                          Banner 16:9
-                        </button>
-                      </div>
+                            {/* Copy About Template */}
+                            <button
+                              onClick={() => navigator.clipboard.writeText(buildAboutTemplate(result.inviteUrl || '', result.hostedQrUrl))}
+                              className="px-3 py-2 text-xs bg-slate-700 hover:bg-slate-800 text-white rounded"
+                            >
+                              Copy Profile About Template
+                            </button>
+
+                            {/* Download buttons - only show if we have a QR code */}
+                            {hasQR && (
+                              <>
+                                <button
+                                  onClick={() => downloadQrImage(qrSrc!, 512, 512, 'satnam-invite-qr-512.png')}
+                                  className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                                >
+                                  Square 512
+                                </button>
+                                <button
+                                  onClick={() => downloadQrImage(qrSrc!, 1080, 1080, 'satnam-invite-qr-1080.png')}
+                                  className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                                >
+                                  Square 1080
+                                </button>
+                                <button
+                                  onClick={() => downloadQrImage(qrSrc!, 1080, 1920, 'satnam-invite-qr-story.png')}
+                                  className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                                >
+                                  Story 9:16
+                                </button>
+                                <button
+                                  onClick={() => downloadQrImage(qrSrc!, 1920, 1080, 'satnam-invite-qr-banner.png')}
+                                  className="px-3 py-2 text-xs bg-slate-600 hover:bg-slate-700 text-white rounded"
+                                >
+                                  Banner 16:9
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                     </div>
                   ) : (

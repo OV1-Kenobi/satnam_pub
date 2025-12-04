@@ -74,6 +74,7 @@ export const handler = async (event) => {
 
     // Fetch per-user artifact from Supabase Storage (memory-friendly via existing client)
     let artifact = null;
+	    let federationNpub = null;
     try {
       const supaMod = await import('./supabase.js');
       const { supabase } = supaMod.default || supaMod;
@@ -93,8 +94,85 @@ export const handler = async (event) => {
     }
 
     if (!artifact || !artifact.pubkey || artifact.name !== name || artifact.domain !== domain) {
-      // Not found or invalid; return empty mapping
-      return { statusCode: 200, headers, body: JSON.stringify({}) };
+      // Per-user artifact missing or invalid; fall back to federation lookup
+      // Optimized: first check federation_lightning_config by handle (indexed), then decrypt npub
+      try {
+        const supaMod = await import('./supabase.js');
+        const { supabaseAdmin } = supaMod.default || supaMod;
+        if (!supabaseAdmin) {
+          const { safeWarn } = await getPrivacyLogger();
+          safeWarn('NOSTR_JSON_FEDERATION_LOOKUP_DISABLED', {
+            reason: 'supabaseAdmin not configured',
+          });
+        } else {
+          // Step 1: Check if handle exists in federation_lightning_config (indexed lookup)
+          const { data: flcData, error: flcError } = await supabaseAdmin
+            .from('federation_lightning_config')
+            .select('federation_duid')
+            .eq('federation_handle', name)
+            .single();
+
+          if (flcError && flcError.code !== 'PGRST116') {
+            // PGRST116 = no rows returned, which is fine
+            const { safeWarn } = await getPrivacyLogger();
+            safeWarn('NOSTR_JSON_FEDERATION_FLC_QUERY_FAIL', {
+              msg: flcError.message,
+            });
+          }
+
+          if (flcData && flcData.federation_duid) {
+            // Step 2: Get the encrypted npub from family_federations using federation_duid
+            const { data: ffData, error: ffError } = await supabaseAdmin
+              .from('family_federations')
+              .select('federation_npub_encrypted, is_active')
+              .eq('federation_duid', flcData.federation_duid)
+              .eq('is_active', true)
+              .single();
+
+            if (ffError) {
+              const { safeWarn } = await getPrivacyLogger();
+              safeWarn('NOSTR_JSON_FEDERATION_FF_QUERY_FAIL', {
+                msg: ffError.message,
+              });
+            } else if (ffData && ffData.federation_npub_encrypted) {
+              // Step 3: Decrypt the federation npub
+              try {
+                const nobleMod = await import('./security/noble-encryption.js');
+                const { decryptFederationFieldEnvelope } =
+                  nobleMod.default || nobleMod;
+
+                federationNpub = await decryptFederationFieldEnvelope(
+                  ffData.federation_npub_encrypted,
+                  'federation_npub_encrypted'
+                );
+              } catch (decryptErr) {
+                const { safeWarn } = await getPrivacyLogger();
+                safeWarn('NOSTR_JSON_FEDERATION_DECRYPT_FAIL', {
+                  field: 'federation_npub_encrypted',
+                  namePrefix: name.substring(0, 4) + '...',
+                  msg:
+                    decryptErr instanceof Error
+                      ? decryptErr.message
+                      : String(decryptErr),
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        const { safeWarn } = await getPrivacyLogger();
+        safeWarn('NOSTR_JSON_FEDERATION_LOOKUP_ERROR', {
+          msg: e instanceof Error ? e.message : String(e),
+        });
+      }
+
+      if (!federationNpub) {
+        // Not found or invalid; return empty mapping
+        return { statusCode: 200, headers, body: JSON.stringify({}) };
+      }
+
+      const body = JSON.stringify({ names: { [name]: federationNpub } });
+      return { statusCode: 200, headers, body };
     }
 
     // Optional integrity verification (HMAC of payload)

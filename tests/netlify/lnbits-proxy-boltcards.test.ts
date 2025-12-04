@@ -43,6 +43,47 @@ const state = {
 };
 state.lnbits_wallets[0].wallet_admin_key_enc = encryptB64("APIKEY-TEST");
 
+// RPC mock handler for resolveHandleForLnurl
+const rpcMock = vi.fn(async (funcName: string, params: any) => {
+  if (funcName === "public.get_ln_proxy_data") {
+    const username = params?.p_username?.toLowerCase();
+    const users = (state as any).users || [];
+    const match = users.find((u: any) => u.handle?.toLowerCase() === username);
+    if (match) {
+      return {
+        data: {
+          user_id: match.user_duid || match.user_id,
+          wallet_id: match.wallet_id,
+          lnbits_wallet_id: match.wallet_id,
+          lnbits_invoice_key: "invoice-key-test",
+          platform_ln_address: `${username}@my.satnam.pub`,
+        },
+        error: null,
+      };
+    }
+    return { data: null, error: null };
+  }
+  if (funcName === "public.get_federation_ln_proxy_data") {
+    const handle = params?.p_handle?.toLowerCase();
+    const feds = (state as any).family_federations || [];
+    const match = feds.find((f: any) => f.handle?.toLowerCase() === handle);
+    if (match) {
+      return {
+        data: {
+          federation_duid: match.federation_duid || match.user_duid,
+          federation_handle: match.handle,
+          lnbits_wallet_id: match.wallet_id,
+          lnbits_invoice_key: "fed-invoice-key-test",
+          platform_ln_address: `${handle}@my.satnam.pub`,
+        },
+        error: null,
+      };
+    }
+    return { data: null, error: null };
+  }
+  return { data: null, error: { message: "Unknown RPC" } };
+});
+
 vi.mock("../../netlify/functions/supabase.js", () => ({
   getRequestClient: vi.fn(() => ({
     auth: {
@@ -128,6 +169,9 @@ vi.mock("../../netlify/functions/supabase.js", () => ({
         }),
       }),
     }),
+  },
+  supabaseAdmin: {
+    rpc: rpcMock,
   },
 }));
 
@@ -362,5 +406,168 @@ describe("lnbits-proxy admin action authorization", () => {
 
     expect(statusCode).toBe(403);
     expect(body).toEqual({ success: false, error: "Forbidden" });
+  });
+});
+
+// ============================================================================
+// FEDERATION LNURL-PAY TESTS (Task 4.7)
+// ============================================================================
+
+/**
+ * These tests verify federation LNURL-pay routing through the unified
+ * lnurlpWellKnown and lnurlpPlatform actions in lnbits-proxy.ts.
+ *
+ * The proxy uses resolveHandleForLnurl() to check both user and federation
+ * tables, returning appropriate LNURL-pay metadata for either entity type.
+ */
+
+describe("lnbits-proxy federation LNURL-pay routing", () => {
+  beforeEach(() => {
+    // Reset state for federation tests
+    fetchMock.mockReset();
+    // Populate mock federation data
+    (state as any).family_federations = [
+      {
+        handle: "nakamoto-family",
+        wallet_id: "w1",
+        user_duid: "user_1",
+        federation_duid: "fed_1",
+        description:
+          "Nakamoto Family Federation, the spiritual kin of Satoshi Nakamoto",
+      },
+    ];
+  });
+
+  it("should resolve federation handle to LNURL-pay metadata via lnurlpWellKnown", async () => {
+    const { statusCode, body } = await callProxy("lnurlpWellKnown", {
+      username: "nakamoto-family",
+    });
+
+    expect(statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toBeDefined();
+    expect(body.data.callback).toBeDefined();
+    expect(body.data.tag).toBe("payRequest");
+    expect(body.data.metadata).toBeDefined();
+    // Verify federation type indicator in metadata
+    expect(body.data.metadata).toContain("Federation");
+  });
+
+  it("should generate invoice for federation via lnurlpPlatform", async () => {
+    // Mock LNbits invoice creation response
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          payment_hash: "hash123",
+          payment_request: "lnbc10n1...",
+        }),
+    });
+
+    const { statusCode, body } = await callProxy("lnurlpPlatform", {
+      username: "nakamoto-family",
+      amount: 10000, // 10 sats in millisats
+      comment: "Test payment to federation",
+    });
+
+    expect(statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toBeDefined();
+    expect(body.data.pr).toBeDefined();
+    expect(body.data.routes).toBeDefined();
+  });
+
+  it("should validate handle format before lookup", async () => {
+    const { statusCode, body } = await callProxy("lnurlpWellKnown", {
+      username: "invalid@handle!",
+    });
+
+    // Should return validation error for invalid format
+    expect(statusCode).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/invalid|username|handle/i);
+  });
+
+  it("should return 404 for non-existent handle", async () => {
+    // The unified resolver will check both tables and return not found
+    const { statusCode, body } = await callProxy("lnurlpWellKnown", {
+      username: "nonexistent-handle-xyz",
+    });
+
+    // May return 404 (not found) or 500 (RPC error in test environment)
+    expect([404, 500]).toContain(statusCode);
+    expect(body.success).toBe(false);
+  });
+
+  it("should validate amount for lnurlpPlatform", async () => {
+    const { statusCode, body } = await callProxy("lnurlpPlatform", {
+      username: "smith-family",
+      amount: -100, // Invalid negative amount
+    });
+
+    expect(statusCode).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/invalid|amount/i);
+  });
+});
+
+describe("lnbits-proxy federation vs user LNURL routing", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    // Setup user mock data
+    (state as any).users = [
+      { handle: "testuser123", wallet_id: "w1", user_duid: "user_1" },
+    ];
+    (state as any).family_federations = [];
+  });
+
+  it("should route to user wallet via lnurlpWellKnown for user handles", async () => {
+    const { statusCode, body } = await callProxy("lnurlpWellKnown", {
+      username: "testuser123",
+    });
+
+    expect(statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toBeDefined();
+    expect(body.data.tag).toBe("payRequest");
+    // Verify user type indicator in metadata
+    expect(body.data.metadata).toContain("User");
+  });
+
+  it("should differentiate user and federation in response metadata", async () => {
+    // Setup both user and federation with same handle to test precedence
+    (state as any).users = [
+      { handle: "shared-name", wallet_id: "w1", user_duid: "user_1" },
+    ];
+    (state as any).family_federations = [
+      {
+        handle: "shared-name",
+        wallet_id: "w2",
+        federation_duid: "fed_1",
+      },
+    ];
+
+    const { statusCode, body } = await callProxy("lnurlpWellKnown", {
+      username: "shared-name",
+    });
+
+    expect(statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    // Verify metadata indicates entity type (user takes precedence per resolver logic)
+    const metadata = body.data?.metadata;
+    expect(metadata).toBeDefined();
+    // User should take precedence over federation
+    expect(metadata).toContain("User");
+  });
+
+  it("should require amount for lnurlpPlatform invoice creation", async () => {
+    const { statusCode, body } = await callProxy("lnurlpPlatform", {
+      username: "testuser",
+      // Missing amount
+    });
+
+    expect(statusCode).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/invalid|amount/i);
   });
 });

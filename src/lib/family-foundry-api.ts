@@ -1,12 +1,15 @@
 /**
  * Family Foundry API Service
- * 
+ *
  * Handles all API calls for family federation creation and member management.
  * Integrates with the backend /api/family/foundry endpoint.
  */
 
-import { supabase } from './supabase';
-import { mapNpubToUserDuid, batchMapNpubsToUserDuids } from './family-foundry-integration';
+import { supabase } from "./supabase";
+import {
+  mapNpubToUserDuid,
+  batchMapNpubsToUserDuids,
+} from "./family-foundry-integration";
 
 /**
  * Type definitions for API requests and responses
@@ -14,7 +17,7 @@ import { mapNpubToUserDuid, batchMapNpubsToUserDuids } from './family-foundry-in
 export interface FamilyMember {
   name: string;
   npub: string;
-  role: 'guardian' | 'steward' | 'adult' | 'offspring';
+  role: "guardian" | "steward" | "adult" | "offspring";
   relationship: string;
 }
 
@@ -40,6 +43,18 @@ export interface CreateFamilyFoundryRequest {
     role: string;
     relationship: string;
   }>;
+  /**
+   * Optional federation-level identity provisioning payload.
+   *
+   * When provided, all three fields should be present so that the backend
+   * can provision the federation's npub, NIP-05, Lightning address, and
+   * encrypted nsec in a single atomic operation. If omitted, the backend
+   * will create the federation without an attached identity and log this
+   * in metadata for future follow-up.
+   */
+  federation_npub?: string;
+  federation_nsec_encrypted?: string;
+  federation_handle?: string;
 }
 
 export interface CreateFamilyFoundryResponse {
@@ -58,7 +73,7 @@ export interface CreateFamilyFoundryResponse {
 
 /**
  * Create a family federation with charter, RBAC, and members
- * 
+ *
  * @param request - Federation creation request with charter, RBAC, and members
  * @returns Promise<CreateFamilyFoundryResponse> - Response with federation details
  */
@@ -66,12 +81,12 @@ export async function createFamilyFoundry(
   request: CreateFamilyFoundryRequest
 ): Promise<CreateFamilyFoundryResponse> {
   try {
-    const response = await fetch('/api/family/foundry', {
-      method: 'POST',
+    const response = await fetch("/api/family/foundry", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      credentials: 'include',
+      credentials: "include",
       body: JSON.stringify(request),
     });
 
@@ -87,17 +102,17 @@ export async function createFamilyFoundry(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : "Unknown error occurred",
     };
   }
 }
 
 /**
  * Map trusted peers to family members with user_duids
- * 
+ *
  * Converts trusted peers (with npubs) to family members (with user_duids)
  * by querying the user_identities table.
- * 
+ *
  * @param trustedPeers - Array of trusted peers with npubs
  * @returns Promise<Array<{ user_duid: string; role: string; relationship: string }>>
  */
@@ -114,14 +129,23 @@ export async function mapTrustedPeersToMembers(
   }
 
   try {
-    const npubs = trustedPeers.map(p => p.npub);
+    const npubs = trustedPeers.map((p) => p.npub);
     const npubToDuidMap = await batchMapNpubsToUserDuids(npubs, supabase);
 
-    return trustedPeers.map(peer => ({
-      user_duid: npubToDuidMap.get(peer.npub) || '',
-      role: peer.role,
-      relationship: peer.relationship,
-    }));
+    const members = trustedPeers.map((peer) => {
+      const user_duid = npubToDuidMap.get(peer.npub);
+      if (!user_duid) {
+        throw new Error(
+          `Failed to find user_duid for npub: ${peer.npub} (${peer.name})`
+        );
+      }
+      return {
+        user_duid,
+        role: peer.role,
+        relationship: peer.relationship,
+      };
+    });
+    return members;
   } catch (error) {
     throw new Error(
       `Failed to map peers to members: ${
@@ -130,4 +154,3 @@ export async function mapTrustedPeersToMembers(
     );
   }
 }
-
