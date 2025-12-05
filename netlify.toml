@@ -16,7 +16,10 @@
   VITE_FEDIMINT_INTEGRATION_ENABLED = "false"
   VITE_FAMILY_FEDERATION_ENABLED = "true"
   VITE_FROST_SIGNING_ENABLED = "true"
-  VITE_PAYMENT_AUTOMATION_ENABLED = "false"
+  VITE_PAYMENT_AUTOMATION_ENABLED = "true"
+  # Payment Integration feature flags - LNbits/NWC as primary backends
+  VITE_LNBITS_INTEGRATION_ENABLED = "true"
+  VITE_NWC_ENABLED = "true"
   # Phase 3: Public Profile URL System feature flags (default: false for production safety)
   VITE_PUBLIC_PROFILES_ENABLED = "false"
   VITE_PROFILE_SEARCH_ENABLED = "false"

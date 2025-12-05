@@ -829,12 +829,17 @@ const PaymentAutomationModal: React.FC<PaymentAutomationModalProps> = ({
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Automation Unavailable</h2>
             <p className="text-gray-600 mb-6">
-              Payment automation features are currently disabled in MVP mode. This feature requires Fedimint integration to be enabled.
+              Payment automation features require a payment integration to be enabled.
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
               <p className="text-sm text-amber-900 font-mono">
-                To enable payment automation, set:<br />
+                To enable payment automation, set the master flag and enable at least one integration:<br />
                 <code className="block mt-2 bg-white p-2 rounded border border-amber-200">
+                  VITE_PAYMENT_AUTOMATION_ENABLED=true<br />
+                  <span className="text-amber-600">-- AND at least one of --</span><br />
+                  VITE_LNBITS_INTEGRATION_ENABLED=true<br />
+                  VITE_NWC_ENABLED=true<br />
+                  VITE_BIFROST_ENABLED=true<br />
                   VITE_FEDIMINT_INTEGRATION_ENABLED=true
                 </code>
               </p>

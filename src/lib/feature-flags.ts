@@ -5,7 +5,9 @@
  * This module provides a centralized way to check feature availability
  * and enables graceful degradation when optional features are disabled.
  *
- * BIFROST-First Strategy: Supports both BIFROST and legacy Fedimint integration
+ * Payment Integration Strategy:
+ * - LNbits and NWC are primary payment backends (production-ready)
+ * - BIFROST and Fedimint are optional enhancements when available
  */
 
 import { clientConfig } from "../config/env.client";
@@ -16,7 +18,27 @@ import { clientConfig } from "../config/env.client";
  */
 export const FeatureFlags = {
   /**
-   * Check if BIFROST integration is enabled (preferred)
+   * Check if LNbits integration is enabled (primary payment backend)
+   * When enabled: wallet provisioning, Lightning Address, and payments are available
+   *
+   * @returns true if LNbits integration is enabled
+   */
+  isLnbitsEnabled: (): boolean => {
+    return clientConfig.flags.lnbitsIntegrationEnabled === true;
+  },
+
+  /**
+   * Check if NWC (Nostr Wallet Connect) is enabled (primary payment backend)
+   * When enabled: remote wallet payments via NWC protocol are available
+   *
+   * @returns true if NWC integration is enabled
+   */
+  isNwcEnabled: (): boolean => {
+    return clientConfig.flags.nwcEnabled === true;
+  },
+
+  /**
+   * Check if BIFROST integration is enabled (optional enhancement)
    * BIFROST is the production-ready FROSTR protocol implementation
    *
    * @returns true if BIFROST integration is enabled
@@ -26,8 +48,8 @@ export const FeatureFlags = {
   },
 
   /**
-   * Check if Fedimint integration is enabled (legacy)
-   * When disabled: payments, wallets, and eCash features are unavailable
+   * Check if Fedimint integration is enabled (optional enhancement)
+   * When enabled: eCash and Fedimint-specific features are available
    *
    * @returns true if Fedimint integration is enabled
    */
@@ -36,12 +58,20 @@ export const FeatureFlags = {
   },
 
   /**
-   * Check if any payment integration is enabled (BIFROST or Fedimint)
+   * Check if any payment integration is enabled
+   * Payment automation requires at least one payment backend:
+   * - Primary: LNbits or NWC (production-ready)
+   * - Optional: BIFROST or Fedimint (enhancements)
    *
-   * @returns true if either BIFROST or Fedimint is enabled
+   * @returns true if any payment integration is enabled
    */
   isPaymentIntegrationEnabled: (): boolean => {
-    return FeatureFlags.isBifrostEnabled() || FeatureFlags.isFedimintEnabled();
+    return (
+      FeatureFlags.isLnbitsEnabled() ||
+      FeatureFlags.isNwcEnabled() ||
+      FeatureFlags.isBifrostEnabled() ||
+      FeatureFlags.isFedimintEnabled()
+    );
   },
 
   /**
@@ -66,7 +96,8 @@ export const FeatureFlags = {
 
   /**
    * Check if payment automation is enabled
-   * Requires both payment integration (BIFROST or Fedimint) and payment automation flags
+   * Requires both payment integration (LNbits, NWC, BIFROST, or Fedimint)
+   * AND the payment automation flag to be enabled
    *
    * @returns true if payment automation is enabled
    */
@@ -111,6 +142,8 @@ export const FeatureFlags = {
    * @returns object with all feature flag states
    */
   getStatus: () => ({
+    lnbitsEnabled: FeatureFlags.isLnbitsEnabled(),
+    nwcEnabled: FeatureFlags.isNwcEnabled(),
     bifrostEnabled: FeatureFlags.isBifrostEnabled(),
     fedimintEnabled: FeatureFlags.isFedimintEnabled(),
     paymentIntegrationEnabled: FeatureFlags.isPaymentIntegrationEnabled(),

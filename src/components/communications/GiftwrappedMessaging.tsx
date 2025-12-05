@@ -23,6 +23,7 @@ import fetchWithAuth from '../../lib/auth/fetch-with-auth';
 import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service';
 import { clientConfig } from '../../config/env.client';
 import { GeoRoomTab } from './GeoRoomTab';
+import { Note2SelfModal } from './Note2SelfModal';
 
 
 
@@ -228,6 +229,9 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const inviteBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const [showPeerInvitationModal, setShowPeerInvitationModal] = useState(false);
+
+  // Note2Self modal state
+  const [showNote2SelfModal, setShowNote2SelfModal] = useState(false);
 
   // Notifications
   const notificationService = NotificationService.getInstance();
@@ -961,8 +965,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
 
 
-  // Thread categorization for Contacts/Strangers/Groups tabs
-  const [currentTab, setCurrentTab] = useState<'contacts' | 'strangers' | 'groups' | 'bitchat'>('contacts');
+  // Thread categorization for Contacts/Strangers/Groups/Note2Self tabs
+  const [currentTab, setCurrentTab] = useState<'contacts' | 'strangers' | 'groups' | 'bitchat' | 'note2self'>('contacts');
 
   const getThreadNpub = (thread: { isServerThread: boolean; items: UnifiedMsg[]; }): string | null => {
     if (thread.isServerThread) return null;
@@ -1534,6 +1538,19 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
               </label>
             )}
 
+            {/* Note2Self - Private Notes Button */}
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => setShowNote2SelfModal(true)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium transition-colors"
+                title="Write a private note to yourself"
+              >
+                <span>📒</span>
+                <span>Note2Self</span>
+              </button>
+              <span className="text-xs text-purple-700">Private encrypted notes</span>
+            </div>
+
             <div className="flex space-x-2">
               <input
                 type="text"
@@ -1762,6 +1779,14 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] text-[10px] px-1 bg-red-600 text-white rounded-full">{strangersUnread}</span>
               )}
             </button>
+            <button
+              role="tab"
+              aria-selected={currentTab === 'note2self'}
+              onClick={() => setCurrentTab('note2self')}
+              className={`px-2 py-1 rounded border text-xs ${currentTab === 'note2self' ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-purple-200/60 border-transparent text-purple-800'}`}
+            >
+              📒 Note2Self
+            </button>
           </div>
 
 
@@ -1868,6 +1893,28 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                     </div>
                   ))
                 )}
+              </div>
+            ) : currentTab === 'note2self' ? (
+              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📒</span>
+                    <div>
+                      <div className="text-sm font-medium text-amber-900">Private Notes</div>
+                      <div className="text-xs text-amber-700">Encrypted notes only you can read</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowNote2SelfModal(true)}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    Open Notes
+                  </button>
+                </div>
+                <div className="text-xs text-amber-700 bg-amber-100 rounded p-2">
+                  <strong>💡 Tip:</strong> Use Note2Self to store private thoughts, passwords, recovery phrases, or any sensitive information.
+                  All notes are encrypted with your Nostr keys and stored on relays.
+                </div>
               </div>
             ) : (
               filteredThreads.length === 0 ? (
@@ -2220,6 +2267,11 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           </div>
         )}
 
+        {/* Note2Self Modal */}
+        <Note2SelfModal
+          isOpen={showNote2SelfModal}
+          onClose={() => setShowNote2SelfModal(false)}
+        />
 
       </div>
     </div >

@@ -52,6 +52,7 @@ export type ClientConfig = {
     dynamicFeeEstimationEnabled?: boolean; // Enable real-time fee estimation from Mempool.space
   };
   flags: {
+    /** @deprecated Use lnbitsIntegrationEnabled instead. Legacy alias kept for backward compatibility. */
     lnbitsEnabled: boolean;
     amberSigningEnabled: boolean;
     hybridIdentityEnabled: boolean; // Phase 1: Hybrid NIP-05 verification (kind:0 → PKARR → DNS)
@@ -75,12 +76,15 @@ export type ClientConfig = {
     nip85QueryEnabled: boolean; // Phase 1: NIP-85 Query - Enable querying assertions from relays
     nip85CacheEnabled: boolean; // Phase 1: NIP-85 Caching - Enable in-memory caching for performance
     nip85AuditLoggingEnabled: boolean; // Phase 1: NIP-85 Audit Logging - Enable audit logging for all queries
+    // Payment Integration flags - LNbits/NWC as primary, BIFROST/Fedimint as optional
+    lnbitsIntegrationEnabled: boolean; // Payment: Enable LNbits integration (primary payment backend, default: true)
+    nwcEnabled: boolean; // Payment: Enable NWC integration (Nostr Wallet Connect, default: true)
+    bifrostEnabled: boolean; // Payment: Enable BIFROST integration (optional enhancement, default: false)
+    fedimintIntegrationEnabled: boolean; // Payment: Enable Fedimint payment integration (optional enhancement, default: false)
     // Family Federation Decoupling flags
-    bifrostEnabled: boolean; // Family Federation: Enable BIFROST integration (preferred, default: false for MVP)
-    fedimintIntegrationEnabled: boolean; // Family Federation: Enable Fedimint payment integration (legacy, default: false for MVP)
     familyFederationEnabled: boolean; // Family Federation: Enable core federation functionality (default: true)
     frostSigningEnabled: boolean; // Family Federation: Enable FROST multi-signature signing (default: true)
-    paymentAutomationEnabled: boolean; // Family Federation: Enable payment automation (requires bifrostEnabled or fedimintIntegrationEnabled)
+    paymentAutomationEnabled: boolean; // Family Federation: Enable payment automation (requires at least one payment integration)
     // Phase 3: Public Profile URL System flags
     publicProfilesEnabled: boolean; // Phase 3: Enable Public Profile URL System (master toggle, default: false)
     profileSearchEnabled: boolean; // Phase 3: Enable profile search functionality (default: false)
@@ -125,10 +129,15 @@ export type ClientConfig = {
   };
 };
 
-const LNBITS_ENABLED =
-  (getEnvVar("VITE_LNBITS_INTEGRATION_ENABLED") || "false")
+// Payment Integration: LNbits integration (primary payment backend); default: true
+const LNBITS_INTEGRATION_ENABLED =
+  (getEnvVar("VITE_LNBITS_INTEGRATION_ENABLED") || "true")
     .toString()
     .toLowerCase() === "true";
+
+// Payment Integration: NWC (Nostr Wallet Connect) integration (primary payment backend); default: true
+const NWC_ENABLED =
+  (getEnvVar("VITE_NWC_ENABLED") || "true").toString().toLowerCase() === "true";
 
 // Amber Android signer integration (NIP-46/NIP-55) feature flag; default: false (opt-in)
 const AMBER_SIGNING_ENABLED =
@@ -591,7 +600,9 @@ export const clientConfig: ClientConfig = {
     dynamicFeeEstimationEnabled: true, // Always enabled - core feature
   },
   flags: {
-    lnbitsEnabled: LNBITS_ENABLED,
+    // @deprecated - Use lnbitsIntegrationEnabled instead. This legacy alias is kept for backward compatibility
+    // and will be removed in a future version. See lnbitsIntegrationEnabled (line 628).
+    lnbitsEnabled: LNBITS_INTEGRATION_ENABLED,
     amberSigningEnabled: AMBER_SIGNING_ENABLED,
     hybridIdentityEnabled: HYBRID_IDENTITY_ENABLED,
     pkarrEnabled: PKARR_ENABLED,
@@ -615,9 +626,12 @@ export const clientConfig: ClientConfig = {
     nip85QueryEnabled: NIP85_QUERY_ENABLED,
     nip85CacheEnabled: NIP85_CACHE_ENABLED,
     nip85AuditLoggingEnabled: NIP85_AUDIT_LOGGING_ENABLED,
-    // Family Federation Decoupling flags
+    // Payment Integration flags - LNbits/NWC as primary, BIFROST/Fedimint as optional
+    lnbitsIntegrationEnabled: LNBITS_INTEGRATION_ENABLED,
+    nwcEnabled: NWC_ENABLED,
     bifrostEnabled: BIFROST_ENABLED,
     fedimintIntegrationEnabled: FEDIMINT_INTEGRATION_ENABLED,
+    // Family Federation Decoupling flags
     familyFederationEnabled: FAMILY_FEDERATION_ENABLED,
     frostSigningEnabled: FROST_SIGNING_ENABLED,
     paymentAutomationEnabled: PAYMENT_AUTOMATION_ENABLED,
@@ -674,7 +688,10 @@ export function getApiBaseUrlFromClientEnv(): string {
 
 // Validation (fail fast during app startup)
 // VITE_LNBITS_BASE_URL is required only if LNbits integration is enabled
-if (clientConfig.flags.lnbitsEnabled && !clientConfig.lnbits.baseUrl) {
+if (
+  clientConfig.flags.lnbitsIntegrationEnabled &&
+  !clientConfig.lnbits.baseUrl
+) {
   throw new Error(
     "Missing required public environment variable: VITE_LNBITS_BASE_URL (required when VITE_LNBITS_INTEGRATION_ENABLED=true)"
   );
