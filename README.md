@@ -93,6 +93,23 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Metadata minimization
 - Programmable data deletion controls
 
+### 📒 **Note2Self - Private Notes Storage** ✅ **NEW**
+
+- **Dual UI Approach**: Button above recipient input + pinned conversation tab in Communications page
+- **Security Modes**:
+  - **Standard (NIP-44)**: Encrypted with your PNS key, recoverable with nsec
+  - **Forward Secure (Noise-FS)**: Double encryption with forward secrecy, requires device key for recovery
+- **Security Tiers** (for Noise-FS mode):
+  - **Ephemeral (Minimum/Standard)**: Temporary storage with configurable TTL, auto-deletes after expiration
+  - **Everlasting (Standard/Maximum)**: Permanent storage until manually deleted
+  - **Hardened**: Requires NFC hardware token for access
+- **Features**:
+  - Title, content, and tags for organization
+  - Ephemeral TTL configuration (days-based expiration)
+  - Search and filter notes list
+  - Delete with confirmation
+  - Loading states and toast notifications
+
 ### 📚 **Citadel Academy Integration**
 
 - Comprehensive Bitcoin education for all skill levels through Citadel Academy
@@ -189,6 +206,12 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - **Payment History Tracking** with comprehensive audit trails
 - **Retry Logic** for failed payments with escalation protocols
 - **Notification Systems** for payment events and approvals
+- **Hybrid Payment Backends**:
+  - **Primary**: LNbits and NWC (Nostr Wallet Connect) - production-ready
+  - **Optional Enhancements**: BIFROST and Fedimint when available
+- **Feature Flag Structure**:
+  - Master flag: `VITE_PAYMENT_AUTOMATION_ENABLED` enables the automation UI
+  - Requires at least one integration enabled: `VITE_LNBITS_INTEGRATION_ENABLED`, `VITE_NWC_ENABLED`, `VITE_BIFROST_ENABLED`, or `VITE_FEDIMINT_INTEGRATION_ENABLED`
 
 ### 🏦 **Family Treasury Management**
 
@@ -228,8 +251,11 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 ### 🔐 **Noise Protocol & Forward Secrecy**
 
 - **Noise Protocol Implementation** - X25519 key exchange with ChaCha20-Poly1305 AEAD encryption
-- **Three Security Tiers** - Basic, Enhanced, and Hardened Forward Secrecy modes
+- **Five Security Tiers** - `ephemeral-minimum`, `ephemeral-standard`, `everlasting-standard`, `everlasting-maximum`, and `hardened`
 - **Private Notes to Self (PNS)** - Forward-secure personal note storage with chain state management
+  - **Note2Self Modal** - UI component for composing, viewing, and managing private notes
+  - **Security Mode Selection** - Standard (NIP-44) or Forward Secure (Noise-FS)
+  - **Ephemeral Policies** - Configurable TTL for auto-expiring notes
 - **Hardware MFA Service** - Integration with NFC tokens for Hardened FS tier
 - **Session Management** - Secure session state with automatic key rotation
 - **Geo-Relay Registry** - Decentralized relay discovery with trust levels

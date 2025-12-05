@@ -10,7 +10,8 @@
 
 - ✅ NFC Physical MFA for FROST Multiparty Signing (Phases 1-5 complete, 100/100 tests)
 - ✅ PKARR Attestation System (168 tests, production ready)
-- ✅ Noise Protocol Implementation (forward-secure messaging, 3 security tiers)
+- ✅ Noise Protocol Implementation (forward-secure messaging, 5 security tiers)
+- ✅ Note2Self Private Notes Storage (NIP-44 + Noise-FS modes)
 - ✅ Iroh Integration (P2P document sync, node discovery)
 - ✅ Unified Communications System (multi-protocol messaging, geo-rooms)
 - ✅ Hierarchical Admin Dashboard (role-based governance)
@@ -104,14 +105,14 @@ This is a **menu of capabilities** available in the Satnam.pub reference impleme
 
 ### **Noise Protocol - Forward-Secure Messaging** ✅ **PRODUCTION READY**
 
-**Three-tier forward-secure messaging with hardware MFA support**
+**Five-tier forward-secure messaging with hardware MFA support**
 
 #### **Pattern Overview**
 
-The Noise Protocol pattern provides forward-secure messaging primitives with three configurable security tiers:
+The Noise Protocol pattern provides forward-secure messaging primitives with five configurable security tiers:
 
 ```
-Basic (NIP-17) → Enhanced (Noise + Relay Trust) → Hardened FS (Noise + Hardware MFA)
+ephemeral-minimum → ephemeral-standard → everlasting-standard → everlasting-maximum → hardened
 ```
 
 #### **Key Components**
@@ -123,18 +124,26 @@ Basic (NIP-17) → Enhanced (Noise + Relay Trust) → Hardened FS (Noise + Hardw
 5. **Hardware MFA Service** - Integration with NFC tokens for Hardened FS tier
 6. **Geo-Relay Registry** - Decentralized relay discovery with trust levels
 
-#### **Three Security Tiers**
+#### **Five Security Tiers**
 
-- **Basic**: Standard NIP-17 encrypted DMs (XChaCha20-Poly1305)
-- **Enhanced**: Noise protocol with relay trust verification
-- **Hardened FS**: Noise protocol + NFC hardware MFA with forward secrecy
+- **Ephemeral Minimum**: Short-term storage with minimal key derivation
+- **Ephemeral Standard**: Temporary storage with TTL, auto-deletes after expiration
+- **Everlasting Standard**: Permanent storage until manually deleted
+- **Everlasting Maximum**: Maximum security with extended key derivation
+- **Hardened**: Requires NFC hardware token for access (NFC Physical MFA)
 
-#### **Private Notes to Self (PNS)**
+#### **Private Notes to Self (PNS) with Note2Self UI** ✅ **NEW**
 
 - Forward-secure personal note storage with chain state management
+- **Note2Self Modal** - UI component for composing, viewing, and managing private notes
+- **Dual UI Approach** - Button above recipient input + pinned conversation tab
+- **Security Mode Selection**:
+  - **Standard (NIP-44)**: Encrypted with PNS key, recoverable with nsec
+  - **Forward Secure (Noise-FS)**: Double encryption with forward secrecy
 - Automatic key rotation on each note creation
 - Protection against future key compromise
-- Encrypted storage with per-note salts
+- Ephemeral policies with configurable TTL for auto-expiring notes
+- Search, filter, and delete notes with confirmation
 
 #### **Status & Documentation**
 
@@ -478,10 +487,19 @@ flushAlerts();
 
 #### **Noise Protocol Messaging** (Optional)
 
-- **What:** Forward-secure messaging with three security tiers
+- **What:** Forward-secure messaging with five security tiers
 - **Example:** Send messages with automatic key rotation
 - **Use case:** Maximum security, protection against future key compromise
 - **Feature flag:** `VITE_NOISE_EXPERIMENTAL_ENABLED=true`
+- **Status**: ✅ Production ready
+
+#### **Note2Self Private Notes** (Optional) ✅ **NEW**
+
+- **What:** Private notes storage with NIP-44 or Noise-FS encryption
+- **Example:** Save encrypted personal notes with optional TTL expiration
+- **Use case:** Private journaling, secure note-taking, encrypted bookmarks
+- **Feature flag:** `VITE_PNS_ENABLED=true` (defaults to true when Noise is enabled)
+- **Security modes:** Standard (NIP-44) or Forward Secure (Noise-FS)
 - **Status**: ✅ Production ready
 
 ---
@@ -554,10 +572,13 @@ flushAlerts();
 
 #### **Payment Automation** (Optional)
 
-- **What:** Scheduled/recurring Lightning payments
-- **Example:** Pay $10/month to a subscription
-- **Use case:** Subscriptions, allowances, recurring bills
-- **Feature flag:** `VITE_PAYMENT_AUTOMATION_ENABLED=true`
+- **What:** Scheduled/recurring Lightning payments with hybrid backend support
+- **Example:** Pay $10/month to a subscription, automate allowances
+- **Use case:** Subscriptions, allowances, recurring bills, payroll
+- **Master flag:** `VITE_PAYMENT_AUTOMATION_ENABLED=true` (enables UI)
+- **Requires:** At least one integration enabled:
+  - **Primary:** `VITE_LNBITS_INTEGRATION_ENABLED` or `VITE_NWC_ENABLED`
+  - **Optional enhancements:** `VITE_BIFROST_ENABLED` or `VITE_FEDIMINT_INTEGRATION_ENABLED`
 
 ---
 
@@ -761,6 +782,7 @@ External Services:
 | **NFC Physical MFA**       | **`VITE_ENABLE_NFC_MFA`**             | false   | **Guardian approval, FROST signing**      | **✅ PROD** |
 | **PKARR Attestation**      | **`VITE_PKARR_ENABLED`**              | false   | **Advanced users, censorship-resistance** | **✅ PROD** |
 | **Noise Protocol**         | **`VITE_NOISE_EXPERIMENTAL_ENABLED`** | false   | **Forward-secure messaging**              | **✅ PROD** |
+| **Note2Self (PNS)**        | **`VITE_PNS_ENABLED`**                | true    | **Private notes, journaling**             | **✅ PROD** |
 | **Iroh Integration**       | **`VITE_IROH_ENABLED`**               | false   | **P2P document sync, backup**             | **✅ PROD** |
 | **Unified Communications** | Always enabled                        | true    | All users                                 | ✅ PROD     |
 | **Geo-Room Discovery**     | `VITE_GEO_ROOM_ENABLED`               | false   | Community coordination                    | ✅          |
@@ -775,7 +797,7 @@ External Services:
 | LN Proxy Node              | `LN_PROXY_ENABLED`                    | false   | Privacy, programmable payments            | ✅          |
 | NWC                        | `VITE_ENABLE_NWC_PROVIDER`            | false   | Existing wallets                          | ✅          |
 | Boltcard NFC (Tap-to-Pay)  | Enabled with LNbits                   | false   | Physical payments, families, businesses   | ✅          |
-| Payment Automation         | `VITE_PAYMENT_AUTOMATION_ENABLED`     | false   | Subscriptions                             | ✅          |
+| Payment Automation         | `VITE_PAYMENT_AUTOMATION_ENABLED`     | false   | Subscriptions, allowances (+ integration) | ✅          |
 | FROST Signing              | `VITE_FROST_SIGNING_ENABLED`          | false   | Families, multi-sig                       | ✅          |
 | Family Federation          | `VITE_FAMILY_FEDERATION_ENABLED`      | true    | Families                                  | ✅          |
 | NIP-85 Trust               | `VITE_NIP85_TRUST_PROVIDER_ENABLED`   | false   | Communities                               | ✅          |
