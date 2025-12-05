@@ -1152,13 +1152,21 @@ export function useUnifiedAuth(): UnifiedAuthState & UnifiedAuthActions {
         );
         void initializeAuth();
       } else {
-        console.debug("⏸️ Auth init skipped on public route with no session");
+        // CRITICAL FIX: Set loading to false when no session exists
+        // This prevents FamilyFoundryAuthModal and other components from being stuck
+        // in "Checking authentication status..." state forever
+        console.debug(
+          "⏸️ Auth init skipped on public route with no session - setting loading=false"
+        );
+        setState((prev) => ({ ...prev, loading: false }));
       }
     } catch (e) {
       console.warn(
         "Auth init gating failed; proceeding without initialization",
         e instanceof Error ? e.message : String(e)
       );
+      // CRITICAL FIX: Ensure loading is set to false even on error
+      setState((prev) => ({ ...prev, loading: false }));
     }
   }, []);
 
