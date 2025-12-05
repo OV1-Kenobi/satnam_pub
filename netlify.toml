@@ -265,6 +265,13 @@
   status = 301
   force = true
 
+# Family Foundry API endpoint - federation creation
+[[redirects]]
+  from = "/api/family/foundry"
+  to = "/.netlify/functions/family-foundry"
+  status = 200
+  force = true
+
 # CRITICAL: Exclude browser-side ESM client modules from API proxy
 # These are client-side JavaScript files, NOT Netlify Functions
 [[redirects]]
@@ -563,6 +570,17 @@
   node_bundler = "esbuild"
   memory_size = 512  # 512MB for identity operations
   timeout = 20
+
+# Family Foundry function - federation creation
+[functions."family-foundry"]
+  node_bundler = "esbuild"
+  memory_size = 512  # 512MB for federation creation with crypto operations
+  timeout = 30
+  included_files = [
+    "api/family/foundry.js",
+    "netlify/functions/supabase.js",
+    "netlify/functions_active/utils/env.ts"
+  ]
 
 # Unified auth handler configuration
 [functions."auth-unified"]
