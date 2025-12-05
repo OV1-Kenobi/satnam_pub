@@ -606,6 +606,27 @@ function App() {
     );
   }
 
+  // Family Foundry Wizard - the main federation creation flow
+  if (currentView === "family-foundry") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <FamilyFoundryWizard
+          onComplete={() => setCurrentView("dashboard")}
+          onBack={() => setCurrentView("landing")}
+        />
+      </PageWrapper>
+    );
+  }
+
   if (currentView === "communications") {
     return (
       <PageWrapper
@@ -2099,7 +2120,8 @@ function App() {
         }}
       />
 
-      {/* Family Foundry Authentication Modal */}
+      {/* Family Foundry Authentication Modal - for entry points from landing page
+          (dynastic-sovereignty view has its own instance in the early return block) */}
       <FamilyFoundryAuthModal
         isOpen={showFamilyFoundryAuthModal}
         onClose={() => setShowFamilyFoundryAuthModal(false)}
@@ -2109,6 +2131,8 @@ function App() {
         }}
         onExistingUserSignIn={() => {
           setShowFamilyFoundryAuthModal(false);
+          // Set pending destination so handleAuthSuccess knows where to redirect after sign-in
+          setPendingDestination('family-foundry');
           setSignInModalOpen(true);
         }}
       />
