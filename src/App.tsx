@@ -110,6 +110,9 @@ function App() {
   const [showContactsModal, setShowContactsModal] = useState(false);
   const [pendingDestination, setPendingDestination] = useState<'dashboard' | 'individual-finances' | 'communications' | 'family-foundry' | 'payment-automation' | 'educational-dashboard' | 'sovereignty-controls' | 'privacy-preferences' | 'atomic-swaps' | 'cross-mint-operations' | 'payment-cascade' | 'giftwrapped-messaging' | 'contacts' | 'ln-node-management' | null>(null);
 
+  // Mobile footer drawer state (must be declared before any conditional returns per React Rules of Hooks)
+  const [mobileFooterDrawerOpen, setMobileFooterDrawerOpen] = useState(false);
+
   // Invitation handling state
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
   const [invitationDetails, setInvitationDetails] = useState<any>(null);
@@ -1132,9 +1135,6 @@ function App() {
   if (currentView === "amber-intent-callback") {
     return <AmberIntentCallback />;
   }
-
-  // Mobile footer drawer state
-  const [mobileFooterDrawerOpen, setMobileFooterDrawerOpen] = useState(false);
 
   return (
     <div className="min-h-screen relative">
