@@ -333,8 +333,9 @@ function App() {
     console.log('📍 Pending destination:', pendingDestination);
     setSignInModalOpen(false);
 
-    // Respect pending destination for all secure sections (incl. Communications)
-    const dest = pendingDestination || 'communications';
+    // Respect pending destination for all secure sections
+    // Default to features-overview after signin (not communications)
+    const dest = pendingDestination || 'features-overview';
 
     // Small delay to ensure auth state is fully updated
     setTimeout(() => {
@@ -1324,20 +1325,13 @@ function App() {
               <Network className="h-4 w-4" />
               <span>Explore Nostr Ecosystem</span>
             </button>
-            <a
-              href="https://citadel.academy"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => setCurrentView("features-overview")}
               className="bg-purple-700/80 hover:bg-purple-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 flex items-center space-x-2 backdrop-blur-sm shadow-lg hover:shadow-xl"
             >
-              <img
-                src="/Citadel-Academy-Logo.png"
-                alt="Citadel Academy"
-                className="h-4 w-4"
-              />
-              <span>Access Advanced Training</span>
-              <ExternalLink className="h-3 w-3" />
-            </a>
+              <BookOpen className="h-4 w-4" />
+              <span>Features Overview</span>
+            </button>
           </div>
 
           {/* Educational Videos Section - Why Bitcoin Matters */}

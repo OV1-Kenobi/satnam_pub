@@ -1,4 +1,4 @@
-import { ExternalLink, LogOut, Menu, Network, User, X } from "lucide-react";
+import { BookOpen, ExternalLink, LogOut, Menu, Network, User, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { showToast } from "../../services/toastService";
 import { useAuth } from "../auth/AuthProvider";
@@ -97,9 +97,9 @@ const Navigation: React.FC<NavigationProps> = ({
       external: false,
     },
     {
-      label: "Citadel Academy",
-      action: () => window.open("https://citadel.academy", "_blank"),
-      external: true,
+      label: "Features Overview",
+      action: () => navigate("/features"),
+      external: false,
     },
   ];
 
@@ -172,20 +172,13 @@ const Navigation: React.FC<NavigationProps> = ({
               <span>Nostr Resources</span>
             </button>
 
-            <a
-              href="https://citadel.academy"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => setCurrentView("features-overview" as any)}
               className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 flex items-center space-x-1 text-xs"
             >
-              <img
-                src="/Citadel Academy Logo.png"
-                alt="Citadel Academy"
-                className="h-3 w-3"
-              />
-              <span>Citadel Academy</span>
-              <ExternalLink className="h-2 w-2" />
-            </a>
+              <BookOpen className="h-3 w-3" />
+              <span>Features Overview</span>
+            </button>
 
             {/* Sign In Button */}
             <button
