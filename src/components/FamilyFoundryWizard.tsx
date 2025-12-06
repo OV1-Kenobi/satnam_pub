@@ -25,7 +25,7 @@ import SimpleProofFeeEstimationWrapper from "./identity/SimpleProofFeeEstimation
 import PaymentCascadeModal from './PaymentCascadeModal';
 import { useCryptoOperations } from "../hooks/useCrypto";
 import { NobleEncryption } from "../lib/crypto/noble-encryption";
-import { supabase } from "../lib/supabase";
+import { useAuth } from "./auth/AuthProvider";
 
 // Feature flag for SimpleProof
 const SIMPLEPROOF_ENABLED: boolean = clientConfig.flags.simpleproofEnabled ?? false;
@@ -51,6 +51,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   onBack,
 }) => {
   const cryptoOps = useCryptoOperations();
+  const { user: authUser } = useAuth();
   const identityDomain = clientConfig.domains.platformLightning ?? "my.satnam.pub";
   const [currentStep, setCurrentStep] = useState<WizardStep>('charter');
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -288,33 +289,14 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             throw new Error("Failed to generate federation Nostr keypair");
           }
 
-          // Look up founding user's user_salt so we can reuse the same
-          // zero-knowledge encryption secret as their personal identity.
-          const {
-            data: { user },
-            error: authError,
-          } = await supabase.auth.getUser();
-          if (authError) {
-            throw authError;
-          }
-          if (!user || !user.id) {
+          // Get founding user's user_salt from auth context
+          // The useAuth hook provides user data including user_salt from the JWT session
+          if (!authUser || !authUser.id) {
             throw new Error("Unable to resolve current user for federation identity encryption");
           }
-
-          const { data: identityRow, error: identityError } = await supabase
-            .from("user_identities")
-            .select("user_salt")
-            .eq("id", user.id)
-            .maybeSingle();
-          if (identityError) {
-            throw identityError;
-          }
-          if (!identityRow) {
-            throw new Error("User identity record not found");
-          }
-          const userSalt = identityRow.user_salt;
+          const userSalt = authUser.user_salt;
           if (!userSalt || typeof userSalt !== 'string') {
-            throw new Error("Missing user_salt for federation identity encryption");
+            throw new Error("Missing user_salt for federation identity encryption - please re-authenticate");
           }
 
           // Encrypt federation nsec using Noble V2 with the same user_salt

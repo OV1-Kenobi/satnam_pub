@@ -1081,15 +1081,51 @@ export default async function handler(event, context) {
       };
     }
 
-    // Extract user ID from headers (set by authentication middleware)
-    const userId = event.headers['x-user-id'] || event.headers['X-User-ID'];
-    if (!userId) {
+    // Extract user ID from JWT token via SecureSessionManager
+    // This replaces the X-User-ID header approach to match other API endpoints
+    const authHeader = event.headers['authorization'] || event.headers['Authorization'];
+    if (!authHeader || !String(authHeader).startsWith('Bearer ')) {
       return {
         statusCode: 401,
         headers: corsHeaders,
         body: JSON.stringify({
           success: false,
-          error: 'Authentication required',
+          error: 'Authentication required - missing Authorization header',
+          meta: {
+            timestamp: new Date().toISOString()
+          }
+        })
+      };
+    }
+
+    // Validate JWT and extract user info
+    let userId;
+    try {
+      const { SecureSessionManager } = await import('../../netlify/functions/security/session-manager.js');
+      const session = await SecureSessionManager.validateSessionFromHeader(authHeader);
+
+      if (!session || !session.userId) {
+        return {
+          statusCode: 401,
+          headers: corsHeaders,
+          body: JSON.stringify({
+            success: false,
+            error: 'Invalid or expired authentication token',
+            meta: {
+              timestamp: new Date().toISOString()
+            }
+          })
+        };
+      }
+      userId = session.userId;
+    } catch (authError) {
+      console.error('JWT validation failed:', authError);
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error: 'Authentication failed',
           meta: {
             timestamp: new Date().toISOString()
           }

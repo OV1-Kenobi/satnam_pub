@@ -6,6 +6,7 @@
  */
 
 import { supabase } from "./supabase";
+import { SecureTokenManager } from "./auth/secure-token-manager";
 import {
   mapNpubToUserDuid,
   batchMapNpubsToUserDuids,
@@ -81,10 +82,29 @@ export async function createFamilyFoundry(
   request: CreateFamilyFoundryRequest
 ): Promise<CreateFamilyFoundryResponse> {
   try {
+    // Get access token from SecureTokenManager (custom JWT auth)
+    // This is required because the API expects Authorization header with JWT
+    let accessToken = SecureTokenManager.getAccessToken();
+
+    // If no token or needs refresh, attempt silent refresh
+    if (!accessToken || SecureTokenManager.needsRefresh()) {
+      console.log("🔐 createFamilyFoundry: Attempting token refresh");
+      accessToken = await SecureTokenManager.silentRefresh();
+    }
+
+    if (!accessToken) {
+      console.error("🔐 createFamilyFoundry: No valid access token available");
+      return {
+        success: false,
+        error: "Authentication required - please sign in again",
+      };
+    }
+
     const response = await fetch("/api/family/foundry", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
       credentials: "include",
       body: JSON.stringify(request),

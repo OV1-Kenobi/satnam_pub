@@ -5,15 +5,7 @@
  * @note Invitations use existing PostAuthInvitationModal system (/api/authenticated/generate-peer-invite)
  */
 
-// Lazy import to prevent client creation on page load
-let supabaseClient: any = null;
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    const { supabase } = await import("../supabase");
-    supabaseClient = supabase;
-  }
-  return supabaseClient;
-};
+import { SecureTokenManager } from "../auth/secure-token-manager";
 
 export interface CharterDefinition {
   familyName: string;
@@ -205,13 +197,28 @@ export class FamilyFoundryService {
 
   /**
    * Get session token for API calls
+   * Uses SecureTokenManager (custom JWT) instead of Supabase auth.getSession()
+   * which would cause AuthSessionMissingError since we use custom JWT auth
    */
   private static async getSessionToken(): Promise<string> {
     try {
-      const {
-        data: { session },
-      } = await (await getSupabaseClient()).auth.getSession();
-      return session?.access_token || "";
+      // First try to get existing access token from memory
+      let accessToken = SecureTokenManager.getAccessToken();
+
+      // If no token or needs refresh, attempt silent refresh
+      if (!accessToken || SecureTokenManager.needsRefresh()) {
+        console.log("🔐 FamilyFoundryService: Attempting token refresh");
+        accessToken = await SecureTokenManager.silentRefresh();
+      }
+
+      if (!accessToken) {
+        console.warn(
+          "🔐 FamilyFoundryService: No valid access token available - user may need to re-authenticate"
+        );
+        return "";
+      }
+
+      return accessToken;
     } catch (error) {
       console.error("Error getting session token:", error);
       return "";
