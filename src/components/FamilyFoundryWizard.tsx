@@ -905,12 +905,30 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                   </div>
                 ))
               ) : (
-                <div className="text-center py-8 bg-white/5 rounded-xl border border-white/10">
-                  <Users className="h-12 w-12 mx-auto mb-4 text-purple-400 opacity-50" />
-                  <p className="text-purple-200 mb-2">No members to invite yet</p>
-                  <p className="text-purple-300 text-sm">
-                    You can use the Family Invitation System from your dashboard to invite members later.
-                  </p>
+                <div className="space-y-4">
+                  {/* Solo founder invitation generator */}
+                  {federationDuid ? (
+                    <div>
+                      <p className="text-purple-200 mb-4 text-center">
+                        Generate an invitation link to share with family members via Signal, email, or any other method.
+                      </p>
+                      <InvitationGenerator
+                        federationDuid={federationDuid}
+                        federationName={charter.familyName}
+                        onInvitationGenerated={(invitation) => {
+                          console.log('Invitation generated:', invitation);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-white/5 rounded-xl border border-white/10">
+                      <Users className="h-12 w-12 mx-auto mb-4 text-purple-400 opacity-50" />
+                      <p className="text-purple-200 mb-2">No members to invite yet</p>
+                      <p className="text-purple-300 text-sm">
+                        You can use the Family Invitation System from your dashboard to invite members later.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -929,16 +947,25 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             </div>
 
             <div className="flex gap-4">
-              <button
-                onClick={sendInvitations}
-                disabled={trustedPeers.length === 0}
-                className={`flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 ${trustedPeers.length === 0
-                    ? 'bg-gray-600 cursor-not-allowed text-gray-300'
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                  }`}
-              >
-                {trustedPeers.length === 0 ? 'Continue' : 'Send Invitations'}
-              </button>
+              {/* Solo founder: Skip invitations and proceed */}
+              {trustedPeers.length === 0 ? (
+                <button
+                  onClick={() => {
+                    setShowInviteModal(false);
+                    setCurrentStep('federation');
+                  }}
+                  className="flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                >
+                  Continue as Solo Founder
+                </button>
+              ) : (
+                <button
+                  onClick={sendInvitations}
+                  className="flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 bg-green-600 hover:bg-green-700 text-white"
+                >
+                  Send Invitations
+                </button>
+              )}
             </div>
           </div>
         </div>
