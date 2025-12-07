@@ -943,37 +943,84 @@ async function provisionFederationIdentity({
  */
 async function createFamilyCharter(charter, rbac, userId) {
   try {
+    // SCHEMA COMPLIANCE (Updated 2025-12-07): family_charters table has:
+    // - id: TEXT PRIMARY KEY (privacy-preserving 16-char hex from generateFamilyIdentifier)
+    // - family_name: VARCHAR(255) NOT NULL
+    // - family_motto: TEXT (nullable)
+    // - founding_date: DATE NOT NULL
+    // - mission_statement: TEXT (nullable)
+    // - core_values: JSONB DEFAULT '[]'
+    // - rbac_configuration: JSONB DEFAULT '[]' (inline RBAC roles storage)
+    // - created_by: TEXT NOT NULL (user_duid - privacy-first, not auth.users UUID)
+    // - status: TEXT DEFAULT 'active' CHECK ('active', 'suspended', 'archived')
+    // - metadata: JSONB DEFAULT '{}' (for additional encrypted data only)
+    //
+    // NOTE: RBAC is also inserted into family_rbac_configs table for granular management
+
     // Generate privacy-preserving family identifier
     const familyId = await generateFamilyIdentifier(charter.familyName);
-    
-    // Create family charter record
+
+    // Create family charter record with privacy-first schema
     const { data: charterData, error: charterError } = await supabase
       .from('family_charters')
       .insert({
         id: familyId,
         family_name: charter.familyName,
-        family_motto: charter.familyMotto,
+        family_motto: charter.familyMotto || null,
         founding_date: charter.foundingDate,
-        mission_statement: charter.missionStatement,
-        core_values: charter.values,
-        rbac_configuration: rbac.roles,
+        mission_statement: charter.missionStatement || null,
+        core_values: charter.values || [],
+        rbac_configuration: rbac.roles || [],
         created_by: userId,
         status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        metadata: {}
       })
       .select()
       .single();
-    
+
     if (charterError) {
       console.error('Charter creation failed:', charterError);
-      return { success: false, error: 'Failed to create family charter' };
+      // Provide more specific error messages
+      const errorMessage = charterError.message || 'Failed to create family charter';
+      if (charterError.code === '23502') {
+        // NOT NULL violation
+        return { success: false, error: 'Missing required charter fields (family name or founding date)' };
+      }
+      if (charterError.code === '23514') {
+        // CHECK constraint violation
+        return { success: false, error: 'Invalid charter data: family name must be at least 2 characters' };
+      }
+      return { success: false, error: errorMessage };
     }
-    
+
+    // Also insert RBAC configurations into family_rbac_configs table for granular management
+    // RBAC is stored both inline (rbac_configuration) and in separate table for flexibility
+    if (rbac.roles && rbac.roles.length > 0) {
+      const rbacRecords = rbac.roles.map(role => ({
+        charter_id: charterData.id,
+        role_id: role.id,
+        role_name: role.name,
+        description: role.description || null,
+        rights: role.rights || [],
+        responsibilities: role.responsibilities || [],
+        rewards: role.rewards || [],
+        hierarchy_level: role.hierarchyLevel
+      }));
+
+      const { error: rbacError } = await supabase
+        .from('family_rbac_configs')
+        .insert(rbacRecords);
+
+      if (rbacError) {
+        console.warn('RBAC config insert failed (non-blocking):', rbacError);
+        // Don't fail the overall operation - RBAC is also stored inline in rbac_configuration
+      }
+    }
+
     return { success: true, data: charterData };
   } catch (error) {
     console.error('Charter creation error:', error);
-    return { success: false, error: 'Database operation failed' };
+    return { success: false, error: error instanceof Error ? error.message : 'Database operation failed' };
   }
 }
 
