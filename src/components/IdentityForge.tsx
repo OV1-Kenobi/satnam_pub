@@ -58,6 +58,10 @@ import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/e
 
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
+import {
+  recoverEncryptedInvitationToken,
+  clearInvitationToken
+} from "../lib/crypto/invitation-token-storage";
 import { ActionContextSelector } from "./ActionContextSelector";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
@@ -149,6 +153,28 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       } catch { /* no-op */ }
     };
   }, []);
+
+  // Family invitation token recovery from sessionStorage (survives page refresh)
+  const [recoveredInvitationToken, setRecoveredInvitationToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Only attempt recovery if no prop was provided
+    if (!invitationToken) {
+      recoverEncryptedInvitationToken()
+        .then((token) => {
+          if (token) {
+            console.log('🔄 Recovered family invitation token from sessionStorage');
+            setRecoveredInvitationToken(token);
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to recover invitation token:', err);
+        });
+    }
+  }, [invitationToken]);
+
+  // Effective invitation token: prop takes precedence, then recovered from storage
+  const effectiveInvitationToken = invitationToken || recoveredInvitationToken;
 
   const [formData, setFormData] = useState<FormData>({
     username: "",
@@ -1287,8 +1313,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
         nip05: `${formData.username}@${selectedDomain}`,
         lightningAddress: formData.lightningEnabled ? (externalLightningAddress && extAddrValid && extAddrReachable ? externalLightningAddress : `${formData.username}@${selectedDomain}`) : undefined,
         generateInviteToken: true,
-        // Include invitation token if user was invited
-        invitationToken: invitationToken || undefined,
+        // Include invitation token if user was invited (prop or recovered from storage)
+        invitationToken: effectiveInvitationToken || undefined,
         // Include import account information
         isImportedAccount: migrationMode === 'import',
         detectedProfile: detectedProfile,
@@ -1341,6 +1367,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
 
       setRegistrationResult(result);
+
+      // Clear any stored family invitation token after successful registration
+      // (Phase 2 will handle auto-acceptance in register-identity.ts)
+      clearInvitationToken();
 
       // Immediately authenticate the new user to persist session using registration token
       try {
@@ -1797,6 +1827,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     } else {
+      // User is canceling registration from step 1 - clear stored invitation token
+      clearInvitationToken();
       onBack();
     }
   };

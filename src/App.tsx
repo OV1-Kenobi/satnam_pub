@@ -39,11 +39,16 @@ import { useAuth } from "./components/auth/AuthProvider";
 import FamilyFoundryAuthModal from "./components/auth/FamilyFoundryAuthModal";
 import IdentityForgeGuard from "./components/auth/IdentityForgeGuard";
 import { GiftwrappedMessaging } from "./components/communications/GiftwrappedMessaging";
+import { InvitationDisplay } from "./components/family-invitations";
 import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 
 import { validateInvitation } from "./lib/invitation-validator";
+import {
+  storeEncryptedInvitationToken,
+  clearInvitationToken
+} from "./lib/crypto/invitation-token-storage";
 
 import { showToast } from "./services/toastService";
 
@@ -98,6 +103,7 @@ function App() {
     | "amber-intent-callback"
     | "admin-dashboard"
     | "public-profile"
+    | "family-invitation"
   >("landing");
   const [profileParams, setProfileParams] = useState<{ username?: string; npub?: string } | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -117,6 +123,9 @@ function App() {
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
   const [invitationDetails, setInvitationDetails] = useState<any>(null);
   const [isInvitedUser, setIsInvitedUser] = useState(false);
+
+  // Family federation invitation state
+  const [familyInvitationToken, setFamilyInvitationToken] = useState<string | null>(null);
 
   // Authentication hook - use AuthProvider context (single source of truth)
   const auth = useAuth();
@@ -144,6 +153,16 @@ function App() {
 
         if (inviteToken) {
           console.log('Invitation token detected:', inviteToken);
+
+          // Check if this is a family federation invitation (tokens start with 'inv_')
+          if (inviteToken.startsWith('inv_')) {
+            console.log('Family federation invitation detected');
+            setFamilyInvitationToken(inviteToken);
+            setCurrentView('family-invitation');
+            return;
+          }
+
+          // Otherwise, handle as peer invitation
           setInvitationToken(inviteToken);
 
           // Validate the invitation token
@@ -853,6 +872,33 @@ function App() {
     );
   }
 
+  // Family Federation Invitation Acceptance Flow
+  if (currentView === "family-invitation" && familyInvitationToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-blue-900 flex items-center justify-center p-4">
+        <InvitationDisplay
+          token={familyInvitationToken}
+          onAccepted={(federationDuid) => {
+            console.log('Joined federation:', federationDuid);
+            setFamilyInvitationToken(null);
+            // Clear encrypted token from sessionStorage after successful join
+            clearInvitationToken();
+            setCurrentView('dashboard');
+          }}
+          onCreateAccount={async () => {
+            // Pass family invitation token to IdentityForge via existing invitationToken prop
+            setInvitationToken(familyInvitationToken);
+            setIsInvitedUser(true);
+
+            // Store encrypted token in sessionStorage to survive page refresh
+            await storeEncryptedInvitationToken(familyInvitationToken);
+
+            setCurrentView('forge');
+          }}
+        />
+      </div>
+    );
+  }
 
   if (currentView === "ln-node-management") {
     return (

@@ -177,6 +177,13 @@ interface ResponseData {
   invitationProcessed?: InvitationProcessed;
   postAuthAction?: string;
   verification_id?: string; // FIX-1: UUID for SimpleProof/Iroh attestations during registration
+  // Phase 2: Family federation auto-acceptance during registration
+  federationJoined?: {
+    federation_duid: string;
+    role: string;
+    federation_name?: string;
+  };
+  federationJoinPending?: boolean; // Set if auto-accept failed but registration succeeded
 }
 // -----------------------------------------------
 
@@ -2393,50 +2400,118 @@ export const handler: Handler = async (event, context) => {
       ? { ...baseResponse, verification_id: verificationResultId }
       : baseResponse;
 
-    // Process peer invitation if provided
+    // Process invitation if provided - distinguish between family and peer invitations
     if (userData.invitationToken) {
-      try {
-        // Process the invitation and award credits
-        const invitationResponse = await fetch(
-          `${
-            process.env.FRONTEND_URL || "https://satnam.pub"
-          }/api/authenticated/process-invitation`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${jwtToken}`,
-            },
-            body: JSON.stringify({
-              inviteToken: userData.invitationToken,
-            }),
-          }
-        );
+      const inviteToken = userData.invitationToken;
+      const isFamilyInvitation = inviteToken.startsWith("inv_");
 
-        if (invitationResponse.ok) {
-          const invitationResult = await invitationResponse.json();
-          if (invitationResult.success) {
-            responseData.invitationProcessed = {
-              creditsAwarded: invitationResult.creditsAwarded,
-              welcomeMessage: invitationResult.welcomeMessage,
-              personalMessage: invitationResult.personalMessage,
-            };
-            console.log(
-              "Invitation processed successfully during registration"
+      if (isFamilyInvitation) {
+        // Phase 2: Auto-accept family federation invitation during registration
+        try {
+          console.log(
+            "🏠 Processing family federation invitation during registration"
+          );
+
+          const familyAcceptResponse = await fetch(
+            `${
+              process.env.FRONTEND_URL || "https://satnam.pub"
+            }/api/family/invitations/accept`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${jwtToken}`,
+              },
+              body: JSON.stringify({ token: inviteToken }),
+            }
+          );
+
+          if (familyAcceptResponse.ok) {
+            const acceptResult = await familyAcceptResponse.json();
+            if (acceptResult.success && acceptResult.federation) {
+              responseData.federationJoined = {
+                federation_duid: acceptResult.federation.duid,
+                role: acceptResult.federation.role,
+                federation_name: acceptResult.federation.name,
+              };
+              console.log(
+                "✅ Family federation joined successfully during registration:",
+                acceptResult.federation.duid
+              );
+            } else if (!acceptResult.success) {
+              // Accept endpoint returned success: false
+              console.warn(
+                "⚠️ Family invitation acceptance failed:",
+                acceptResult.error || "Unknown error"
+              );
+              responseData.federationJoinPending = true;
+            }
+          } else {
+            // HTTP error from accept endpoint
+            const errorBody = await familyAcceptResponse
+              .text()
+              .catch(() => "Unknown error");
+            console.warn(
+              `⚠️ Family invitation acceptance HTTP error ${familyAcceptResponse.status}:`,
+              errorBody
             );
+            responseData.federationJoinPending = true;
           }
+        } catch (familyInviteError) {
+          console.warn(
+            "⚠️ Failed to process family invitation during registration:",
+            familyInviteError instanceof Error
+              ? familyInviteError.message
+              : String(familyInviteError)
+          );
+          // Don't fail registration - mark as pending for manual acceptance
+          responseData.federationJoinPending = true;
         }
-      } catch (invitationError) {
-        console.warn(
-          "Failed to process invitation during registration:",
-          invitationError
-        );
-        // Don't fail registration if invitation processing fails
+      } else {
+        // Existing peer invitation handling (non-family invitations)
+        try {
+          // Process the invitation and award credits
+          const invitationResponse = await fetch(
+            `${
+              process.env.FRONTEND_URL || "https://satnam.pub"
+            }/api/authenticated/process-invitation`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${jwtToken}`,
+              },
+              body: JSON.stringify({
+                inviteToken: inviteToken,
+              }),
+            }
+          );
+
+          if (invitationResponse.ok) {
+            const invitationResult = await invitationResponse.json();
+            if (invitationResult.success) {
+              responseData.invitationProcessed = {
+                creditsAwarded: invitationResult.creditsAwarded,
+                welcomeMessage: invitationResult.welcomeMessage,
+                personalMessage: invitationResult.personalMessage,
+              };
+              console.log(
+                "Invitation processed successfully during registration"
+              );
+            }
+          }
+        } catch (invitationError) {
+          console.warn(
+            "Failed to process peer invitation during registration:",
+            invitationError
+          );
+          // Don't fail registration if invitation processing fails
+        }
       }
     }
 
-    // Family federation invitation handling
-    if (validatedData.invitationToken || validatedData.familyId) {
+    // Family federation invitation handling - show modal if pending or has familyId
+    if (responseData.federationJoinPending || validatedData.familyId) {
       responseData.postAuthAction = "show_invitation_modal";
     }
 

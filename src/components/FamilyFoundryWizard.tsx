@@ -17,6 +17,7 @@ import { createFrostSession } from '../lib/family-foundry-frost';
 import { createNfcMfaPolicy, calculateHighValueThreshold } from '../lib/family-foundry-nfc-mfa';
 import { sendFederationApprovalRequests, generateFederationOperationHash } from '../lib/family-foundry-steward-approval';
 import FamilyFederationCreationModal from "./FamilyFederationCreationModal";
+import { InvitationGenerator } from "./family-invitations";
 import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
 import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";
@@ -267,8 +268,11 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
       setFederationHandleError(null);
 
       // Map trusted peers to family members with user_duids
+      // For solo founders (no trusted peers), this will return an empty array
       setFederationProgress(30);
-      const members = await mapTrustedPeersToMembers(trustedPeers);
+      const members = trustedPeers.length > 0
+        ? await mapTrustedPeersToMembers(trustedPeers)
+        : [];
       setFederationProgress(50);
 
       // Optionally prepare federation identity payload (npub + encrypted nsec)
@@ -611,6 +615,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             onPeersChange={setTrustedPeers}
             onNext={nextStep}
             onBack={prevStep}
+            allowSkip={true}
           />
         );
 
@@ -641,15 +646,30 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                   </div>
                 </div>
                 <div>
-                  <h4 className="text-white font-semibold mb-3">Members ({trustedPeers.length})</h4>
+                  <h4 className="text-white font-semibold mb-3">
+                    Members ({trustedPeers.length + 1})
+                    <span className="text-purple-300 font-normal text-sm ml-2">(including you as founder)</span>
+                  </h4>
                   <div className="space-y-1">
-                    {trustedPeers.map((peer) => (
-                      <div key={peer.id} className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                        <span className="text-purple-200">{peer.name}</span>
-                        <span className="text-purple-400 text-sm capitalize">({peer.role})</span>
-                      </div>
-                    ))}
+                    {/* Show founding user first */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                      <span className="text-white font-medium">You</span>
+                      <span className="text-green-400 text-sm">(Founder / Guardian)</span>
+                    </div>
+                    {trustedPeers.length > 0 ? (
+                      trustedPeers.map((peer) => (
+                        <div key={peer.id} className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                          <span className="text-purple-200">{peer.name}</span>
+                          <span className="text-purple-400 text-sm capitalize">({peer.role})</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-purple-300 text-sm italic mt-2">
+                        No additional members invited yet. You can invite members after creating the federation.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -666,11 +686,10 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
               </button>
               <button
                 onClick={() => setShowFederationModal(true)}
-                disabled={trustedPeers.length === 0}
-                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
               >
                 <Zap className="h-4 w-4" />
-                Configure Federation
+                {trustedPeers.length === 0 ? 'Create Solo Federation' : 'Configure Federation'}
               </button>
             </div>
           </div>
@@ -708,7 +727,11 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                 </div>
                 <div>
                   <p className="text-purple-300 text-sm">Members</p>
-                  <p className="text-white">{trustedPeers.length} invited</p>
+                  <p className="text-white">
+                    {trustedPeers.length === 0
+                      ? '1 (Founder only)'
+                      : `${trustedPeers.length + 1} (Founder + ${trustedPeers.length} invited)`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -729,8 +752,11 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                     familyMotto: charter.familyMotto,
                     foundingDate: charter.foundingDate,
                     missionStatement: charter.missionStatement,
-                    memberCount: trustedPeers.length,
-                    members: trustedPeers.map(p => ({ name: p.name, role: p.role })),
+                    memberCount: trustedPeers.length + 1, // +1 for founding user
+                    members: [
+                      { name: 'Founder', role: 'guardian' },
+                      ...trustedPeers.map(p => ({ name: p.name, role: p.role }))
+                    ],
                     createdAt: new Date().toISOString(),
                   })}
                   verificationId={verificationId}
@@ -748,6 +774,23 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                 <p className="text-purple-300 text-xs mt-3 text-center">
                   You can skip this step and continue to your family dashboard
                 </p>
+              </div>
+            )}
+
+            {/* Invitation Generator - for solo founders or to invite more members */}
+            {federationDuid && (
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-4">Invite Family Members</h3>
+                <p className="text-purple-200 text-sm mb-4">
+                  Generate invitation links to share with family members. Each invitation includes a QR code and role-specific onboarding guide.
+                </p>
+                <InvitationGenerator
+                  federationDuid={federationDuid}
+                  federationName={charter.familyName}
+                  onInvitationGenerated={(invitation) => {
+                    console.log('Invitation generated:', invitation);
+                  }}
+                />
               </div>
             )}
 
@@ -840,26 +883,36 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             </div>
 
             <div className="space-y-4 mb-6">
-              {trustedPeers.map((peer, index) => (
-                <div key={index} className="flex items-center justify-between bg-white/10 rounded-lg p-4">
-                  <div>
-                    <h4 className="text-white font-semibold">{peer.name}</h4>
-                    <p className="text-purple-200 text-sm">{peer.npub}</p>
-                    <div className="flex gap-2 mt-1">
-                      <span className="bg-purple-600 text-white px-2 py-1 rounded text-xs">
-                        {peer.role}
-                      </span>
-                      <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs">
-                        {peer.relationship}
-                      </span>
+              {trustedPeers.length > 0 ? (
+                trustedPeers.map((peer, index) => (
+                  <div key={index} className="flex items-center justify-between bg-white/10 rounded-lg p-4">
+                    <div>
+                      <h4 className="text-white font-semibold">{peer.name}</h4>
+                      <p className="text-purple-200 text-sm">{peer.npub}</p>
+                      <div className="flex gap-2 mt-1">
+                        <span className="bg-purple-600 text-white px-2 py-1 rounded text-xs">
+                          {peer.role}
+                        </span>
+                        <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs">
+                          {peer.relationship}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-green-400 text-sm">🎁 1 Course Credit</div>
+                      <div className="text-purple-300 text-xs">NIP-59 DM</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-green-400 text-sm">🎁 1 Course Credit</div>
-                    <div className="text-purple-300 text-xs">NIP-59 DM</div>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 bg-white/5 rounded-xl border border-white/10">
+                  <Users className="h-12 w-12 mx-auto mb-4 text-purple-400 opacity-50" />
+                  <p className="text-purple-200 mb-2">No members to invite yet</p>
+                  <p className="text-purple-300 text-sm">
+                    You can use the Family Invitation System from your dashboard to invite members later.
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
 
             <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-400/30 mb-6">
@@ -878,9 +931,13 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             <div className="flex gap-4">
               <button
                 onClick={sendInvitations}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+                disabled={trustedPeers.length === 0}
+                className={`flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 ${trustedPeers.length === 0
+                    ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
               >
-                Send Invitations
+                {trustedPeers.length === 0 ? 'Continue' : 'Send Invitations'}
               </button>
             </div>
           </div>

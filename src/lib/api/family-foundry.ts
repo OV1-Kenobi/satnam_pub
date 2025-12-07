@@ -91,24 +91,29 @@ export class FamilyFoundryService {
     charterId: string
   ): Promise<FamilyFoundryStatus | null> {
     try {
-      const { data, error } = await supabase
-        .from("family_federation_creations")
-        .select("*")
-        .eq("charter_id", charterId)
-        .single();
-
-      if (error) {
-        console.error("Error fetching family foundry status:", error);
+      const token = await this.getSessionToken();
+      if (!token) {
+        console.warn("No session token available for getFamilyFoundryStatus");
         return null;
       }
 
-      return {
-        charterId: data.charter_id,
-        federationId: data.id,
-        status: data.status,
-        progress: data.progress,
-        errorMessage: data.error_message,
-      };
+      const response = await fetch(
+        `/api/family/foundry/status?charterId=${encodeURIComponent(charterId)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        console.error("Error fetching family foundry status:", result.error);
+        return null;
+      }
+
+      return result.data;
     } catch (error) {
       console.error("Error getting family foundry status:", error);
       return null;
@@ -120,18 +125,31 @@ export class FamilyFoundryService {
    */
   static async getFamilyCharter(charterId: string) {
     try {
-      const { data, error } = await supabase
-        .from("family_charters")
-        .select("*")
-        .eq("id", charterId)
-        .single();
-
-      if (error) {
-        console.error("Error fetching family charter:", error);
+      const token = await this.getSessionToken();
+      if (!token) {
+        console.warn("No session token available for getFamilyCharter");
         return null;
       }
 
-      return data;
+      const response = await fetch(
+        `/api/family/foundry/charter?charterId=${encodeURIComponent(
+          charterId
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        console.error("Error fetching family charter:", result.error);
+        return null;
+      }
+
+      return result.data;
     } catch (error) {
       console.error("Error getting family charter:", error);
       return null;
@@ -143,18 +161,29 @@ export class FamilyFoundryService {
    */
   static async getRBACConfig(charterId: string) {
     try {
-      const { data, error } = await supabase
-        .from("family_rbac_configs")
-        .select("*")
-        .eq("charter_id", charterId)
-        .order("hierarchy_level", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching RBAC config:", error);
+      const token = await this.getSessionToken();
+      if (!token) {
+        console.warn("No session token available for getRBACConfig");
         return null;
       }
 
-      return data;
+      const response = await fetch(
+        `/api/family/foundry/rbac?charterId=${encodeURIComponent(charterId)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        console.error("Error fetching RBAC config:", result.error);
+        return null;
+      }
+
+      return result.data;
     } catch (error) {
       console.error("Error getting RBAC config:", error);
       return null;
@@ -170,21 +199,24 @@ export class FamilyFoundryService {
     status?: "creating" | "active" | "failed" | "suspended"
   ): Promise<boolean> {
     try {
-      const updateData: any = { progress };
-      if (status) {
-        updateData.status = status;
-        if (status === "active") {
-          updateData.activated_at = new Date().toISOString();
-        }
+      const token = await this.getSessionToken();
+      if (!token) {
+        console.warn("No session token available for updateFederationProgress");
+        return false;
       }
 
-      const { error } = await supabase
-        .from("family_federation_creations")
-        .update(updateData)
-        .eq("id", federationId);
+      const response = await fetch("/api/family/foundry/progress", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ federationId, progress, status }),
+      });
 
-      if (error) {
-        console.error("Error updating federation progress:", error);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        console.error("Error updating federation progress:", result.error);
         return false;
       }
 

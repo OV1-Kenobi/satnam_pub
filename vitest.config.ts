@@ -22,7 +22,7 @@ export default defineConfig({
       "src/lib/__tests__/**/*.test.{ts,js}",
       "src/components/__tests__/**/*.test.{tsx,jsx}",
     ],
-    exclude: ["node_modules", "dist", ".next", "build"],
+    exclude: ["node_modules", "dist", ".next", "build", "migrations/**"],
     setupFiles: ["./vitest.setup.ts"],
     testTimeout: 60000,
     hookTimeout: 30000,

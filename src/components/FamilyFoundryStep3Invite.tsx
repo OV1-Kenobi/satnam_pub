@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Plus, X, ArrowLeft, ArrowRight, Mail, Crown, Shield, User, Baby, AlertCircle, CheckCircle } from 'lucide-react';
+import { Users, Plus, X, ArrowLeft, ArrowRight, Mail, Crown, Shield, User, Baby, AlertCircle, CheckCircle, Info, SkipForward } from 'lucide-react';
 import { mapNpubToUserDuid } from '../lib/family-foundry-integration';
 
 interface TrustedPeer {
@@ -16,13 +16,16 @@ interface FamilyFoundryStep3InviteProps {
   onPeersChange: (peers: TrustedPeer[]) => void;
   onNext: () => void;
   onBack: () => void;
+  /** If true, allows proceeding without adding any peers (solo founder mode) */
+  allowSkip?: boolean;
 }
 
 const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
   trustedPeers,
   onPeersChange,
   onNext,
-  onBack
+  onBack,
+  allowSkip = true // Default to allowing skip for solo founder support
 }) => {
   const [newPeer, setNewPeer] = useState({
     name: '',
@@ -153,12 +156,23 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
   };
 
   const handleNext = () => {
-    // Validate that all peers have npub values
-    const allHaveNpubs = trustedPeers.every(peer => peer.npub.trim());
-    if (allHaveNpubs && trustedPeers.length > 0) {
+    // If we have peers, validate that all have npub values
+    if (trustedPeers.length > 0) {
+      const allHaveNpubs = trustedPeers.every(peer => peer.npub.trim());
+      if (allHaveNpubs) {
+        onNext();
+      }
+    }
+  };
+
+  const handleSkip = () => {
+    // Allow solo founder to proceed without any peers
+    if (allowSkip) {
       onNext();
     }
   };
+
+  const canProceedWithPeers = trustedPeers.length > 0 && trustedPeers.every(peer => peer.npub.trim());
 
   return (
     <div className="space-y-8">
@@ -167,10 +181,18 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
         <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full mb-4">
           <Users className="h-8 w-8 text-white" />
         </div>
-        <h2 className="text-3xl font-bold text-white mb-2">Invite Trusted Family Members</h2>
+        <h2 className="text-3xl font-bold text-white mb-2">Invite Family Members</h2>
         <p className="text-purple-200 max-w-2xl mx-auto">
-          Add family members and trusted peers to your federation using their Nostr public keys
+          Add family members and trusted peers to your federation using their Nostr public keys.
         </p>
+        {allowSkip && (
+          <div className="mt-4 inline-flex items-center gap-2 bg-blue-500/20 border border-blue-400/30 rounded-lg px-4 py-2">
+            <Info className="h-4 w-4 text-blue-300" />
+            <span className="text-blue-200 text-sm">
+              This step is optional. You can create your federation now and invite members later.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Default Suggestions */}
@@ -353,14 +375,30 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
-        <button
-          onClick={handleNext}
-          disabled={trustedPeers.length === 0 || !trustedPeers.every(peer => peer.npub.trim())}
-          className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next Step
-          <ArrowRight className="h-4 w-4" />
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Skip button - only show if allowSkip is true and no peers added */}
+          {allowSkip && trustedPeers.length === 0 && (
+            <button
+              onClick={handleSkip}
+              className="flex items-center gap-2 bg-amber-600/80 hover:bg-amber-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300"
+              title="Create federation now and invite members later"
+            >
+              <SkipForward className="h-4 w-4" />
+              Skip & Create Federation
+            </button>
+          )}
+
+          {/* Next with peers button - enabled when peers are added and validated */}
+          <button
+            onClick={handleNext}
+            disabled={!canProceedWithPeers}
+            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {trustedPeers.length > 0 ? `Next with ${trustedPeers.length} Member${trustedPeers.length > 1 ? 's' : ''}` : 'Next Step'}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

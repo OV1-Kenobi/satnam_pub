@@ -144,9 +144,16 @@ function validateCharter(charter) {
 function validateFrostThreshold(threshold, participantCount) {
   const errors = [];
 
+  // Single-user federation (participantCount = 1): skip FROST, use default threshold of 1
+  if (participantCount === 1) {
+    // No FROST needed for single-user federations
+    return { success: true, data: 1 };
+  }
+
   if (threshold === undefined || threshold === null) {
-    // Default to 2-of-3 if not provided
-    return { success: true, data: 2 };
+    // Default to 2-of-n if not provided (minimum of participantCount or 2)
+    const defaultThreshold = Math.min(2, participantCount);
+    return { success: true, data: defaultThreshold };
   }
 
   if (typeof threshold !== 'number' || !Number.isInteger(threshold)) {
@@ -168,6 +175,7 @@ function validateFrostThreshold(threshold, participantCount) {
     });
   }
 
+  // For FROST, minimum 2 participants (after the single-user check above)
   if (participantCount < 2) {
     errors.push({ field: 'members', message: 'At least 2 participants required for FROST' });
   }
@@ -1179,8 +1187,11 @@ export default async function handler(event, context) {
     const validatedRBAC = rbacValidation.data;
 
     // Validate FROST threshold (if provided)
+    // Note: participantCount includes the founding user (+1) plus any invited members
+    // This ensures single-user federations (1-of-1) and small groups work correctly
     const memberCount = requestData.members ? requestData.members.length : 0;
-    const frostThresholdValidation = validateFrostThreshold(validatedRBAC.frostThreshold, memberCount);
+    const participantCount = memberCount + 1; // +1 for the founding user (creator)
+    const frostThresholdValidation = validateFrostThreshold(validatedRBAC.frostThreshold, participantCount);
     if (!frostThresholdValidation.success) {
       return {
         statusCode: 400,
@@ -1215,12 +1226,13 @@ export default async function handler(event, context) {
     }
 
 	    // Create family federation record with FROST and NFC MFA configuration
+	    // Use participantCount (includes founding user) for NFC MFA thresholds
 	    const federationResult = await createFamilyFederation(
 	      charterResult.data.id,
 	      validatedCharter.familyName,
 	      userId,
 	      frostThreshold,
-	      memberCount
+	      participantCount
 	    );
 
 	    // Best-effort federation identity provisioning using Noble V2 + LNbits

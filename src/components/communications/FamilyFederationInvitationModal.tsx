@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { FamilyNostrFederation, NostrEvent } from '../../lib/fedimint/family-nostr-federation.js';
 import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
+import { showToast } from '../../services/toastService';
+import { central_event_publishing_service } from '../../../lib/central_event_publishing_service';
 
 interface FamilyData {
   federationId: string;
@@ -24,8 +26,14 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
     weekly: 50000,
     requiresApproval: 100000
   });
+  const [isSending, setIsSending] = useState(false);
 
   const federation = new FamilyNostrFederation();
+
+  // Validate npub format
+  const isValidNpub = (npub: string): boolean => {
+    return npub.startsWith('npub1') && npub.length >= 59;
+  };
 
   // Enhanced message sending function
   const sendMessage = async (content: string, recipient: string, privacyLevel: PrivacyLevel) => {
@@ -45,24 +53,56 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
   };
 
   const sendGiftWrappedMessage = async (content: string, recipient: string) => {
-    // Gift Wrapped implementation - complete metadata protection
+    // Gift Wrapped implementation - complete metadata protection using NIP-17/NIP-59
     console.log('Sending family invitation via gift wrapped message with maximum privacy');
-    return { success: true, method: 'giftwrapped' };
+    try {
+      const { clientMessageService } = await import('../../lib/messaging/client-message-service');
+      const result = await clientMessageService.sendGiftWrappedMessage({
+        recipient,
+        content,
+        messageType: 'direct',
+        encryptionLevel: 'maximum',
+        communicationType: 'family'
+      });
+      return { success: result.success, method: 'giftwrapped', messageId: result.messageId };
+    } catch (error) {
+      console.error('Gift wrapped message failed:', error);
+      return { success: false, method: 'giftwrapped', error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   };
 
   const sendEncryptedDM = async (content: string, recipient: string) => {
-    // Encrypted DM implementation
+    // Encrypted DM implementation using NIP-04/44 via CEPS
     console.log('Sending family invitation via encrypted DM with selective privacy');
-    return { success: true, method: 'encrypted' };
+    try {
+      const messageId = await central_event_publishing_service.sendStandardDirectMessage(recipient, content);
+      return { success: true, method: 'encrypted', messageId };
+    } catch (error) {
+      console.error('Encrypted DM failed:', error);
+      return { success: false, method: 'encrypted', error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   };
 
   const sendStandardMessage = async (content: string, recipient: string) => {
-    // Standard message implementation
+    // Standard message implementation - uses same encrypted DM but with less metadata protection
     console.log('Sending family invitation via standard message with minimal encryption');
-    return { success: true, method: 'minimal' };
+    try {
+      const messageId = await central_event_publishing_service.sendStandardDirectMessage(recipient, content);
+      return { success: true, method: 'minimal', messageId };
+    } catch (error) {
+      console.error('Standard message failed:', error);
+      return { success: false, method: 'minimal', error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   };
 
   const sendFamilyInvitation = async () => {
+    // Validate npub before sending
+    if (!isValidNpub(inviteeNpub)) {
+      showToast.error('Please enter a valid npub (starts with npub1)');
+      return;
+    }
+
+    setIsSending(true);
     try {
       // Use the enhanced privacy-aware message sending
       const invitationContent = JSON.stringify({
@@ -92,7 +132,13 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
       });
 
       // Send message using selected privacy level
-      await sendMessage(invitationContent, inviteeNpub, privacyLevel);
+      const messageResult = await sendMessage(invitationContent, inviteeNpub, privacyLevel);
+
+      if (messageResult && !messageResult.success) {
+        showToast.error(`Failed to send message: ${messageResult.error || 'Unknown error'}`);
+        setIsSending(false);
+        return;
+      }
 
       const invitationEvent: NostrEvent = {
         pubkey: '', // Will be filled by the federation service
@@ -114,14 +160,16 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
       );
 
       if (result.success) {
-        alert('Family invitation sent successfully!');
+        showToast.success('Family invitation sent successfully!');
         onClose();
       } else {
-        alert(`Failed to send invitation: ${result.error || 'Unknown error'}`);
+        showToast.error(`Failed to send invitation: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to send family invitation:', error);
-      alert('Failed to send invitation');
+      showToast.error(error instanceof Error ? error.message : 'Failed to send invitation');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -320,16 +368,27 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
         <div className="flex space-x-3 mt-8">
           <button
             onClick={onClose}
-            className="flex-1 px-6 py-3 bg-white/10 text-white border border-white/20 rounded-lg hover:bg-white/20 transition-all duration-300"
+            disabled={isSending}
+            className="flex-1 px-6 py-3 bg-white/10 text-white border border-white/20 rounded-lg hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
           >
             Cancel
           </button>
           <button
             onClick={sendFamilyInvitation}
-            disabled={!inviteeNpub}
+            disabled={!inviteeNpub || isSending}
             className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 disabled:from-gray-500 disabled:to-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all duration-300"
           >
-            Send Invitation
+            {isSending ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Sending...
+              </span>
+            ) : (
+              'Send Invitation'
+            )}
           </button>
         </div>
       </div>
