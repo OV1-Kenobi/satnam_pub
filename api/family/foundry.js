@@ -14,7 +14,7 @@
  * ✅ NIP-59 Gift Wrapped messaging compliance
  */
 
-import { supabase } from '../../netlify/functions/supabase.js';
+import { supabase, supabaseAdmin } from '../../netlify/functions/supabase.js';
 
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
@@ -961,7 +961,8 @@ async function createFamilyCharter(charter, rbac, userId) {
     const familyId = await generateFamilyIdentifier(charter.familyName);
 
     // Create family charter record with privacy-first schema
-    const { data: charterData, error: charterError } = await supabase
+    // NOTE: Using supabaseAdmin (service role) to bypass RLS since API uses custom JWT auth
+    const { data: charterData, error: charterError } = await supabaseAdmin
       .from('family_charters')
       .insert({
         id: familyId,
@@ -1007,7 +1008,8 @@ async function createFamilyCharter(charter, rbac, userId) {
         hierarchy_level: role.hierarchyLevel
       }));
 
-      const { error: rbacError } = await supabase
+      // NOTE: Using supabaseAdmin (service role) to bypass RLS
+      const { error: rbacError } = await supabaseAdmin
         .from('family_rbac_configs')
         .insert(rbacRecords);
 
