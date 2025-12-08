@@ -194,23 +194,32 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-700"
+      style={{
+        backgroundImage: 'url(/citadel-fortress-bg.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center 20%',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
+    >
       {/* Enhanced Header with Recovery Button */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-white/10 backdrop-blur-sm shadow-sm border-b border-white/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
                 onClick={onBack}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-purple-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">
+                <h1 className="text-xl font-semibold text-white">
                   {familyName} Family Dashboard
                 </h1>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-purple-200">
                   Sovereign family banking & coordination
                 </p>
               </div>
@@ -227,7 +236,7 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               </button>
 
               {/* Settings Button */}
-              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+              <button className="p-2 text-purple-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
                 <Settings className="h-5 w-5" />
               </button>
             </div>

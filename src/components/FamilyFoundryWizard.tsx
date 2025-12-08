@@ -779,11 +779,27 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
 
             {/* Invitation Generator - for solo founders or to invite more members */}
             {federationDuid && (
-              <div className="mb-6">
-                <h3 className="text-xl font-bold text-white mb-4">Invite Family Members</h3>
-                <p className="text-purple-200 text-sm mb-4">
-                  Generate invitation links to share with family members. Each invitation includes a QR code and role-specific onboarding guide.
-                </p>
+              <div className="bg-gradient-to-br from-green-500/10 to-blue-500/10 border border-green-400/30 rounded-xl p-6 mb-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                    <Mail className="h-5 w-5 text-green-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Invite Family Members</h3>
+                    <p className="text-green-300 text-sm">Works for people who don't have Nostr yet!</p>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 rounded-lg p-4 mb-4 border border-white/10">
+                  <h4 className="text-white font-semibold mb-2">📨 Out-of-Band Invitations</h4>
+                  <ul className="text-purple-200 text-sm space-y-1">
+                    <li>• Generate role-specific invitation links (Guardian, Steward, Adult, Offspring)</li>
+                    <li>• Share via Signal, Email, SMS, or any messaging app</li>
+                    <li>• QR codes for face-to-face onboarding</li>
+                    <li>• Invitees will create their Nostr identity during signup</li>
+                  </ul>
+                </div>
+
                 <InvitationGenerator
                   federationDuid={federationDuid}
                   federationName={charter.familyName}
