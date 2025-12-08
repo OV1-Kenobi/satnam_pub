@@ -2,124 +2,112 @@ import {
   AlertCircle,
   ArrowLeft,
   Bitcoin,
-  BookOpen,
   CheckCircle,
-  Clock,
-  Download,
+  Loader2,
   QrCode,
   Settings,
   Shield,
+  UserPlus,
   Users,
   XCircle
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FeatureFlags } from "../lib/feature-flags";
 import { FederationRole } from "../types/auth";
-import { useAuth } from "./auth/AuthProvider"; // FIXED: Use unified auth system
+import { useAuth } from "./auth/AuthProvider";
 import EmergencyRecoveryModal from "./EmergencyRecoveryModal";
 import FamilyWalletCard from "./FamilyWalletCard";
 import PhoenixDNodeStatus from "./PhoenixDNodeStatus";
 import SmartPaymentModal from "./SmartPaymentModal";
 import TransactionHistory from "./TransactionHistory";
+import { InvitationGenerator } from "./family-invitations/InvitationGenerator";
+import { getFamilyFederationByDuid } from "../services/familyFederationApi";
 
-import { FamilyMember } from "../types/shared";
+import { FamilyMember, Transaction } from "../types/shared";
 
-import { Transaction } from "../types/shared";
+// Database FamilyMember type (from API responses)
+interface DbFamilyMember {
+  id: string;
+  family_federation_id: string;
+  user_duid: string;
+  family_role: "offspring" | "adult" | "steward" | "guardian";
+  spending_approval_required: boolean;
+  voting_power: number;
+  joined_at: string;
+  is_active: boolean;
+  // Optional fields that may be joined from user_identities
+  username?: string;
+  lightning_address?: string;
+  nip05_verified?: boolean;
+}
 
 const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { user } = useAuth();
   const federationRole: FederationRole = (user?.federationRole as FederationRole) || 'private';
-  const familyId = user?.familyId;
-  const [familyName] = useState("Johnson");
-  const [relayStatus] = useState<"connected" | "disconnected" | "syncing">(
-    "connected",
-  );
+  const familyId = user?.familyId; // Federation DUID is stored in familyId
 
-  const [familyMembers] = useState<FamilyMember[]>([
-    {
-      id: "1",
-      username: "David",
-      lightningAddress: "david@my.satnam.pub",
-      role: "adult",
-      balance: 125000,
-      nip05Verified: true,
-    },
-    {
-      id: "2",
-      username: "Sarah",
-      lightningAddress: "sarah@my.satnam.pub",
-      role: "adult",
-      balance: 87500,
-      nip05Verified: true,
-    },
-    {
-      id: "3",
-      username: "Emma",
-      lightningAddress: "emma@my.satnam.pub",
-      role: "offspring",
-      balance: 25000,
-      nip05Verified: false,
-      spendingLimits: {
-        daily: 10000,
-        weekly: 50000,
-        requiresApproval: 5000,
-      },
-    },
-    {
-      id: "4",
-      username: "Luke",
-      lightningAddress: "luke@my.satnam.pub",
-      role: "offspring",
-      balance: 0,
-      nip05Verified: false,
-      spendingLimits: {
-        daily: 5000,
-        weekly: 25000,
-        requiresApproval: 2000,
-      },
-    },
-  ]);
+  // Real data state (no mock data)
+  const [familyName, setFamilyName] = useState<string | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [recentTransactions] = useState<Transaction[]>([]); // Empty until API is ready
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [recentTransactions] = useState<Transaction[]>([
-    {
-      id: "1",
-      type: "received",
-      amount: 50000,
-      from: "alice@getalby.com",
-      to: "david@my.satnam.pub",
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      privacyRouted: true,
-      status: "completed",
-    },
-    {
-      id: "2",
-      type: "sent",
-      amount: 25000,
-      from: "sarah@my.satnam.pub",
-      to: "emma@my.satnam.pub",
-      timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
-      privacyRouted: true,
-      status: "completed",
-    },
-    {
-      id: "3",
-      type: "received",
-      amount: 100000,
-      from: "bob@strike.me",
-      to: "sarah@my.satnam.pub",
-      timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-      privacyRouted: true,
-      status: "completed",
-    },
-  ]);
-
+  // UI state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>();
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrAddress, setQrAddress] = useState("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
+  // Fetch real federation data on mount
+  useEffect(() => {
+    async function fetchFederationData() {
+      if (!familyId) {
+        setIsLoading(false);
+        setError("No federation found. Please create or join a family federation.");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch federation details
+        const federation = await getFamilyFederationByDuid(familyId);
+        if (federation) {
+          setFamilyName(federation.federation_name || "Family Federation");
+        }
+
+        // Fetch federation members - returns database type
+        const response = await fetch(`/api/family-federations/${familyId}/members`);
+        if (response.ok) {
+          const dbMembers: DbFamilyMember[] = await response.json();
+          // Map database members to UI FamilyMember format
+          const mappedMembers: FamilyMember[] = dbMembers.map((m) => ({
+            id: m.id || m.user_duid || '',
+            username: m.username || m.user_duid?.slice(0, 8) || 'Member',
+            lightningAddress: m.lightning_address,
+            role: m.family_role || 'adult',
+            balance: undefined, // Balance fetched separately with proper auth
+            nip05Verified: m.nip05_verified || false,
+          }));
+          setFamilyMembers(mappedMembers);
+        }
+      } catch (err) {
+        console.error("Failed to fetch federation data:", err);
+        setError("Failed to load family data. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchFederationData();
+  }, [familyId]);
+
+  // Computed values from real data
   const totalBalance = familyMembers.reduce(
     (sum, member) => sum + (member.balance || 0),
     0,
@@ -127,47 +115,9 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const verifiedMembers = familyMembers.filter(
     (m) => m.nip05Verified,
   ).length;
-  const educationProgress = 73;
-  const lastBackup = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const formatSats = (sats: number) => {
     return new Intl.NumberFormat().format(sats);
-  };
-
-  const formatTimeAgo = (date: Date) => {
-    const hours = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60));
-    if (hours < 1) return "Just now";
-    if (hours === 1) return "1 hour ago";
-    if (hours < 24) return `${hours} hours ago`;
-    const days = Math.floor(hours / 24);
-    if (days === 1) return "1 day ago";
-    return `${days} days ago`;
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "connected":
-      case "verified":
-        return "text-green-400";
-      case "pending":
-      case "syncing":
-        return "text-yellow-400";
-      default:
-        return "text-red-400";
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "connected":
-      case "verified":
-        return <CheckCircle className="h-4 w-4" />;
-      case "pending":
-      case "syncing":
-        return <Clock className="h-4 w-4" />;
-      default:
-        return <XCircle className="h-4 w-4" />;
-    }
   };
 
   const handleSendPayment = (memberId: string) => {
@@ -226,6 +176,17 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
 
             <div className="flex items-center space-x-3">
+              {/* Invite Family Members Button */}
+              {familyId && (federationRole === 'guardian' || federationRole === 'steward') && (
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-sm"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span className="text-sm font-medium">Invite Members</span>
+                </button>
+              )}
+
               {/* Emergency Recovery Button */}
               <button
                 onClick={handleEmergencyRecovery}
@@ -274,22 +235,22 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-200 text-sm">Education Progress</p>
-                <p className="text-2xl font-bold text-white">{educationProgress}%</p>
+                <p className="text-purple-200 text-sm">Verified Members</p>
+                <p className="text-2xl font-bold text-white">{verifiedMembers}</p>
               </div>
-              <BookOpen className="h-8 w-8 text-green-400" />
+              <CheckCircle className="h-8 w-8 text-green-400" />
             </div>
           </div>
 
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-200 text-sm">Last Backup</p>
-                <p className="text-2xl font-bold text-white">
-                  {formatTimeAgo(lastBackup)}
+                <p className="text-purple-200 text-sm">Your Role</p>
+                <p className="text-2xl font-bold text-white capitalize">
+                  {federationRole}
                 </p>
               </div>
-              <Download className="h-8 w-8 text-purple-400" />
+              <Shield className="h-8 w-8 text-purple-400" />
             </div>
           </div>
         </div>
@@ -313,18 +274,62 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {familyMembers.map((member) => (
-              <FamilyWalletCard
-                key={member.id}
-                member={member}
-                onCopyAddress={() => { }}
-                onSend={() => FeatureFlags.isFedimintEnabled() && handleSendPayment(member.id)}
-                onReceive={() => FeatureFlags.isFedimintEnabled() && handleReceivePayment(member.id)}
-                onShowQR={() => FeatureFlags.isFedimintEnabled() && handleShowQR(member.lightningAddress || '')}
-              />
-            ))}
-          </div>
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center p-12">
+              <Loader2 className="h-8 w-8 text-purple-300 animate-spin" />
+              <span className="ml-3 text-purple-200">Loading family members...</span>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !isLoading && (
+            <div className="bg-red-500/10 border border-red-400/50 rounded-xl p-6 mb-6">
+              <div className="flex items-start gap-4">
+                <XCircle className="h-6 w-6 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-lg font-semibold text-red-300 mb-2">Error Loading Data</h3>
+                  <p className="text-red-100">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!isLoading && !error && familyMembers.length === 0 && (
+            <div className="bg-white/5 border border-white/20 rounded-xl p-12 text-center">
+              <Users className="h-16 w-16 text-purple-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-white mb-2">No Family Members Yet</h3>
+              <p className="text-purple-200 mb-6">
+                Invite family members to join your federation and manage finances together.
+              </p>
+              {(federationRole === 'guardian' || federationRole === 'steward') && familyId && (
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                >
+                  <UserPlus className="h-5 w-5" />
+                  Invite Family Members
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Members Grid */}
+          {!isLoading && !error && familyMembers.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {familyMembers.map((member) => (
+                <FamilyWalletCard
+                  key={member.id}
+                  member={member}
+                  onCopyAddress={() => { }}
+                  onSend={() => FeatureFlags.isFedimintEnabled() && handleSendPayment(member.id)}
+                  onReceive={() => FeatureFlags.isFedimintEnabled() && handleReceivePayment(member.id)}
+                  onShowQR={() => FeatureFlags.isFedimintEnabled() && handleShowQR(member.lightningAddress || '')}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Recent Transactions */}
@@ -387,6 +392,27 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           userNpub={''} // Never expose npub per Master Context zero-knowledge protocols
           familyId={familyId || undefined}
         />
+      )}
+
+      {/* Invite Family Members Modal */}
+      {showInviteModal && familyId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-purple-900 rounded-xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-white/20">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-white">Invite Family Members</h3>
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="text-purple-200 hover:text-white"
+              >
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+            <InvitationGenerator
+              federationDuid={familyId}
+              federationName={familyName || 'Family Federation'}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
