@@ -616,6 +616,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             onNext={nextStep}
             onBack={prevStep}
             allowSkip={true}
+            federationDuid={federationDuid ?? undefined}
+            federationName={charter.familyName}
           />
         );
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Plus, X, ArrowLeft, ArrowRight, Mail, Crown, Shield, User, Baby, AlertCircle, CheckCircle, Info, SkipForward } from 'lucide-react';
 import { mapNpubToUserDuid } from '../lib/family-foundry-integration';
+import { InvitationGenerator } from './family-invitations';
 
 interface TrustedPeer {
   id: string;
@@ -18,6 +19,10 @@ interface FamilyFoundryStep3InviteProps {
   onBack: () => void;
   /** If true, allows proceeding without adding any peers (solo founder mode) */
   allowSkip?: boolean;
+  /** Federation DUID for generating invitations (available after federation creation) */
+  federationDuid?: string;
+  /** Federation name for invitation display */
+  federationName?: string;
 }
 
 const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
@@ -25,7 +30,9 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
   onPeersChange,
   onNext,
   onBack,
-  allowSkip = true // Default to allowing skip for solo founder support
+  allowSkip = true, // Default to allowing skip for solo founder support
+  federationDuid,
+  federationName
 }) => {
   const [newPeer, setNewPeer] = useState({
     name: '',
@@ -36,45 +43,6 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
   const [validationErrors, setValidationErrors] = useState<Map<string, string>>(new Map());
   const [isValidating, setIsValidating] = useState(false);
   const [validatedPeers, setValidatedPeers] = useState<Set<string>>(new Set());
-
-  const defaultSuggestions = [
-    {
-      name: 'Arthur',
-      role: 'guardian',
-      relationship: 'kin',
-      description: 'Family patriarch with ultimate authority'
-    },
-    {
-      name: 'Guinevere',
-      role: 'guardian',
-      relationship: 'kin',
-      description: 'Family matriarch with complete control'
-    },
-    {
-      name: 'Lancelot',
-      role: 'steward',
-      relationship: 'peer',
-      description: 'Trusted family administrator and protector'
-    },
-    {
-      name: 'Merlin',
-      role: 'steward',
-      relationship: 'peer',
-      description: 'Wise family advisor and mentor'
-    },
-    {
-      name: 'Gawain',
-      role: 'adult',
-      relationship: 'offspring',
-      description: 'Mature family member with offspring management'
-    },
-    {
-      name: 'Galahad',
-      role: 'offspring',
-      relationship: 'offspring',
-      description: 'Young family member learning and growing'
-    }
-  ];
 
   const roleIcons = {
     guardian: Crown,
@@ -143,18 +111,6 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
     onPeersChange(trustedPeers.filter(peer => peer.id !== id));
   };
 
-  const addSuggestion = (suggestion: typeof defaultSuggestions[0]) => {
-    const peer: TrustedPeer = {
-      id: Date.now().toString(),
-      name: suggestion.name,
-      npub: '', // User needs to fill this
-      role: suggestion.role,
-      relationship: suggestion.relationship,
-      invited: false
-    };
-    onPeersChange([...trustedPeers, peer]);
-  };
-
   const handleNext = () => {
     // If we have peers, validate that all have npub values
     if (trustedPeers.length > 0) {
@@ -195,48 +151,51 @@ const FamilyFoundryStep3Invite: React.FC<FamilyFoundryStep3InviteProps> = ({
         )}
       </div>
 
-      {/* Default Suggestions */}
-      <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-        <h3 className="text-xl font-bold text-white mb-4">Quick Add Suggestions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {defaultSuggestions.map((suggestion, index) => {
-            const IconComponent = roleIcons[suggestion.role as keyof typeof roleIcons];
-            const colorClass = roleColors[suggestion.role as keyof typeof roleColors];
-            const isAdded = trustedPeers.some(peer => peer.name === suggestion.name);
+      {/* Out-of-Band Invitation Generator */}
+      {federationDuid && (
+        <div className="bg-gradient-to-br from-green-500/10 to-blue-500/10 border border-green-400/30 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+              <Mail className="h-5 w-5 text-green-400" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white">Generate Invitation Links</h3>
+              <p className="text-green-300 text-sm">Works for people who don't have Nostr yet!</p>
+            </div>
+          </div>
 
-            return (
-              <div
-                key={index}
-                className={`border rounded-lg p-4 transition-all duration-300 ${isAdded
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-white/20 bg-white/5 hover:bg-white/10'
-                  }`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`inline-flex items-center justify-center w-8 h-8 bg-gradient-to-br ${colorClass} rounded-full`}>
-                    <IconComponent className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-semibold">{suggestion.name}</h4>
-                    <p className="text-purple-200 text-sm capitalize">{suggestion.role}</p>
-                  </div>
-                </div>
-                <p className="text-purple-300 text-sm mb-3">{suggestion.description}</p>
-                <button
-                  onClick={() => addSuggestion(suggestion)}
-                  disabled={isAdded}
-                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors ${isAdded
-                    ? 'bg-green-600/50 text-green-200 cursor-not-allowed'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                    }`}
-                >
-                  {isAdded ? 'Added' : 'Add'}
-                </button>
-              </div>
-            );
-          })}
+          <div className="bg-white/5 rounded-lg p-4 mb-4 border border-white/10">
+            <h4 className="text-white font-semibold mb-2">📨 Out-of-Band Invitations</h4>
+            <ul className="text-purple-200 text-sm space-y-1">
+              <li>• Generate role-specific invitation links (Guardian, Steward, Adult, Offspring)</li>
+              <li>• Share via Signal, Email, SMS, or any messaging app</li>
+              <li>• QR codes for face-to-face onboarding</li>
+              <li>• Invitees will create their Nostr identity during signup</li>
+            </ul>
+          </div>
+
+          <InvitationGenerator
+            federationDuid={federationDuid}
+            federationName={federationName || 'Family Federation'}
+            onInvitationGenerated={(invitation) => {
+              console.log('Invitation generated:', invitation);
+            }}
+          />
         </div>
-      </div>
+      )}
+
+      {!federationDuid && (
+        <div className="bg-amber-500/10 border border-amber-400/30 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Info className="h-5 w-5 text-amber-400" />
+            <h3 className="text-lg font-bold text-white">Invitation Links Available After Federation Creation</h3>
+          </div>
+          <p className="text-amber-200 text-sm">
+            Once your federation is created, you'll be able to generate invitation links and QR codes
+            to share with family members who don't have Nostr identities yet.
+          </p>
+        </div>
+      )}
 
       {/* Add New Peer */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-6">
