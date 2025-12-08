@@ -281,154 +281,164 @@ const PhoenixDNodeStatus: React.FC<PhoenixDNodeStatusProps> = ({
       </div>
 
       {/* Connection Health Metrics */}
-      <div className="mb-6 bg-gradient-to-r from-orange-900/40 to-amber-900/40 rounded-lg p-4 border border-orange-500/20">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Activity className="h-5 w-5 text-orange-400" />
-            <h3 className="text-white font-semibold">Connection Health</h3>
+      {nodeStatus.connectionHealth && (
+        <div className="mb-6 bg-gradient-to-r from-orange-900/40 to-amber-900/40 rounded-lg p-4 border border-orange-500/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Activity className="h-5 w-5 text-orange-400" />
+              <h3 className="text-white font-semibold">Connection Health</h3>
+            </div>
+            <div className="flex items-center space-x-4 text-sm">
+              <div className="flex items-center space-x-1">
+                <span className="text-amber-200">Uptime:</span>
+                <span className="text-white font-mono">{formatUptime(nodeStatus.uptime)}</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-amber-200">Latency:</span>
+                <span className="text-white font-mono">{nodeStatus.connectionHealth.latency}ms</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-amber-200">Failed Attempts:</span>
+                <span className={`font-mono ${nodeStatus.connectionHealth.failedAttempts === 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {nodeStatus.connectionHealth.failedAttempts}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center space-x-4 text-sm">
-            <div className="flex items-center space-x-1">
-              <span className="text-amber-200">Uptime:</span>
-              <span className="text-white font-mono">{formatUptime(nodeStatus.uptime)}</span>
+        </div>
+      )}
+
+      {/* Automated Liquidity Status - Prominent Display */}
+      {nodeStatus.automatedLiquidity && (
+        <div className="mb-6 bg-gradient-to-r from-green-900/40 to-emerald-900/40 rounded-lg p-4 border border-green-500/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Zap className="h-5 w-5 text-green-400" />
+              <h3 className="text-white font-semibold">Automated Liquidity Management</h3>
             </div>
-            <div className="flex items-center space-x-1">
-              <span className="text-amber-200">Latency:</span>
-              <span className="text-white font-mono">{nodeStatus.connectionHealth.latency}ms</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className="text-amber-200">Failed Attempts:</span>
-              <span className={`font-mono ${nodeStatus.connectionHealth.failedAttempts === 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {nodeStatus.connectionHealth.failedAttempts}
+            <div className={`flex items-center space-x-1 ${nodeStatus.automatedLiquidity.active ? 'text-green-400' : 'text-amber-400'}`}>
+              {nodeStatus.automatedLiquidity.active ? (
+                <CheckCircle className="h-5 w-5" />
+              ) : (
+                <Clock className="h-5 w-5" />
+              )}
+              <span className="font-medium">
+                {nodeStatus.automatedLiquidity.active ? 'Active' : 'Inactive'}
               </span>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Automated Liquidity Status - Prominent Display */}
-      <div className="mb-6 bg-gradient-to-r from-green-900/40 to-emerald-900/40 rounded-lg p-4 border border-green-500/20">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Zap className="h-5 w-5 text-green-400" />
-            <h3 className="text-white font-semibold">Automated Liquidity Management</h3>
-          </div>
-          <div className={`flex items-center space-x-1 ${nodeStatus.automatedLiquidity.active ? 'text-green-400' : 'text-amber-400'}`}>
-            {nodeStatus.automatedLiquidity.active ? (
-              <CheckCircle className="h-5 w-5" />
-            ) : (
-              <Clock className="h-5 w-5" />
-            )}
-            <span className="font-medium">
-              {nodeStatus.automatedLiquidity.active ? 'Active' : 'Inactive'}
-            </span>
-          </div>
-        </div>
-        <p className="text-green-200 text-sm mt-2">
-          {nodeStatus.automatedLiquidity.active
-            ? "PhoenixD is automatically managing liquidity for all family members. Infinite inbound capacity available."
-            : "Automated liquidity management is currently inactive. Manual intervention may be required."
-          }
-        </p>
-        {nodeStatus.automatedLiquidity.lastUpdate && (
-          <p className="text-green-300 text-xs mt-1">
-            Last updated: {new Date(nodeStatus.automatedLiquidity.lastUpdate).toLocaleString()}
+          <p className="text-green-200 text-sm mt-2">
+            {nodeStatus.automatedLiquidity.active
+              ? "PhoenixD is automatically managing liquidity for all family members. Infinite inbound capacity available."
+              : "Automated liquidity management is currently inactive. Manual intervention may be required."
+            }
           </p>
-        )}
-      </div>
+          {nodeStatus.automatedLiquidity.lastUpdate && (
+            <p className="text-green-300 text-xs mt-1">
+              Last updated: {new Date(nodeStatus.automatedLiquidity.lastUpdate).toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Detailed Information - Only show if showDetails is true */}
       {showDetails && (
         <div className="grid md:grid-cols-3 gap-6">
           {/* Node Information */}
-          <div className="bg-white/10 rounded-lg p-4 border border-orange-500/20">
-            <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
-              <Zap className="h-4 w-4 text-orange-400" />
-              <span>Node Information</span>
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Alias</span>
-                <span className="text-white">{nodeStatus.nodeInfo.alias}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Network</span>
-                <span className="text-white capitalize">{nodeStatus.nodeInfo.network}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Block Height</span>
-                <span className="text-white">{nodeStatus.nodeInfo.blockHeight.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Version</span>
-                <span className="text-white">{nodeStatus.nodeInfo.version}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Node ID</span>
-                <span className="text-white font-mono text-xs truncate max-w-[150px]" title={nodeStatus.nodeInfo.nodeId}>
-                  {nodeStatus.nodeInfo.nodeId.substring(0, 16)}...
-                </span>
+          {nodeStatus.nodeInfo && (
+            <div className="bg-white/10 rounded-lg p-4 border border-orange-500/20">
+              <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
+                <Zap className="h-4 w-4 text-orange-400" />
+                <span>Node Information</span>
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Alias</span>
+                  <span className="text-white">{nodeStatus.nodeInfo.alias}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Network</span>
+                  <span className="text-white capitalize">{nodeStatus.nodeInfo.network}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Block Height</span>
+                  <span className="text-white">{nodeStatus.nodeInfo.blockHeight?.toLocaleString() ?? 'N/A'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Version</span>
+                  <span className="text-white">{nodeStatus.nodeInfo.version}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Node ID</span>
+                  <span className="text-white font-mono text-xs truncate max-w-[150px]" title={nodeStatus.nodeInfo.nodeId}>
+                    {nodeStatus.nodeInfo.nodeId?.substring(0, 16) ?? 'N/A'}...
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Balance Information */}
-          <div className="bg-white/10 rounded-lg p-4 border border-amber-500/20">
-            <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
-              <Activity className="h-4 w-4 text-amber-400" />
-              <span>Balance</span>
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Available</span>
-                <span className="text-white">{formatSats(nodeStatus.balance.balanceSat)} sats</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Fee Credit</span>
-                <span className="text-white">{formatSats(nodeStatus.balance.feeCreditSat)} sats</span>
-              </div>
-              <div className="flex items-center justify-between font-semibold border-t border-white/20 pt-2">
-                <span className="text-amber-200">Total</span>
-                <span className="text-white">{formatSats(nodeStatus.balance.totalSat)} sats</span>
+          {nodeStatus.balance && (
+            <div className="bg-white/10 rounded-lg p-4 border border-amber-500/20">
+              <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
+                <Activity className="h-4 w-4 text-amber-400" />
+                <span>Balance</span>
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Available</span>
+                  <span className="text-white">{formatSats(nodeStatus.balance.balanceSat)} sats</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Fee Credit</span>
+                  <span className="text-white">{formatSats(nodeStatus.balance.feeCreditSat)} sats</span>
+                </div>
+                <div className="flex items-center justify-between font-semibold border-t border-white/20 pt-2">
+                  <span className="text-amber-200">Total</span>
+                  <span className="text-white">{formatSats(nodeStatus.balance.totalSat)} sats</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Channel & Family Banking Information */}
-          <div className="bg-white/10 rounded-lg p-4 border border-orange-500/20">
-            <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
-              <Shield className="h-4 w-4 text-orange-400" />
-              <span>Channels & Banking</span>
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Active Channels</span>
-                <span className="text-white">{nodeStatus.channels.active} / {nodeStatus.channels.total}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Total Liquidity</span>
-                <span className="text-white">{formatSats(nodeStatus.channels.totalLiquidity)} sats</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Family Banking</span>
-                <div className={`flex items-center space-x-1 ${nodeStatus.familyBanking.ready ? 'text-green-400' : 'text-amber-400'}`}>
-                  {nodeStatus.familyBanking.ready ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <Clock className="h-4 w-4" />
-                  )}
-                  <span>{nodeStatus.familyBanking.ready ? 'Ready' : 'Setting Up'}</span>
+          {nodeStatus.channels && nodeStatus.familyBanking && (
+            <div className="bg-white/10 rounded-lg p-4 border border-orange-500/20">
+              <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
+                <Shield className="h-4 w-4 text-orange-400" />
+                <span>Channels & Banking</span>
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Active Channels</span>
+                  <span className="text-white">{nodeStatus.channels.active} / {nodeStatus.channels.total}</span>
                 </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-amber-200">Privacy Protection</span>
-                <div className="flex items-center space-x-1 text-green-400">
-                  <Shield className="h-4 w-4" />
-                  <span>{nodeStatus.familyBanking.privacyEnabled ? 'Enabled' : 'Disabled'}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Total Liquidity</span>
+                  <span className="text-white">{formatSats(nodeStatus.channels.totalLiquidity)} sats</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Family Banking</span>
+                  <div className={`flex items-center space-x-1 ${nodeStatus.familyBanking.ready ? 'text-green-400' : 'text-amber-400'}`}>
+                    {nodeStatus.familyBanking.ready ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <Clock className="h-4 w-4" />
+                    )}
+                    <span>{nodeStatus.familyBanking.ready ? 'Ready' : 'Setting Up'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-200">Privacy Protection</span>
+                  <div className="flex items-center space-x-1 text-green-400">
+                    <Shield className="h-4 w-4" />
+                    <span>{nodeStatus.familyBanking.privacyEnabled ? 'Enabled' : 'Disabled'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
