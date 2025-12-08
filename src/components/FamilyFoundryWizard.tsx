@@ -947,12 +947,15 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
             </div>
 
             <div className="flex gap-4">
-              {/* Solo founder: Skip invitations and proceed */}
+              {/* Solo founder: Skip invitations and proceed to completion */}
               {trustedPeers.length === 0 ? (
                 <button
                   onClick={() => {
                     setShowInviteModal(false);
-                    setCurrentStep('federation');
+                    // Federation was already created in createFederationBackend()
+                    // Skip the federation modal and go directly to complete
+                    setVerificationId(`family-federation-${Date.now()}-${crypto.randomUUID()}`);
+                    setCurrentStep('complete');
                   }}
                   className="flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                 >
