@@ -383,8 +383,8 @@ const FamilyDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           isOpen={showRecoveryModal}
           onClose={handleCloseRecoveryModal}
           userRole={federationRole}
-          userId={user?.id || 'unknown'}
-          userNpub={user?.hashed_npub || ''}
+          userId={user?.hashedUUID?.slice(0, 16) || user?.id || 'unknown'} // Use hashed UUID, never expose raw IDs
+          userNpub={''} // Never expose npub per Master Context zero-knowledge protocols
           familyId={familyId || undefined}
         />
       )}
