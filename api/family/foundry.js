@@ -14,7 +14,7 @@
  * ✅ NIP-59 Gift Wrapped messaging compliance
  */
 
-import { supabase, supabaseAdmin } from '../../netlify/functions/supabase.js';
+import { supabaseAdmin } from '../../netlify/functions/supabase.js';
 
 /**
  * MASTER CONTEXT COMPLIANCE: Browser-compatible environment variable handling
@@ -865,7 +865,8 @@ async function provisionFederationIdentity({
       updatePayload.federation_lnbits_wallet_id = walletId;
     }
 
-    const { error: updateError } = await supabase
+    // NOTE: Using supabaseAdmin (service role) to bypass RLS since API uses custom JWT auth
+    const { error: updateError } = await supabaseAdmin
       .from('family_federations')
       .update(updatePayload)
       .eq('id', federationRecord.id);
@@ -1048,7 +1049,8 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
       nfcAmountThreshold = 500000; // 500k sats for 7+ members
     }
 
-    const { data: federationData, error: federationError } = await supabase
+    // NOTE: Using supabaseAdmin (service role) to bypass RLS since API uses custom JWT auth
+    const { data: federationData, error: federationError } = await supabaseAdmin
       .from('family_federations')
       .insert({
         charter_id: charterId,
