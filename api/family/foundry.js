@@ -1060,9 +1060,8 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
 	    const federationDuid = await generateFamilyIdentifier(familyName);
 
 	    // Normalize member count for NFC/FROST configuration.
-	    // NOTE: Database CHECK constraint family_federations_nfc_mfa_threshold_check
-	    // requires nfc_mfa_threshold to be between 1 and 5 inclusive. For single-user
-	    // federations (founder only), we treat the effective participant count as 1.
+	    // For single-user federations (founder only), treat the effective participant
+	    // count as 1 so threshold logic always has a valid lower bound.
 	    const normalizedMemberCount =
 	      typeof memberCount === 'number' && memberCount > 0 ? memberCount : 1;
 
@@ -1074,7 +1073,8 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
 	      nfcAmountThreshold = 500000; // 500k sats for 7+ members
 	    }
 
-	    // Derive a safe NFC MFA steward threshold within [1, 5] to satisfy DB CHECK constraint
+	    // Derive a safe NFC MFA steward threshold within [1, 5] that respects both
+	    // the FROST signing threshold and the effective participant count.
 	    let nfcMfaThreshold = frostThreshold || 2;
 	    if (typeof nfcMfaThreshold !== 'number' || !Number.isInteger(nfcMfaThreshold)) {
 	      nfcMfaThreshold = 2;
