@@ -100,6 +100,24 @@ export async function createFamilyFoundry(
       };
     }
 
+    const safeRequestDebug = {
+      charter: {
+        familyName: request.charter.familyName,
+        foundingDate: request.charter.foundingDate,
+        valuesCount: request.charter.values?.length ?? 0,
+      },
+      rbacRoleCount: request.rbac.roles.length,
+      memberCount: request.members.length,
+      hasFederationHandle: Boolean(request.federation_handle),
+      hasFederationNpub: Boolean(request.federation_npub),
+      hasEncryptedNsec: Boolean(request.federation_nsec_encrypted),
+    };
+
+    console.log(
+      "🧪 createFamilyFoundry: sending request to /api/family/foundry",
+      safeRequestDebug
+    );
+
     const response = await fetch("/api/family/foundry", {
       method: "POST",
       headers: {
@@ -110,16 +128,60 @@ export async function createFamilyFoundry(
       body: JSON.stringify(request),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.error || `API request failed with status ${response.status}`
-      );
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+
+    console.log(
+      "🧪 createFamilyFoundry: raw response status",
+      response.status,
+      {
+        ok: response.ok,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      }
+    );
+
+    const rawText = await response.text();
+    console.log("🧪 createFamilyFoundry: raw response body", rawText);
+
+    let parsed: unknown = {};
+    if (rawText) {
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (parseError) {
+        console.error("❌ createFamilyFoundry: failed to parse JSON response", {
+          message:
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError),
+        });
+        parsed = {};
+      }
     }
 
-    const data: CreateFamilyFoundryResponse = await response.json();
+    if (!response.ok) {
+      const errorData = parsed as { error?: string } | undefined;
+      const message =
+        (errorData && errorData.error) ||
+        `API request failed with status ${response.status}`;
+
+      console.error("❌ createFamilyFoundry: non-OK response from API", {
+        status: response.status,
+        body: errorData,
+      });
+
+      throw new Error(message);
+    }
+
+    const data = parsed as CreateFamilyFoundryResponse;
+    console.log("🧪 createFamilyFoundry: parsed response", data);
     return data;
   } catch (error) {
+    console.error("❌ createFamilyFoundry: caught error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",

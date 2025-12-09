@@ -340,10 +340,20 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
         ...identityPayload,
       };
 
+      console.log("🧪 FamilyFoundryWizard:createFederationBackend - request payload", {
+        charter: request.charter,
+        rbacRoleCount: request.rbac.roles.length,
+        memberCount: request.members.length,
+        hasFederationHandle: Boolean(request.federation_handle),
+        hasFederationNpub: Boolean(request.federation_npub),
+        hasEncryptedNsec: Boolean(request.federation_nsec_encrypted),
+      });
+
       setFederationProgress(70);
 
       // Call backend API
       const response = await createFamilyFoundry(request);
+      console.log("🧪 FamilyFoundryWizard:createFederationBackend - API response", response);
 
       if (!response.success) {
         throw new Error(response.error || 'Failed to create federation');
@@ -359,6 +369,12 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
       const newFederationId = response.data.federationId;
       const newFederationDuid = response.data.federationDuid;
       const newCharterId = response.data.charterId;
+
+      if (!newFederationDuid) {
+        console.error("❌ FamilyFoundryWizard:createFederationBackend - federationDuid missing in response.data", {
+          responseData: response.data,
+        });
+      }
 
       setFederationId(newFederationId);
       setFederationDuid(newFederationDuid);
@@ -436,6 +452,10 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
       }, 500);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      console.error("❌ FamilyFoundryWizard:createFederationBackend - error", {
+        message: errorMessage,
+        rawError: err,
+      });
       setError(errorMessage);
       setIsCreatingFederation(false);
       setFederationProgress(0);

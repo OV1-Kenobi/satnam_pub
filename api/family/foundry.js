@@ -944,6 +944,15 @@ async function provisionFederationIdentity({
  */
 async function createFamilyCharter(charter, rbac, userId) {
   try {
+    // CRITICAL: Verify supabaseAdmin is available (requires SUPABASE_SERVICE_ROLE_KEY env var)
+    if (!supabaseAdmin) {
+      console.error('❌ supabaseAdmin is null - SUPABASE_SERVICE_ROLE_KEY not configured in environment');
+      return {
+        success: false,
+        error: 'Server configuration error: Service role client not available. Contact administrator.'
+      };
+    }
+
     // SCHEMA COMPLIANCE (Updated 2025-12-07): family_charters table has:
     // - id: TEXT PRIMARY KEY (privacy-preserving 16-char hex from generateFamilyIdentifier)
     // - family_name: VARCHAR(255) NOT NULL
@@ -1038,6 +1047,15 @@ async function createFamilyCharter(charter, rbac, userId) {
  */
 async function createFamilyFederation(charterId, familyName, userId, frostThreshold, memberCount) {
   try {
+    // CRITICAL: Verify supabaseAdmin is available (requires SUPABASE_SERVICE_ROLE_KEY env var)
+    if (!supabaseAdmin) {
+      console.error('❌ supabaseAdmin is null - SUPABASE_SERVICE_ROLE_KEY not configured in environment');
+      return {
+        success: false,
+        error: 'Server configuration error: Service role client not available. Contact administrator.'
+      };
+    }
+
     // Generate federation DUID (privacy-first identifier)
     const federationDuid = await generateFamilyIdentifier(familyName);
 
@@ -1048,6 +1066,8 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
     } else if (memberCount >= 7) {
       nfcAmountThreshold = 500000; // 500k sats for 7+ members
     }
+
+    console.log('📝 Creating federation record:', { charterId, familyName, userId, frostThreshold, memberCount });
 
     // NOTE: Using supabaseAdmin (service role) to bypass RLS since API uses custom JWT auth
     const { data: federationData, error: federationError } = await supabaseAdmin
@@ -1070,14 +1090,24 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
       .single();
 
     if (federationError) {
-      console.error('Federation creation failed:', federationError);
-      return { success: false, error: 'Failed to create family federation' };
+      console.error('Federation creation failed:', {
+        code: federationError.code,
+        message: federationError.message,
+        details: federationError.details,
+        hint: federationError.hint
+      });
+      return {
+        success: false,
+        error: `Failed to create family federation: ${federationError.message || federationError.code || 'Unknown database error'}`
+      };
     }
+
+	    console.log('✅ Federation created successfully - raw row:', federationData);
 
     return { success: true, data: federationData };
   } catch (error) {
-    console.error('Federation creation error:', error);
-    return { success: false, error: 'Database operation failed' };
+    console.error('Federation creation error:', error instanceof Error ? error.message : error);
+    return { success: false, error: `Database operation failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
   }
 }
 
@@ -1286,13 +1316,29 @@ export default async function handler(event, context) {
 	      participantCount
 	    );
 
+	    // CRITICAL: Federation creation must succeed before continuing
+	    // If federation record fails to be created, return error to frontend
+	    if (!federationResult.success) {
+	      console.error('Federation creation failed:', federationResult.error);
+	      return {
+	        statusCode: 500,
+	        headers: corsHeaders,
+	        body: JSON.stringify({
+	          success: false,
+	          error: federationResult.error || 'Failed to create federation record',
+	          meta: {
+	            timestamp: new Date().toISOString(),
+	            charterCreated: true,
+	            federationCreated: false
+	          }
+	        })
+	      };
+	    }
+
 	    // Best-effort federation identity provisioning using Noble V2 + LNbits
 	    /** @type {{ success: boolean, error?: string } | null} */
 	    let federationIdentityResult = null;
-	    if (!federationResult.success) {
-	      // Log error but don't fail the entire operation
-	      console.error('Federation creation failed:', federationResult.error);
-	    } else {
+	    {
 	      const hasAnyIdentityInput =
 	        Boolean(federation_npub) ||
 	        Boolean(federation_nsec_encrypted) ||
@@ -1328,19 +1374,20 @@ export default async function handler(event, context) {
 	      }
 	    }
 
+    // At this point federationResult.success is guaranteed true (early return above if false)
     const responseData = {
       success: true,
       message: "Family foundry created successfully",
       data: {
         charterId: charterResult.data.id,
-        federationId: federationResult.success ? federationResult.data.id : null,
-	        federationDuid: federationResult.success ? federationResult.data.federation_duid : null,
+        federationId: federationResult.data.id,
+        federationDuid: federationResult.data.federation_duid,
         familyName: validatedCharter.familyName,
         foundingDate: validatedCharter.foundingDate,
         status: 'active',
         frostThreshold: frostThreshold,
-        nfcMfaPolicy: federationResult.success ? federationResult.data.nfc_mfa_policy : 'required_for_high_value',
-	        nfcMfaAmountThreshold: federationResult.success ? federationResult.data.nfc_mfa_amount_threshold : 100000
+        nfcMfaPolicy: federationResult.data.nfc_mfa_policy || 'required_for_high_value',
+        nfcMfaAmountThreshold: federationResult.data.nfc_mfa_amount_threshold || 100000
       },
       meta: {
         timestamp: new Date().toISOString(),
