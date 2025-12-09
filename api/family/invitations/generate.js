@@ -12,7 +12,7 @@
  * ✅ 7-day default expiration per approved architectural decisions
  */
 
-import { supabase } from '../../../netlify/functions/supabase.js';
+import { supabaseAdmin } from '../../../netlify/functions/supabase.js';
 
 /**
  * Generate URL-safe invitation token
@@ -188,7 +188,7 @@ export default async function handler(event, context) {
     }
 
     // Verify federation exists and user is the founder
-    const { data: federation, error: fedError } = await supabase
+    const { data: federation, error: fedError } = await supabaseAdmin
       .from('family_federations')
       .select('id, federation_duid, federation_name, founder_user_duid')
       .eq('federation_duid', federation_duid)
@@ -230,7 +230,7 @@ export default async function handler(event, context) {
       encryptedInviteeNpub = await encryptInviteeNpub(invitee_npub);
     }
 
-    const { data: invitation, error: insertError } = await supabase
+    const { data: invitation, error: insertError } = await supabaseAdmin
       .from('family_federation_invitations')
       .insert({
         federation_id: federation.id,

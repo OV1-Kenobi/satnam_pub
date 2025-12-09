@@ -275,6 +275,13 @@
   status = 200
   force = true
 
+# Family Federation invitation generation endpoint
+[[redirects]]
+  from = "/api/family/invitations/generate"
+  to = "/.netlify/functions/family-invitations-generate"
+  status = 200
+  force = true
+
 # CRITICAL: Exclude browser-side ESM client modules from API proxy
 # These are client-side JavaScript files, NOT Netlify Functions
 [[redirects]]
