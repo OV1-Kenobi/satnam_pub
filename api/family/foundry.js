@@ -1056,36 +1056,62 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
       };
     }
 
-    // Generate federation DUID (privacy-first identifier)
-    const federationDuid = await generateFamilyIdentifier(familyName);
+	    // Generate federation DUID (privacy-first identifier)
+	    const federationDuid = await generateFamilyIdentifier(familyName);
 
-    // Calculate NFC MFA amount threshold based on member count
-    let nfcAmountThreshold = 100000; // Default: 100k sats
-    if (memberCount >= 4 && memberCount <= 6) {
-      nfcAmountThreshold = 250000; // 250k sats for 4-6 members
-    } else if (memberCount >= 7) {
-      nfcAmountThreshold = 500000; // 500k sats for 7+ members
-    }
+	    // Normalize member count for NFC/FROST configuration.
+	    // NOTE: Database CHECK constraint family_federations_nfc_mfa_threshold_check
+	    // requires nfc_mfa_threshold to be between 1 and 5 inclusive. For single-user
+	    // federations (founder only), we treat the effective participant count as 1.
+	    const normalizedMemberCount =
+	      typeof memberCount === 'number' && memberCount > 0 ? memberCount : 1;
 
-    console.log('📝 Creating federation record:', { charterId, familyName, userId, frostThreshold, memberCount });
+	    // Calculate NFC MFA amount threshold based on normalized member count
+	    let nfcAmountThreshold = 100000; // Default: 100k sats
+	    if (normalizedMemberCount >= 4 && normalizedMemberCount <= 6) {
+	      nfcAmountThreshold = 250000; // 250k sats for 4-6 members
+	    } else if (normalizedMemberCount >= 7) {
+	      nfcAmountThreshold = 500000; // 500k sats for 7+ members
+	    }
 
-    // NOTE: Using supabaseAdmin (service role) to bypass RLS since API uses custom JWT auth
-    const { data: federationData, error: federationError } = await supabaseAdmin
-      .from('family_federations')
-      .insert({
-        charter_id: charterId,
-        federation_name: familyName,
-        federation_duid: federationDuid,
-        status: 'active',
-        progress: 100,
-        created_by: userId,
-        frost_threshold: frostThreshold || 2,
-        nfc_mfa_policy: 'required_for_high_value',
-        nfc_mfa_amount_threshold: nfcAmountThreshold,
-        nfc_mfa_threshold: Math.min(frostThreshold || 2, memberCount),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+	    // Derive a safe NFC MFA steward threshold within [1, 5] to satisfy DB CHECK constraint
+	    let nfcMfaThreshold = frostThreshold || 2;
+	    if (typeof nfcMfaThreshold !== 'number' || !Number.isInteger(nfcMfaThreshold)) {
+	      nfcMfaThreshold = 2;
+	    }
+	    // Align with participant count and clamp to [1, 5]
+	    nfcMfaThreshold = Math.min(nfcMfaThreshold, normalizedMemberCount);
+	    if (nfcMfaThreshold < 1) nfcMfaThreshold = 1;
+	    if (nfcMfaThreshold > 5) nfcMfaThreshold = 5;
+
+	    console.log('📝 Creating federation record:', {
+	      charterId,
+	      familyName,
+	      userId,
+	      frostThreshold,
+	      memberCount,
+	      normalizedMemberCount,
+	      nfcAmountThreshold,
+	      nfcMfaThreshold,
+	    });
+
+	    // NOTE: Using supabaseAdmin (service role) to bypass RLS since API uses custom JWT auth
+	    const { data: federationData, error: federationError } = await supabaseAdmin
+	      .from('family_federations')
+	      .insert({
+	        charter_id: charterId,
+	        federation_name: familyName,
+	        federation_duid: federationDuid,
+	        status: 'active',
+	        progress: 100,
+	        created_by: userId,
+	        frost_threshold: frostThreshold || 2,
+	        nfc_mfa_policy: 'required_for_high_value',
+	        nfc_mfa_amount_threshold: nfcAmountThreshold,
+	        nfc_mfa_threshold: nfcMfaThreshold,
+	        created_at: new Date().toISOString(),
+	        updated_at: new Date().toISOString()
+	      })
       .select()
       .single();
 
