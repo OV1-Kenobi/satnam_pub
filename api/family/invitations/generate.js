@@ -190,7 +190,7 @@ export default async function handler(event, context) {
     // Verify federation exists and user is the founder
     const { data: federation, error: fedError } = await supabaseAdmin
       .from('family_federations')
-      .select('id, federation_duid, federation_name, founder_user_duid')
+      .select('id, federation_duid, federation_name, created_by')
       .eq('federation_duid', federation_duid)
       .single();
 
@@ -202,7 +202,7 @@ export default async function handler(event, context) {
       };
     }
 
-    if (federation.founder_user_duid !== userId) {
+    if (federation.created_by !== userId) {
       return {
         statusCode: 403,
         headers: corsHeaders,

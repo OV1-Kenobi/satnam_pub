@@ -1110,16 +1110,35 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
       .single();
 
     if (federationError) {
-      console.error('Federation creation failed:', {
-        code: federationError.code,
-        message: federationError.message,
-        details: federationError.details,
-        hint: federationError.hint
-      });
-      return {
-        success: false,
-        error: `Failed to create family federation: ${federationError.message || federationError.code || 'Unknown database error'}`
-      };
+		      const code = federationError.code || '';
+		      const message = federationError.message || '';
+		      const details = federationError.details || '';
+		      console.error('Federation creation failed:', {
+		        code,
+		        message,
+		        details,
+		        hint: federationError.hint
+		      });
+		      // Map duplicate federation_name constraint to a conflict error that the HTTP
+		      // handler can surface as 409 for better UX.
+		      if (
+		        code === '23505' &&
+		        (
+		          message.includes('family_federations_name_unique') ||
+		          details.includes('family_federations_name_unique') ||
+		          details.includes('federation_name')
+		        )
+		      ) {
+		        return {
+		          success: false,
+		          error: 'A federation with this name already exists. Please choose a different name.',
+		          code: 'DUPLICATE_FEDERATION_NAME'
+		        };
+		      }
+		      return {
+		        success: false,
+		        error: `Failed to create family federation: ${message || code || 'Unknown database error'}`
+		      };
     }
 
 	    console.log('✅ Federation created successfully - raw row:', federationData);
@@ -1339,20 +1358,25 @@ export default async function handler(event, context) {
 	    // CRITICAL: Federation creation must succeed before continuing
 	    // If federation record fails to be created, return error to frontend
 	    if (!federationResult.success) {
-	      console.error('Federation creation failed:', federationResult.error);
-	      return {
-	        statusCode: 500,
-	        headers: corsHeaders,
-	        body: JSON.stringify({
-	          success: false,
-	          error: federationResult.error || 'Failed to create federation record',
-	          meta: {
-	            timestamp: new Date().toISOString(),
-	            charterCreated: true,
-	            federationCreated: false
-	          }
-	        })
-	      };
+		      console.error('Federation creation failed:', federationResult.error);
+		      const isNameConflict = federationResult.code === 'DUPLICATE_FEDERATION_NAME';
+		      return {
+		        statusCode: isNameConflict ? 409 : 500,
+		        headers: corsHeaders,
+		        body: JSON.stringify({
+		          success: false,
+		          error:
+		            federationResult.error ||
+		            (isNameConflict
+		              ? 'A federation with this name already exists. Please choose a different name.'
+		              : 'Failed to create federation record'),
+		          meta: {
+		            timestamp: new Date().toISOString(),
+		            charterCreated: true,
+		            federationCreated: false
+		          }
+		        })
+		      };
 	    }
 
 	    // Best-effort federation identity provisioning using Noble V2 + LNbits
