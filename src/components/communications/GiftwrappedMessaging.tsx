@@ -1642,7 +1642,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    if (!isLoading && newMessage.trim() && recipient) {
+                    if (!isLoading && (newMessage.trim() || attachments.length > 0) && recipient) {
                       void sendGiftwrappedMessage();
                     }
                   }
@@ -1651,20 +1651,19 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 rows={3}
               />
 
-              {/* Blossom Attachment Picker */}
-              {clientConfig.flags.blossomUploadEnabled && (
-                <AttachmentPicker
-                  attachments={attachments}
-                  onAttachmentsChange={setAttachments}
-                  maxAttachments={5}
-                  disabled={isLoading}
-                  compact={true}
-                />
-              )}
-
               <div className="flex items-center justify-between">
                 {/* Media buttons */}
                 <div className="flex items-center space-x-2">
+                  {/* Paperclip - File Attachment */}
+                  {clientConfig.flags.blossomUploadEnabled && (
+                    <AttachmentPicker
+                      attachments={attachments}
+                      onAttachmentsChange={setAttachments}
+                      maxAttachments={5}
+                      disabled={isLoading}
+                      compact={true}
+                    />
+                  )}
                   {/* Microphone */}
                   <button
                     onClick={() => showToast.info('Voice recording UI coming next', { title: 'Voice Note' })}
@@ -1707,12 +1706,44 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
                 <button
                   onClick={sendGiftwrappedMessage}
-                  disabled={!newMessage.trim() || !recipient || isLoading}
+                  disabled={(!newMessage.trim() && attachments.length === 0) || !recipient || isLoading}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
                 >
                   {isLoading ? 'Sending...' : 'Send'}
                 </button>
               </div>
+
+              {/* Attachment Preview List */}
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-purple-200">
+                  {attachments.map((attachment, index) => (
+                    <div
+                      key={`${attachment.sha256}-${index}`}
+                      className="flex items-center gap-2 px-2 py-1 bg-purple-100 rounded-lg text-sm"
+                    >
+                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                      <span className="max-w-[120px] truncate text-purple-900">
+                        {attachment.fileName}
+                      </span>
+                      <span className="text-xs text-purple-600">
+                        {(attachment.size / 1024).toFixed(1)}KB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== index))}
+                        className="p-0.5 hover:bg-purple-200 rounded"
+                        title="Remove attachment"
+                      >
+                        <svg className="w-3 h-3 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             {showProtocolHelp && (
               <div className="mt-2 p-3 border border-purple-200 rounded-lg bg-purple-50/60 text-[12px] text-purple-900 space-y-2">
