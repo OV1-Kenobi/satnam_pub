@@ -38,10 +38,24 @@ export interface MessageData {
   messageType: string;
   encryptionLevel: string;
   communicationType: string;
+  /** Optional extra tags to include in the inner event (e.g., imeta, fallback) */
+  extraTags?: string[][];
 }
 
-import type { MessageSendResult } from "./types";
-export type { MessageSendResult } from "./types";
+import type {
+  MessageSendResult,
+  MessageDataWithAttachments,
+  NIP17MessageContent,
+  AttachmentDescriptor,
+} from "./types";
+export type {
+  MessageSendResult,
+  MessageDataWithAttachments,
+  NIP17MessageContent,
+} from "./types";
+
+// Import Blossom utilities for attachment tags
+import { buildImetaTag, buildFallbackTag } from "../api/blossom-client";
 
 export class ClientMessageService {
   private baseUrl: string;
@@ -241,15 +255,21 @@ export class ClientMessageService {
           // Fallback to NIP-59 construction path
           console.log("🔐 ClientMessageService: Falling back to NIP-59 flow");
           try {
+            // Build base tags
+            const baseTags: string[][] = [
+              ["p", recipientHex],
+              ["message-type", messageData.messageType],
+              ["encryption-level", messageData.encryptionLevel],
+              ["communication-type", messageData.communicationType],
+            ];
+            // Append any extra tags (e.g., imeta, fallback for attachments)
+            const allTags = messageData.extraTags
+              ? [...baseTags, ...messageData.extraTags]
+              : baseTags;
             const innerEvent: any = {
               kind: 14,
               content: messageData.content,
-              tags: [
-                ["p", recipientHex],
-                ["message-type", messageData.messageType],
-                ["encryption-level", messageData.encryptionLevel],
-                ["communication-type", messageData.communicationType],
-              ],
+              tags: allTags,
               created_at: Math.floor(Date.now() / 1000),
             };
             const innerSign = await hybridMessageSigning.signMessage(
@@ -342,15 +362,21 @@ export class ClientMessageService {
 
     console.log("🔐 ClientMessageService: Using NIP-59 flow");
     // Create the inner event (the actual message)
+    // Build base tags
+    const baseTagsNip59: string[][] = [
+      ["p", recipientHex],
+      ["message-type", messageData.messageType],
+      ["encryption-level", messageData.encryptionLevel],
+      ["communication-type", messageData.communicationType],
+    ];
+    // Append any extra tags (e.g., imeta, fallback for attachments)
+    const allTagsNip59 = messageData.extraTags
+      ? [...baseTagsNip59, ...messageData.extraTags]
+      : baseTagsNip59;
     const innerEvent: any = {
       kind: 14, // Direct message kind
       content: messageData.content,
-      tags: [
-        ["p", recipientHex],
-        ["message-type", messageData.messageType],
-        ["encryption-level", messageData.encryptionLevel],
-        ["communication-type", messageData.communicationType],
-      ],
+      tags: allTagsNip59,
       created_at: Math.floor(Date.now() / 1000),
     };
 
@@ -715,6 +741,108 @@ export class ClientMessageService {
       const msg = err instanceof Error ? err.message : String(err);
       handlers.onError?.(msg);
       return null;
+    }
+  }
+
+  /**
+   * Send a gift-wrapped message with attachments (NIP-17 compliant).
+   *
+   * This method:
+   * 1. Builds NIP-17 compliant content JSON with text and attachments
+   * 2. Adds imeta tags for cross-client compatibility
+   * 3. Adds fallback tag for non-Blossom clients
+   * 4. Wraps in NIP-59 gift-wrapped envelope
+   *
+   * @param messageData - Message data with optional attachments
+   * @returns Promise<MessageSendResult>
+   */
+  async sendGiftWrappedMessageWithAttachments(
+    messageData: MessageDataWithAttachments
+  ): Promise<MessageSendResult> {
+    // Build NIP-17 compliant content structure
+    const nip17Content: NIP17MessageContent = {
+      text: messageData.content,
+    };
+
+    if (messageData.attachments && messageData.attachments.length > 0) {
+      nip17Content.attachments = messageData.attachments;
+    }
+
+    // Convert to JSON for the inner event content
+    const contentJson = JSON.stringify(nip17Content);
+
+    // Build tags for cross-client compatibility
+    const extraTags: string[][] = [];
+
+    if (messageData.attachments) {
+      for (const attachment of messageData.attachments) {
+        // Add imeta tag for each attachment (NIP-92/NIP-94 format)
+        extraTags.push(buildImetaTag(attachment));
+        // Add fallback tag for non-Blossom clients
+        extraTags.push(buildFallbackTag(attachment));
+      }
+    }
+
+    // Create base MessageData with JSON content and extra tags for cross-client compatibility
+    const baseMessageData: MessageData = {
+      recipient: messageData.recipient,
+      content: contentJson,
+      messageType: messageData.messageType,
+      encryptionLevel: messageData.encryptionLevel,
+      communicationType: messageData.communicationType,
+      extraTags: extraTags.length > 0 ? extraTags : undefined,
+    };
+
+    // Use the existing sendGiftWrappedMessage with JSON content and extra tags
+    return this.sendGiftWrappedMessage(baseMessageData);
+  }
+
+  /**
+   * Parse NIP-17 message content from a received inner event.
+   *
+   * Handles both:
+   * 1. New format: JSON with { text, attachments }
+   * 2. Legacy format: Plain text string
+   *
+   * @param content - Decrypted content string from inner event
+   * @returns Parsed NIP-17 content or null if parsing fails
+   */
+  parseNIP17Content(content: string): NIP17MessageContent | null {
+    try {
+      // Try to parse as JSON first
+      const parsed = JSON.parse(content);
+
+      // Validate structure
+      if (typeof parsed === "object" && parsed !== null) {
+        // Check if it's the new NIP-17 format
+        if ("text" in parsed || "attachments" in parsed) {
+          // Validate text field
+          const text = typeof parsed.text === "string" ? parsed.text : "";
+
+          // Validate attachments field
+          let attachments = undefined;
+          if (parsed.attachments !== undefined) {
+            if (Array.isArray(parsed.attachments)) {
+              attachments = parsed.attachments;
+            } else {
+              console.warn(
+                "Invalid attachments field (not an array), ignoring"
+              );
+            }
+          }
+
+          return {
+            text,
+            attachments,
+          };
+        }
+      }
+
+      // If it's not our format, treat whole content as text
+      return { text: content };
+    } catch {
+      // Not JSON, treat as plain text (legacy format)
+      return { text: content };
     }
   }
 }

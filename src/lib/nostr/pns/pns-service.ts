@@ -17,6 +17,7 @@ import type { Event as NostrEvent } from "nostr-tools";
 import type {
   PnsSecurityMode,
   PnsNoteMetadata,
+  PnsAttachment,
   NoisePnsEnvelope,
   NoiseSecurityTier,
 } from "../../noise/types";
@@ -34,6 +35,11 @@ import {
   getPnsSecurityMode,
   type PnsPublishResult,
 } from "./pns-events";
+import {
+  BlossomClient,
+  createAttachmentDescriptor,
+  getMediaTypeFromMime,
+} from "../../api/blossom-client";
 
 // =============================================================================
 // Constants
@@ -812,5 +818,123 @@ export class PnsService {
       VAULT_DELETION_LOG_KEY,
       JSON.stringify(entries)
     );
+  }
+
+  // ===========================================================================
+  // Attachment Methods (Phase 2b - Blossom Integration)
+  // ===========================================================================
+
+  /**
+   * Upload and encrypt a file for use as a PNS note attachment.
+   *
+   * The file is encrypted with AES-256-GCM before upload to Blossom.
+   * The returned PnsAttachment contains the URL and encryption keys,
+   * which should be stored in the note's metadata.attachments array.
+   *
+   * @param file - File to encrypt and upload
+   * @param alt - Optional alt text for accessibility
+   * @returns PnsAttachment ready to include in note metadata, or null on failure
+   *
+   * @example
+   * ```typescript
+   * const attachment = await pnsService.uploadNoteAttachment(file);
+   * if (attachment) {
+   *   const metadata: PnsNoteMetadata = {
+   *     createdAt: Date.now(),
+   *     attachments: [attachment],
+   *   };
+   *   await pnsService.saveNote("My note with attachment", metadata);
+   * }
+   * ```
+   */
+  async uploadNoteAttachment(
+    file: File,
+    alt?: string
+  ): Promise<PnsAttachment | null> {
+    this.ensureInitialized();
+
+    const blossomClient = BlossomClient.getInstance();
+
+    const result = await blossomClient.uploadEncryptedMedia(file);
+
+    if (
+      !result.success ||
+      !result.url ||
+      !result.encryptionKey ||
+      !result.encryptionIv ||
+      !result.sha256
+    ) {
+      console.error("Failed to upload PNS attachment:", result.error);
+      return null;
+    }
+
+    return {
+      url: result.url,
+      fileName: file.name,
+      mimeType: result.mimeType || file.type || "application/octet-stream",
+      mediaType: getMediaTypeFromMime(file.type),
+      size: result.size || 0,
+      sha256: result.sha256,
+      enc: {
+        algo: "AES-GCM",
+        key: result.encryptionKey,
+        iv: result.encryptionIv,
+      },
+      alt,
+    };
+  }
+
+  /**
+   * Download and decrypt a PNS note attachment.
+   *
+   * @param attachment - Attachment metadata from note
+   * @returns Decrypted file as Blob with correct MIME type
+   * @throws Error if download or decryption fails
+   *
+   * @example
+   * ```typescript
+   * const note = await pnsService.getNote(noteId);
+   * if (note?.metadata.attachments?.[0]) {
+   *   const blob = await pnsService.downloadNoteAttachment(note.metadata.attachments[0]);
+   *   const url = URL.createObjectURL(blob);
+   *   // Use url for display or download
+   * }
+   * ```
+   */
+  async downloadNoteAttachment(attachment: PnsAttachment): Promise<Blob> {
+    this.ensureInitialized();
+
+    const blossomClient = BlossomClient.getInstance();
+
+    const decryptedBlob = await blossomClient.downloadAndDecrypt(
+      attachment.url,
+      attachment.enc.key,
+      attachment.enc.iv,
+      attachment.sha256
+    );
+
+    // Return blob with correct MIME type
+    return new Blob([decryptedBlob], { type: attachment.mimeType });
+  }
+
+  /**
+   * Upload multiple files as attachments for a PNS note.
+   *
+   * @param files - Array of files to upload
+   * @returns Array of successfully uploaded attachments
+   */
+  async uploadNoteAttachments(files: File[]): Promise<PnsAttachment[]> {
+    this.ensureInitialized();
+
+    const attachments: PnsAttachment[] = [];
+
+    for (const file of files) {
+      const attachment = await this.uploadNoteAttachment(file);
+      if (attachment) {
+        attachments.push(attachment);
+      }
+    }
+
+    return attachments;
   }
 }

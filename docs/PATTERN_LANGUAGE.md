@@ -2,12 +2,13 @@
 
 **Client-Friendly Reference for Self-Sovereign Identity Systems**
 
-**Version:** 3.0
-**Date:** 2025-12-01
+**Version:** 3.1
+**Date:** 2025-12-10
 **Audience:** Non-technical clients, peer developers, V4V service providers
 
 **Latest Updates**:
 
+- ✅ **Blossom File Sharing** (encrypted attachments in Bitchat & PNS messaging, 20/20 tests) - **NEW**
 - ✅ NFC Physical MFA for FROST Multiparty Signing (Phases 1-5 complete, 100/100 tests)
 - ✅ PKARR Attestation System (168 tests, production ready)
 - ✅ Noise Protocol Implementation (forward-secure messaging, 5 security tiers)
@@ -478,12 +479,24 @@ flushAlerts();
 - **Use case:** Family coordination, team communication
 - **Feature flag:** `VITE_GROUP_MESSAGING_ENABLED=true`
 
-#### **Multimedia Messaging** (Optional)
+#### **Blossom File Sharing** (Optional) ✅ **PRODUCTION READY**
 
-- **What:** Send files, voice notes, short videos
-- **Example:** Attach a photo to a DM
-- **Use case:** Rich communication, not just text
+- **What:** End-to-end encrypted file attachments in NIP-17/NIP-59 gift-wrapped messages
+- **How it works:**
+  - Files encrypted client-side with AES-256-GCM before upload to Blossom servers
+  - Encryption keys transmitted inside encrypted message content (never exposed)
+  - BUD-01/BUD-02 compliant authorization events with 5-minute expiration
+  - Cross-client compatibility via `imeta` and `fallback` tags for Bitchat interoperability
+- **Supported media:** Files, images, audio, video (up to 100MB)
+- **Privacy guarantees:**
+  - Blossom server sees only encrypted ciphertext
+  - Decryption keys stored inside NIP-44 encrypted message content
+  - No database migration needed - attachments in encrypted message payload
+- **Example:** Attach a photo to a DM → encrypted → uploaded → recipient decrypts
+- **Use case:** Rich communication, document sharing, voice notes, video messages
 - **Feature flag:** `VITE_BLOSSOM_UPLOAD_ENABLED=true`
+- **Status**: ✅ Production ready with 20/20 tests passing
+- **Documentation**: [Blossom Integration](../docs/implementation/blossom-integration.md)
 
 #### **Noise Protocol Messaging** (Optional)
 
@@ -801,7 +814,7 @@ External Services:
 | FROST Signing              | `VITE_FROST_SIGNING_ENABLED`          | false   | Families, multi-sig                       | ✅          |
 | Family Federation          | `VITE_FAMILY_FEDERATION_ENABLED`      | true    | Families                                  | ✅          |
 | NIP-85 Trust               | `VITE_NIP85_TRUST_PROVIDER_ENABLED`   | false   | Communities                               | ✅          |
-| Blossom Upload             | `VITE_BLOSSOM_UPLOAD_ENABLED`         | false   | Media sharing                             | ✅          |
+| **Blossom File Sharing**   | **`VITE_BLOSSOM_UPLOAD_ENABLED`**     | true    | **Encrypted file attachments in DMs**     | **✅ PROD** |
 
 ---
 
@@ -813,7 +826,7 @@ External Services:
 
 - **Identity:** NIP-05 Identity (`alice@family.com`), Multi-Layered Verification (Kind:0 + SimpleProof + PKARR + NFC Name Tags)
 - **Authentication:** NFC Physical MFA (tap Name Tag to sign in)
-- **Messaging:** NIP-17 Private DMs
+- **Messaging:** NIP-17 Private DMs, **Blossom File Sharing** (encrypted photos, voice notes, documents)
 - **Payments:** LNbits Integration (family wallet), Boltcard NFC (kids' allowance cards with spending limits)
 - **Governance:** FROST Signing (2-of-3 parents), Guardian Approval (allowances), Role Hierarchy (parents = guardians, kids = offspring)
 - **Privacy:** LN Proxy Node (obscure kids' payment patterns, enforce spending rules)

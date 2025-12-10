@@ -60,5 +60,21 @@ export default defineConfig({
     "process.env.TEST_CHILD_MEMBER_ID": JSON.stringify(
       process.env.TEST_CHILD_MEMBER_ID
     ),
+
+    // Required VITE environment variables for tests
+    // Use boolean conversion to avoid double-stringification issues
+    "process.env.VITE_LNBITS_INTEGRATION_ENABLED": JSON.stringify(
+      process.env.VITE_LNBITS_INTEGRATION_ENABLED === "true"
+    ),
+    "process.env.VITE_LNBITS_BASE_URL": JSON.stringify(
+      process.env.VITE_LNBITS_BASE_URL || "https://legend.lnbits.com"
+    ),
+    // Default true for Blossom, only false if explicitly set to "false"
+    "process.env.VITE_BLOSSOM_UPLOAD_ENABLED": JSON.stringify(
+      process.env.VITE_BLOSSOM_UPLOAD_ENABLED !== "false"
+    ),
+    "process.env.VITE_BLOSSOM_PRIMARY_URL": JSON.stringify(
+      process.env.VITE_BLOSSOM_PRIMARY_URL || "https://blossom.nostr.build"
+    ),
   },
 });

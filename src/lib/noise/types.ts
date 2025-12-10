@@ -640,6 +640,45 @@ export type PnsPredefinedTag = (typeof PNS_PREDEFINED_TAGS)[number];
  * NOTE: All timestamps are in milliseconds since epoch (Date.now() format).
  * This differs from Nostr event timestamps which use Unix seconds.
  */
+/**
+ * Encryption parameters for a PNS attachment.
+ * Matches the DM attachment encryption format for consistency.
+ */
+export interface PnsAttachmentEncryption {
+  /** Encryption algorithm (always AES-GCM) */
+  algo: "AES-GCM";
+  /** Base64-encoded 256-bit AES key */
+  key: string;
+  /** Base64-encoded 96-bit IV */
+  iv: string;
+}
+
+/**
+ * Blossom-encrypted attachment for PNS notes.
+ *
+ * Attachments are encrypted client-side with AES-256-GCM before upload.
+ * The encryption keys are stored inside the PNS envelope (encrypted),
+ * never exposed in relay logs or event tags.
+ */
+export interface PnsAttachment {
+  /** Blossom URL to the encrypted blob */
+  url: string;
+  /** Original filename */
+  fileName: string;
+  /** MIME type of the original file */
+  mimeType: string;
+  /** Media type category for UI rendering */
+  mediaType: "file" | "image" | "audio" | "video";
+  /** File size in bytes (ciphertext size) */
+  size: number;
+  /** SHA-256 hash of the ciphertext (hex) for integrity verification */
+  sha256: string;
+  /** Encryption parameters for decryption */
+  enc: PnsAttachmentEncryption;
+  /** Optional alt text for accessibility */
+  alt?: string;
+}
+
 export interface PnsNoteMetadata {
   /** Unique identifier for this note (used in 'd' tag for replaceable events) */
   noteId?: string;
@@ -665,6 +704,12 @@ export interface PnsNoteMetadata {
   ephemeralPolicy?: EphemeralPolicy;
   /** Content type hint (e.g., "text/plain", "text/markdown", "application/json") */
   contentType?: string;
+  /**
+   * Optional Blossom-encrypted attachments.
+   * Attachment metadata (including encryption keys) is stored inside the
+   * encrypted PNS envelope, ensuring zero-knowledge privacy.
+   */
+  attachments?: PnsAttachment[];
 }
 
 /**

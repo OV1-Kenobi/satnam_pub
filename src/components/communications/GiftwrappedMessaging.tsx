@@ -25,6 +25,12 @@ import { clientConfig } from '../../config/env.client';
 import { GeoRoomTab } from './GeoRoomTab';
 import { Note2SelfModal } from './Note2SelfModal';
 
+// Blossom attachment components
+import { AttachmentPicker } from '../messaging/AttachmentPicker';
+import { AttachmentRenderer } from '../messaging/AttachmentRenderer';
+import type { AttachmentDescriptor } from '../../lib/api/blossom-client';
+import { ClientMessageService } from '../../lib/messaging/client-message-service';
+
 
 
 
@@ -100,6 +106,9 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const [recipient, setRecipient] = useState('');
   const [isGroupMessage, setIsGroupMessage] = useState(false);
   const [useStandardDm, setUseStandardDm] = useState(false);
+
+  // Blossom attachment state
+  const [attachments, setAttachments] = useState<AttachmentDescriptor[]>([]);
 
   // Groups data (real group listing)
   const [groups, setGroups] = useState<GroupData[]>([]);
@@ -1149,18 +1158,47 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                       </div>
                     ) : (m.content ? (
                       <div className="text-[12px] font-semibold text-purple-900">
-                        {String(m.content).split('\n')[0].slice(0, 80)}
+                        {(() => {
+                          // Try to parse NIP-17 content to get text only for headline
+                          const messageService = new ClientMessageService();
+                          const parsed = messageService.parseNIP17Content(String(m.content));
+                          const text = parsed?.text ?? String(m.content);
+                          return text.split('\n')[0].slice(0, 80);
+                        })()}
                       </div>
                     ) : null)}
 
                     <div className="text-[12px] text-gray-800 whitespace-pre-wrap break-words">
-                      {m.content ? m.content : m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]'}
+                      {(() => {
+                        // Parse NIP-17 content for text and attachments
+                        if (!m.content) {
+                          return m.server ? `${m.server.encryption_level === 'maximum' ? '🔒 Gift Wrapped' : m.server.encryption_level === 'enhanced' ? '🛡️ Encrypted' : '👁️ Minimal'} · ${m.server.message_type === 'group' ? 'Group' : 'Direct'} · ${m.server.status || 'sent'}` : '[no content]';
+                        }
+                        const messageService = new ClientMessageService();
+                        const parsed = messageService.parseNIP17Content(String(m.content));
+                        return parsed?.text ?? String(m.content);
+                      })()}
                       {(m as any)?.server?.protocol && (
                         <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-purple-200/70 text-purple-800 border border-purple-300">
                           {(m as any).server.protocol}
                         </span>
                       )}
                     </div>
+
+                    {/* Blossom Attachments */}
+                    {m.content && (() => {
+                      const messageService = new ClientMessageService();
+                      const parsed = messageService.parseNIP17Content(String(m.content));
+                      if (parsed?.attachments && parsed.attachments.length > 0) {
+                        return (
+                          <AttachmentRenderer
+                            attachments={parsed.attachments}
+                            compact={true}
+                          />
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 );
               })}
@@ -1177,8 +1215,6 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
       return;
     }
 
-
-
     setIsLoading(true);
     setError(null);
 
@@ -1192,6 +1228,13 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
       if (useStandardDm && !isGroupMessage) {
         // Standard NIP-04 send (better compatibility with external clients)
+        // Note: NIP-04 doesn't support attachments, warn user if they have any
+        if (attachments.length > 0) {
+          showToast.warning('Attachments are not supported with Standard DM (NIP-04). Sending text only.', {
+            title: 'Attachments Skipped',
+            duration: 5000
+          });
+        }
         const deliveryId = await CEPS.sendStandardDirectMessage(recipient, contentToSend);
         // Persist a normalized record (protocol='nip04')
         try {
@@ -1213,8 +1256,23 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
           console.warn('Standard DM persisted with warnings:', e);
         }
         result = { success: true, messageId: deliveryId, deliveryMethod: 'nip04' };
+      } else if (attachments.length > 0) {
+        // Use ClientMessageService for messages with attachments (NIP-17 compatible)
+        console.log('📎 Sending message with', attachments.length, 'attachment(s) via ClientMessageService');
+        const messageService = new ClientMessageService();
+        result = await messageService.sendGiftWrappedMessageWithAttachments({
+          content: contentToSend,
+          recipient: recipient,
+          messageType: 'direct',
+          encryptionLevel: selectedPrivacyLevel,
+          communicationType: isGroupMessage ? 'family' : 'individual',
+          attachments: attachments,
+        });
+        if (result.success) {
+          result.deliveryMethod = 'nip17-attachments';
+        }
       } else {
-
+        // Use GiftwrappedCommunicationService for text-only messages
         const giftWrapService = new GiftwrappedCommunicationService();
         // Use sendGiftwrappedMessage which goes through hybrid signing
         result = await giftWrapService.sendGiftwrappedMessage({
@@ -1242,7 +1300,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         setNewMessage('');
         setSubject('');
         setRecipient('');
-        showToast.success(`Message sent successfully using ${result.deliveryMethod || 'hybrid signing'}`, {
+        setAttachments([]); // Clear attachments after successful send
+        showToast.success(`Message sent successfully using ${result.deliveryMethod || 'hybrid signing'}${attachments.length > 0 ? ` with ${attachments.length} attachment(s)` : ''}`, {
           title: '🔐 Secure Message Sent',
           duration: 4000
         });
@@ -1592,25 +1651,20 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                 rows={3}
               />
 
+              {/* Blossom Attachment Picker */}
+              {clientConfig.flags.blossomUploadEnabled && (
+                <AttachmentPicker
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  maxAttachments={5}
+                  disabled={isLoading}
+                  compact={true}
+                />
+              )}
+
               <div className="flex items-center justify-between">
                 {/* Media buttons */}
                 <div className="flex items-center space-x-2">
-                  {/* Paperclip */}
-                  <button
-                    onClick={() => document.getElementById('gm-file-input')?.click()}
-                    className="p-2 rounded-lg bg-purple-200/60 text-purple-900 hover:bg-purple-300/60"
-                    title="Attach file"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79V7a5 5 0 00-10 0v10a3 3 0 006 0V8" />
-                    </svg>
-                  </button>
-                  <input id="gm-file-input" type="file" multiple className="hidden" onChange={(e) => {
-                    const files = e.target.files;
-                    if (files && files.length) {
-                      showToast.info(`${files.length} file(s) selected`, { title: 'Attachments' });
-                    }
-                  }} />
                   {/* Microphone */}
                   <button
                     onClick={() => showToast.info('Voice recording UI coming next', { title: 'Voice Note' })}

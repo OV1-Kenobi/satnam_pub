@@ -5,9 +5,11 @@ This directory contains comprehensive planning documentation for integrating NIP
 ## Document Guide
 
 ### 1. **Private_Note_Storage_Planning.md** (Foundation)
+
 **Purpose**: Strategic analysis of NIP-PNS integration into Satnam.
 
 **Contents**:
+
 - NIP-PNS specification overview (key derivation, event structure, publishing/reading flows)
 - Value proposition for Satnam users
 - Alignment with existing architecture (ClientSessionVault, secureNsecManager, gift-wrapped messaging)
@@ -21,9 +23,11 @@ This directory contains comprehensive planning documentation for integrating NIP
 ---
 
 ### 2. **Noise_PNS_Integration_Plan.md** (Technical Specification)
+
 **Purpose**: Detailed technical plan for integrating Noise Protocol forward secrecy with NIP-PNS.
 
 **Contents**:
+
 - Executive summary introducing "Standard FS" and "Hardened FS" tiers
 - Security architecture and threat model
 - Key management strategy (including hardware MFA tier)
@@ -41,9 +45,11 @@ This directory contains comprehensive planning documentation for integrating NIP
 ---
 
 ### 3. **Noise_PNS_Review_and_Use_Cases.md** (Comprehensive Review)
+
 **Purpose**: Detailed review of the integration plan with use cases and controlled sharing design.
 
 **Contents**:
+
 - **Part 1**: 7 technical gaps with improvement suggestions
 - **Part 2**: Concrete use cases for 7 Satnam user personas
 - **Part 3**: Controlled sharing design exploration (3 options)
@@ -57,9 +63,11 @@ This directory contains comprehensive planning documentation for integrating NIP
 ---
 
 ### 4. **SECURITY_TIERS_COMPARISON.md** (Decision Framework)
+
 **Purpose**: Detailed comparison of Standard FS vs. Hardened FS security tiers.
 
 **Contents**:
+
 - Executive comparison table (Standard FS, Hardened FS, Standard PNS)
 - Detailed threat model analysis (4 threat scenarios)
 - Use case mapping (which tier for which data)
@@ -75,9 +83,11 @@ This directory contains comprehensive planning documentation for integrating NIP
 ---
 
 ### 5. **REVIEW_SUMMARY.md** (Executive Summary)
+
 **Purpose**: High-level summary of review findings and next steps.
 
 **Contents**:
+
 - Document ecosystem overview
 - Critical findings (7 technical gaps, use case validation, sharing design)
 - Recommended next steps (immediate, Phase 1, Phase 2+)
@@ -91,9 +101,11 @@ This directory contains comprehensive planning documentation for integrating NIP
 ---
 
 ### 6. **NIP_PNS_Decision_Brief.md** (Stakeholder Brief)
+
 **Purpose**: Concise, non-technical overview for stakeholders.
 
 **Contents**:
+
 - What is NIP-PNS and why it matters
 - Key benefits and risks
 - Next steps and timeline
@@ -109,21 +121,25 @@ This directory contains comprehensive planning documentation for integrating NIP
 ### By Role
 
 **Product Manager**:
+
 1. Start: `NIP_PNS_Decision_Brief.md`
 2. Then: `SECURITY_TIERS_COMPARISON.md` (use case mapping)
 3. Deep dive: `Noise_PNS_Review_and_Use_Cases.md` (Part 2)
 
 **Engineer / Implementation Lead**:
+
 1. Start: `Noise_PNS_Integration_Plan.md`
 2. Then: `Noise_PNS_Review_and_Use_Cases.md` (Part 1 & 4)
 3. Reference: `SECURITY_TIERS_COMPARISON.md` (threat models)
 
 **Security Architect**:
+
 1. Start: `Noise_PNS_Integration_Plan.md` (Sections 2–3)
 2. Then: `SECURITY_TIERS_COMPARISON.md` (threat analysis)
 3. Review: `Noise_PNS_Review_and_Use_Cases.md` (Part 1)
 
 **Executive / Decision-Maker**:
+
 1. Start: `NIP_PNS_Decision_Brief.md`
 2. Then: `REVIEW_SUMMARY.md`
 3. Optional: `SECURITY_TIERS_COMPARISON.md` (use case mapping)
@@ -133,18 +149,21 @@ This directory contains comprehensive planning documentation for integrating NIP
 ## Key Concepts
 
 ### Standard FS (Forward Secrecy)
+
 - Noise-FS protection using only `pns_fs_root` in ClientSessionVault
 - Protects against `nsec` compromise but not device + vault + password compromise
 - Recommended for most users and day-to-day notes
 - **Phase 1 implementation**
 
 ### Hardened FS (Hardware MFA)
+
 - Noise-FS protection enhanced with NFC hardware token MFA (Boltcard/Satscard)
 - Requires all 5 factors: device, `nsec`, password, physical token, PIN
 - Recommended for high-value data (recovery credentials, financial records, medical info)
 - **Phase 2+ implementation**
 
 ### Controlled Sharing
+
 - **Option A** (Phase 1): Separate NIP-17/NIP-59 sharing feature (simple, one-time)
 - **Option B** (Phase 2+): Envelope-based access control (granular, persistent)
 - **Recommendation**: Start with Option A, implement Option B if demand warrants
@@ -153,14 +172,14 @@ This directory contains comprehensive planning documentation for integrating NIP
 
 ## Implementation Status
 
-| Phase | Component | Status | Timeline |
-|-------|-----------|--------|----------|
-| Phase 1 | Standard FS (core) | 📋 Planning | [TBD] |
-| Phase 1 | Ephemeral notes | 📋 Planning | [TBD] |
-| Phase 1 | NIP-17/NIP-59 sharing | 📋 Planning | [TBD] |
-| Phase 2+ | Hardened FS (hardware MFA) | 📋 Planning | [TBD] |
-| Phase 2+ | Envelope-based sharing | 📋 Planning | [TBD] |
-| Phase 2+ | Cross-device sync | 📋 Planning | [TBD] |
+| Phase    | Component                  | Status      | Timeline |
+| -------- | -------------------------- | ----------- | -------- |
+| Phase 1  | Standard FS (core)         | 📋 Planning | [TBD]    |
+| Phase 1  | Ephemeral notes            | 📋 Planning | [TBD]    |
+| Phase 1  | NIP-17/NIP-59 sharing      | 📋 Planning | [TBD]    |
+| Phase 2+ | Hardened FS (hardware MFA) | 📋 Planning | [TBD]    |
+| Phase 2+ | Envelope-based sharing     | 📋 Planning | [TBD]    |
+| Phase 2+ | Cross-device sync          | 📋 Planning | [TBD]    |
 
 ---
 
@@ -193,15 +212,15 @@ This directory contains comprehensive planning documentation for integrating NIP
 ## Questions & Feedback
 
 For questions or feedback on this planning:
+
 1. Review the relevant document (see Quick Navigation)
 2. Check the "Open Questions" section
 3. Raise issues or PRs with specific feedback
 
 ---
 
-**Last Updated**: [Date]
+**Last Updated**: [YYYY-MM-DD]
 
-**Owner**: [Assign planning lead]
+**Owner**: [Name/Team]
 
-**Status**: ✅ Planning complete. Ready for implementation planning and security review.
-
+**Status**: 📋 Planning in progress. [Your current status here]

@@ -93,6 +93,17 @@ Whether you're a Bitcoin beginner seeking education or an advanced user coordina
 - Metadata minimization
 - Programmable data deletion controls
 
+### 📎 **Blossom File Sharing** ✅ **NEW**
+
+- **End-to-end encrypted file attachments** in NIP-17/NIP-59 gift-wrapped messages
+- **AES-256-GCM encryption** - Files encrypted client-side before upload
+- **BUD-01/BUD-02 compliant** - Authorization events with expiration tags
+- **Cross-client compatibility** - `imeta` and `fallback` tags for Bitchat interoperability
+- **Privacy-first architecture** - Attachments stored in encrypted message content
+- **100MB file size limit** with client-side validation
+- **Multi-server failover** for upload and delete operations
+- **Supported media types**: Files, images, audio, video
+
 ### 📒 **Note2Self - Private Notes Storage** ✅ **NEW**
 
 - **Dual UI Approach**: Button above recipient input + pinned conversation tab in Communications page
@@ -969,6 +980,7 @@ copies or substantial portions of the Software.
   - [Multi-Method Verification Guide](docs/MULTI_METHOD_VERIFICATION_GUIDE.md) - **NEW**
   - [SimpleProof Timestamping](docs/PHASE1_COMPLETE_SUMMARY.md#simpleproof-timestamping) - **NEW**
   - [WebAuthn Quick Start](docs/auth/WEBAUTHN_QUICK_START.md) - **NEW**
+  - [Blossom File Sharing Integration](docs/implementation/blossom-integration.md) - **NEW**
 - **GitHub Issues**: Report bugs and request features
 - **Community**: Join our discussions on Nostr
 - **Email**: support@satnam.pub

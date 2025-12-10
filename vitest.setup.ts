@@ -20,6 +20,16 @@ beforeAll(async () => {
   process.env.DATABASE_URL =
     process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 
+  // Set required VITE environment variables for tests
+  process.env.VITE_LNBITS_INTEGRATION_ENABLED =
+    process.env.VITE_LNBITS_INTEGRATION_ENABLED || "false";
+  process.env.VITE_LNBITS_BASE_URL =
+    process.env.VITE_LNBITS_BASE_URL || "http://localhost:5000/mock-lnbits";
+  process.env.VITE_BLOSSOM_UPLOAD_ENABLED =
+    process.env.VITE_BLOSSOM_UPLOAD_ENABLED || "true";
+  process.env.VITE_BLOSSOM_PRIMARY_URL =
+    process.env.VITE_BLOSSOM_PRIMARY_URL ||
+    "http://localhost:5000/mock-blossom";
   // Provide a base origin for relative URL fetch() in JSDOM tests
   if (!(globalThis as any).location) {
     (globalThis as any).location = { origin: "http://localhost:8000" } as any;

@@ -19,6 +19,10 @@ export { PeerInvitationModal } from "./communications/PeerInvitationModal";
 export { default as PrivateCommunicationModal } from "./communications/PrivateCommunicationModal";
 export { PrivacyFirstMessaging } from "./PrivacyFirstMessaging";
 
+// Blossom Attachment Components
+export { AttachmentPicker } from "./messaging/AttachmentPicker";
+export { AttachmentRenderer } from "./messaging/AttachmentRenderer";
+
 // Authentication Components
 export {
   FamilyFederationAuthProvider,
