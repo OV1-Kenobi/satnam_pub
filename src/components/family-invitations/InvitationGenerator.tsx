@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { generateQRCodeDataURL } from '../../utils/qr-code-browser';
 import { SecureTokenManager } from '../../lib/auth/secure-token-manager';
+import { nip05Utils } from '../../lib/nip05-verification';
+import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
+import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
 
 // Master Context role hierarchy
 type MasterContextRole = 'guardian' | 'steward' | 'adult' | 'offspring';
@@ -67,9 +70,12 @@ export function InvitationGenerator({
   onInvitationGenerated,
   onClose
 }: InvitationGeneratorProps) {
+  const messaging = usePrivacyFirstMessaging();
   const [selectedRole, setSelectedRole] = useState<MasterContextRole>('adult');
   const [personalMessage, setPersonalMessage] = useState('');
   const [targetNpub, setTargetNpub] = useState('');
+  const [resolvedTargetNpub, setResolvedTargetNpub] = useState<string | null>(null);
+  const [resolvedTargetNip05, setResolvedTargetNip05] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedInvitation, setGeneratedInvitation] = useState<GeneratedInvitation | null>(null);
@@ -81,6 +87,8 @@ export function InvitationGenerator({
   const [safewordError, setSafewordError] = useState<string | null>(null);
   const [generatedSafeword, setGeneratedSafeword] = useState<string | null>(null);
   const [safewordCopied, setSafewordCopied] = useState(false);
+  const [isSendingDm, setIsSendingDm] = useState(false);
+  const [dmStatus, setDmStatus] = useState<string | null>(null);
 
   const generateInvitation = useCallback(async () => {
     setIsGenerating(true);
@@ -97,6 +105,51 @@ export function InvitationGenerator({
     }
 
     try {
+      // Resolve target identifier (npub or NIP-05) to npub if provided
+      let inviteeNpub: string | undefined;
+      let resolvedNpub: string | null = null;
+      let resolvedNip05: string | null = null;
+      const trimmedTarget = targetNpub.trim();
+
+      if (trimmedTarget) {
+        if (trimmedTarget.startsWith('npub1')) {
+          inviteeNpub = trimmedTarget;
+          resolvedNpub = trimmedTarget;
+        } else if (trimmedTarget.includes('@')) {
+          // Validate NIP-05 format before attempting resolution
+          if (!nip05Utils.validateFormat(trimmedTarget)) {
+            setError('Invalid NIP-05 identifier. Use username@domain (e.g., alice@my.satnam.pub)');
+            setIsGenerating(false);
+            return;
+          }
+
+          try {
+            const verification = await nip05Utils.verify(trimmedTarget);
+            if (!verification.verified || !verification.pubkey) {
+              setError(verification.error || 'NIP-05 could not be verified for this identifier');
+              setIsGenerating(false);
+              return;
+            }
+            const npub = CEPS.encodeNpub(verification.pubkey);
+            inviteeNpub = npub;
+            resolvedNpub = npub;
+            resolvedNip05 = trimmedTarget.toLowerCase();
+          } catch (resolveErr) {
+            setError(
+              resolveErr instanceof Error
+                ? resolveErr.message
+                : 'Failed to resolve NIP-05 identifier. Please try again.'
+            );
+            setIsGenerating(false);
+            return;
+          }
+        } else {
+          setError('Invalid recipient format. Use npub1… or username@domain.');
+          setIsGenerating(false);
+          return;
+        }
+      }
+
       const token = SecureTokenManager.getAccessToken();
       if (!token) {
         throw new Error('Authentication required');
@@ -112,7 +165,7 @@ export function InvitationGenerator({
           federation_duid: federationDuid,
           invited_role: selectedRole,
           personal_message: personalMessage || undefined,
-          invitee_npub: targetNpub || undefined,
+          invitee_npub: inviteeNpub,
           // Phase 3: Safeword parameters
           safeword: requireSafeword ? safeword : undefined,
           requireSafeword: requireSafeword
@@ -142,6 +195,8 @@ export function InvitationGenerator({
       };
 
       setGeneratedInvitation(invitation);
+      setResolvedTargetNpub(resolvedNpub);
+      setResolvedTargetNip05(resolvedNip05);
 
       // Store safeword for display (so founder can share it verbally)
       // Clear original input for security
@@ -187,12 +242,55 @@ export function InvitationGenerator({
     setGeneratedInvitation(null);
     setPersonalMessage('');
     setTargetNpub('');
+    setResolvedTargetNpub(null);
+    setResolvedTargetNip05(null);
     setError(null);
     setSafeword('');
     setSafewordError(null);
     setGeneratedSafeword(null);
     setRequireSafeword(true);
+    setIsSendingDm(false);
+    setDmStatus(null);
   }, []);
+
+  const sendInvitationViaDm = useCallback(async () => {
+    if (!generatedInvitation || !resolvedTargetNpub) {
+      setError('No target recipient available for Nostr DM. Add a npub or NIP-05 before generating the invitation.');
+      return;
+    }
+
+    setError(null);
+    setDmStatus(null);
+    setIsSendingDm(true);
+
+    try {
+      const lines: string[] = [];
+      lines.push("I'm inviting you to join my family federation on Satnam.");
+      lines.push('');
+      lines.push(`Invitation link: ${generatedInvitation.url}`);
+      if (generatedSafeword) {
+        lines.push('Security passphrase: I will share this separately (phone or in-person). You will need it when accepting the invitation.');
+      }
+      lines.push('');
+      lines.push(`Federation: ${federationName}`);
+      lines.push(`Role: ${selectedRole}`);
+
+      const content = lines.join('\n');
+
+      const ok = await messaging.sendDirectMessage(resolvedTargetNpub, content, 'gift-wrap');
+      if (!ok) {
+        setError('Failed to send Nostr DM. Please try again or share the link manually.');
+      } else {
+        setDmStatus('Invitation sent via Nostr DM');
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to send Nostr DM. Please try again.'
+      );
+    } finally {
+      setIsSendingDm(false);
+    }
+  }, [generatedInvitation, resolvedTargetNpub, generatedSafeword, federationName, selectedRole, messaging]);
 
   // Show generated invitation
   if (generatedInvitation) {
@@ -238,6 +336,42 @@ export function InvitationGenerator({
             </button>
           </div>
         </div>
+
+        {/* One-click Nostr DM delivery (only when a resolved target exists) */}
+        {resolvedTargetNpub && (
+          <div className="mb-6">
+            <button
+              onClick={sendInvitationViaDm}
+              disabled={isSendingDm}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg transition-colors"
+            >
+              {isSendingDm ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending via Nostr DM...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  Send via Nostr DM
+                </>
+              )}
+            </button>
+            {resolvedTargetNip05 && (
+              <p className="text-emerald-200 text-xs mt-2">
+                Sending to {resolvedTargetNip05} ({resolvedTargetNpub.slice(0, 12)}…)
+              </p>
+            )}
+            {!resolvedTargetNip05 && (
+              <p className="text-emerald-200 text-xs mt-2">
+                Sending to {resolvedTargetNpub.slice(0, 12)}…
+              </p>
+            )}
+            {dmStatus && (
+              <p className="text-emerald-300 text-xs mt-2">{dmStatus}</p>
+            )}
+          </div>
+        )}
 
         {/* Safeword Display (Phase 3) */}
         {generatedSafeword && (
@@ -357,16 +491,16 @@ export function InvitationGenerator({
         />
       </div>
 
-      {/* Target npub (Optional) */}
+      {/* Target npub or NIP-05 (Optional) */}
       <div className="mb-6">
         <label className="block text-purple-200 text-sm mb-2">
-          Target npub <span className="text-purple-400">(optional - for NIP-17 DM)</span>
+          Target (npub or NIP-05) <span className="text-purple-400">(optional - for NIP-17 DM)</span>
         </label>
         <input
           type="text"
           value={targetNpub}
           onChange={(e) => setTargetNpub(e.target.value)}
-          placeholder="npub1..."
+          placeholder="npub1... or username@my.satnam.pub"
           className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-purple-300/50"
         />
         <p className="text-purple-300 text-xs mt-1">
