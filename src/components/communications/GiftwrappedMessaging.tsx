@@ -1,5 +1,5 @@
 // src/components/communications/GiftwrappedMessaging.tsx - KEEP EXISTING NAME
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GroupData } from '../../../api/endpoints/communications';
 import { addGroupMember, blockSender as blockSenderAPI, createGroup, createGroupTopic, deleteMessage as deleteMessageAPI, getGroupDetails, leaveGroup, listUserGroups, removeGroupMember, updateGroupPreferences } from '../../../api/endpoints/communications';
 import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
@@ -253,6 +253,33 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   // NIP-59 incoming subscription via messaging hook
   const messaging = usePrivacyFirstMessaging();
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Unified signer callback for Blossom BUD-02 authenticated uploads.
+   * Supports both NIP-07 browser extensions and NIP-05/password session authentication.
+   */
+  const blossomSigner = useCallback(async (event: unknown): Promise<unknown> => {
+    // Try NIP-07 browser extension first (preferred for hardware key security)
+    if (typeof window !== 'undefined' && window.nostr) {
+      try {
+        return await window.nostr.signEvent(event as Record<string, unknown>);
+      } catch (nip07Error) {
+        console.log('NIP-07 signing failed, falling back to session signing:', nip07Error);
+      }
+    }
+
+    // Fallback: Use CEPS session signing for NIP-05/password authenticated users
+    try {
+      const signedEvent = await CEPS.signEventWithActiveSession(event);
+      return signedEvent;
+    } catch (sessionError) {
+      throw new Error(
+        'Failed to sign Blossom authorization: No NIP-07 extension or active session available. ' +
+        'Please ensure you are signed in or have a Nostr browser extension installed.'
+      );
+    }
+  }, []);
+
   const incomingSorted = useMemo(() => {
     return [...(messaging.incomingMessages || [])].sort(
       (a: any, b: any) => (b?.created_at || 0) - (a?.created_at || 0)
@@ -1662,6 +1689,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                       maxAttachments={5}
                       disabled={isLoading}
                       compact={true}
+                      signer={blossomSigner}
                     />
                   )}
                   {/* Microphone */}

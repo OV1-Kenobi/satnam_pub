@@ -10,7 +10,7 @@
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Paperclip, X, Upload, AlertCircle, FileIcon, Image, Music, Video } from "lucide-react";
-import { BlossomClient, createAttachmentDescriptor, getMediaTypeFromMime } from "../../lib/api/blossom-client";
+import { BlossomClient, createAttachmentDescriptor } from "../../lib/api/blossom-client";
 import type { AttachmentDescriptor } from "../../lib/api/blossom-client";
 import { clientConfig } from "../../config/env.client";
 import { showToast } from "../../services/toastService";
@@ -30,6 +30,8 @@ export interface AttachmentPickerProps {
   disabled?: boolean;
   /** Compact mode for inline display */
   compact?: boolean;
+  /** Nostr signer for authenticated Blossom uploads (BUD-02 authorization) */
+  signer?: (event: unknown) => Promise<unknown>;
 }
 
 /** Upload state for a single file */
@@ -71,6 +73,7 @@ export function AttachmentPicker({
   accept,
   disabled = false,
   compact = false,
+  signer,
 }: AttachmentPickerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<UploadState[]>([]);
@@ -136,7 +139,8 @@ export function AttachmentPicker({
       ));
 
       try {
-        const result = await blossomClient.uploadEncryptedMedia(file);
+        // Pass signer for BUD-02 authenticated uploads
+        const result = await blossomClient.uploadEncryptedMedia(file, signer);
 
         if (result.success) {
           const descriptor = createAttachmentDescriptor(result, file);

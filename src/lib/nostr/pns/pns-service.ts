@@ -40,6 +40,7 @@ import {
   createAttachmentDescriptor,
   getMediaTypeFromMime,
 } from "../../api/blossom-client";
+import { central_event_publishing_service as CEPS } from "../../../../lib/central_event_publishing_service";
 
 // =============================================================================
 // Constants
@@ -855,7 +856,37 @@ export class PnsService {
 
     const blossomClient = BlossomClient.getInstance();
 
-    const result = await blossomClient.uploadEncryptedMedia(file);
+    /**
+     * Unified signer for Blossom BUD-02 authenticated uploads.
+     * Supports both NIP-07 browser extensions and NIP-05/password session authentication.
+     */
+    const pnsSigner = async (event: unknown): Promise<unknown> => {
+      // Try NIP-07 browser extension first (preferred for hardware key security)
+      if (typeof window !== "undefined" && window.nostr) {
+        try {
+          return await window.nostr.signEvent(event as Record<string, unknown>);
+        } catch (nip07Error) {
+          console.log(
+            "[PNS] NIP-07 signing failed, falling back to session signing:",
+            nip07Error
+          );
+        }
+      }
+
+      // Fallback: Use CEPS session signing for NIP-05/password authenticated users
+      try {
+        const signedEvent = await CEPS.signEventWithActiveSession(event);
+        return signedEvent;
+      } catch (sessionError) {
+        throw new Error(
+          "Failed to sign Blossom authorization for PNS attachment: " +
+            "No NIP-07 extension or active session available. " +
+            "Please ensure you are signed in."
+        );
+      }
+    };
+
+    const result = await blossomClient.uploadEncryptedMedia(file, pnsSigner);
 
     if (
       !result.success ||
