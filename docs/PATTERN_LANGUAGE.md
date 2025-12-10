@@ -487,7 +487,7 @@ flushAlerts();
   - Encryption keys transmitted inside encrypted message content (never exposed)
   - BUD-01/BUD-02 compliant authorization events with 5-minute expiration
   - Cross-client compatibility via `imeta` and `fallback` tags for Bitchat interoperability
-- **Supported media:** Files, images, audio, video (up to 100MB)
+- **Supported media:** Files, images, audio, video (up to 20MB)
 - **Privacy guarantees:**
   - Blossom server sees only encrypted ciphertext
   - Decryption keys stored inside NIP-44 encrypted message content
