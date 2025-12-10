@@ -282,6 +282,13 @@
   status = 200
   force = true
 
+# Family Federation invitation validation endpoint
+[[redirects]]
+  from = "/api/family/invitations/validate"
+  to = "/.netlify/functions/family-invitations-validate"
+  status = 200
+  force = true
+
 # CRITICAL: Exclude browser-side ESM client modules from API proxy
 # These are client-side JavaScript files, NOT Netlify Functions
 [[redirects]]

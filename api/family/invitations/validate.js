@@ -81,7 +81,7 @@ export default async function handler(event, context) {
 
     // Look up invitation
     // PRIVACY-FIRST: Query encrypted_invitee_npub, never cleartext npub
-    const { data: invitation, error } = await supabase
+	    const { data: invitation, error } = await supabase
       .from('family_federation_invitations')
       .select(`
         id,
@@ -116,12 +116,11 @@ export default async function handler(event, context) {
     const expiresAt = new Date(invitation.expires_at);
     if (expiresAt < now) {
       return {
-        statusCode: 200,
+	        statusCode: 404,
         headers: corsHeaders,
         body: JSON.stringify({ 
-          valid: false, 
-          error: 'Invitation has expired',
-          expired_at: invitation.expires_at
+	          valid: false,
+	          error: 'Invitation not found or invalid token'
         })
       };
     }
@@ -129,47 +128,13 @@ export default async function handler(event, context) {
     // Check if already used
     if (invitation.status !== 'pending') {
       return {
-        statusCode: 200,
+	        statusCode: 404,
         headers: corsHeaders,
         body: JSON.stringify({ 
-          valid: false, 
-          error: `Invitation has already been ${invitation.status}`,
-          status: invitation.status
+	          valid: false,
+	          error: 'Invitation not found or invalid token'
         })
       };
-    }
-
-    // Increment view count and update viewed_at with race condition protection
-    const { data: updateResult } = await supabase
-      .from('family_federation_invitations')
-      .update({
-        view_count: (invitation.view_count || 0) + 1,
-        viewed_at: invitation.view_count === 0 ? new Date().toISOString() : undefined,
-        status: 'viewed'
-      })
-      .eq('id', invitation.id)
-      .eq('status', 'pending')  // Only update if still pending
-      .select();
-
-    // If update failed because status changed, re-fetch and return appropriate error
-    if (!updateResult || updateResult.length === 0) {
-      const { data: currentInvitation } = await supabase
-        .from('family_federation_invitations')
-        .select('status')
-        .eq('id', invitation.id)
-        .single();
-
-      if (currentInvitation && currentInvitation.status !== 'pending') {
-        return {
-          statusCode: 200,
-          headers: corsHeaders,
-          body: JSON.stringify({
-            valid: false,
-            error: `Invitation has already been ${currentInvitation.status}`,
-            status: currentInvitation.status
-          })
-        };
-      }
     }
 
     // Check if invitation is locked due to too many safeword attempts
