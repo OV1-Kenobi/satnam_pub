@@ -3,7 +3,8 @@
  * @description Tests for Blossom protocol integration with AES-256-GCM encryption
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import type { Mock } from "vitest";
 import {
   generateEncryptionKey,
   generateIv,
@@ -18,11 +19,13 @@ import {
   buildImetaTag,
   buildFallbackTag,
   createAttachmentDescriptor,
+  uploadBannerToBlossom,
 } from "../lib/api/blossom-client";
 import type {
   BlossomUploadResult,
   AttachmentDescriptor,
 } from "../lib/api/blossom-client";
+import { clientConfig } from "../config/env.client";
 
 describe("BlossomClient Cryptographic Utilities", () => {
   describe("Key Generation", () => {
@@ -278,5 +281,196 @@ describe("Attachment Descriptor Creation", () => {
     );
 
     expect(descriptor?.alt).toBe("Beautiful sunset");
+  });
+});
+
+describe("BlossomClient BUD-06 preflight", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    // Ensure Blossom uploads are enabled for these tests so we exercise the
+    // upload path (including BUD-06 preflight) instead of the feature flag
+    // guard.
+    clientConfig.flags.blossomUploadEnabled = true;
+
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function createMockFile(name: string, type: string): File {
+    const encoder = new TextEncoder();
+    const data = encoder.encode("test-data");
+    const buffer = data.buffer.slice(
+      data.byteOffset,
+      data.byteOffset + data.byteLength
+    ) as ArrayBuffer;
+
+    const mockFile: {
+      name: string;
+      type: string;
+      size: number;
+      arrayBuffer: () => Promise<ArrayBuffer>;
+    } = {
+      name,
+      type,
+      size: data.byteLength,
+      arrayBuffer: async () => buffer,
+    };
+
+    return mockFile as unknown as File;
+  }
+
+  it("should perform HEAD preflight before PUT upload when server supports BUD-06", async () => {
+    const fetchMock = globalThis.fetch as unknown as Mock;
+
+    const headResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => "",
+      json: async () => {
+        throw new Error("HEAD json should not be called");
+      },
+    } as unknown as Response;
+
+    const putResponseBody = {
+      url: "https://blossom.nostr.build/abc123",
+      sha256: "abc123",
+      size: 123,
+      type: "image/png",
+    };
+
+    const putResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => "",
+      json: async () => putResponseBody,
+    } as unknown as Response;
+
+    fetchMock.mockResolvedValueOnce(headResponse);
+    fetchMock.mockResolvedValueOnce(putResponse);
+
+    const file = createMockFile("test.png", "image/png");
+    const signer = vi.fn(async (event: unknown) => ({
+      ...(event as Record<string, unknown>),
+      id: "id",
+      pubkey: "pubkey",
+      sig: "sig",
+    }));
+
+    const result = await uploadBannerToBlossom(file, signer);
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstCall = fetchMock.mock.calls[0];
+    const secondCall = fetchMock.mock.calls[1];
+
+    const headUrl = firstCall[0] as string;
+    const headInit = firstCall[1] as RequestInit;
+
+    expect(headUrl).toBe(`${clientConfig.blossom.primaryUrl}/upload`);
+    expect(headInit.method).toBe("HEAD");
+
+    const headHeaders = headInit.headers as Record<string, string>;
+    expect(headHeaders["X-SHA-256"]).toBeDefined();
+    expect(headHeaders["X-Content-Length"]).toBe(file.size.toString());
+    expect(headHeaders["X-Content-Type"]).toBe("image/png");
+    expect(headHeaders["Authorization"]).toMatch(/^Nostr /);
+
+    const putUrl = secondCall[0] as string;
+    const putInit = secondCall[1] as RequestInit;
+    expect(putUrl).toBe(`${clientConfig.blossom.primaryUrl}/upload`);
+    expect(putInit.method).toBe("PUT");
+  });
+
+  it("should surface clear error when preflight returns 4xx/5xx and skip PUT", async () => {
+    const fetchMock = globalThis.fetch as unknown as Mock;
+
+    const headErrorResponse = {
+      ok: false,
+      status: 401,
+      headers: new Headers(),
+      text: async () => "Unauthorized",
+      json: async () => {
+        throw new Error("HEAD json should not be called");
+      },
+    } as unknown as Response;
+
+    fetchMock.mockResolvedValueOnce(headErrorResponse);
+
+    const file = createMockFile("test.png", "image/png");
+    const signer = vi.fn(async (event: unknown) => ({
+      ...(event as Record<string, unknown>),
+      id: "id",
+      pubkey: "pubkey",
+      sig: "sig",
+    }));
+
+    const result = await uploadBannerToBlossom(file, signer);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Preflight check failed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("should fall back to direct PUT when HEAD is not supported", async () => {
+    const fetchMock = globalThis.fetch as unknown as Mock;
+
+    const headNotAllowedResponse = {
+      ok: false,
+      status: 405,
+      headers: new Headers(),
+      text: async () => "Method Not Allowed",
+      json: async () => {
+        throw new Error("HEAD json should not be called");
+      },
+    } as unknown as Response;
+
+    const putResponseBody = {
+      url: "https://blossom.nostr.build/def456",
+      sha256: "def456",
+      size: 456,
+      type: "image/png",
+    };
+
+    const putResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => "",
+      json: async () => putResponseBody,
+    } as unknown as Response;
+
+    fetchMock.mockResolvedValueOnce(headNotAllowedResponse);
+    fetchMock.mockResolvedValueOnce(putResponse);
+
+    const file = createMockFile("test.png", "image/png");
+    const signer = vi.fn(async (event: unknown) => ({
+      ...(event as Record<string, unknown>),
+      id: "id",
+      pubkey: "pubkey",
+      sig: "sig",
+    }));
+
+    const result = await uploadBannerToBlossom(file, signer);
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstCall = fetchMock.mock.calls[0];
+    const secondCall = fetchMock.mock.calls[1];
+
+    const headInit = firstCall[1] as RequestInit;
+    expect(headInit.method).toBe("HEAD");
+
+    const putInit = secondCall[1] as RequestInit;
+    expect(putInit.method).toBe("PUT");
   });
 });

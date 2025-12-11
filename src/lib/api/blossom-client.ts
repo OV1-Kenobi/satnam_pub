@@ -294,6 +294,31 @@ BLOSSOM_SERVERS.forEach((url) => {
 });
 
 /**
+ * Error type used when a BUD-06 preflight check explicitly rejects an upload.
+ * These errors should not be retried for the same server, but fail fast so
+ * uploadWithFailover can move on to the next server (if any).
+ */
+class BlossomPreflightError extends Error {
+  public readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "BlossomPreflightError";
+    this.status = status;
+  }
+}
+
+/**
+ * Result from a BUD-06 HEAD /upload preflight.
+ * Currently unused by callers beyond logging, but returned for potential
+ * future inspection of server capabilities.
+ */
+interface UploadPreflightResult {
+  status: number;
+  headers: Record<string, string>;
+}
+
+/**
  * Calculate SHA-256 hash of file
  * Required by Blossom protocol
  */
@@ -309,6 +334,115 @@ async function calculateSHA256(file: File): Promise<string> {
 
 /** Expiration window for authorization events (5 minutes) */
 const AUTH_EXPIRATION_SECONDS = 300;
+
+/**
+ * Perform BUD-06 HEAD /upload preflight check.
+ *
+ * This sends a HEAD request with the file hash, size, and content type so the
+ * server can decide whether to accept the upload (authentication, payment,
+ * size limits, etc.) before we send the full body.
+ *
+ * Behaviour:
+ * - 2xx: return preflight result and proceed with upload.
+ * - 405/501: treat as "HEAD not supported" and fall back to direct PUT.
+ * - Network/timeout errors: log and fall back to direct PUT for
+ *   backward-compatibility.
+ * - Other 4xx/5xx: throw BlossomPreflightError with a detailed message so the
+ *   caller can report why the upload would fail.
+ */
+async function checkUploadRequirements(
+  serverUrl: string,
+  file: File,
+  authEvent: string | null
+): Promise<UploadPreflightResult | null> {
+  try {
+    const headers: Record<string, string> = {};
+
+    // Compute hash for X-SHA-256 header (required by BUD-06)
+    const fileHash = await calculateSHA256(file);
+    headers["X-SHA-256"] = fileHash;
+    headers["X-Content-Length"] = file.size.toString();
+    headers["X-Content-Type"] = file.type || "application/octet-stream";
+
+    if (authEvent) {
+      const authorization = `Nostr ${btoa(authEvent)}`;
+      headers["Authorization"] = authorization;
+      try {
+        const preview = authorization.slice(0, 64);
+        console.debug(
+          "[BlossomClient] Using Authorization header for preflight",
+          serverUrl,
+          `${preview}...`
+        );
+      } catch {
+        // Logging must never break preflight behaviour
+      }
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT);
+
+    console.debug(
+      `[BlossomClient] Preflight HEAD /upload to ${serverUrl} (BUD-06)`
+    );
+
+    const response = await fetch(`${serverUrl}/upload`, {
+      method: "HEAD",
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const headerMap: Record<string, string> = {};
+      try {
+        response.headers.forEach((value, key) => {
+          headerMap[key] = value;
+        });
+      } catch {
+        // Header inspection is best-effort only
+      }
+
+      console.debug(
+        "[BlossomClient] Preflight succeeded for",
+        serverUrl,
+        "status:",
+        response.status
+      );
+      return { status: response.status, headers: headerMap };
+    }
+
+    // Some Blossom deployments may not implement HEAD for /upload yet.
+    // For 405/501 we treat this as "HEAD not supported" and fall back to PUT.
+    if (response.status === 405 || response.status === 501) {
+      console.warn(
+        `[BlossomClient] Preflight HEAD not supported by ${serverUrl} (status ${response.status}), falling back to direct upload`
+      );
+      return null;
+    }
+
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw new BlossomPreflightError(
+      response.status,
+      `Preflight check failed for ${serverUrl}: ${response.status} - ${errorText}`
+    );
+  } catch (error) {
+    if (error instanceof BlossomPreflightError) {
+      // Let caller handle explicit preflight rejection (no retry for this
+      // server; message will be surfaced to the user).
+      throw error;
+    }
+
+    // Network errors / timeouts: log and fall back to direct PUT for
+    // backwards compatibility with servers that do not fully implement BUD-06.
+    console.warn(
+      "[BlossomClient] Preflight HEAD /upload failed, falling back to direct upload:",
+      error
+    );
+    return null;
+  }
+}
 
 /**
  * Create Nostr authorization event for upload
@@ -347,6 +481,29 @@ async function createAuthEvent(
     };
 
     const signedEvent = await signer(event);
+
+    // Development-friendly logging of the auth event structure to help
+    // diagnose differences between NIP-07 and nip05_password signing paths
+    // without leaking sensitive details. This only logs high-level shape.
+    try {
+      const se = signedEvent as {
+        kind?: number;
+        pubkey?: string;
+        id?: string;
+        sig?: string;
+        tags?: unknown[];
+      };
+      console.debug("[BlossomClient] Created upload auth event", {
+        kind: se?.kind,
+        hasId: Boolean(se?.id),
+        hasPubkey: Boolean(se?.pubkey),
+        hasSig: Boolean(se?.sig),
+        tagCount: Array.isArray(se?.tags) ? se.tags.length : undefined,
+      });
+    } catch {
+      // Logging must never break the upload flow
+    }
+
     return JSON.stringify(signedEvent);
   } catch (error) {
     console.error("Failed to create auth event:", error);
@@ -390,8 +547,18 @@ export function getServerHealthStats(): ServerHealth[] {
 /**
  * Upload file to a specific Blossom server with retry logic (Phase 5A)
  *
+ * NOTE: This implementation now aligns more closely with the reference
+ * Blossom client SDK by:
+ *   - Sending the encrypted file as the raw request body (no multipart/form-data)
+ *   - Explicitly setting the Content-Type header to match the blob type
+ *   - Keeping the BUD-02 Authorization header format identical
+ *
+ * This avoids servers misinterpreting the request body as structured data
+ * and resolves "Content-Type header does not match the file content" errors
+ * observed on some Blossom deployments.
+ *
  * @param serverUrl - Blossom server URL
- * @param file - File to upload
+ * @param file - Encrypted file to upload
  * @param authEvent - Optional Nostr auth event (JSON string)
  * @param retryCount - Current retry attempt (internal)
  */
@@ -402,14 +569,35 @@ async function uploadToServer(
   retryCount = 0
 ): Promise<BannerUploadResponse> {
   try {
-    const formData = new FormData();
-    formData.append("file", file);
+    // BUD-06: Perform optional HEAD /upload preflight so the server can
+    // reject unsupported uploads before we send the full body. This is
+    // best-effort and will gracefully fall back to direct PUT on network
+    // errors or when HEAD is not implemented.
+    await checkUploadRequirements(serverUrl, file, authEvent);
 
     const headers: Record<string, string> = {};
 
+    // Ensure Content-Type reflects the encrypted blob type so Blossom can
+    // validate it against any upload requirements (BUD-02 / BUD-06).
+    headers["Content-Type"] = file.type || "application/octet-stream";
+
     // Add authorization header if auth event provided
     if (authEvent) {
-      headers["Authorization"] = `Nostr ${btoa(authEvent)}`;
+      const authorization = `Nostr ${btoa(authEvent)}`;
+      headers["Authorization"] = authorization;
+
+      // Lightweight debug logging for troubleshooting nip05_password path
+      // (safe to keep enabled: only logs header length/prefix, not secrets).
+      try {
+        const preview = authorization.slice(0, 64);
+        console.debug(
+          "[BlossomClient] Using Authorization header for upload",
+          serverUrl,
+          `${preview}...`
+        );
+      } catch {
+        // Avoid breaking upload flow if console is unavailable
+      }
     }
 
     // Create abort controller for timeout
@@ -425,7 +613,7 @@ async function uploadToServer(
     const response = await fetch(`${serverUrl}/upload`, {
       method: "PUT",
       headers,
-      body: formData,
+      body: file,
       signal: controller.signal,
     });
 
@@ -451,7 +639,19 @@ async function uploadToServer(
       serverUsed: serverUrl, // Track which server was used (Phase 5A)
     };
   } catch (error) {
-    // Retry logic for this server
+    // If the server explicitly rejected the BUD-06 preflight, do not retry
+    // this server; propagate a clear error message so callers know why the
+    // upload failed.
+    if (error instanceof BlossomPreflightError) {
+      updateServerHealth(serverUrl, false);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    // Retry logic for transient network/HTTP errors when performing the
+    // actual PUT /upload.
     if (retryCount < MAX_RETRIES_PER_SERVER - 1) {
       const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
       console.warn(
