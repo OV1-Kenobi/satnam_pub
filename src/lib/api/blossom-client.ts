@@ -344,7 +344,8 @@ const AUTH_EXPIRATION_SECONDS = 300;
  *
  * Behaviour:
  * - 2xx: return preflight result and proceed with upload.
- * - 405/501: treat as "HEAD not supported" and fall back to direct PUT.
+ * - 405/415/501: treat as "HEAD not supported" (or not fully implemented)
+ *   and fall back to direct PUT.
  * - Network/timeout errors: log and fall back to direct PUT for
  *   backward-compatibility.
  * - Other 4xx/5xx: throw BlossomPreflightError with a detailed message so the
@@ -413,9 +414,15 @@ async function checkUploadRequirements(
       return { status: response.status, headers: headerMap };
     }
 
-    // Some Blossom deployments may not implement HEAD for /upload yet.
-    // For 405/501 we treat this as "HEAD not supported" and fall back to PUT.
-    if (response.status === 405 || response.status === 501) {
+    // Some Blossom deployments may not implement HEAD for /upload yet, or may
+    // respond with 415 when they do not understand the preflight request.
+    // For 405/415/501 we treat this as "HEAD not supported" and fall back to
+    // a direct PUT upload to preserve backwards compatibility.
+    if (
+      response.status === 405 ||
+      response.status === 415 ||
+      response.status === 501
+    ) {
       console.warn(
         `[BlossomClient] Preflight HEAD not supported by ${serverUrl} (status ${response.status}), falling back to direct upload`
       );
