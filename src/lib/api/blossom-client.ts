@@ -431,10 +431,13 @@ async function checkUploadRequirements(
     }
 
     // Some Blossom deployments may not implement HEAD for /upload yet, or may
-    // respond with 415 when they do not understand the preflight request.
-    // For 405/415/501 we treat this as "HEAD not supported" and fall back to
+    // respond with 404/415 when they do not understand the preflight request.
+    // For 404/405/415/501 we treat this as "HEAD not supported" and fall back to
     // a direct PUT upload to preserve backwards compatibility.
+    // Note: 404 is included because servers like cdn.satellite.earth return 404
+    // when the /upload endpoint doesn't support HEAD requests (BUD-06 is optional).
     if (
+      response.status === 404 ||
       response.status === 405 ||
       response.status === 415 ||
       response.status === 501
@@ -478,8 +481,8 @@ async function checkUploadRequirements(
  */
 async function createAuthEvent(
   fileHash: string,
-  fileSize: number,
-  mimeType: string,
+  _fileSize: number, // Kept for backwards compatibility but not used in BUD-02 auth event
+  _mimeType: string, // Kept for backwards compatibility but not used in BUD-02 auth event
   signer?: (event: unknown) => Promise<unknown>
 ): Promise<string | null> {
   if (!signer) {
@@ -490,15 +493,16 @@ async function createAuthEvent(
     const createdAt = Math.floor(Date.now() / 1000);
     const expiration = createdAt + AUTH_EXPIRATION_SECONDS;
 
+    // BUD-02 specification requires only: ["t", "upload"], ["x", hash], ["expiration", timestamp]
+    // Removed non-standard ["size", ...] and ["m", ...] tags that may cause
+    // strict server implementations to reject the upload.
     const event = {
       kind: 24242, // Blossom upload authorization event
       created_at: createdAt,
       tags: [
         ["t", "upload"],
-        ["x", fileHash], // SHA-256 hash
-        ["size", fileSize.toString()],
-        ["m", mimeType],
-        ["expiration", expiration.toString()], // BUD-01 required expiration tag
+        ["x", fileHash], // SHA-256 hash (BUD-02 required)
+        ["expiration", expiration.toString()], // BUD-02 required expiration tag
       ],
       content: "",
     };

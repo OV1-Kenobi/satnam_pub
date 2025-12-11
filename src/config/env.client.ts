@@ -573,14 +573,15 @@ export const clientConfig: ClientConfig = {
   },
   blossom: {
     // Phase 5A: Multi-server support with automatic failover
+    // Primary server: cdn.nostrcheck.me is a free public Blossom server recommended
+    // by noStrudel. blossom.nostr.build requires a paid account and rejects anonymous
+    // uploads with 415 "File type not allowed" errors.
     primaryUrl:
       getEnvVar("VITE_BLOSSOM_PRIMARY_URL") ||
       getEnvVar("VITE_BLOSSOM_NOSTR_BUILD_URL") || // Legacy fallback
-      "https://blossom.nostr.build",
-    // Fallback server: defaults to cdn.satellite.earth to provide a distinct
-    // secondary option when primary (nostr.build) fails. Using the same URL as
-    // primary would cause the deduplication filter in BLOSSOM_SERVERS to leave
-    // only one server in the array, effectively disabling failover.
+      "https://cdn.nostrcheck.me",
+    // Fallback server: cdn.satellite.earth is a Blossom-compatible gateway for
+    // Cloudflare R2 object storage, also recommended by noStrudel.
     fallbackUrl:
       getEnvVar("VITE_BLOSSOM_FALLBACK_URL") || "https://cdn.satellite.earth",
     timeoutMs: parseInt(getEnvVar("VITE_BLOSSOM_TIMEOUT_MS") || "30000", 10),
@@ -590,8 +591,7 @@ export const clientConfig: ClientConfig = {
     ),
     // Legacy support (Phase 4B compatibility)
     serverUrl:
-      getEnvVar("VITE_BLOSSOM_NOSTR_BUILD_URL") ||
-      "https://blossom.nostr.build",
+      getEnvVar("VITE_BLOSSOM_NOSTR_BUILD_URL") || "https://cdn.nostrcheck.me",
   },
   nip85: {
     primaryRelay:
