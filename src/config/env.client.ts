@@ -577,8 +577,12 @@ export const clientConfig: ClientConfig = {
       getEnvVar("VITE_BLOSSOM_PRIMARY_URL") ||
       getEnvVar("VITE_BLOSSOM_NOSTR_BUILD_URL") || // Legacy fallback
       "https://blossom.nostr.build",
+    // Fallback server: defaults to cdn.satellite.earth to provide a distinct
+    // secondary option when primary (nostr.build) fails. Using the same URL as
+    // primary would cause the deduplication filter in BLOSSOM_SERVERS to leave
+    // only one server in the array, effectively disabling failover.
     fallbackUrl:
-      getEnvVar("VITE_BLOSSOM_FALLBACK_URL") || "https://blossom.nostr.build",
+      getEnvVar("VITE_BLOSSOM_FALLBACK_URL") || "https://cdn.satellite.earth",
     timeoutMs: parseInt(getEnvVar("VITE_BLOSSOM_TIMEOUT_MS") || "30000", 10),
     retryAttempts: parseInt(
       getEnvVar("VITE_BLOSSOM_RETRY_ATTEMPTS") || "2",

@@ -403,7 +403,12 @@ describe("BlossomClient BUD-06 preflight", () => {
       },
     } as unknown as Response;
 
-    fetchMock.mockResolvedValueOnce(headErrorResponse);
+    // Mock HEAD 401 for all servers (primary and fallback) - each preflight
+    // failure should skip the PUT for that server and move to the next.
+    // With 2 servers (primary + fallback), we expect:
+    //  - Server 1: HEAD 401 → skip PUT → failover
+    //  - Server 2: HEAD 401 → skip PUT → all servers exhausted
+    fetchMock.mockResolvedValue(headErrorResponse);
 
     const file = createMockFile("test.png", "image/png");
     const signer = vi.fn(async (event: unknown) => ({
@@ -416,8 +421,15 @@ describe("BlossomClient BUD-06 preflight", () => {
     const result = await uploadBannerToBlossom(file, signer);
 
     expect(result.success).toBe(false);
+    // Error should mention preflight failure (at least from the primary server)
     expect(result.error).toContain("Preflight check failed");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // With 2 servers, each gets one HEAD preflight call before failing over
+    // So we expect 2 HEAD calls (one per server)
+    expect(fetchMock).toHaveBeenCalled();
+    // Verify no PUT calls were made (all were blocked by preflight failures)
+    const allCalls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    const putCalls = allCalls.filter((call) => call[1]?.method === "PUT");
+    expect(putCalls.length).toBe(0);
   });
 
   it("should fall back to direct PUT when HEAD is not supported", async () => {

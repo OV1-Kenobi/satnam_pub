@@ -267,6 +267,22 @@ const BLOSSOM_SERVERS = [BLOSSOM_PRIMARY_URL, BLOSSOM_FALLBACK_URL].filter(
   (url, index, arr) => url && arr.indexOf(url) === index // Remove duplicates and empty values
 );
 
+// Log server configuration at module load for debugging failover issues
+if (typeof console !== "undefined" && console.debug) {
+  console.debug("[BlossomClient] Module initialized with servers:", {
+    primary: BLOSSOM_PRIMARY_URL,
+    fallback: BLOSSOM_FALLBACK_URL,
+    effectiveServers: BLOSSOM_SERVERS,
+    serverCount: BLOSSOM_SERVERS.length,
+  });
+  if (BLOSSOM_SERVERS.length < 2) {
+    console.warn(
+      "[BlossomClient] Only one Blossom server configured. Failover is disabled. " +
+        "Set VITE_BLOSSOM_FALLBACK_URL to enable multi-server failover."
+    );
+  }
+}
+
 // Server health tracking (Phase 5A)
 interface ServerHealth {
   url: string;
@@ -998,15 +1014,20 @@ export class BlossomClient implements IBlossomClient {
       const keyBase64 = await exportKeyToBase64(aesKey);
       const ivBase64 = uint8ArrayToBase64(iv);
 
-      // Create encrypted file blob. The underlying blob is generic binary
-      // data, but we preserve the *original* MIME type on the File wrapper so
-      // that Blossom sees the correct Content-Type (e.g. image/png) for
-      // compatibility with nostr.build's allowed file type rules.
+      // Create encrypted file blob with type "application/octet-stream" because
+      // the content IS generic binary ciphertext, not the original format.
+      // This matches what BUD-02 expects: the Content-Type header should reflect
+      // the actual body content. The original MIME type is preserved in the
+      // BUD-02 auth event's "m" tag for metadata purposes only.
+      //
+      // IMPORTANT: Using the original MIME type (e.g. "image/png") for encrypted
+      // content caused HTTP 400 "Content-Type does not match file content" errors
+      // on blossom.nostr.build because the server validates content against type.
       const encryptedBlob = new Blob([ciphertext], {
         type: "application/octet-stream",
       });
       const encryptedFile = new File([encryptedBlob], `${file.name}.enc`, {
-        type: originalMimeType,
+        type: "application/octet-stream",
       });
 
       // Calculate hash of ciphertext (for Blossom and integrity verification)
