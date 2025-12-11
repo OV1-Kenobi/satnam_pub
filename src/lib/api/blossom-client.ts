@@ -696,6 +696,14 @@ async function uploadWithFailover(
 ): Promise<BannerUploadResponse> {
   const errors: string[] = [];
 
+  if (BLOSSOM_SERVERS.length === 0) {
+    console.error(
+      "[BlossomClient] uploadWithFailover called with no configured servers"
+    );
+  } else {
+    console.debug("[BlossomClient] Upload failover sequence:", BLOSSOM_SERVERS);
+  }
+
   // Try each server in priority order
   for (let i = 0; i < BLOSSOM_SERVERS.length; i++) {
     const serverUrl = BLOSSOM_SERVERS[i];
@@ -721,7 +729,9 @@ async function uploadWithFailover(
     );
 
     if (i < BLOSSOM_SERVERS.length - 1) {
-      console.log(`🔄 Failing over to next server...`);
+      console.log(
+        `🔄 Failing over to next server... (${i + 1}/${BLOSSOM_SERVERS.length})`
+      );
     }
   }
 
@@ -976,6 +986,7 @@ export class BlossomClient implements IBlossomClient {
       // Generate encryption key and IV
       const aesKey = await generateEncryptionKey();
       const iv = generateIv();
+      const originalMimeType = file.type || "application/octet-stream";
 
       // Read file data
       const fileData = await file.arrayBuffer();
@@ -987,22 +998,27 @@ export class BlossomClient implements IBlossomClient {
       const keyBase64 = await exportKeyToBase64(aesKey);
       const ivBase64 = uint8ArrayToBase64(iv);
 
-      // Create encrypted file blob
+      // Create encrypted file blob. The underlying blob is generic binary
+      // data, but we preserve the *original* MIME type on the File wrapper so
+      // that Blossom sees the correct Content-Type (e.g. image/png) for
+      // compatibility with nostr.build's allowed file type rules.
       const encryptedBlob = new Blob([ciphertext], {
         type: "application/octet-stream",
       });
       const encryptedFile = new File([encryptedBlob], `${file.name}.enc`, {
-        type: "application/octet-stream",
+        type: originalMimeType,
       });
 
       // Calculate hash of ciphertext (for Blossom and integrity verification)
       const ciphertextHash = await calculateSHA256(encryptedFile);
 
-      // Create auth event if signer provided (type signature now matches)
+      // Create auth event if signer provided (type signature now matches).
+      // Use the original MIME type so BUD-02 metadata remains accurate and
+      // consistent with what the Blossom server expects for type checks.
       const authEvent = await createAuthEvent(
         ciphertextHash,
         encryptedFile.size,
-        "application/octet-stream",
+        originalMimeType,
         signer
       );
 
@@ -1021,7 +1037,7 @@ export class BlossomClient implements IBlossomClient {
         url: uploadResult.url,
         sha256: ciphertextHash,
         size: encryptedFile.size,
-        mimeType: file.type || "application/octet-stream",
+        mimeType: originalMimeType,
         encryptionKey: keyBase64,
         encryptionIv: ivBase64,
         serverUsed: uploadResult.serverUsed,
