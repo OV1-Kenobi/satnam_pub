@@ -178,17 +178,17 @@ const FeaturesOverview: React.FC<FeaturesOverviewProps> = ({ onBack }) => {
       ]
     },
     {
-      title: "NFC & Name Tag",
-      description: "Provision and register your NFC Name Tag for physical MFA",
+      title: "NFC Cards & Hardware",
+      description: "Set up Boltcard or Tapsigner for Lightning payments and physical MFA",
       features: [
         {
-          name: "Write Your Name Tag",
-          description: "Follow the guided steps to program and register your tag.",
+          name: "NFC Card Setup",
+          description: "Configure your Boltcard for Lightning payments or Tapsigner for Bitcoin signing.",
           icon: Key,
           color: "purple",
           action: () => navigate('nfc-provisioning-guide'),
-          ctaLabel: "Write Name Tag",
-          tooltip: "Program and register your NFC Name Tag for secure physical MFA with PIN."
+          ctaLabel: "Set Up NFC Card",
+          tooltip: "Set up Boltcard (Lightning NFC payments + MFA) or Tapsigner (Bitcoin cold storage + Nostr signing) for hardware security."
         }
       ]
     },

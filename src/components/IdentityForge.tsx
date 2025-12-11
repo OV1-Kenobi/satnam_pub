@@ -65,7 +65,12 @@ import {
 import { ActionContextSelector } from "./ActionContextSelector";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
-import NFCProvisioningGuide from "./NFCProvisioningGuide";
+import { lazy, Suspense } from "react";
+import { UnifiedNFCSetupFlow } from "./nfc";
+import type { NFCCardType } from "./nfc";
+
+// Lazy load NFCProvisioningGuide to enable code splitting
+const NFCProvisioningGuide = lazy(() => import("./NFCProvisioningGuide"));
 
 // Feature flags (from clientConfig.flags)
 const LNBITS_ENABLED: boolean = clientConfig.flags.lnbitsEnabled;
@@ -343,8 +348,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
   // Step 5: Optional NFC hardware setup selection state
   const [nfcBoltcardSelected, setNfcBoltcardSelected] = useState<boolean>(false);
-  const [nfcSatscardSelected, setNfcSatscardSelected] = useState<boolean>(false);
+  const [nfcTapsignerSelected, setNfcTapsignerSelected] = useState<boolean>(false);
   const [showNfcProvisioningGuide, setShowNfcProvisioningGuide] = useState<boolean>(false);
+  const [showUnifiedNfcSetup, setShowUnifiedNfcSetup] = useState<boolean>(false);
+  const [unifiedNfcCardType, setUnifiedNfcCardType] = useState<"boltcard" | "tapsigner" | null>(null);
 
   // Zero-Knowledge Protocol: Secure memory cleanup (Master Context Compliance)
   // Use refs to track current values for cleanup without triggering effect re-runs
@@ -3186,7 +3193,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                     type="checkbox"
                     id="nfc-boltcard-setup"
                     checked={nfcBoltcardSelected}
-                    onChange={(e) => setNfcBoltcardSelected(e.target.checked)}
+                    onChange={(e) => {
+                      setNfcBoltcardSelected(e.target.checked);
+                      if (e.target.checked) setNfcTapsignerSelected(false);
+                    }}
                     className="mt-1 h-4 w-4 text-purple-500 border-purple-400 rounded focus:ring-purple-500"
                   />
                   <label htmlFor="nfc-boltcard-setup" className="flex-1 cursor-pointer">
@@ -3200,25 +3210,36 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   </label>
                 </div>
 
-                <div className="flex items-start gap-3 bg-white/5 border border-white/10 rounded-2xl p-4 opacity-70">
+                <div className={`flex items-start gap-3 bg-white/5 border border-white/10 rounded-2xl p-4 ${!TAPSIGNER_ENABLED ? 'opacity-50' : ''}`}>
                   <input
                     type="checkbox"
-                    id="nfc-satscard-setup"
-                    checked={nfcSatscardSelected}
-                    onChange={(e) => setNfcSatscardSelected(e.target.checked)}
+                    id="nfc-tapsigner-setup"
+                    checked={nfcTapsignerSelected}
+                    onChange={(e) => {
+                      if (TAPSIGNER_ENABLED) {
+                        setNfcTapsignerSelected(e.target.checked);
+                        if (e.target.checked) setNfcBoltcardSelected(false);
+                      }
+                    }}
+                    disabled={!TAPSIGNER_ENABLED}
                     className="mt-1 h-4 w-4 text-purple-500 border-purple-400 rounded focus:ring-purple-500"
                   />
-                  <label htmlFor="nfc-satscard-setup" className="flex-1 cursor-pointer">
+                  <label htmlFor="nfc-tapsigner-setup" className="flex-1 cursor-pointer">
                     <div className="flex items-center gap-2 mb-1">
-                      <CreditCard className="h-5 w-5 text-blue-400" />
-                      <span className="text-white font-semibold">Satscard (on-chain NFC signing)</span>
+                      <Key className="h-5 w-5 text-blue-400" />
+                      <span className="text-white font-semibold">Tapsigner (Bitcoin cold storage + Nostr signing)</span>
+                      {!TAPSIGNER_ENABLED && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">Coming Soon</span>
+                      )}
                     </div>
                     <p className="text-sm text-purple-200">
-                      Plan ahead for future Satscard support for on-chain Bitcoin signing via NFC.
+                      Coinkite Tapsigner for BIP32 HD key derivation, ECDSA signing, and Nostr event authentication.
                     </p>
-                    <p className="text-xs text-purple-300 mt-1">
-                      Roadmap only: Satscard support will be enabled in a future release.
-                    </p>
+                    {!TAPSIGNER_ENABLED && (
+                      <p className="text-xs text-purple-300 mt-1">
+                        Tapsigner integration will be available in a future release.
+                      </p>
+                    )}
                   </label>
                 </div>
               </div>
@@ -3251,13 +3272,38 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
                   {showNfcProvisioningGuide && (
                     <div className="mt-4 border border-white/10 rounded-2xl overflow-hidden bg-black/40">
-                      <NFCProvisioningGuide onBack={() => setShowNfcProvisioningGuide(false)} />
+                      <Suspense fallback={<div className="text-white text-center py-10">Loading NFC Setup...</div>}>
+                        <NFCProvisioningGuide onBack={() => setShowNfcProvisioningGuide(false)} />
+                      </Suspense>
                     </div>
                   )}
                 </div>
               )}
 
-              {!nfcBoltcardSelected && !nfcSatscardSelected && (
+
+              {/* Tapsigner Setup Section */}
+              {nfcTapsignerSelected && TAPSIGNER_ENABLED && (
+                <div className="space-y-4">
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <h4 className="text-lg font-semibold text-white mb-2">Set Up Your Tapsigner</h4>
+                    <p className="text-sm text-purple-200 mb-3">
+                      Configure your Coinkite Tapsigner for Bitcoin cold storage and Nostr event signing.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUnifiedNfcCardType("tapsigner");
+                        setShowUnifiedNfcSetup(true);
+                      }}
+                      className="w-full px-4 py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition"
+                    >
+                      Start Tapsigner Setup
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!nfcBoltcardSelected && !nfcTapsignerSelected && (
                 <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 text-yellow-100 text-sm flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 mt-0.5" />
                   <p>
@@ -3278,7 +3324,7 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
                   type="button"
                   onClick={() => {
                     // If no device selected, auto-skip
-                    if (!nfcBoltcardSelected && !nfcSatscardSelected) {
+                    if (!nfcBoltcardSelected && !nfcTapsignerSelected) {
                       setCurrentStep(6);
                       return;
                     }
@@ -3753,6 +3799,18 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
           />
         )
       }
+
+      {/* Unified NFC Setup Flow Modal for Tapsigner during registration */}
+      <UnifiedNFCSetupFlow
+        isOpen={showUnifiedNfcSetup}
+        onClose={() => setShowUnifiedNfcSetup(false)}
+        defaultCardType={unifiedNfcCardType ?? undefined}
+        skipCardSelection={!!unifiedNfcCardType}
+        onComplete={(result) => {
+          console.log("NFC setup completed during registration:", result);
+          setShowUnifiedNfcSetup(false);
+        }}
+      />
     </div >
   );
 };

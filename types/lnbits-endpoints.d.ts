@@ -15,6 +15,12 @@ declare namespace LNBitsClient {
   interface CreateBoltcardResult {
     cardId: string;
     authQr?: string | null;
+    // Encryption keys for programming the NFC card (only available at creation)
+    k0?: string; // Authentication key
+    k1?: string; // Encryption key
+    k2?: string; // SUN/SDM CMAC key
+    lnurlw?: string; // LNURL-withdraw base URL
+    keysAvailable?: boolean; // Whether encryption keys were returned
   }
   interface BoltcardLnurlResult {
     lnurl: string;

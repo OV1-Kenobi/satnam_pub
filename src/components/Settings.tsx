@@ -11,6 +11,7 @@ import { showToast } from "../services/toastService";
 import AmberConnectButton from "./auth/AmberConnectButton";
 import SignerMethodSettings from "./auth/SignerMethodSettings";
 import IrohNodeManager from "./iroh/IrohNodeManager";
+import { UnifiedNFCSetupFlow } from "./nfc";
 import AttestationsTab from "./Settings/AttestationsTab";
 import TapsignerStatusDisplay from "./TapsignerStatusDisplay";
 
@@ -67,6 +68,9 @@ const Settings: React.FC = () => {
   // Phase 3 Task 3.1: Tapsigner card management state
   const [tapsignerCards, setTapsignerCards] = useState<any[]>([]);
   const [loadingTapsignerCards, setLoadingTapsignerCards] = useState(false);
+
+  // Unified NFC Setup Flow modal state
+  const [showUnifiedNfcSetup, setShowUnifiedNfcSetup] = useState(false);
 
   useEffect(() => {
     try {
@@ -273,6 +277,12 @@ const Settings: React.FC = () => {
               >
                 Recover Nsec
               </button>
+              <button
+                onClick={() => setShowUnifiedNfcSetup(true)}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                Set Up New NFC Card
+              </button>
             </div>
           </section>
 
@@ -390,6 +400,17 @@ const Settings: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Unified NFC Setup Flow Modal */}
+        <UnifiedNFCSetupFlow
+          isOpen={showUnifiedNfcSetup}
+          onClose={() => setShowUnifiedNfcSetup(false)}
+          onComplete={(result) => {
+            console.log("NFC setup completed:", result);
+            setShowUnifiedNfcSetup(false);
+            showToast.success(`${result.cardType === 'boltcard' ? 'Boltcard' : 'Tapsigner'} setup complete!`, { duration: 3000 });
+          }}
+        />
       </div>
     </ProfileVisibilityProvider>
   );

@@ -92,7 +92,7 @@ const Navigation: React.FC<NavigationProps> = ({
     { label: "Advanced Coordination", action: () => setCurrentView("coordination") },
     { label: "Recovery Help", action: () => setCurrentView("recovery") },
     {
-      label: "NFC Setup Guide",
+      label: "NFC Card Setup",
       action: () => setCurrentView("nfc-provisioning-guide"),
       external: false,
     },

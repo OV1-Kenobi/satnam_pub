@@ -29,7 +29,7 @@ import SignInModal from "./components/SignInModal";
 import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
-import NFCProvisioningGuide from "./components/NFCProvisioningGuide";
+import { UnifiedNFCSetupFlow } from "./components/nfc";
 import Settings from "./components/Settings";
 
 import AmberIntentCallback from "./components/auth/AmberIntentCallback";
@@ -62,6 +62,7 @@ import "./lib/signers/register-signers";
 const NTAG424AuthModal = lazy(() => import("./components/NTAG424AuthModal"));
 const FamilyFoundryLandingPage = lazy(() => import("./components/pages/FamilyFoundryLandingPage"));
 const FeaturesOverview = lazy(() => import("./components/FeaturesOverview"));
+const NFCProvisioningGuide = lazy(() => import("./components/NFCProvisioningGuide"));
 const NostrEcosystem = lazy(() => import("./components/NostrEcosystem"));
 
 
@@ -109,6 +110,7 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nfcModalOpen, setNfcModalOpen] = useState(false);
   const [loadingNfcModal, setLoadingNfcModal] = useState(false);
+  const [unifiedNfcSetupOpen, setUnifiedNfcSetupOpen] = useState(false);
 
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [showCommunications, setShowCommunications] = useState(false);
@@ -808,8 +810,9 @@ function App() {
         setShowCommunications={setShowCommunications}
       >
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <NFCProvisioningGuide onBack={() => setCurrentView("landing")} />
-
+          <Suspense fallback={<div className="text-white text-center py-20">Loading NFC Setup...</div>}>
+            <NFCProvisioningGuide onBack={() => setCurrentView("landing")} />
+          </Suspense>
         </div>
       </PageWrapper>
     );
@@ -1503,12 +1506,34 @@ function App() {
 
           <div className="mt-10 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center shadow-lg">
 
+            {/* Quick Start: Unified Setup Flow */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 rounded-xl">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-left">
+                  <h4 className="text-lg font-bold text-white">🚀 Quick Start: Unified NFC Setup</h4>
+                  <p className="text-sm text-purple-200">Set up Boltcard (Lightning payments) or Tapsigner (Bitcoin signing) with our guided wizard.</p>
+                </div>
+                <button
+                  onClick={() => setUnifiedNfcSetupOpen(true)}
+                  className="whitespace-nowrap px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors shadow-lg"
+                >
+                  Start Unified Setup
+                </button>
+              </div>
+            </div>
 
-            <h3 className="text-2xl font-bold text-white mb-3">Set up your NFC Name Tag: Start your ID Credentialing Quest</h3>
+            <h3 className="text-2xl font-bold text-white mb-3">Set up your NFC Card (Boltcard or Tapsigner)</h3>
             <p className="text-purple-100 mb-6 max-w-3xl mx-auto">
               Follow five simple steps to prepare your physical Name Tag, establish your personal Source of Truth Architecture,
               and finish with Stamping (registering your credentials onto the tag). Simple, private, and in your control.
             </p>
+
+            {/* Note for Tapsigner users */}
+            <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-left max-w-3xl mx-auto">
+              <p className="text-sm text-blue-200">
+                <strong>📱 Tapsigner Users:</strong> The steps below are for Boltcard (NTAG424) setup. For Tapsigner, use the <button onClick={() => setUnifiedNfcSetupOpen(true)} className="underline hover:text-blue-100">Unified Setup Flow</button> above, which provides Tapsigner-specific guidance.
+              </p>
+            </div>
             <ol className="text-left max-w-3xl mx-auto text-purple-100 list-decimal list-inside space-y-2">
               <li>
                 <strong>Step 1 -- CLAIM YOUR TRUE NAME:</strong> Choose one:
@@ -1525,12 +1550,13 @@ function App() {
                 <div className="mt-1 text-purple-200/90 text-xs">First Create Your Identity and Your Payments Address</div>
               </li>
               <li>
-                <strong>Step 2 -- INSTALL BOLTCARD PROGRAMMING APP:</strong> This will be the Name Tag Programming tool used to write your True Name on your Name Tag
+                <strong>Step 2 -- INSTALL NFC PROGRAMMING APP:</strong> Install the Boltcard Programming App (for NTAG424/Boltcard) to write your True Name on your Name Tag. Tapsigner users can use the built-in NFC interface.
                 <button
                   onClick={() => setCurrentView("lnurl-display")}
                   className="ml-2 inline-flex items-center bg-orange-500 hover:bg-orange-600 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors border border-black/40"
                   title="Show your LNURL details"
-                >Show LNURL</button>              </li>
+                >Show LNURL</button>
+              </li>
               <li>
                 <strong>Step 3 -- SCAN TAG's ID:</strong> Use the LNbits Boltcard extension to read the card's Unique ID #, the key data necessary for the Boltcard Programming App will be created
               </li>
@@ -1922,13 +1948,13 @@ function App() {
                   </>
                 ) : null}
                 <button
-                  onClick={() => setCurrentView('nfc-provisioning-guide')}
+                  onClick={() => setUnifiedNfcSetupOpen(true)}
                   className="block text-purple-200 hover:text-yellow-400 transition-colors duration-200"
-                  title="Prepare Your Name Tag/s"
+                  title="Set Up NFC Card"
                 >
-                  <span className="block">Prepare Your Name Tag/s</span>
+                  <span className="block">Set Up NFC Card</span>
                   <span className="block text-xs text-purple-300">
-                    Get auth URL & program via tap • <a href="https://play.google.com/store/apps/details?id=com.lightningnfcapp&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" className="underline">Install Boltcard Programming App</a>
+                    Boltcard or Tapsigner setup • Lightning payments & MFA
                   </span>
                 </button>
                 <button
@@ -2202,6 +2228,17 @@ function App() {
           />
         )
       }
+
+      {/* Unified NFC Setup Flow Modal */}
+      <UnifiedNFCSetupFlow
+        isOpen={unifiedNfcSetupOpen}
+        onClose={() => setUnifiedNfcSetupOpen(false)}
+        onComplete={(result) => {
+          console.log("NFC setup completed:", result);
+          setUnifiedNfcSetupOpen(false);
+          showToast.success(`${result.cardType === 'boltcard' ? 'Boltcard' : 'Tapsigner'} setup complete!`, { duration: 3000 });
+        }}
+      />
     </div >
   );
 }

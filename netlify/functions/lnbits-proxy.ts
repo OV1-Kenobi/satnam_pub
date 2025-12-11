@@ -1859,6 +1859,13 @@ export const handler = async (event: any) => {
         const authQr =
           created?.auth_link || created?.lnurlw || created?.qr || null;
 
+        // Extract encryption keys (K0, K1, K2) from LNbits response
+        // These are only available at creation time and cannot be retrieved later
+        const k0 = created?.k0 || created?.otp || null;
+        const k1 = created?.k1 || created?.k1_key || null;
+        const k2 = created?.k2 || created?.k2_key || null;
+        const lnurlw = created?.lnurlw_base || created?.lnurlw || null;
+
         // Insert DB record for tracking
         const row: any = {
           user_duid: user.id,
@@ -1921,11 +1928,25 @@ export const handler = async (event: any) => {
           );
         }
 
-        return json(200, {
-          success: true,
+        // Build response with encryption keys if available
+        // Keys are ONLY shown at creation time - cannot be retrieved later
+        // Wrapped in { success, data } for consistency with other wallet-scoped actions
+        const cardData: Record<string, unknown> = {
           cardId: String(cardId),
           authQr: authQr ? String(authQr) : undefined,
-        });
+        };
+
+        // Include encryption keys if returned by LNbits
+        // These are critical for programming the physical NFC card
+        if (k0) cardData.k0 = String(k0);
+        if (k1) cardData.k1 = String(k1);
+        if (k2) cardData.k2 = String(k2);
+        if (lnurlw) cardData.lnurlw = String(lnurlw);
+
+        // Flag indicating whether keys are present
+        cardData.keysAvailable = !!(k0 && k1 && k2);
+
+        return json(200, { success: true, data: cardData });
       }
 
       case "nwcPermissions": {

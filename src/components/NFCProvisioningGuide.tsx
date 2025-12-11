@@ -5,9 +5,13 @@ import { getBoltcardLnurl, getLNbitsWalletUrl } from "@/api/endpoints/lnbits.js"
 
 import { useNFCContactVerification } from "../hooks/useNFCContactVerification";
 
-interface Props { onBack: () => void; }
+interface Props {
+  onBack: () => void;
+  /** Optional callback when setup is complete (for integration with UnifiedNFCSetupFlow) */
+  onComplete?: (cardId: string) => void;
+}
 
-export default function NFCProvisioningGuide({ onBack }: Props) {
+export default function NFCProvisioningGuide({ onBack, onComplete }: Props) {
 
   const [lnurl, setLnurl] = useState<string>("");
   const [copied, setCopied] = useState(false);

@@ -711,7 +711,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
                         <div className="flex-1">
                           <h4 className="text-white font-bold text-lg mb-2">NFC Physical MFA</h4>
                           <p className="text-blue-200 text-sm">
-                            Tap to sign in securely with your NTAG424 tag
+                            Tap to authenticate with your Boltcard or Tapsigner
                           </p>
                         </div>
                         <ArrowRight className="h-5 w-5 text-blue-400" />
