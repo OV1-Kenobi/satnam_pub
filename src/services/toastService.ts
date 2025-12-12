@@ -11,7 +11,7 @@
  * - Memory-efficient with automatic cleanup
  */
 
-import React from "react";
+import * as React from "react";
 
 export interface ToastMessage {
   id: string;

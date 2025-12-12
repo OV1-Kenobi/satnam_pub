@@ -60,7 +60,7 @@ export function getVaultFeatureFlags(): VaultFeatureConfig {
 
 // Minimal base64 helpers (browser-friendly)
 const b64encode = (bytes: Uint8Array): string =>
-  btoa(String.fromCharCode(...bytes));
+  btoa(String.fromCharCode.apply(null, Array.from(bytes)));
 const b64decode = (b64: string): Uint8Array =>
   Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 

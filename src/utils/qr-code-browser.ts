@@ -7,7 +7,9 @@
  * - Lightweight and fast
  */
 
-import qrcode from "qrcode-generator";
+import qrcodeModule from "qrcode-generator";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const qrcode = (qrcodeModule as any).default ?? qrcodeModule;
 
 export interface QRCodeOptions {
   size?: number;

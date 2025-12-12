@@ -227,7 +227,9 @@ export class AmberAdapter implements SignerAdapter {
     this.nip55SignerPubHex = null;
     // Reject and clear any pending NIP-55 awaits
     try {
-      for (const [id, entry] of this.nip55Pending.entries()) {
+      const entries = Array.from(this.nip55Pending.entries());
+      for (let i = 0; i < entries.length; i++) {
+        const [id, entry] = entries[i];
         try {
           entry.reject(new Error(`amber_nip55_disconnected:${id}`));
         } catch {}
@@ -470,6 +472,120 @@ export class AmberAdapter implements SignerAdapter {
     meta?: Record<string, unknown>;
   }> {
     throw new Error("Threshold signing not supported by Amber");
+  }
+
+  // ---- Public NIP-46 pairing helpers ----
+
+  /**
+   * Generate a NIP-46 pairing URI for external signers to scan
+   * Returns the nostrconnect:// URI along with ephemeral credentials
+   */
+  generatePairingUri(options?: {
+    permissions?: string;
+    appName?: string;
+    appUrl?: string;
+  }): {
+    uri: string;
+    clientPubKeyHex: string;
+    secretHex: string;
+    relay: string;
+  } {
+    const {
+      permissions = "sign_event,nip44_encrypt,nip44_decrypt",
+      appName = "Satnam",
+      appUrl = "https://satnam.pub",
+    } = options ?? {};
+
+    // Generate ephemeral client keypair
+    const sk = new Uint8Array(32);
+    crypto.getRandomValues(sk);
+    const clientPrivHex = bytesToHex(sk);
+    const clientPubHex = CEPS.getPublicKeyHex(clientPrivHex);
+
+    // Generate random secret
+    const secret = new Uint8Array(32);
+    crypto.getRandomValues(secret);
+    const secretHex = bytesToHex(secret);
+
+    // Get relay
+    const cepsTyped = CEPS as unknown as CEPSWithNip46;
+    const relays = cepsTyped.getRelays?.() as string[] | undefined;
+    const relay =
+      Array.isArray(relays) && relays.length
+        ? relays[0]
+        : "wss://relay.satnam.pub";
+
+    // Store for later use
+    this.clientPrivHex = clientPrivHex;
+    this.clientPubHex = clientPubHex;
+    this.sharedSecretHex = secretHex;
+    this.pairingUri = null;
+
+    // Build URI
+    const params = new URLSearchParams();
+    params.set("relay", relay);
+    params.set("secret", secretHex);
+    params.set("name", appName);
+    params.set("perms", permissions);
+    if (appUrl) {
+      params.set("url", appUrl);
+    }
+
+    const uri = `nostrconnect://${clientPubHex}?${params.toString()}`;
+    this.pairingUri = uri;
+
+    return {
+      uri,
+      clientPubKeyHex: clientPubHex,
+      secretHex,
+      relay,
+    };
+  }
+
+  /**
+   * Get current pairing state
+   */
+  getPairingState(): {
+    isPaired: boolean;
+    signerPubKeyHex: string | null;
+    pairingUri: string | null;
+  } {
+    // Check NIP-55 state
+    if (this.nip55SignerPubHex) {
+      return {
+        isPaired: true,
+        signerPubKeyHex: this.nip55SignerPubHex,
+        pairingUri: this.pairingUri,
+      };
+    }
+
+    // Check CEPS NIP-46 state
+    try {
+      const cepsTyped = CEPS as unknown as CEPSWithNip46;
+      const st = cepsTyped.getNip46PairingState?.();
+      if (st && st.signerPubHex) {
+        return {
+          isPaired: true,
+          signerPubKeyHex: st.signerPubHex,
+          pairingUri: this.pairingUri,
+        };
+      }
+    } catch {
+      // Ignore
+    }
+
+    return {
+      isPaired: this.paired,
+      signerPubKeyHex: null,
+      pairingUri: this.pairingUri,
+    };
+  }
+
+  /**
+   * Get the stored client public key (hex) used for pairing
+   */
+  getClientPubKeyHex(): string | null {
+    return this.clientPubHex;
   }
 }
 

@@ -13,6 +13,7 @@ import SignerMethodSettings from "./auth/SignerMethodSettings";
 import IrohNodeManager from "./iroh/IrohNodeManager";
 import { UnifiedNFCSetupFlow } from "./nfc";
 import AttestationsTab from "./Settings/AttestationsTab";
+import NostrConnectPairing from "./Settings/NostrConnectPairing";
 import TapsignerStatusDisplay from "./TapsignerStatusDisplay";
 
 
@@ -351,6 +352,13 @@ const Settings: React.FC = () => {
             <div className="space-y-3">
               <SignerMethodSettings />
             </div>
+
+            {/* NIP-46 Nostr Connect Pairing (feature-flagged) */}
+            {enableAmber && (
+              <div className="mt-6 pt-6 border-t border-purple-500/20">
+                <NostrConnectPairing />
+              </div>
+            )}
           </section>
 
           <section className="bg-purple-900/60 border border-yellow-400/20 rounded-2xl p-6">

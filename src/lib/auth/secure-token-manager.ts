@@ -191,12 +191,15 @@ export class EnvelopeEncryptionService {
       dataKeyBuffer
     );
 
+    // Combine masterIv and encryptedKeyBuffer without spread operator
+    const encKeyBytes = new Uint8Array(encryptedKeyBuffer);
+    const combinedKey = new Uint8Array(masterIv.length + encKeyBytes.length);
+    combinedKey.set(masterIv, 0);
+    combinedKey.set(encKeyBytes, masterIv.length);
+
     return {
       encryptedData: this.bufferToHex(encryptedDataBuffer),
-      encryptedKey: this.bufferToHex(
-        new Uint8Array([...masterIv, ...new Uint8Array(encryptedKeyBuffer)])
-          .buffer
-      ),
+      encryptedKey: this.bufferToHex(combinedKey.buffer),
       iv: this.bufferToHex(iv),
     };
   }

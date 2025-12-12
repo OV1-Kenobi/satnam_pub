@@ -282,8 +282,10 @@ export class UserSigningPreferencesService {
         description: "Zero-knowledge signing with browser extension",
         securityLevel: "maximum",
         convenience: "medium",
-        available: typeof window !== "undefined" && !!window.nostr,
-        requiresSetup: !window.nostr,
+        available:
+          typeof window !== "undefined" &&
+          !!(window as { nostr?: unknown }).nostr,
+        requiresSetup: !(window as { nostr?: unknown }).nostr,
         setupInstructions:
           "Install a NIP-07 compatible browser extension like Alby or nos2x",
       },

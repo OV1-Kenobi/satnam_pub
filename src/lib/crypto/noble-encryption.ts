@@ -234,7 +234,7 @@ export class NobleEncryption {
    * Convert bytes to base64url (URL-safe base64)
    */
   private static bytesToBase64Url(bytes: Uint8Array): string {
-    return btoa(String.fromCharCode(...bytes))
+    return btoa(String.fromCharCode.apply(null, Array.from(bytes)))
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
       .replace(/=/g, "");
