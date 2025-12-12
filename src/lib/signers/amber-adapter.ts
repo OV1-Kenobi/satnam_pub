@@ -555,7 +555,7 @@ export class AmberAdapter implements SignerAdapter {
       return {
         isPaired: true,
         signerPubKeyHex: this.nip55SignerPubHex,
-        pairingUri: this.pairingUri,
+        pairingUri: null, // NIP-55 doesn't use pairing URIs
       };
     }
 

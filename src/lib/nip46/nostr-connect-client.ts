@@ -62,6 +62,7 @@ export type Nip46ConnectionStatus =
 /** Result of generating a pairing URI */
 export interface Nip46PairingResult {
   uri: string;
+  clientPrivKeyHex: string;
   clientPubKeyHex: string;
   secretHex: string;
   relays: string[];
@@ -147,6 +148,7 @@ export function generatePairingUri(options?: {
 
   return {
     uri,
+    clientPrivKeyHex,
     clientPubKeyHex,
     secretHex,
     relays,

@@ -289,6 +289,26 @@
   status = 200
   force = true
 
+# Family Federation invitation list endpoints
+[[redirects]]
+  from = "/api/family/invitations/list-sent"
+  to = "/.netlify/functions/family-invitations-list-sent"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/family/invitations/list-received"
+  to = "/.netlify/functions/family-invitations-list-received"
+  status = 200
+  force = true
+
+# My Federations endpoint
+[[redirects]]
+  from = "/api/family/my-federations"
+  to = "/.netlify/functions/family-my-federations"
+  status = 200
+  force = true
+
 # CRITICAL: Exclude browser-side ESM client modules from API proxy
 # These are client-side JavaScript files, NOT Netlify Functions
 [[redirects]]
