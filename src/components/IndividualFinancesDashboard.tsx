@@ -69,6 +69,10 @@ import PrivacyPreferencesModal from './enhanced/PrivacyPreferencesModal';
 
 import LNBitsIntegrationPanel from './LNBitsIntegrationPanel';
 
+// Import Federation & Invitations components
+import { FederationMemberships } from './individual-dashboard/FederationMemberships';
+import { PendingInvitations } from './individual-dashboard/PendingInvitations';
+import { SentInvitations } from './individual-dashboard/SentInvitations';
 
 // Import API service
 
@@ -1710,7 +1714,7 @@ const EnhancedPrivacyTab: React.FC<{ wallet: EnhancedIndividualWallet }> = ({ wa
 export function IndividualFinancesDashboard({ memberId, memberData, onBack }: IndividualFinancesDashboardProps) {
   const [wallet, setWallet] = useState<EnhancedIndividualWallet | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'lnbits' | 'privacy' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'lightning' | 'cashu' | 'lnbits' | 'privacy' | 'notifications' | 'federations'>('overview');
   const [notificationStats, setNotificationStats] = useState({ unread: 0, total: 0 });
   const [showCascadeModal, setShowCascadeModal] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
@@ -2098,7 +2102,8 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
               label: `Notifications${notificationStats.unread > 0 ? ` (${notificationStats.unread})` : ''}`,
               color: 'blue',
               badge: notificationStats.unread > 0 ? notificationStats.unread : undefined
-            }
+            },
+            { key: 'federations', label: 'Federations & Invitations', color: 'purple' }
           ].map((tab) => (
             <button
               key={tab.key}
@@ -2127,6 +2132,15 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
       {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
       {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
       {activeTab === 'notifications' && <NotificationsTab context="individual" />}
+      {activeTab === 'federations' && (
+        <div className="space-y-8">
+          <PendingInvitations />
+          <FederationMemberships />
+          {(derivedUserRole === 'guardian' || derivedUserRole === 'steward') && (
+            <SentInvitations />
+          )}
+        </div>
+      )}
 
       {/* Payment Cascade Modal */}
       <PaymentCascadeModal

@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { SecureTokenManager } from '../../lib/auth/secure-token-manager';
+import { storeEncryptedInvitationToken, recoverEncryptedInvitationToken, clearInvitationToken } from '../../lib/crypto/invitation-token-storage';
+import SignInModal from '../SignInModal';
 
 type MasterContextRole = 'guardian' | 'steward' | 'adult' | 'offspring';
 
@@ -31,6 +33,8 @@ interface InvitationDisplayProps {
   token: string;
   onAccepted?: (federationDuid: string) => void;
   onCreateAccount?: () => void;
+  /** Called when user successfully signs in - navigates to dashboard */
+  onSignInSuccess?: () => void;
 }
 
 interface InvitationDetails {
@@ -68,7 +72,8 @@ const ROLE_COLORS: Record<MasterContextRole, string> = {
 export function InvitationDisplay({
   token,
   onAccepted,
-  onCreateAccount
+  onCreateAccount,
+  onSignInSuccess
 }: InvitationDisplayProps) {
   const { authenticated: isAuthenticated } = useAuth();
   const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
@@ -80,6 +85,50 @@ export function InvitationDisplay({
   // Phase 3: Safeword state
   const [safeword, setSafeword] = useState('');
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+
+  // Sign-in modal state for invitation flow
+  const [showSignInModal, setShowSignInModal] = useState(false);
+
+  // Store invitation token before triggering sign-in
+  const handleSignInClick = async () => {
+    try {
+      await storeEncryptedInvitationToken(token);
+      console.log('📦 Invitation token stored, opening sign-in modal');
+      setShowSignInModal(true);
+    } catch (error) {
+      console.error('Failed to store invitation token:', error);
+      // Still open sign-in modal even if storage fails
+      setShowSignInModal(true);
+    }
+  };
+
+  // Handle successful sign-in - clear stored token since we're already on the invite page
+  const handleSignInSuccess = () => {
+    clearInvitationToken();
+    setShowSignInModal(false);
+    onSignInSuccess?.();
+    // Component will re-render with isAuthenticated=true, showing the accept button
+  };
+
+  // Recover stored invitation token on mount (for users who signed in from another page)
+  useEffect(() => {
+    const recoverToken = async () => {
+      if (!isAuthenticated) return;
+
+      try {
+        const storedToken = await recoverEncryptedInvitationToken();
+        if (storedToken && storedToken === token) {
+          // Token matches - clear it since user is on the correct invite page
+          clearInvitationToken();
+          console.log('📦 Recovered matching invitation token, user can now accept');
+        }
+      } catch (error) {
+        console.warn('Failed to recover invitation token:', error);
+      }
+    };
+
+    recoverToken();
+  }, [isAuthenticated, token]);
 
   // Fetch invitation details
   useEffect(() => {
@@ -331,9 +380,12 @@ export function InvitationDisplay({
           </button>
           <p className="text-center text-purple-300 text-sm">
             Already have an account?{' '}
-            <a href="/signin" className="text-purple-400 hover:text-purple-300 underline">
+            <button
+              onClick={handleSignInClick}
+              className="text-purple-400 hover:text-purple-300 underline bg-transparent border-none cursor-pointer"
+            >
               Sign in
-            </a>
+            </button>
           </p>
         </div>
       )}
@@ -350,6 +402,17 @@ export function InvitationDisplay({
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
+
+      {/* Sign In Modal */}
+      <SignInModal
+        isOpen={showSignInModal}
+        onClose={() => setShowSignInModal(false)}
+        onSignInSuccess={handleSignInSuccess}
+        onCreateNew={() => {
+          setShowSignInModal(false);
+          onCreateAccount?.();
+        }}
+      />
     </div>
   );
 }
