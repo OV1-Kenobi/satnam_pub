@@ -177,18 +177,20 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
       };
     }
 
-    // Step 5: Create session using SecureSessionManager (following nip07-signin pattern)
-    const userData = {
-      npub: user.npub || '',
-      nip05: requestData.nip05,
-      federationRole: user.role || 'private',
-      authMethod: /** @type {"nip05-password"} */ ('nip05-password'),
-      isWhitelisted: true,
-      votingPower: user.voting_power || 0,
-      guardianApproved: false,
-      stewardApproved: false,
-      sessionToken: ''
-    };
+	    // Step 5: Create session using SecureSessionManager (following nip07-signin pattern)
+	    const userData = {
+	      npub: user.npub || '',
+	      // Use DUID (user.id) for backend session semantics
+	      userDuid: user.id,
+	      nip05: requestData.nip05,
+	      federationRole: user.role || 'private',
+	      authMethod: /** @type {"nip05-password"} */ ('nip05-password'),
+	      isWhitelisted: true,
+	      votingPower: user.voting_power || 0,
+	      guardianApproved: false,
+	      stewardApproved: false,
+	      sessionToken: ''
+	    };
 
     // Create secure JWT session (following register-identity pattern)
     const sessionResult = await SecureSessionManager.createSession(corsHeaders, userData);

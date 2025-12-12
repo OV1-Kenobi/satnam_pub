@@ -105,18 +105,20 @@ export default async function handler(event, context) {
       return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success: false, error: 'Failed to update password' }) };
     }
 
-    // Auto sign-in: create session like /api/auth/signin
-    const userData = {
-      npub: user.npub || '',
-      nip05,
-      federationRole: user.role || 'private',
-      authMethod: /** @type {"nip05-password"} */ ('nip05-password'),
-      isWhitelisted: true,
-      votingPower: user.voting_power || 0,
-      guardianApproved: false,
-      stewardApproved: false,
-      sessionToken: '',
-    };
+	    // Auto sign-in: create session like /api/auth/signin
+	    const userData = {
+	      npub: user.npub || '',
+	      // Use DUID (user.id) for backend session semantics
+	      userDuid: user.id,
+	      nip05,
+	      federationRole: user.role || 'private',
+	      authMethod: /** @type {"nip05-password"} */ ('nip05-password'),
+	      isWhitelisted: true,
+	      votingPower: user.voting_power || 0,
+	      guardianApproved: false,
+	      stewardApproved: false,
+	      sessionToken: '',
+	    };
 
     const sessionToken = await SecureSessionManager.createSession(corsHeaders, userData);
     if (!sessionToken || typeof sessionToken !== 'string') {

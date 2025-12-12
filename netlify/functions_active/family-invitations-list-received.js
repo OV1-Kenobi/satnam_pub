@@ -26,8 +26,9 @@ function validateSession(token) {
     const payload = jwt.verify(token, JWT_SECRET);
     // Support both userId (custom JWT) and sub (standard JWT claim)
     const userId = payload.userId || payload.sub;
-    if (!userId) return null;
-    return { userId };
+    const npub = payload.npub || null;
+    if (!userId && !npub) return null;
+    return { userId, npub };
   } catch (err) {
     console.error('JWT validation failed:', err.message);
     return null;
@@ -67,40 +68,26 @@ export const handler = async (event) => {
       };
     }
 
-    const session = validateSession(token);
-    if (!session?.userId) {
-      return {
-        statusCode: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Invalid session' })
-      };
-    }
+	    const session = validateSession(token);
+	    if (!session?.userId) {
+	      return {
+	        statusCode: 401,
+	        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+	        body: JSON.stringify({ error: 'Invalid session' })
+	      };
+	    }
 
-    // Get user's npub from user_identities
-    const { data: user, error: userError } = await supabaseAdmin
-      .from('user_identities')
-      .select('npub')
-      .eq('id', session.userId)
-      .single();
+	    	// Use npub from JWT payload when available; fall back to userId for legacy tokens
+	    	const userNpub = session.npub || session.userId;
+	    if (!userNpub) {
+	      return {
+	        statusCode: 200,
+	        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+	        body: JSON.stringify({ success: true, invitations: [], message: 'No npub associated' })
+	      };
+	    }
 
-    if (userError) {
-      console.error('Failed to fetch user identity:', userError);
-      return {
-        statusCode: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Failed to fetch user identity' })
-      };
-    }
-
-    if (!user?.npub) {
-      return {
-        statusCode: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ success: true, invitations: [], message: 'No npub associated' })
-      };
-    }
-
-    const npubHash = await hashNpub(user.npub);
+	    const npubHash = await hashNpub(userNpub);
 
     // Fetch pending invitations targeted at this user
     const { data: invitations, error } = await supabaseAdmin

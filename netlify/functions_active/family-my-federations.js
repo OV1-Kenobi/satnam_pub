@@ -59,63 +59,85 @@ export const handler = async (event) => {
       };
     }
 
-    const session = validateSession(token);
-    if (!session?.userId) {
-      return {
-        statusCode: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Invalid session' })
-      };
-    }
+	    const session = validateSession(token);
+	    if (!session?.userId) {
+	      return {
+	        statusCode: 401,
+	        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+	        body: JSON.stringify({ error: 'Invalid session' })
+	      };
+	    }
 
-    // Fetch user's federation memberships with federation details
-    const { data: memberships, error } = await supabaseAdmin
-      .from('family_members')
-      .select(`
-        id,
-        family_role,
-        joined_at,
-        is_active,
-        family_federation_id,
-        family_federations (
-          id,
-          federation_duid,
-          federation_name,
-          charter_status
-        )
-      `)
-      .eq('user_duid', session.userId)
-      .eq('is_active', true);
+		    const userId = session.userId; // In current architecture this is the user's DUID
 
-    if (error) {
-      console.error('Failed to fetch federations:', error);
-      return {
-        statusCode: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Failed to fetch federations' })
-      };
-    }
+	    // Step 1: Fetch memberships for this user (privacy-first: filter by user_duid)
+	    const { data: memberships, error: membershipError } = await supabaseAdmin
+	      .from('family_members')
+	      .select('id, federation_duid, role, joined_at, is_active')
+	      .eq('user_duid', userId)
+	      .eq('is_active', true);
 
-    const federations = (memberships || []).map(m => {
-      const fed = Array.isArray(m.family_federations) 
-        ? m.family_federations[0] 
-        : m.family_federations;
-      return {
-        id: m.id,
-        federation_duid: fed?.federation_duid,
-        federation_name: fed?.federation_name || 'Unknown',
-        role: m.family_role,
-        joined_at: m.joined_at,
-        is_active: m.is_active,
-        charter_status: fed?.charter_status
-      };
-    });
+	    if (membershipError) {
+	      console.error('Failed to fetch federations:', membershipError);
+	      return {
+	        statusCode: 500,
+	        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+	        body: JSON.stringify({ error: 'Failed to fetch federations' })
+	      };
+	    }
 
-    return {
-      statusCode: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true, federations })
-    };
+	    if (!memberships || memberships.length === 0) {
+	      return {
+	        statusCode: 200,
+	        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+	        body: JSON.stringify({ success: true, federations: [] })
+	      };
+	    }
+
+	    // Step 2: Load federation details for all referenced federations (by federation_duid)
+	    const federationDuids = Array.from(
+	      new Set(
+	        memberships
+	          .map((m) => m.federation_duid)
+	          .filter((duid) => typeof duid === 'string' && duid.length > 0)
+	      )
+	    );
+
+	    let federationsByDuid = {};
+	    if (federationDuids.length > 0) {
+	      const { data: federationRows, error: federationError } = await supabaseAdmin
+	        .from('family_federations')
+	        .select('id, federation_duid, federation_name, status')
+	        .in('federation_duid', federationDuids);
+
+	      if (federationError) {
+	        console.error('Failed to fetch federation details:', federationError);
+	      } else if (federationRows) {
+	        federationsByDuid = Object.fromEntries(
+	          federationRows.map((fed) => [fed.federation_duid, fed])
+	        );
+	      }
+	    }
+
+	    const federations = memberships.map((m) => {
+	      const fed = m.federation_duid ? federationsByDuid[m.federation_duid] : null;
+	      return {
+	        id: m.id,
+	        federation_duid: m.federation_duid || (fed ? fed.federation_duid : null),
+	        federation_name: (fed && fed.federation_name) || 'Family Federation',
+	        role: m.role || 'adult',
+	        joined_at: m.joined_at,
+	        is_active: m.is_active,
+	        // Map federation.status (generic lifecycle) into optional charter_status field for UI
+	        charter_status: fed && fed.status ? fed.status : undefined,
+	      };
+	    });
+
+	    return {
+	      statusCode: 200,
+	      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+	      body: JSON.stringify({ success: true, federations })
+	    };
 
   } catch (err) {
     console.error('My federations error:', err);

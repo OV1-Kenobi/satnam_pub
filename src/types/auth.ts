@@ -68,6 +68,8 @@ export interface RoleHierarchy {
 
 export interface FamilyFederationUser {
   npub: string;
+  // Privacy-first user DUID used for backend session semantics (optional on client)
+  userDuid?: string;
   nip05?: string;
   federationRole: FederationRole;
   authMethod: "nip05-password" | "nip07";

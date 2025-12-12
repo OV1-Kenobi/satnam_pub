@@ -302,6 +302,13 @@
   status = 200
   force = true
 
+# Family Federation invitation acceptance endpoint
+[[redirects]]
+  from = "/api/family/invitations/accept"
+  to = "/.netlify/functions/family-invitations-accept"
+  status = 200
+  force = true
+
 # My Federations endpoint
 [[redirects]]
   from = "/api/family/my-federations"

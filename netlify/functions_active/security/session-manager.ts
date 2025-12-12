@@ -13,8 +13,8 @@ import { getEnvVar } from "../utils/env.js";
  */
 
 // Removed vault import - using environment variables directly
-import { FamilyFederationUser, FederationRole } from "../../src/types/auth";
-import { NetlifyResponse } from "../../types/netlify-functions";
+import { FamilyFederationUser, FederationRole } from "../../../src/types/auth";
+import { NetlifyResponse } from "../../../types/netlify-functions";
 
 export interface SessionData {
   userId: string;
@@ -374,11 +374,19 @@ export class SecureSessionManager {
    * Create JWT session for authenticated user
    */
   static async createSession(
-    _res: NetlifyResponse, // Reserved for future response header setting
+    _res: NetlifyResponse | Record<string, string>, // Reserved for future response header setting or CORS headers
     userData: FamilyFederationUser
   ): Promise<string> {
+    // Prefer privacy-first DUID when available; fall back to npub for legacy callers
+    const effectiveUserId = userData.userDuid || userData.npub;
+    if (!userData.userDuid) {
+      console.warn(
+        "SecureSessionManager.createSession called without userDuid; falling back to npub-based userId (deprecated)."
+      );
+    }
+
     const sessionData: SessionData = {
-      userId: userData.npub,
+      userId: effectiveUserId,
       npub: userData.npub,
       nip05: userData.nip05,
       federationRole: userData.federationRole,
