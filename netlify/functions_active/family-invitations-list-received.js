@@ -6,11 +6,14 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || process.env.VITE_APP_URL || 'https://www.satnam.pub',
@@ -18,12 +21,15 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS'
 };
 
-async function validateSession(token) {
+function validateSession(token) {
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return null;
-    return { userId: user.id };
-  } catch {
+    const payload = jwt.verify(token, JWT_SECRET);
+    // Support both userId (custom JWT) and sub (standard JWT claim)
+    const userId = payload.userId || payload.sub;
+    if (!userId) return null;
+    return { userId };
+  } catch (err) {
+    console.error('JWT validation failed:', err.message);
     return null;
   }
 }
@@ -61,7 +67,7 @@ export const handler = async (event) => {
       };
     }
 
-    const session = await validateSession(token);
+    const session = validateSession(token);
     if (!session?.userId) {
       return {
         statusCode: 401,
