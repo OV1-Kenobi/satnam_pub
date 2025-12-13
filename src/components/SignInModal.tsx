@@ -31,7 +31,7 @@ import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
 import NTAG424AuthModal from './NTAG424AuthModal';
 
-import { central_event_publishing_service } from "../../lib/central_event_publishing_service";
+import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 
 // At the top of the file, outside the component
 let nip07SessionId: string | undefined;
@@ -49,6 +49,8 @@ interface ExtensionStatus {
   name?: string;
   error?: string;
 }
+
+type AmberStatus = 'unavailable' | 'available' | 'connected' | 'error';
 
 interface SignedAuthEvent {
   kind: number;
@@ -83,6 +85,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const NFC_ENABLED = (import.meta.env.VITE_ENABLE_NFC_MFA as string) === 'true';
 
   const [sessionInfo, setSessionInfo] = useState<any | null>(null);
+  const [amberStatus, setAmberStatus] = useState<AmberStatus>('unavailable');
 
   // NIP-07 auth state
   const [nip07State, setNip07State] = useState<{
@@ -200,6 +203,47 @@ const SignInModal: React.FC<SignInModalProps> = ({
     return () => clearTimeout(timer);
   }, [isOpen]);
 
+  // Detect Amber signer availability/status on Android when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const detectAmber = async () => {
+      try {
+        if (typeof navigator === 'undefined') {
+          setAmberStatus('unavailable');
+          return;
+        }
+
+        const ua = navigator.userAgent || '';
+        const isAndroid = /Android/i.test(ua);
+        if (!isAndroid) {
+          setAmberStatus('unavailable');
+          return;
+        }
+
+        const signers = CEPS.getRegisteredSigners?.() || [];
+        const amber = signers.find((s: any) => s.id === 'amber');
+        if (!amber) {
+          setAmberStatus('unavailable');
+          return;
+        }
+
+        const status = await amber.getStatus();
+        if (!mountedRef.current) return;
+
+        if (status === 'connected') setAmberStatus('connected');
+        else if (status === 'available') setAmberStatus('available');
+        else if (status === 'error') setAmberStatus('error');
+        else setAmberStatus('unavailable');
+      } catch {
+        if (!mountedRef.current) return;
+        setAmberStatus('error');
+      }
+    };
+
+    detectAmber();
+  }, [isOpen]);
+
   const handleNIP07Register = () => {
     const endpoint = (window as any).__nip07RegisterEndpoint || '/identity-forge';
     // Ensure the endpoint is a relative path or a trusted domain
@@ -293,7 +337,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
       }
 
 
-      const npub = central_event_publishing_service.encodeNpub(publicKey);
+      const npub = CEPS.encodeNpub(publicKey);
 
       setNip07State({
         step: 'signing',
@@ -369,6 +413,128 @@ const SignInModal: React.FC<SignInModalProps> = ({
         error: error instanceof Error ? error.message : 'An unexpected error occurred'
       });
     }
+  };
+
+  const handleAmberSignIn = async (existingAmberSigner?: any) => {
+    setAuthStep('nip07-auth');
+
+    try {
+      setNip07State({
+        step: 'connecting',
+        message: 'Connecting to Amber on your Android device...'
+      });
+
+      let amber = existingAmberSigner;
+      if (!amber) {
+        const signers = CEPS.getRegisteredSigners?.() || [];
+        amber = signers.find((s: any) => s.id === 'amber');
+      }
+
+      if (!amber) {
+        throw new Error('Amber signer not available. Please ensure Amber is installed and enabled.');
+      }
+
+      const status = await amber.getStatus();
+      if (status !== 'connected') {
+        throw new Error('Amber is not connected. Open Amber on your Android device and complete pairing first.');
+      }
+
+      // Generate authentication challenge (reuses existing NIP-07 helper)
+      const challenge = await generateAuthChallenge();
+
+      // Create unsigned NIP-22242 authentication event (pubkey will be filled in by Amber)
+      const authEvent = {
+        kind: 22242,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['challenge', challenge.challenge],
+          ['domain', challenge.domain],
+          ['expires', challenge.expiresAt.toString()]
+        ],
+        content: `Authenticate to ${challenge.domain}`
+      };
+
+      setNip07State(prev => ({
+        ...prev,
+        step: 'signing',
+        message: 'Please sign the authentication challenge in Amber on your Android device...'
+      }));
+
+      let signedEvent: SignedAuthEvent | any;
+      try {
+        signedEvent = await amber.signEvent(authEvent as any);
+      } catch (error) {
+        throw new Error('Signing cancelled or failed in Amber. Please approve the authentication request in Amber to continue.');
+      }
+
+      const pubkey = (signedEvent && (signedEvent as any).pubkey) as string | undefined;
+      if (pubkey && typeof pubkey === 'string') {
+        const npub = CEPS.encodeNpub(pubkey);
+        setNip07State(prev => ({
+          ...prev,
+          npub
+        }));
+      }
+
+      setNip07State(prev => ({
+        ...prev,
+        step: 'verifying',
+        message: 'Verifying Amber authentication...'
+      }));
+
+      await verifyAuthentication(signedEvent as SignedAuthEvent, challenge);
+
+      setNip07State(prev => ({
+        ...prev,
+        step: 'success',
+        message: 'Authentication successful!'
+      }));
+
+      // Reuse existing post-auth session flow
+      postAuthTimerRef.current = window.setTimeout(() => {
+        const loadSessionInfo = async () => {
+          try {
+            const session = await getSessionInfo();
+            if (!mountedRef.current) return;
+            setSessionInfo(session);
+            setShowPostAuthInvitation(true);
+          } catch (error) {
+            console.error('Failed to get session info:', error);
+            if (!mountedRef.current) return;
+            onSignInSuccess(destination);
+            handleClose();
+          }
+        };
+        loadSessionInfo();
+      }, 1000);
+
+    } catch (error) {
+      console.error('Amber authentication error:', error);
+      setNip07State({
+        step: 'error',
+        message: 'Authentication failed',
+        error: error instanceof Error ? error.message : 'An unexpected error occurred'
+      });
+    }
+  };
+
+  const handlePrimarySignerSignIn = async () => {
+    try {
+      // Prefer Amber on Android when connected; fall back to NIP-07
+      const signers = CEPS.getRegisteredSigners?.() || [];
+      const amber = signers.find((s: any) => s.id === 'amber');
+      if (amber) {
+        const status = await amber.getStatus();
+        if (status === 'connected') {
+          await handleAmberSignIn(amber);
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn('[Diag][SignInModal] Amber detection failed, falling back to NIP-07:', error);
+    }
+
+    await handleNIP07SignIn();
   };
 
   const generateAuthChallenge = async (): Promise<NIP07AuthChallenge> => {
@@ -526,7 +692,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
 
 
-  console.log('🎯 SignInModal render:', { isOpen, authStep, showNIP05PasswordAuth, showPostAuthInvitation });
+  console.log('🎯 SignInModal render:', { isOpen, authStep, showNIP05PasswordAuth, showPostAuthInvitation, amberStatus });
 
   if (!isOpen) {
     console.log('🎯 SignInModal not rendering - isOpen is false');
@@ -634,7 +800,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
                   RECOMMENDED
                 </div>
                 <button
-                  onClick={async () => { const { default: STM } = await import('../lib/auth/secure-token-manager'); await STM.initialize(); await handleNIP07SignIn(); }}
+                  onClick={async () => { const { default: STM } = await import('../lib/auth/secure-token-manager'); await STM.initialize(); await handlePrimarySignerSignIn(); }}
                   className="w-full text-left"
                 >
                   <div className="flex items-center space-x-4">

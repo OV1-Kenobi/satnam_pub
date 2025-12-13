@@ -2154,7 +2154,10 @@ export class CentralEventPublishingService {
       case "nip07":
         return getEnvFlag("VITE_ENABLE_NIP07_SIGNING", true);
       case "amber":
-        return getEnvFlag("VITE_ENABLE_AMBER_SIGNING", false);
+        // Amber availability is determined at runtime by platformSupports() and the
+        // AmberAdapter's getStatus(). Do not gate Amber behind a feature flag so
+        // that a paired Amber signer is always eligible on Android.
+        return true;
       case "ntag424":
         return getEnvFlag("VITE_ENABLE_NFC_SIGNING", false);
       case "nip05_password":
@@ -2212,11 +2215,22 @@ export class CentralEventPublishingService {
 
     if (!eligible.length) return null;
 
-    // Prefer connected > available > locked > error/unavailable
+    // Query status for all eligible signers once
     const statuses: Array<{ signer: SignerAdapter; status: SignerStatus }> =
       await Promise.all(
         eligible.map(async (s) => ({ signer: s, status: await s.getStatus() }))
       );
+
+    // On Android, prefer Amber for generic event signing when it is connected.
+    // This mirrors the priority used in SignInModal.handlePrimarySignerSignIn().
+    if (action === "event") {
+      const amberConnected = statuses.find(
+        (x) => x.signer.id === "amber" && x.status === "connected"
+      );
+      if (amberConnected) {
+        return amberConnected.signer;
+      }
+    }
 
     const order = (st: SignerStatus): number => {
       if (st === "connected") return 0;
