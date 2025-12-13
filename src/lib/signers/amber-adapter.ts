@@ -136,7 +136,6 @@ export class AmberAdapter implements SignerAdapter {
 
   async getStatus(): Promise<SignerStatus> {
     try {
-      if (!getFlag("VITE_ENABLE_AMBER_SIGNING", false)) return "unavailable";
       if (!isAndroid()) return "unavailable";
       // Reflect CEPS pairing state (NIP-46) and local NIP-55 state
       try {
@@ -152,9 +151,6 @@ export class AmberAdapter implements SignerAdapter {
   }
 
   async connect(): Promise<void> {
-    if (!getFlag("VITE_ENABLE_AMBER_SIGNING", false)) {
-      throw new Error("Amber signing is disabled by feature flag");
-    }
     if (!isAndroid()) {
       throw new Error("Amber signing is only available on Android devices");
     }
@@ -247,7 +243,6 @@ export class AmberAdapter implements SignerAdapter {
   private preferNip55(): boolean {
     try {
       if (!isAndroid()) return false;
-      if (!getFlag("VITE_ENABLE_AMBER_SIGNING", false)) return false;
       // Local preference override from Settings (persisted across sessions)
       if (typeof window !== "undefined" && window.localStorage) {
         const raw = window.localStorage.getItem("amberPreferNip55");
@@ -416,9 +411,6 @@ export class AmberAdapter implements SignerAdapter {
   }
 
   async signEvent(unsigned: unknown): Promise<unknown> {
-    if (!getFlag("VITE_ENABLE_AMBER_SIGNING", false)) {
-      throw new Error("Amber signing disabled");
-    }
     if (!isAndroid()) {
       throw new Error("Amber signing requires Android device");
     }

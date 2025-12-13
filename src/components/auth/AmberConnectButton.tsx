@@ -27,7 +27,6 @@ const AmberConnectButton: React.FC<{ className?: string }> = ({ className }) => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
   const [showInfo, setShowInfo] = useState(false);
-  const enabled = getFlag("VITE_ENABLE_AMBER_SIGNING", false);
 
   const amber = useMemo<SignerAdapter | undefined>(() => {
     try {
@@ -42,7 +41,7 @@ const AmberConnectButton: React.FC<{ className?: string }> = ({ className }) => 
     let mounted = true;
     (async () => {
       try {
-        if (!enabled || !isAndroid() || !amber) return;
+        if (!isAndroid() || !amber) return;
         const st = await amber.getStatus();
         if (mounted) setStatus(st);
       } catch {
@@ -50,7 +49,7 @@ const AmberConnectButton: React.FC<{ className?: string }> = ({ className }) => 
       }
     })();
     return () => { mounted = false; };
-  }, [enabled, amber]);
+  }, [amber]);
 
   const onConnect = async () => {
     if (!amber) return;
@@ -67,7 +66,7 @@ const AmberConnectButton: React.FC<{ className?: string }> = ({ className }) => 
     }
   };
 
-  if (!enabled || !isAndroid() || !amber) return null;
+  if (!isAndroid() || !amber) return null;
   const show = status === "available" || status === "connected";
   if (!show) return null;
 

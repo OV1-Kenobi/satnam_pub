@@ -38,11 +38,9 @@ try {
       CEPS.registerExternalSigner(new Ntag424Adapter());
     }
   } catch {}
-  // Conditionally register Amber signer (NIP-46/NIP-55)
+  // Register Amber signer (NIP-46/NIP-55) unconditionally; Android-only behavior is enforced in the adapter
   try {
-    if (getFlag("VITE_ENABLE_AMBER_SIGNING", false)) {
-      CEPS.registerExternalSigner(new AmberAdapter());
-    }
+    CEPS.registerExternalSigner(new AmberAdapter());
   } catch {}
   // Conditionally register Tapsigner NFC card signer
   try {

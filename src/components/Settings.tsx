@@ -53,7 +53,6 @@ const Settings: React.FC = () => {
     return false;
   });
   const [amberConnected, setAmberConnected] = useState(false);
-  const enableAmber = getFlag("VITE_ENABLE_AMBER_SIGNING", false);
   const onAndroid = isAndroid();
 
   // Feature flags
@@ -87,7 +86,7 @@ const Settings: React.FC = () => {
     } catch {
       setAmberConnected(false);
     }
-  }, [enableAmber]);
+  }, [onAndroid]);
 
   const onTogglePrefer = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = !!e.target.checked;
@@ -324,8 +323,8 @@ const Settings: React.FC = () => {
             <AmberConnectButton className="mb-3" />
 
 
-            {/* Amber NIP-55 vs NIP-46 preference (Android + feature flag + connected) */}
-            {onAndroid && enableAmber && amberConnected && (
+            {/* Amber NIP-55 vs NIP-46 preference (Android + connected) */}
+            {onAndroid && amberConnected && (
               <div className="mb-4 p-3 rounded-lg border border-white/20 bg-white/5">
                 <div className="flex items-center justify-between">
                   <label className="text-sm text-purple-100 mr-3">
@@ -353,12 +352,10 @@ const Settings: React.FC = () => {
               <SignerMethodSettings />
             </div>
 
-            {/* NIP-46 Nostr Connect Pairing (feature-flagged) */}
-            {enableAmber && (
-              <div className="mt-6 pt-6 border-t border-purple-500/20">
-                <NostrConnectPairing />
-              </div>
-            )}
+            {/* NIP-46 Nostr Connect Pairing (always visible; Amber adapter enforces Android behavior where applicable) */}
+            <div className="mt-6 pt-6 border-t border-purple-500/20">
+              <NostrConnectPairing />
+            </div>
           </section>
 
           <section className="bg-purple-900/60 border border-yellow-400/20 rounded-2xl p-6">
