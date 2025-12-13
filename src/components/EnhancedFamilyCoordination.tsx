@@ -758,7 +758,10 @@ export default function EnhancedFamilyCoordination({
 
       {/* Navigation Tabs */}
       <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-6">
-        <div className="flex space-x-4 border-b border-gray-700/50">
+        <nav
+          className="flex flex-wrap gap-2"
+          aria-label="Family coordination sections"
+        >
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
             { id: 'members', label: 'Members', icon: Users },
@@ -766,39 +769,48 @@ export default function EnhancedFamilyCoordination({
             { id: 'treasury', label: 'Treasury', icon: Bitcoin },
             { id: 'governance', label: 'Governance', icon: Crown },
             { id: 'liquidity', label: 'Liquidity', icon: Brain },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center space-x-2 px-4 py-2 border-b-2 transition-colors ${activeTab === tab.id
-                  ? 'border-blue-400 text-blue-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-300'
-                }`}
-            >
-              <tab.icon className="h-4 w-4" />
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm md:text-base font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-400 focus-visible:ring-offset-gray-900 ${isActive
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+                  }`}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && renderOverviewTab()}
-      {activeTab === 'members' && renderMembersTab()}
-      {activeTab === 'payments' && renderPaymentsTab()}
-      {activeTab === 'liquidity' && renderLiquidityTab()}
-      {activeTab === 'treasury' && (
-        <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-6">
-          <h4 className="text-lg font-medium text-white mb-4">Treasury Management</h4>
-          <p className="text-gray-400">Advanced treasury management features coming soon...</p>
-        </div>
-      )}
-      {activeTab === 'governance' && (
-        <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-6">
-          <h4 className="text-lg font-medium text-white mb-4">Family Governance</h4>
-          <p className="text-gray-400">Governance proposals and voting system coming soon...</p>
-        </div>
-      )}
+      <div className="mt-4">
+        {activeTab === 'overview' && renderOverviewTab()}
+        {activeTab === 'members' && renderMembersTab()}
+        {activeTab === 'payments' && renderPaymentsTab()}
+        {activeTab === 'liquidity' && renderLiquidityTab()}
+        {activeTab === 'treasury' && (
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-6">
+            <h4 className="text-lg font-medium text-white mb-4">Treasury Management</h4>
+            <p className="text-gray-400">Advanced treasury management features coming soon...</p>
+          </div>
+        )}
+        {activeTab === 'governance' && (
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-6">
+            <h4 className="text-lg font-medium text-white mb-4">Family Governance</h4>
+            <p className="text-gray-400">Governance proposals and voting system coming soon...</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

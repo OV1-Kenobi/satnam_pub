@@ -2089,58 +2089,66 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
       </div>
 
       {/* Enhanced Navigation */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
+      <div className="mb-6">
+        <nav
+          className="flex flex-wrap gap-2 bg-white/95 dark:bg-purple-950/90 border border-purple-100/80 dark:border-purple-700/80 rounded-xl p-2 shadow-sm"
+          aria-label="Individual finances sections"
+        >
           {[
-            { key: 'overview', label: 'Overview', color: 'gray' },
-            { key: 'lightning', label: 'Lightning & Zaps', color: 'orange' },
-            { key: 'cashu', label: 'Cashu & Bearer Notes', color: 'blue' },
-            ...(lnbitsEnabled ? [{ key: 'lnbits', label: 'LNbits', color: 'yellow' }] : []),
-            { key: 'privacy', label: 'Privacy Controls', color: 'purple' },
+            { key: 'overview', label: 'Overview' },
+            { key: 'lightning', label: 'Lightning & Zaps' },
+            { key: 'cashu', label: 'Cashu & Bearer Notes' },
+            ...(lnbitsEnabled ? [{ key: 'lnbits', label: 'LNbits' }] : []),
+            { key: 'privacy', label: 'Privacy Controls' },
             {
               key: 'notifications',
               label: `Notifications${notificationStats.unread > 0 ? ` (${notificationStats.unread})` : ''}`,
-              color: 'blue',
-              badge: notificationStats.unread > 0 ? notificationStats.unread : undefined
             },
-            { key: 'federations', label: 'Federations & Invitations', color: 'purple' }
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.key
-                ? `border-${tab.color}-500 text-${tab.color}-600`
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+            { key: 'federations', label: 'Federations & Invitations' }
+          ].map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`px-4 py-2 rounded-lg text-sm md:text-base font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-500 ${isActive
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-purple-50 text-purple-900 hover:bg-purple-100'
+                  }`}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </nav>
       </div>
 
       {/* Enhanced Tab Content */}
-      {lnbitsEnabled && activeTab === 'lnbits' && <LNBitsIntegrationPanel />}
+      <div className="mt-4">
+        {lnbitsEnabled && activeTab === 'lnbits' && <LNBitsIntegrationPanel />}
 
-      {activeTab === 'overview' && (
-        <EnhancedOverviewTab
-          wallet={wallet}
-          onCreatePaymentSchedule={() => setShowAutomatedPaymentsModal(true)}
-        />
-      )}
-      {activeTab === 'lightning' && <LightningTab wallet={wallet} onShowNWCSetup={() => setShowNWCSetup(true)} />}
-      {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
-      {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
-      {activeTab === 'notifications' && <NotificationsTab context="individual" />}
-      {activeTab === 'federations' && (
-        <div className="space-y-8">
-          <PendingInvitations />
-          <FederationMemberships />
-          {(derivedUserRole === 'guardian' || derivedUserRole === 'steward') && (
-            <SentInvitations />
-          )}
-        </div>
-      )}
+        {activeTab === 'overview' && (
+          <EnhancedOverviewTab
+            wallet={wallet}
+            onCreatePaymentSchedule={() => setShowAutomatedPaymentsModal(true)}
+          />
+        )}
+        {activeTab === 'lightning' && <LightningTab wallet={wallet} onShowNWCSetup={() => setShowNWCSetup(true)} />}
+        {activeTab === 'cashu' && <CashuTab wallet={wallet} />}
+        {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
+        {activeTab === 'notifications' && <NotificationsTab context="individual" />}
+        {activeTab === 'federations' && (
+          <div className="space-y-8">
+            <PendingInvitations />
+            <FederationMemberships />
+            {(derivedUserRole === 'guardian' || derivedUserRole === 'steward') && (
+              <SentInvitations />
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Payment Cascade Modal */}
       <PaymentCascadeModal
