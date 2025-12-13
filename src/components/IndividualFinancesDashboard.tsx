@@ -2113,8 +2113,8 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
                 type="button"
                 onClick={() => setActiveTab(tab.key as any)}
                 className={`px-4 py-2 rounded-lg text-sm md:text-base font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-500 ${isActive
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-purple-50 text-purple-900 hover:bg-purple-100'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-purple-50 text-purple-900 hover:bg-purple-100'
                   }`}
                 aria-current={isActive ? 'page' : undefined}
               >
@@ -2140,12 +2140,14 @@ export function IndividualFinancesDashboard({ memberId, memberData, onBack }: In
         {activeTab === 'privacy' && <EnhancedPrivacyTab wallet={wallet} />}
         {activeTab === 'notifications' && <NotificationsTab context="individual" />}
         {activeTab === 'federations' && (
-          <div className="space-y-8">
-            <PendingInvitations />
-            <FederationMemberships />
-            {(derivedUserRole === 'guardian' || derivedUserRole === 'steward') && (
-              <SentInvitations />
-            )}
+          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+            <div className="space-y-8">
+              <PendingInvitations />
+              <FederationMemberships />
+              {(derivedUserRole === 'guardian' || derivedUserRole === 'steward') && (
+                <SentInvitations />
+              )}
+            </div>
           </div>
         )}
       </div>
