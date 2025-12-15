@@ -7,7 +7,7 @@ import {
   Users,
   Zap
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { clientConfig } from '../config/env.client';
 import { CharterDefinition, RBACDefinition } from '../lib/api/family-foundry.js';
 import { FeatureFlags } from '../lib/feature-flags';
@@ -38,6 +38,12 @@ interface TrustedPeer {
   role: string;
   relationship: string;
   invited: boolean;
+}
+
+interface FederationAvailabilityResult {
+  success?: boolean;
+  available?: boolean;
+  error?: string;
 }
 
 interface FamilyFoundryWizardProps {
@@ -74,6 +80,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   // Phase 3: Federation identity setup (frontend)
   const [federationHandle, setFederationHandle] = useState<string>("");
   const [federationHandleError, setFederationHandleError] = useState<string | null>(null);
+  const [federationHandleAvailable, setFederationHandleAvailable] = useState<boolean | null>(null);
+  const [isCheckingFederationHandle, setIsCheckingFederationHandle] = useState<boolean>(false);
 
   // Step 1: Charter Definition
   const [charter, setCharter] = useState<CharterDefinition>({
@@ -250,6 +258,93 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
     }
     return null;
   };
+
+  // Real-time federation handle availability check (optional)
+  useEffect(() => {
+    const normalized = federationHandle.trim().toLowerCase();
+
+    // Reset state when input is empty or locally invalid
+    if (!normalized || federationHandleError) {
+      setFederationHandleAvailable(null);
+      setIsCheckingFederationHandle(false);
+      return;
+    }
+
+    setIsCheckingFederationHandle(true);
+    setFederationHandleAvailable(null);
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch("/.netlify/functions/check-federation-name-availability", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ federationName: normalized }),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        let result: FederationAvailabilityResult | null = null;
+
+        if (contentType.includes("application/json")) {
+          try {
+            result = await response.json();
+          } catch (parseErr) {
+            const text = await response.text().catch(() => "");
+            throw new Error(`Invalid JSON from server: ${text?.slice(0, 200)}`);
+          }
+        } else {
+          const text = await response.text().catch(() => "");
+          throw new Error(`Non-JSON response (status ${response.status}): ${text?.slice(0, 200)}`);
+        }
+
+        if (cancelled) return;
+
+        if (!response.ok) {
+          console.error(
+            "Federation handle check HTTP error:",
+            response.status,
+            result?.error || result
+          );
+          setFederationHandleAvailable(null);
+          return;
+        }
+
+        if (result && typeof result.available === "boolean") {
+          setFederationHandleAvailable(result.available);
+          if (!result.available && !result.error) {
+            // Surface a generic error message when the handle is taken
+            setFederationHandleError(
+              "This federation handle is already taken. Please choose a different handle."
+            );
+          } else if (!result.available && typeof result.error === "string") {
+            setFederationHandleError(result.error);
+          }
+        } else {
+          console.error("Federation handle availability check failed:", result?.error || result);
+          setFederationHandleAvailable(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "Error checking federation handle availability:",
+            error instanceof Error ? error.message : String(error)
+          );
+          setFederationHandleAvailable(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingFederationHandle(false);
+        }
+      }
+    }, 500); // Debounce API calls
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [federationHandle, federationHandleError]);
 
   const createFederationBackend = async () => {
     try {
@@ -599,6 +694,25 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
                   />
                   {federationHandleError && (
                     <p className="mt-1 text-sm text-red-400">{federationHandleError}</p>
+                  )}
+                  {!federationHandleError && federationHandle.trim() && (
+                    <p className="mt-1 text-sm">
+                      {isCheckingFederationHandle ? (
+                        <span className="text-purple-200 flex items-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Checking federation handle availability...
+                        </span>
+                      ) : federationHandleAvailable === true ? (
+                        <span className="text-green-300 flex items-center gap-1">
+                          <CheckCircle className="h-4 w-4" />
+                          Federation handle is available
+                        </span>
+                      ) : federationHandleAvailable === false ? (
+                        <span className="text-red-300 flex items-center gap-1">
+                          This federation handle is already taken
+                        </span>
+                      ) : null}
+                    </p>
                   )}
                 </div>
                 {federationHandle.trim() && !federationHandleError && (
