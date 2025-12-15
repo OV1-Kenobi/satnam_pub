@@ -142,13 +142,30 @@ export async function handler(event, context) {
 
     const { data: user, error: userError, status } = await supabase
       .from("user_identities")
-      .select("id, role, is_active, user_salt, encrypted_nsec, encrypted_nsec_iv, npub, username")
+      .select("id, role, is_active, user_salt, encrypted_nsec, encrypted_nsec_iv, encrypted_npub, encrypted_npub_iv, encrypted_npub_tag, username")
       .eq("id", duid)
       .single();
 
     if (userError || !user) {
       const code = status === 406 ? 404 : 500;
       return { statusCode: code, headers: cors, body: JSON.stringify({ success: false, error: "User not found" }) };
+    }
+
+    // Decrypt npub from encrypted storage (privacy-first)
+    let decryptedNpub = null;
+    if (user.encrypted_npub && user.encrypted_npub_iv && user.user_salt) {
+      try {
+        const { decryptField } = await import('../../netlify/functions/security/noble-encryption.js');
+        const tagValue = user.encrypted_npub_tag || user.encrypted_npub_iv;
+        decryptedNpub = await decryptField(
+          user.encrypted_npub,
+          user.encrypted_npub_iv,
+          tagValue,
+          user.user_salt
+        );
+      } catch (decryptErr) {
+        console.error('Failed to decrypt npub in session-user:', decryptErr.message);
+      }
     }
 
     const userPayload = {
@@ -159,7 +176,7 @@ export async function handler(event, context) {
       user_salt: user.user_salt || null,
       encrypted_nsec: user.encrypted_nsec || null,
       encrypted_nsec_iv: user.encrypted_nsec_iv || null,
-      npub: user.npub || null,
+      npub: decryptedNpub,
       username: user.username || null,
     };
 

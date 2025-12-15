@@ -824,6 +824,7 @@ async function createUserIdentity(
       iv: string;
       tag: string;
     } | null;
+    let encryptedNpub: { cipher: string; iv: string; tag: string } | null;
 
     try {
       // Encrypt displayable profile fields
@@ -845,7 +846,9 @@ async function createUserIdentity(
         userData.lightningAddress || null,
         userSalt
       );
-      console.log("✅ Profile fields encrypted successfully");
+      // PRIVACY-FIRST: Encrypt npub for secure storage; decrypt only during signin for JWT
+      encryptedNpub = await encryptProfileField(userData.npub, userSalt);
+      console.log("✅ Profile fields encrypted successfully (including npub)");
 
       // Greenfield rollout: no hashed auth fields required (use DUID records)
       console.log(
@@ -895,6 +898,11 @@ async function createUserIdentity(
         is_imported_account: userData.isImportedAccount || false,
         detected_profile_data: userData.detectedProfile || null,
       },
+
+      // ENCRYPTED NPUB: Privacy-first storage; decrypted only during signin for JWT session
+      encrypted_npub: encryptedNpub?.cipher || null,
+      encrypted_npub_iv: encryptedNpub?.iv || null,
+      encrypted_npub_tag: encryptedNpub?.tag || null,
 
       // Secure password storage
       password_hash: passwordHash,

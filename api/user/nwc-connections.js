@@ -264,10 +264,30 @@ export default async function handler(event, context) {
       };
     }
 
-    const sessionToken = authHeader.substring(7);
-    // In production, validate session token and get user data
-    const userHash = 'mock_user_hash'; // Replace with actual user hash from session
-    const userRole = 'adult'; // Replace with actual user role from session
+    // Validate session token and extract user data (production-ready)
+    let session;
+    try {
+      const { SecureSessionManager } = await import('../../netlify/functions/security/session-manager.js');
+      session = await SecureSessionManager.validateSessionFromHeader(authHeader);
+
+      if (!session || !session.userId) {
+        return {
+          statusCode: 401,
+          headers: corsHeaders,
+          body: JSON.stringify({ error: "Invalid or expired session" }),
+        };
+      }
+    } catch (sessionError) {
+      console.error("NWC Connections: Session validation failed:", sessionError);
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Session validation failed" }),
+      };
+    }
+
+    const userHash = session.hashedId || session.userId;
+    const userRole = session.federationRole || 'adult';
 
     if (event.httpMethod === "GET") {
       // Get user's NWC connections

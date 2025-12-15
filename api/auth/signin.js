@@ -177,20 +177,39 @@ async function handleNip05PasswordAuth(requestData, corsHeaders) {
       };
     }
 
-	    // Step 5: Create session using SecureSessionManager (following nip07-signin pattern)
-	    const userData = {
-	      npub: user.npub || '',
-	      // Use DUID (user.id) for backend session semantics
-	      userDuid: user.id,
-	      nip05: requestData.nip05,
-	      federationRole: user.role || 'private',
-	      authMethod: /** @type {"nip05-password"} */ ('nip05-password'),
-	      isWhitelisted: true,
-	      votingPower: user.voting_power || 0,
-	      guardianApproved: false,
-	      stewardApproved: false,
-	      sessionToken: ''
-	    };
+    // Step 5: Decrypt npub from encrypted storage (privacy-first)
+    let decryptedNpub = '';
+    if (user.encrypted_npub && user.encrypted_npub_iv && user.user_salt) {
+      try {
+        const { decryptField } = await import('../../netlify/functions/security/noble-encryption.js');
+        // Use encrypted_npub_tag if available; otherwise try deriving from stored data
+        const tagValue = user.encrypted_npub_tag || user.encrypted_npub_iv;
+        decryptedNpub = await decryptField(
+          user.encrypted_npub,
+          user.encrypted_npub_iv,
+          tagValue,
+          user.user_salt
+        );
+      } catch (decryptErr) {
+        console.error('Failed to decrypt npub:', decryptErr.message);
+        // Continue with empty npub; user can still authenticate but invitation matching may fail
+      }
+    }
+
+    // Step 6: Create session using SecureSessionManager (following nip07-signin pattern)
+    const userData = {
+      npub: decryptedNpub,
+      // Use DUID (user.id) for backend session semantics
+      userDuid: user.id,
+      nip05: requestData.nip05,
+      federationRole: user.role || 'private',
+      authMethod: /** @type {"nip05-password"} */ ('nip05-password'),
+      isWhitelisted: true,
+      votingPower: user.voting_power || 0,
+      guardianApproved: false,
+      stewardApproved: false,
+      sessionToken: ''
+    };
 
     // Create secure JWT session (following register-identity pattern)
     const sessionResult = await SecureSessionManager.createSession(corsHeaders, userData);

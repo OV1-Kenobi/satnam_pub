@@ -663,11 +663,10 @@ export class CentralEventPublishingService {
     const supabase = await getSupabase();
 
     // Set app.current_user_hash for RLS policy compliance
+    // Uses the helper function from 026_user_signing_prefs_fix.sql migration
     await supabase
-      .rpc("set_config", {
-        setting_name: "app.current_user_hash",
-        setting_value: session.userHash,
-        is_local: true,
+      .rpc("set_app_current_user_hash", {
+        val: session.userHash,
       })
       .then(() => {})
       .catch(() => {}); // Ignore if function doesn't exist

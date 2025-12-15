@@ -105,17 +105,17 @@ export class UserSigningPreferencesService {
       }
 
       // Set RLS context variable for the query
+      // Uses the helper function from 026_user_signing_prefs_fix.sql migration
       try {
-        await supabase.rpc("set_app_config", {
-          setting_name: "app.current_user_hash",
-          setting_value: tokenPayload.hashedId,
-          is_local: true,
+        await supabase.rpc("set_app_current_user_hash", {
+          val: tokenPayload.hashedId,
         });
       } catch (contextError) {
         console.log(
-          "🔐 UserSigningPreferences: Could not set RLS context:",
+          "🔐 UserSigningPreferences: Could not set RLS context (non-fatal):",
           contextError
         );
+        // Non-fatal: RLS policy also checks request.jwt.claims.hashedId as fallback
       }
 
       const { data, error } = await supabase

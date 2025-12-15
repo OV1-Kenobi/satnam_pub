@@ -156,7 +156,9 @@ export async function decryptNsecSimple(serialized, userSalt) {
     await ensureLibs();
     const parsed = parseSerialized(serialized);
     if (!parsed) throw new Error('decryptNsecSimple: parse failed');
-    const key = await deriveKeyFromSalt(userSalt);
+    // Use the random salt stored in the serialized format with userSalt as password
+    // This matches the encryption: deriveKeyPBKDF2(userSalt, randomSalt)
+    const key = await deriveKeyPBKDF2(userSalt, parsed.salt);
     const aead = _gcm(key, parsed.iv);
     const pt = aead.decrypt(parsed.cipher);
     return new TextDecoder().decode(pt);
