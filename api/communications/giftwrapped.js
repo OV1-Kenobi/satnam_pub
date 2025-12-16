@@ -861,9 +861,13 @@ export default async function handler(event, context) {
             original_event_id: originalEventId ?? wrappedEventId,
             // Wrapped event ID (outer gift-wrapped event)
             wrapped_event_id: wrappedEventId,
-            // Persist plaintext only for standard DMs to render in UI; keep null for gift-wrapped
-            content: (protocol === 'nip04' || protocol === 'nip44') ? validatedData.content : null,
+            // PRIVACY-FIRST: Store NIP-44 encrypted content (client-side encrypted before transmission)
+            // Server cannot decrypt - only sender/recipient with nsec can decrypt using NIP-44 conversation key
+            // Zero-knowledge architecture: content is always encrypted, never plaintext
+            // The clientEncrypted flag in request indicates content was encrypted client-side
+            content: validatedData.content || null,
             // Content hash for privacy-preserving verification (raw sealed string for NIP-17)
+            // This hash allows verification without exposing content
             content_hash: contentHash,
             // Encryption key hash for database constraint compliance
             encryption_key_hash: encryptionKeyHash,
@@ -886,8 +890,12 @@ export default async function handler(event, context) {
           .select()
           .single();
         if (messageError) {
-          console.error("🔐 DEBUG: giftwrapped - database insert error:", messageError);
-          return { success: false, error: 'Failed to store message' };
+          console.error("🔐 DEBUG: giftwrapped - database insert error:", JSON.stringify(messageError, null, 2));
+          console.error("🔐 DEBUG: giftwrapped - error code:", messageError.code);
+          console.error("🔐 DEBUG: giftwrapped - error message:", messageError.message);
+          console.error("🔐 DEBUG: giftwrapped - error details:", messageError.details);
+          console.error("🔐 DEBUG: giftwrapped - error hint:", messageError.hint);
+          return { success: false, error: 'Failed to store message', details: messageError.message || messageError.code };
         }
         console.log("🔐 DEBUG: giftwrapped - message stored successfully:", messageRecord?.id);
         return { success: true, record: messageRecord };

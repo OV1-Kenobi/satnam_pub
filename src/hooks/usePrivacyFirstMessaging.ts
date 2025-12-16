@@ -180,6 +180,27 @@ export interface PrivacyMessagingActions {
   disableNoiseEncryption: () => void;
   initiateNoiseSession: (peerNpub: string) => Promise<boolean>;
   sendNoiseMessage: (peerNpub: string, content: string) => Promise<boolean>;
+
+  // Phase 6: Client-side decryption for stored messages
+  decryptStoredMessage: (
+    encryptedContent: string,
+    peerNpub: string
+  ) => Promise<string | null>;
+  fetchAndDecryptConversation: (
+    conversationId: string,
+    options?: { cursor?: string; limit?: number }
+  ) => Promise<{
+    messages: Array<{
+      id: string;
+      content: string;
+      sender_npub: string;
+      recipient_npub: string;
+      created_at: string;
+      protocol: string;
+      decrypted: boolean;
+    }>;
+    nextCursor: string | null;
+  }>;
 }
 
 export function usePrivacyFirstMessaging(): PrivacyMessagingState &
@@ -325,11 +346,30 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
                 );
               const myNpub = CEPS.encodeNpub(recipientHex);
               const senderNpub = CEPS.encodeNpub(e?.pubkey);
+
+              // PRIVACY-FIRST: Re-encrypt plaintext using NIP-44 before storing in database
+              // This ensures server never stores readable content (zero-knowledge architecture)
+              // Use sender's pubkey to derive conversation key so both parties can decrypt
+              let encryptedContentForStorage: string;
+              try {
+                encryptedContentForStorage =
+                  await CEPS.encryptNip44WithActiveSession(
+                    e?.pubkey, // sender's pubkey - conversation key derived from our nsec + their pubkey
+                    plaintext
+                  );
+              } catch (encryptErr) {
+                console.warn(
+                  "STD-DM RX: failed to re-encrypt for storage, skipping persistence",
+                  encryptErr
+                );
+                return; // Don't store unencrypted content
+              }
+
               await fetchWithAuth("/api/communications/giftwrapped", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  content: plaintext,
+                  content: encryptedContentForStorage, // NIP-44 encrypted, never plaintext
                   recipient: myNpub,
                   sender: senderNpub,
                   communicationType: "individual",
@@ -338,6 +378,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
                   standardDm: true,
                   protocol,
                   direction: "incoming",
+                  clientEncrypted: true, // Signal that content is NIP-44 encrypted
                 }),
                 timeoutMs: 15000,
               });
@@ -1284,6 +1325,119 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     [state.noiseEnabled, state.noiseHandshakePattern, initiateNoiseSession]
   );
 
+  // Phase 6: Decrypt a single stored message using NIP-44 conversation key
+  // Uses decryptStandardDirectMessageWithActiveSession which tries NIP-04 then NIP-44
+  const decryptStoredMessage = useCallback(
+    async (
+      encryptedContent: string,
+      peerNpub: string
+    ): Promise<string | null> => {
+      if (!encryptedContent || !peerNpub) return null;
+      try {
+        const peerHex = peerNpub.startsWith("npub1")
+          ? CEPS.npubToHex(peerNpub)
+          : peerNpub;
+        // Use existing decrypt method which handles NIP-04/NIP-44 fallback
+        const { plaintext } =
+          await CEPS.decryptStandardDirectMessageWithActiveSession(
+            peerHex,
+            encryptedContent
+          );
+        return plaintext;
+      } catch (err) {
+        console.warn("Failed to decrypt stored message:", err);
+        return null;
+      }
+    },
+    []
+  );
+
+  // Phase 6: Fetch and decrypt conversation history from database
+  const fetchAndDecryptConversation = useCallback(
+    async (
+      conversationId: string,
+      options?: { cursor?: string; limit?: number }
+    ) => {
+      const { cursor, limit = 30 } = options || {};
+      try {
+        const params = new URLSearchParams({
+          conversationId,
+          limit: String(limit),
+        });
+        if (cursor) params.append("cursor", cursor);
+
+        const response = await fetchWithAuth(
+          `/api/communications/messages?${params.toString()}`,
+          { method: "GET", timeoutMs: 15000 }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch messages: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.success || !data.items) {
+          throw new Error(data.error || "Failed to fetch messages");
+        }
+
+        // Get my npub from active session to determine message direction
+        const sessionId = CEPS.getActiveSigningSessionId();
+        let myNpub = "";
+        if (sessionId) {
+          const pubHex = await secureNsecManager.useTemporaryNsec(
+            sessionId,
+            async (privHex: string) => {
+              const { getPublicKey } = await import("nostr-tools/pure");
+              const { hexToBytes } = await import("@noble/hashes/utils");
+              return getPublicKey(hexToBytes(privHex));
+            }
+          );
+          if (pubHex) myNpub = CEPS.encodeNpub(pubHex);
+        }
+
+        const decryptedMessages = await Promise.all(
+          data.items.map(
+            async (msg: {
+              id: string;
+              content: string | null;
+              sender_npub: string;
+              recipient_npub: string;
+              created_at: string;
+              protocol: string;
+            }) => {
+              if (!msg.content) {
+                return { ...msg, content: "", decrypted: false };
+              }
+              // Determine peer: if I'm sender, peer is recipient; otherwise peer is sender
+              const peerNpub =
+                msg.sender_npub === myNpub
+                  ? msg.recipient_npub
+                  : msg.sender_npub;
+              const decryptedContent = await decryptStoredMessage(
+                msg.content,
+                peerNpub
+              );
+              return {
+                ...msg,
+                content: decryptedContent || "[Unable to decrypt]",
+                decrypted: !!decryptedContent,
+              };
+            }
+          )
+        );
+
+        return {
+          messages: decryptedMessages,
+          nextCursor: data.nextCursor || null,
+        };
+      } catch (err) {
+        console.error("fetchAndDecryptConversation error:", err);
+        return { messages: [], nextCursor: null };
+      }
+    },
+    [decryptStoredMessage]
+  );
+
   return {
     ...state,
     initializeSession,
@@ -1314,5 +1468,8 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     disableNoiseEncryption,
     initiateNoiseSession,
     sendNoiseMessage,
+    // Phase 6: Encrypted message retrieval
+    decryptStoredMessage,
+    fetchAndDecryptConversation,
   };
 }

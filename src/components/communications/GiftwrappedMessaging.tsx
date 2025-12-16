@@ -1264,23 +1264,39 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
         }
         const deliveryId = await CEPS.sendStandardDirectMessage(recipient, contentToSend);
         // Persist a normalized record (protocol='nip04')
+        // PRIVACY-FIRST: Encrypt content using NIP-44 before storing in database
+        // This ensures server never stores readable content (zero-knowledge architecture)
         try {
+          // Get recipient pubkey in hex for NIP-44 encryption
+          const recipientHex = recipient.startsWith('npub1')
+            ? CEPS.npubToHex(recipient)
+            : recipient;
+
+          // Encrypt using NIP-44 conversation key (our nsec + recipient pubkey)
+          const encryptedContentForStorage = await CEPS.encryptNip44WithActiveSession(
+            recipientHex,
+            contentToSend
+          );
+
           await fetchWithAuth('/api/communications/giftwrapped', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              content: contentToSend,
+              content: encryptedContentForStorage, // NIP-44 encrypted, never plaintext
               recipient,
               communicationType: 'individual',
               messageType: 'direct',
               encryptionLevel: 'standard',
               standardDm: true,
-              protocol: 'nip04'
+              protocol: 'nip04',
+              clientEncrypted: true // Signal that content is NIP-44 encrypted
             }),
             timeoutMs: 15000
           });
         } catch (e) {
-          console.warn('Standard DM persisted with warnings:', e);
+          // Log encryption/persistence warnings but don't fail the message send
+          // The message was already sent via NIP-04, just persistence failed
+          console.warn('Standard DM persistence failed (message was still sent):', e);
         }
         result = { success: true, messageId: deliveryId, deliveryMethod: 'nip04' };
       } else if (attachments.length > 0) {

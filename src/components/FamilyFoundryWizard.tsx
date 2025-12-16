@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   CheckCircle,
   Crown,
-  Mail,
   Shield,
   Users,
   Zap
@@ -17,7 +16,6 @@ import { createFrostSession } from '../lib/family-foundry-frost';
 import { createNfcMfaPolicy, calculateHighValueThreshold } from '../lib/family-foundry-nfc-mfa';
 import { sendFederationApprovalRequests, generateFederationOperationHash } from '../lib/family-foundry-steward-approval';
 import FamilyFederationCreationModal from "./FamilyFederationCreationModal";
-import { InvitationGenerator } from "./family-invitations";
 import FamilyFoundryStep1Charter from "./FamilyFoundryStep1Charter";
 import FamilyFoundryStep2RBAC from "./FamilyFoundryStep2RBAC";
 import FamilyFoundryStep3Invite from "./FamilyFoundryStep3Invite";
@@ -61,7 +59,6 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
   const { user: authUser } = useAuth();
   const identityDomain = clientConfig.domains.platformLightning ?? "my.satnam.pub";
   const [currentStep, setCurrentStep] = useState<WizardStep>('charter');
-  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showFederationModal, setShowFederationModal] = useState(false);
   const [isCreatingFederation, setIsCreatingFederation] = useState(false);
   const [federationProgress, setFederationProgress] = useState(0);
@@ -225,7 +222,8 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
     }
 
     if (currentStep === 'invites') {
-      setShowInviteModal(true);
+      // Go directly to federation step - invitation generator is already embedded in FamilyFoundryStep3Invite
+      setCurrentStep('federation');
       return;
     }
 
@@ -565,45 +563,6 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
     }
   };
 
-  const sendInvitations = async () => {
-    try {
-      // Integrate with existing PostAuthInvitationModal system
-      // This will use the existing /api/authenticated/generate-peer-invite endpoint
-      // which provides DM, QR code, course credits, and landing page integration
-
-      const invitationPromises = trustedPeers.map(async (peer) => {
-        const response = await fetch('/api/authenticated/generate-peer-invite', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            personalMessage: `You've been invited to join the ${charter.familyName} family federation on Satnam.pub!`,
-            courseCredits: 1,
-            expiryDays: 30,
-            recipientNostrPubkey: peer.npub,
-            sendAsGiftWrappedDM: true // Use NIP-59 Gift Wrapped messaging
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to send invitation to ${peer.name}`);
-        }
-
-        return response.json();
-      });
-
-      await Promise.all(invitationPromises);
-
-      // Close modal and continue to federation creation
-      setShowInviteModal(false);
-      setCurrentStep('federation');
-
-    } catch (error) {
-      console.error('Error sending invitations:', error);
-      setError('Failed to send invitations');
-    }
-  };
-
   const handleFederationComplete = (newFederationId: string) => {
     // REMOVED: console.log (use proper logging mechanism for production)
     setFederationId(newFederationId);
@@ -913,40 +872,7 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
               </div>
             )}
 
-            {/* Invitation Generator - for solo founders or to invite more members */}
-            {federationDuid && (
-              <div className="bg-gradient-to-br from-green-500/10 to-blue-500/10 border border-green-400/30 rounded-xl p-6 mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
-                    <Mail className="h-5 w-5 text-green-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Invite Family Members</h3>
-                    <p className="text-green-300 text-sm">Works for people who don't have Nostr yet!</p>
-                  </div>
-                </div>
-
-                <div className="bg-white/5 rounded-lg p-4 mb-4 border border-white/10">
-                  <h4 className="text-white font-semibold mb-2">📨 Out-of-Band Invitations</h4>
-                  <ul className="text-purple-200 text-sm space-y-1">
-                    <li>• Generate role-specific invitation links (Guardian, Steward, Adult, Offspring)</li>
-                    <li>• Share via Signal, Email, SMS, or any messaging app</li>
-                    <li>• QR codes for face-to-face onboarding</li>
-                    <li>• Invitees will create their Nostr identity during signup</li>
-                  </ul>
-                </div>
-
-                <InvitationGenerator
-                  federationDuid={federationDuid}
-                  federationName={charter.familyName}
-                  onInvitationGenerated={(invitation) => {
-                    console.log('Invitation generated:', invitation);
-                  }}
-                />
-              </div>
-            )}
-
-            {/* Navigation */}
+            {/* Navigation - Invitation generation is handled in the previous step (FamilyFoundryStep3Invite) */}
             <div className="flex justify-center">
               <button
                 onClick={onComplete}
@@ -1023,108 +949,6 @@ const FamilyFoundryWizard: React.FC<FamilyFoundryWizardProps> = ({
           </div>
         )}
       </div>
-
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 max-w-2xl w-full">
-            <div className="text-center mb-6">
-              <Mail className="h-16 w-16 mx-auto mb-4 text-green-400" />
-              <h3 className="text-2xl font-bold text-white mb-2">Send Family Federation Invitations</h3>
-              <p className="text-purple-100">Invite your trusted family members using the existing Satnam.pub invitation system</p>
-            </div>
-
-            <div className="space-y-4 mb-6">
-              {trustedPeers.length > 0 ? (
-                trustedPeers.map((peer, index) => (
-                  <div key={index} className="flex items-center justify-between bg-white/10 rounded-lg p-4">
-                    <div>
-                      <h4 className="text-white font-semibold">{peer.name}</h4>
-                      <p className="text-purple-200 text-sm">{peer.npub}</p>
-                      <div className="flex gap-2 mt-1">
-                        <span className="bg-purple-600 text-white px-2 py-1 rounded text-xs">
-                          {peer.role}
-                        </span>
-                        <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs">
-                          {peer.relationship}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-green-400 text-sm">🎁 1 Course Credit</div>
-                      <div className="text-purple-300 text-xs">NIP-59 DM</div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="space-y-4">
-                  {/* Solo founder invitation generator */}
-                  {federationDuid ? (
-                    <div>
-                      <p className="text-purple-200 mb-4 text-center">
-                        Generate an invitation link to share with family members via Signal, email, or any other method.
-                      </p>
-                      <InvitationGenerator
-                        federationDuid={federationDuid}
-                        federationName={charter.familyName}
-                        onInvitationGenerated={(invitation) => {
-                          console.log('Invitation generated:', invitation);
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 bg-white/5 rounded-xl border border-white/10">
-                      <Users className="h-12 w-12 mx-auto mb-4 text-purple-400 opacity-50" />
-                      <p className="text-purple-200 mb-2">No members to invite yet</p>
-                      <p className="text-purple-300 text-sm">
-                        You can use the Family Invitation System from your dashboard to invite members later.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-400/30 mb-6">
-              <h4 className="font-medium text-blue-300 mb-2">
-                🎓 Invitation Benefits
-              </h4>
-              <div className="text-sm text-blue-200 space-y-1">
-                <p>• Each invitee receives 1 course credit upon signup</p>
-                <p>• You'll receive 1 bonus course credit per successful invitation</p>
-                <p>• Invitees land on Satnam.pub with ID Foundry Modal ready</p>
-                <p>• Complete privacy protection with NIP-59 Gift Wrapped messaging</p>
-                <p>• QR codes and direct links available for sharing</p>
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              {/* Solo founder: Skip invitations and proceed to completion */}
-              {trustedPeers.length === 0 ? (
-                <button
-                  onClick={() => {
-                    setShowInviteModal(false);
-                    // Federation was already created in createFederationBackend()
-                    // Skip the federation modal and go directly to complete
-                    setVerificationId(`family-federation-${Date.now()}-${crypto.randomUUID()}`);
-                    setCurrentStep('complete');
-                  }}
-                  className="flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                >
-                  Continue as Solo Founder
-                </button>
-              ) : (
-                <button
-                  onClick={sendInvitations}
-                  className="flex-1 font-bold py-3 px-6 rounded-lg transition-all duration-300 bg-green-600 hover:bg-green-700 text-white"
-                >
-                  Send Invitations
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MVP Mode Information - Shown when Fedimint is disabled */}
       {!FeatureFlags.isFedimintEnabled() && (

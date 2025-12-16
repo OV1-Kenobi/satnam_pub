@@ -108,10 +108,12 @@ export default async function handler(req, res) {
     const limit = Math.min(Math.max(parsedLimit || 30, 1), 100);
 
     // App-layer authorization: only show messages where user is sender or recipient
+    // Include content (NIP-44 encrypted ciphertext) for client-side decryption
+    // Also include sender_npub and recipient_npub for conversation key derivation
     let query = client
       .from("gift_wrapped_messages")
       .select(
-        "id, sender_hash, recipient_hash, encryption_level, communication_type, message_type, status, created_at, protocol"
+        "id, sender_hash, recipient_hash, sender_npub, recipient_npub, content, encryption_level, communication_type, message_type, status, created_at, protocol"
       )
       .or(`sender_hash.eq.${sessionHashedId},recipient_hash.eq.${sessionHashedId}`)
       .order("created_at", { ascending: false })
