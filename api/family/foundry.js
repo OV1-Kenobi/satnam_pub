@@ -1151,6 +1151,252 @@ async function createFamilyFederation(charterId, familyName, userId, frostThresh
 }
 
 /**
+ * Create founding member record for the federation creator
+ * This ensures the founder appears in family_members and can be queried by family-my-federations
+ * @param {string} federationId - UUID of the created federation
+ * @param {string} federationDuid - DUID of the created federation
+ * @param {string} userId - User DUID of the founding user
+ * @returns {Promise<Object>} Database operation result
+ */
+async function createFoundingMember(federationId, federationDuid, userId) {
+  try {
+    if (!supabaseAdmin) {
+      console.error('❌ supabaseAdmin is null - SUPABASE_SERVICE_ROLE_KEY not configured');
+      return {
+        success: false,
+        error: 'Server configuration error: Service role client not available'
+      };
+    }
+
+    // Insert founding member with guardian role
+    const { data: memberData, error: memberError } = await supabaseAdmin
+      .from('family_members')
+      .insert({
+        family_federation_id: federationId,
+        federation_duid: federationDuid,
+        user_duid: userId,
+        family_role: 'guardian',
+        role: 'guardian',
+        joined_via: 'founder',
+        spending_approval_required: false,
+        voting_power: 1,
+        is_active: true,
+        joined_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (memberError) {
+      console.error('Founding member creation failed:', memberError);
+      return {
+        success: false,
+        error: `Failed to create founding member: ${memberError.message || 'Unknown error'}`
+      };
+    }
+
+    console.log('✅ Founding member created successfully:', memberData?.id);
+    return { success: true, data: memberData };
+  } catch (error) {
+    console.error('Founding member creation error:', error instanceof Error ? error.message : error);
+    return {
+      success: false,
+      error: `Database operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+/**
+ * ATOMIC: Create federation AND founding member in a single transaction
+ * This ensures both records are created together or neither is created,
+ * preventing orphaned federations that the user cannot see in their dashboard.
+ *
+ * @param {string} charterId - UUID of the family charter
+ * @param {string} familyName - Display name of the federation
+ * @param {string} userId - User DUID of the founding user
+ * @param {number} frostThreshold - FROST signing threshold (1-5)
+ * @param {number} memberCount - Number of federation members (for NFC MFA calculation)
+ * @returns {Promise<Object>} Result with federation and member data or error
+ */
+async function createFederationWithFoundingMemberAtomic(charterId, familyName, userId, frostThreshold, memberCount) {
+  try {
+    if (!supabaseAdmin) {
+      console.error('❌ supabaseAdmin is null - SUPABASE_SERVICE_ROLE_KEY not configured');
+      return {
+        success: false,
+        error: 'Server configuration error: Service role client not available'
+      };
+    }
+
+    // Generate federation DUID (privacy-first identifier)
+    const federationDuid = await generateFamilyIdentifier(familyName);
+
+    // Normalize member count for NFC/FROST configuration
+    const normalizedMemberCount =
+      typeof memberCount === 'number' && memberCount > 0 ? memberCount : 1;
+
+    // Calculate NFC MFA amount threshold based on normalized member count
+    let nfcAmountThreshold = 100000; // Default: 100k sats
+    if (normalizedMemberCount >= 4 && normalizedMemberCount <= 6) {
+      nfcAmountThreshold = 250000; // 250k sats for 4-6 members
+    } else if (normalizedMemberCount >= 7) {
+      nfcAmountThreshold = 500000; // 500k sats for 7+ members
+    }
+
+    // Derive a safe NFC MFA steward threshold within [1, 5]
+    let nfcMfaThreshold = frostThreshold || 2;
+    if (typeof nfcMfaThreshold !== 'number' || !Number.isInteger(nfcMfaThreshold)) {
+      nfcMfaThreshold = 2;
+    }
+    nfcMfaThreshold = Math.min(nfcMfaThreshold, normalizedMemberCount);
+    if (nfcMfaThreshold < 1) nfcMfaThreshold = 1;
+    if (nfcMfaThreshold > 5) nfcMfaThreshold = 5;
+
+    console.log('📝 Creating federation with founding member (ATOMIC):', {
+      charterId,
+      familyName,
+      userId,
+      federationDuid,
+      frostThreshold,
+      nfcAmountThreshold,
+      nfcMfaThreshold,
+    });
+
+    // Call atomic RPC function that creates both federation and founding member
+    const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc(
+      'create_federation_with_founding_member',
+      {
+        p_charter_id: charterId,
+        p_federation_name: familyName,
+        p_federation_duid: federationDuid,
+        p_user_duid: userId,
+        p_frost_threshold: frostThreshold || 2,
+        p_nfc_mfa_policy: 'required_for_high_value',
+        p_nfc_mfa_amount_threshold: nfcAmountThreshold,
+        p_nfc_mfa_threshold: nfcMfaThreshold
+      }
+    );
+
+    if (rpcError) {
+      console.error('Atomic federation creation RPC error:', rpcError);
+
+      // FALLBACK: If RPC function doesn't exist yet, use legacy non-atomic approach
+      // This allows deployment before the migration is run
+      if (rpcError.code === '42883' || rpcError.message?.includes('does not exist')) {
+        console.warn('⚠️ RPC function not deployed, falling back to non-atomic creation');
+        return createFederationWithFoundingMemberFallback(charterId, familyName, federationDuid, userId, frostThreshold, nfcAmountThreshold, nfcMfaThreshold);
+      }
+
+      return {
+        success: false,
+        error: `Database RPC failed: ${rpcError.message || 'Unknown error'}`,
+        code: rpcError.code
+      };
+    }
+
+    if (!rpcResult || !rpcResult.success) {
+      const errorMsg = rpcResult?.error || 'Unknown error';
+      const errorCode = rpcResult?.code;
+      console.error('Atomic federation creation failed:', errorMsg);
+
+      // Map duplicate federation name to specific error code
+      if (errorCode === 'DUPLICATE_FEDERATION_NAME') {
+        return {
+          success: false,
+          error: 'A federation with this name already exists. Please choose a different name.',
+          code: 'DUPLICATE_FEDERATION_NAME'
+        };
+      }
+
+      return {
+        success: false,
+        error: errorMsg,
+        code: errorCode
+      };
+    }
+
+    console.log('✅ Federation and founding member created atomically:', rpcResult);
+
+    // Return data in format expected by handler
+    return {
+      success: true,
+      data: {
+        id: rpcResult.federation_id,
+        federation_duid: rpcResult.federation_duid,
+        nfc_mfa_policy: 'required_for_high_value',
+        nfc_mfa_amount_threshold: nfcAmountThreshold,
+        member_id: rpcResult.member_id,
+        created_at: rpcResult.created_at
+      }
+    };
+  } catch (error) {
+    console.error('Atomic federation creation error:', error instanceof Error ? error.message : error);
+    return {
+      success: false,
+      error: `Database operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+/**
+ * FALLBACK: Non-atomic federation + founding member creation
+ * Used when the atomic RPC function is not yet deployed.
+ * WARNING: This can leave orphaned federations if founding member creation fails.
+ *
+ * @deprecated Use createFederationWithFoundingMemberAtomic when RPC is available
+ */
+async function createFederationWithFoundingMemberFallback(charterId, familyName, federationDuid, userId, frostThreshold, nfcAmountThreshold, nfcMfaThreshold) {
+  console.warn('⚠️ Using non-atomic fallback - deploy migration 063_federation_atomic_creation.sql');
+
+  // Step 1: Create federation using legacy function
+  const federationResult = await createFamilyFederation(charterId, familyName, userId, frostThreshold, 1);
+  if (!federationResult.success) {
+    return federationResult;
+  }
+
+  // Step 2: Create founding member (non-atomic - may fail independently)
+  const memberResult = await createFoundingMember(
+    federationResult.data.id,
+    federationResult.data.federation_duid,
+    userId
+  );
+
+  if (!memberResult.success) {
+    // CRITICAL: Log this for monitoring - we have an orphaned federation
+    console.error('🚨 ORPHANED FEDERATION: Founding member creation failed after federation was created', {
+      federationId: federationResult.data.id,
+      federationDuid: federationResult.data.federation_duid,
+      userId,
+      error: memberResult.error
+    });
+    // Return error to user so they know to retry (better UX than silent failure)
+    return {
+      success: false,
+      error: 'Federation created but member registration failed. Please try again.',
+      code: 'PARTIAL_CREATION_FAILURE',
+      partialData: {
+        federationId: federationResult.data.id,
+        federationDuid: federationResult.data.federation_duid
+      }
+    };
+  }
+
+  // Return unified result
+  return {
+    success: true,
+    data: {
+      id: federationResult.data.id,
+      federation_duid: federationResult.data.federation_duid,
+      nfc_mfa_policy: federationResult.data.nfc_mfa_policy || 'required_for_high_value',
+      nfc_mfa_amount_threshold: federationResult.data.nfc_mfa_amount_threshold || nfcAmountThreshold,
+      member_id: memberResult.data?.id,
+      created_at: federationResult.data.created_at
+    }
+  };
+}
+
+/**
  * Family Foundry API Handler - Production Ready
  * @param {Object} event - Netlify Functions event object
  * @param {Object} context - Netlify Functions context object
@@ -1345,39 +1591,46 @@ export default async function handler(event, context) {
       };
     }
 
-	    // Create family federation record with FROST and NFC MFA configuration
-	    // Use participantCount (includes founding user) for NFC MFA thresholds
-	    const federationResult = await createFamilyFederation(
-	      charterResult.data.id,
-	      validatedCharter.familyName,
-	      userId,
-	      frostThreshold,
-	      participantCount
-	    );
+    // ATOMIC: Create family federation AND founding member in a single transaction
+    // This ensures the founder always appears in family_members, preventing orphaned federations
+    // that the user cannot see in their dashboard (family-my-federations relies on family_members join)
+    const federationResult = await createFederationWithFoundingMemberAtomic(
+      charterResult.data.id,
+      validatedCharter.familyName,
+      userId,
+      frostThreshold,
+      participantCount
+    );
 
-	    // CRITICAL: Federation creation must succeed before continuing
-	    // If federation record fails to be created, return error to frontend
-	    if (!federationResult.success) {
-		      console.error('Federation creation failed:', federationResult.error);
-		      const isNameConflict = federationResult.code === 'DUPLICATE_FEDERATION_NAME';
-		      return {
-		        statusCode: isNameConflict ? 409 : 500,
-		        headers: corsHeaders,
-		        body: JSON.stringify({
-		          success: false,
-		          error:
-		            federationResult.error ||
-		            (isNameConflict
-		              ? 'A federation with this name already exists. Please choose a different name.'
-		              : 'Failed to create federation record'),
-		          meta: {
-		            timestamp: new Date().toISOString(),
-		            charterCreated: true,
-		            federationCreated: false
-		          }
-		        })
-		      };
-	    }
+    // CRITICAL: Atomic operation must succeed - if either federation or founding member
+    // creation fails, the entire transaction is rolled back
+    if (!federationResult.success) {
+      console.error('Atomic federation creation failed:', federationResult.error);
+      const isNameConflict = federationResult.code === 'DUPLICATE_FEDERATION_NAME';
+      return {
+        statusCode: isNameConflict ? 409 : 500,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: false,
+          error:
+            federationResult.error ||
+            (isNameConflict
+              ? 'A federation with this name already exists. Please choose a different name.'
+              : 'Failed to create federation (atomic operation rolled back)'),
+          meta: {
+            timestamp: new Date().toISOString(),
+            charterCreated: true,
+            federationCreated: false,
+            atomicRollback: true
+          }
+        })
+      };
+    }
+
+    console.log('✅ Atomic federation creation succeeded:', {
+      federationId: federationResult.data.id,
+      memberId: federationResult.data.member_id
+    });
 
 	    // Best-effort federation identity provisioning using Noble V2 + LNbits
 	    /** @type {{ success: boolean, error?: string } | null} */

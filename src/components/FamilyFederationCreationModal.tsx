@@ -56,6 +56,13 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
     lightning: { m: 2, n: 3 },
     fedimint: { m: 2, n: 3 }
   });
+  // Custom role counts for "custom" setup type
+  const [customRoleCounts, setCustomRoleCounts] = useState({
+    guardianCount: 3,
+    stewardCount: 3,
+    adultCount: 3,
+    offspringCount: 3
+  });
   const [isCreating, setIsCreating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
@@ -76,6 +83,17 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
   }, []);
 
   const setupTypes: FederationSetupType[] = [
+    {
+      id: 'solo',
+      name: 'Solo Founder',
+      description: 'Start as the sole guardian and invite family members later',
+      icon: User,
+      color: 'from-blue-600 to-indigo-600',
+      guardianCount: 0,
+      stewardCount: 0,
+      adultCount: 0,
+      offspringCount: 0
+    },
     {
       id: 'guardian',
       name: 'Guardian Setup',
@@ -104,10 +122,11 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
       description: 'Advanced setup with custom thresholds and role distribution',
       icon: Crown,
       color: 'from-green-600 to-teal-600',
-      guardianCount: 3,
-      stewardCount: 3,
-      adultCount: 3,
-      offspringCount: 3
+      // Use dynamic custom counts
+      guardianCount: customRoleCounts.guardianCount,
+      stewardCount: customRoleCounts.stewardCount,
+      adultCount: customRoleCounts.adultCount,
+      offspringCount: customRoleCounts.offspringCount
     },
     {
       id: 'sovereign',
@@ -383,6 +402,81 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
                 })}
               </div>
             </div>
+
+            {/* Custom Role Count Configuration */}
+            {selectedSetupType === 'custom' && (
+              <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-6">
+                <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                  <Crown className="h-5 w-5 text-green-400" />
+                  Custom Role Distribution
+                </h4>
+                <p className="text-green-200 text-sm mb-6">
+                  Configure the number of members for each role in your federation.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label htmlFor="custom-guardian-count" className="block text-red-400 text-sm font-semibold mb-2">Guardians</label>
+                    <input
+                      id="custom-guardian-count"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={customRoleCounts.guardianCount}
+                      onChange={(e) => setCustomRoleCounts({
+                        ...customRoleCounts,
+                        guardianCount: Math.max(0, Math.min(10, parseInt(e.target.value) || 0))
+                      })}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="custom-steward-count" className="block text-purple-400 text-sm font-semibold mb-2">Stewards</label>
+                    <input
+                      id="custom-steward-count"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={customRoleCounts.stewardCount}
+                      onChange={(e) => setCustomRoleCounts({
+                        ...customRoleCounts,
+                        stewardCount: Math.max(0, Math.min(10, parseInt(e.target.value) || 0))
+                      })}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="custom-adult-count" className="block text-green-400 text-sm font-semibold mb-2">Adults</label>
+                    <input
+                      id="custom-adult-count"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={customRoleCounts.adultCount}
+                      onChange={(e) => setCustomRoleCounts({
+                        ...customRoleCounts,
+                        adultCount: Math.max(0, Math.min(10, parseInt(e.target.value) || 0))
+                      })}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="custom-offspring-count" className="block text-yellow-400 text-sm font-semibold mb-2">Offspring</label>
+                    <input
+                      id="custom-offspring-count"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={customRoleCounts.offspringCount}
+                      onChange={(e) => setCustomRoleCounts({
+                        ...customRoleCounts,
+                        offspringCount: Math.max(0, Math.min(10, parseInt(e.target.value) || 0))
+                      })}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Role Selection */}
             {selectedSetupType && (
@@ -703,11 +797,11 @@ const FamilyFederationCreationModal: React.FC<FamilyFederationCreationModalProps
             </button>
             <button
               onClick={createFederation}
-              disabled={!selectedSetupType || Object.values(selectedRoles).every(roles => roles.length === 0)}
+              disabled={!selectedSetupType}
               className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Zap className="h-4 w-4" />
-              Create Federation
+              {trustedPeers.length === 0 ? 'Create Solo Federation' : 'Create Federation'}
             </button>
           </div>
         )}
