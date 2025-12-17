@@ -1018,3 +1018,356 @@ async function executeCashuPayment(
     transactionHash,
   };
 }
+
+// =====================================================
+// FROST SESSION MANAGER INTEGRATION (Phase 3)
+// =====================================================
+
+/**
+ * Cached FrostSessionManager import for lazy loading
+ */
+let frostSessionManagerPromise: Promise<
+  typeof import("../../lib/frost/frost-session-manager")
+> | null = null;
+
+/**
+ * Get FrostSessionManager with lazy loading
+ * Uses cached dynamic import pattern for browser compatibility
+ */
+async function getFrostSessionManager() {
+  if (!frostSessionManagerPromise) {
+    frostSessionManagerPromise = import(
+      "../../lib/frost/frost-session-manager"
+    );
+  }
+  const module = await frostSessionManagerPromise;
+  return module.FrostSessionManager;
+}
+
+/**
+ * Create a FROST signing session for Nostr event signing
+ *
+ * This integrates with FrostSessionManager for persistent session management
+ * with database-backed state tracking and session recovery.
+ *
+ * @param familyId - Family federation ID
+ * @param familyPubkey - Family public key
+ * @param participants - Guardian public keys
+ * @param threshold - Minimum signatures required
+ * @param eventTemplate - Nostr event template to sign
+ * @param createdBy - Session creator's public key
+ * @returns Session creation result
+ */
+export async function createNostrSigningSession(
+  familyId: string,
+  familyPubkey: string,
+  participants: string[],
+  threshold: number,
+  eventTemplate: Record<string, unknown>,
+  createdBy: string
+): Promise<{
+  success: boolean;
+  sessionId?: string;
+  error?: string;
+}> {
+  try {
+    console.log("[FROST Service] Creating Nostr signing session:", {
+      familyId,
+      participantCount: participants.length,
+      threshold,
+    });
+
+    const FrostSessionManager = await getFrostSessionManager();
+
+    // Create message hash from event template
+    const eventJson = JSON.stringify(eventTemplate);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(eventJson);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = new Uint8Array(hashBuffer);
+    const messageHash = Array.from(hashArray, (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
+
+    // Create session via FrostSessionManager
+    // Note: familyPubkey not used in CreateSessionParams; eventTemplate must be JSON string
+    const result = await FrostSessionManager.createSession({
+      familyId,
+      participants,
+      threshold,
+      messageHash,
+      eventTemplate: eventJson,
+      createdBy,
+      expirationSeconds: 60 * 60, // 1 hour expiry (in seconds)
+    });
+
+    if (!result.success || !result.data) {
+      return {
+        success: false,
+        error: result.error || "Failed to create FROST session",
+      };
+    }
+
+    console.log(`[FROST Service] Session created: ${result.data.session_id}`);
+
+    return {
+      success: true,
+      sessionId: result.data.session_id,
+    };
+  } catch (error) {
+    console.error("[FROST Service] Session creation failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Session creation failed",
+    };
+  }
+}
+
+/**
+ * Submit nonce commitment for FROST Round 1
+ *
+ * @param sessionId - FROST session ID
+ * @param participantPubkey - Participant's public key
+ * @param nonceCommitment - Nonce commitment (hex string)
+ * @returns Submission result
+ */
+export async function submitNostrNonceCommitment(
+  sessionId: string,
+  participantPubkey: string,
+  nonceCommitment: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    console.log("[FROST Service] Submitting nonce commitment:", {
+      sessionId,
+      participantPubkey: participantPubkey.substring(0, 16) + "...",
+    });
+
+    const FrostSessionManager = await getFrostSessionManager();
+
+    const result = await FrostSessionManager.submitNonceCommitment(
+      sessionId,
+      participantPubkey,
+      nonceCommitment
+    );
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || "Failed to submit nonce commitment",
+      };
+    }
+
+    console.log("[FROST Service] Nonce commitment submitted successfully");
+
+    return { success: true };
+  } catch (error) {
+    console.error("[FROST Service] Nonce commitment submission failed:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Nonce commitment submission failed",
+    };
+  }
+}
+
+/**
+ * Submit partial signature for FROST Round 2
+ *
+ * @param sessionId - FROST session ID
+ * @param participantPubkey - Participant's public key
+ * @param partialSignature - Partial signature (hex string)
+ * @returns Submission result with aggregation status
+ */
+export async function submitNostrPartialSignature(
+  sessionId: string,
+  participantPubkey: string,
+  partialSignature: string
+): Promise<{
+  success: boolean;
+  canAggregate?: boolean;
+  error?: string;
+}> {
+  try {
+    console.log("[FROST Service] Submitting partial signature:", {
+      sessionId,
+      participantPubkey: participantPubkey.substring(0, 16) + "...",
+    });
+
+    const FrostSessionManager = await getFrostSessionManager();
+
+    const result = await FrostSessionManager.submitPartialSignature(
+      sessionId,
+      participantPubkey,
+      partialSignature
+    );
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || "Failed to submit partial signature",
+      };
+    }
+
+    // Check if we can aggregate
+    const recoveryResult = await FrostSessionManager.recoverSession(sessionId);
+    if (recoveryResult.success && recoveryResult.data) {
+      console.log(
+        "[FROST Service] Partial signature submitted, can aggregate:",
+        recoveryResult.data.canAggregate
+      );
+      return {
+        success: true,
+        canAggregate: recoveryResult.data.canAggregate,
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error(
+      "[FROST Service] Partial signature submission failed:",
+      error
+    );
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Partial signature submission failed",
+    };
+  }
+}
+
+/**
+ * Recover an interrupted FROST signing session
+ *
+ * @param sessionId - FROST session ID
+ * @returns Recovery status with required actions
+ */
+export async function recoverNostrSigningSession(sessionId: string): Promise<{
+  success: boolean;
+  session?: {
+    sessionId: string;
+    status: string;
+    missingCommitments: string[];
+    missingSignatures: string[];
+    canAggregate: boolean;
+    isExpired: boolean;
+  };
+  error?: string;
+}> {
+  try {
+    console.log("[FROST Service] Recovering session:", sessionId);
+
+    const FrostSessionManager = await getFrostSessionManager();
+
+    const result = await FrostSessionManager.recoverSession(sessionId);
+
+    if (!result.success || !result.data) {
+      return {
+        success: false,
+        error: result.error || "Failed to recover session",
+      };
+    }
+
+    const {
+      session,
+      missingCommitments,
+      missingSignatures,
+      canAggregate,
+      isExpired,
+    } = result.data;
+
+    console.log("[FROST Service] Session recovered:", {
+      status: session.status,
+      missingCommitments: missingCommitments.length,
+      missingSignatures: missingSignatures.length,
+      canAggregate,
+      isExpired,
+    });
+
+    return {
+      success: true,
+      session: {
+        sessionId: session.session_id,
+        status: session.status,
+        missingCommitments,
+        missingSignatures,
+        canAggregate,
+        isExpired,
+      },
+    };
+  } catch (error) {
+    console.error("[FROST Service] Session recovery failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Session recovery failed",
+    };
+  }
+}
+
+/**
+ * Get active FROST signing sessions for a family
+ *
+ * @param familyId - Family federation ID
+ * @returns List of active sessions
+ */
+export async function getActiveNostrSigningSessions(familyId: string): Promise<{
+  success: boolean;
+  sessions?: Array<{
+    sessionId: string;
+    status: string;
+    threshold: number;
+    participantCount: number;
+    createdAt: number;
+    expiresAt: number;
+  }>;
+  error?: string;
+}> {
+  try {
+    console.log(
+      "[FROST Service] Getting active sessions for family:",
+      familyId
+    );
+
+    const FrostSessionManager = await getFrostSessionManager();
+
+    const result = await FrostSessionManager.getActiveSessions(familyId);
+
+    if (!result.success || !result.data) {
+      return {
+        success: false,
+        error: result.error || "Failed to get active sessions",
+      };
+    }
+
+    const sessions = result.data.map((session) => ({
+      sessionId: session.session_id,
+      status: session.status,
+      threshold: session.threshold,
+      participantCount: session.participants.length,
+      createdAt: session.created_at,
+      expiresAt: session.expires_at,
+    }));
+
+    console.log(`[FROST Service] Found ${sessions.length} active sessions`);
+
+    return {
+      success: true,
+      sessions,
+    };
+  } catch (error) {
+    console.error("[FROST Service] Failed to get active sessions:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to get active sessions",
+    };
+  }
+}

@@ -1072,6 +1072,169 @@ export class FrostSessionManager {
     }
   }
 
+  // =====================================================
+  // SESSION RECOVERY METHODS (Phase 3 Integration)
+  // =====================================================
+
+  /**
+   * Get all active sessions for a family federation
+   * Used for session recovery and status monitoring
+   *
+   * @param familyId - Family federation ID
+   * @returns List of active sessions
+   */
+  static async getActiveSessions(
+    familyId: string
+  ): Promise<SessionResult<FrostSession[]>> {
+    try {
+      const { data, error } = await supabase
+        .from("frost_signing_sessions")
+        .select("*")
+        .eq("family_id", familyId)
+        .in("status", ["pending", "nonce_collection", "aggregating"])
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        return {
+          success: false,
+          error: `Failed to get active sessions: ${error.message}`,
+        };
+      }
+
+      return {
+        success: true,
+        data: data || [],
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown error getting active sessions",
+      };
+    }
+  }
+
+  /**
+   * Get pending sessions awaiting guardian participation
+   * Used for guardian notification and session recovery
+   *
+   * @param guardianPubkey - Guardian's public key
+   * @returns List of pending sessions requiring this guardian
+   */
+  static async getPendingSessions(
+    guardianPubkey: string
+  ): Promise<SessionResult<FrostSession[]>> {
+    try {
+      const { data, error } = await supabase
+        .from("frost_signing_sessions")
+        .select("*")
+        .contains("participants", [guardianPubkey])
+        .in("status", ["pending", "nonce_collection"])
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        return {
+          success: false,
+          error: `Failed to get pending sessions: ${error.message}`,
+        };
+      }
+
+      return {
+        success: true,
+        data: data || [],
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown error getting pending sessions",
+      };
+    }
+  }
+
+  /**
+   * Recover an interrupted session by checking its current state
+   * and determining what actions are needed to complete it
+   *
+   * @param sessionId - Session ID to recover
+   * @returns Recovery status with required actions
+   */
+  static async recoverSession(sessionId: string): Promise<
+    SessionResult<{
+      session: FrostSession;
+      missingCommitments: string[];
+      missingSignatures: string[];
+      canAggregate: boolean;
+      isExpired: boolean;
+    }>
+  > {
+    try {
+      // Get session
+      const sessionResult = await this.getSession(sessionId);
+      if (!sessionResult.success || !sessionResult.data) {
+        return {
+          success: false,
+          error: sessionResult.error || "Session not found",
+        };
+      }
+
+      const session = sessionResult.data;
+      const now = Math.floor(Date.now() / 1000);
+      const isExpired = session.expires_at < now;
+
+      // Get existing commitments
+      const { data: commitments } = await supabase
+        .from("frost_nonce_commitments")
+        .select("participant_id")
+        .eq("session_id", sessionId);
+
+      const committedParticipants = new Set(
+        (commitments || []).map((c) => c.participant_id)
+      );
+      const missingCommitments = session.participants.filter(
+        (p) => !committedParticipants.has(p)
+      );
+
+      // Get existing partial signatures from session's JSONB field
+      // Note: partial_signatures are stored in frost_signing_sessions.partial_signatures JSONB,
+      // NOT in a separate table (only nonce_commitments has a dedicated table)
+      const signedParticipants = new Set(
+        Object.keys(session.partial_signatures || {})
+      );
+      const missingSignatures = session.participants.filter(
+        (p) => !signedParticipants.has(p)
+      );
+
+      // Check if we can aggregate (have threshold signatures)
+      const canAggregate =
+        session.participants.length - missingSignatures.length >=
+        session.threshold;
+
+      return {
+        success: true,
+        data: {
+          session,
+          missingCommitments,
+          missingSignatures,
+          canAggregate,
+          isExpired,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown error recovering session",
+      };
+    }
+  }
+
   /**
    * Verify an aggregated FROST signature
    *

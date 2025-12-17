@@ -111,7 +111,6 @@ async function testShareEncryption() {
     const participants: TrustParticipant[] = [
       {
         saltedUUID: "guardian-1-uuid",
-        email: "guardian1@test.com",
         displayName: "Guardian 1",
         role: "guardian",
         invitationCode: "GUARDIAN1CODE123",
@@ -119,7 +118,6 @@ async function testShareEncryption() {
       },
       {
         saltedUUID: "guardian-2-uuid",
-        email: "guardian2@test.com",
         displayName: "Guardian 2",
         role: "guardian",
         invitationCode: "GUARDIAN2CODE123",
@@ -127,7 +125,6 @@ async function testShareEncryption() {
       },
       {
         saltedUUID: "steward-1-uuid",
-        email: "steward1@test.com",
         displayName: "Steward 1",
         role: "steward",
         invitationCode: "STEWARD1CODE123",
@@ -135,7 +132,6 @@ async function testShareEncryption() {
       },
       {
         saltedUUID: "steward-2-uuid",
-        email: "steward2@test.com",
         displayName: "Steward 2",
         role: "steward",
         invitationCode: "STEWARD2CODE123",

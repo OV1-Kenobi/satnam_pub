@@ -74,8 +74,6 @@ export interface TrustFounder {
   saltedUUID: string;
   /** Display name for user interface */
   displayName: string;
-  /** Email address for communication */
-  email: string;
   /** Whether founder retains guardian status after federation creation */
   retainGuardianStatus: boolean;
   /** Password for encrypting founder's nsec share - NEVER store plaintext */
@@ -90,8 +88,6 @@ export interface TrustFounder {
 export interface TrustParticipant {
   /** Generated after invitation acceptance - not available during invitation */
   saltedUUID?: string;
-  /** Email address for invitation delivery */
-  email: string;
   /** Display name for user interface */
   displayName: string;
   /** Role in the federation trust */
@@ -219,8 +215,6 @@ export interface NsecReconstructionResult {
  * @security Invitation codes expire and are single-use only
  */
 export interface InvitationData {
-  /** Recipient's email address */
-  recipientEmail: string;
   /** Recipient's display name */
   recipientName: string;
   /** Role being invited to */
@@ -432,7 +426,6 @@ export const isTrustFounder = (obj: any): obj is TrustFounder => {
     obj &&
     typeof obj.saltedUUID === "string" &&
     typeof obj.displayName === "string" &&
-    typeof obj.email === "string" &&
     typeof obj.retainGuardianStatus === "boolean" &&
     typeof obj.founderPassword === "string"
   );
@@ -441,7 +434,6 @@ export const isTrustFounder = (obj: any): obj is TrustFounder => {
 export const isTrustParticipant = (obj: any): obj is TrustParticipant => {
   return (
     obj &&
-    typeof obj.email === "string" &&
     typeof obj.displayName === "string" &&
     ["guardian", "steward"].includes(obj.role)
   );

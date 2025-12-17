@@ -279,16 +279,19 @@ export function InvitationGenerator({
 
       // Use CEPS directly for DM sending - it uses the active signing session from SecureNsecManager
       // This bypasses the messaging hook's session requirement since we already have an authenticated user
+      let cepsSendSucceeded = false;
       try {
         const messageId = await CEPS.sendStandardDirectMessage(resolvedTargetNpub, content);
         if (messageId) {
           setDmStatus('Invitation sent via Nostr DM');
-        } else {
-          setError('Failed to send Nostr DM. Please try again or share the link manually.');
+          cepsSendSucceeded = true;
         }
       } catch (cepsError) {
         console.error('CEPS DM send failed:', cepsError);
-        // Fallback to messaging hook if CEPS fails (e.g., no active session)
+      }
+
+      // Fallback to messaging hook if CEPS fails (exception or falsy messageId)
+      if (!cepsSendSucceeded) {
         const ok = await messaging.sendDirectMessage(resolvedTargetNpub, content, 'gift-wrap');
         if (!ok) {
           setError('Failed to send Nostr DM. No active signing session. Please try again after signing in with your Nostr key.');

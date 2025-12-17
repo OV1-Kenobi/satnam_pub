@@ -1,33 +1,15 @@
--- Migration 063: Atomic Federation Creation with Founding Member
--- 
--- PURPOSE: Ensure transactional atomicity for federation creation.
--- If federation creation succeeds but founding member creation fails,
--- the user cannot see their own federation in the dashboard (orphaned federation).
--- This RPC function wraps both operations in a single transaction.
+-- Migration 064: Fix federation charter_id type mismatch for atomic creation RPC
 --
--- IDEMPOTENT: Yes - uses CREATE OR REPLACE FUNCTION
--- ROLLBACK: Automatic via PostgreSQL transaction semantics
-
--- ============================================================================
--- ATOMIC FEDERATION CREATION FUNCTION
--- ============================================================================
--- Creates both the federation record AND the founding member in a single
--- transaction. If either operation fails, both are rolled back.
+-- PURPOSE: Align the create_federation_with_founding_member RPC function signature
+-- with the privacy-first schema, where family_charters.id and
+-- family_federations.charter_id are TEXT DUIDs. The previous version incorrectly
+-- declared p_charter_id as UUID, causing type cast errors when passing TEXT DUIDs
+-- from application code.
 --
--- PARAMETERS:
---   p_charter_id        - TEXT DUID of the family charter
---   p_federation_name   - Display name of the federation
---   p_federation_duid   - Privacy-first DUID identifier
---   p_user_duid         - DUID of the founding user
---   p_frost_threshold   - FROST signing threshold (1-5)
---   p_nfc_mfa_policy    - NFC MFA policy string
---   p_nfc_mfa_amount_threshold - Amount threshold for NFC MFA
---   p_nfc_mfa_threshold - Number of stewards required for NFC MFA
---
--- RETURNS: JSONB with success status, federation_id, member_id, or error
+-- IDEMPOTENT: Yes - uses CREATE OR REPLACE FUNCTION and does not change table schemas.
 
 CREATE OR REPLACE FUNCTION create_federation_with_founding_member(
-	  p_charter_id TEXT,
+  p_charter_id TEXT,
   p_federation_name TEXT,
   p_federation_duid TEXT,
   p_user_duid TEXT,
@@ -151,11 +133,12 @@ EXCEPTION
 END;
 $$;
 
--- Grant execute to service role (admin operations only)
-GRANT EXECUTE ON FUNCTION create_federation_with_founding_member TO service_role;
+-- Grant execute to service role (admin operations only) for the TEXT-signature overload
+GRANT EXECUTE ON FUNCTION create_federation_with_founding_member(text, text, text, text, integer, text, integer, integer) TO service_role;
 
--- Add documentation
-COMMENT ON FUNCTION create_federation_with_founding_member IS 
+-- Documentation for the corrected TEXT-signature function overload
+COMMENT ON FUNCTION create_federation_with_founding_member(text, text, text, text, integer, text, integer, integer) IS 
   'Atomically creates a federation and its founding member in a single transaction. '
-  'If either operation fails, both are rolled back to prevent orphaned federations.';
+  'This version fixes the type mismatch by treating charter_id as a TEXT DUID, '
+  'matching family_charters.id and family_federations.charter_id.';
 

@@ -110,14 +110,12 @@ const federationConfig = {
   founder: {
     saltedUUID: "founder-uuid-12345",
     displayName: "John Smith",
-    email: "john@smithfamily.com",
     retainGuardianStatus: true,
     founderPassword: "SecureFounderPassword123!",
   },
   guardians: [
     {
       saltedUUID: "guardian-1-uuid",
-      email: "jane@smithfamily.com",
       displayName: "Jane Smith",
       role: "guardian",
       invitationCode: "Guardian1-Code-456!",
@@ -127,7 +125,6 @@ const federationConfig = {
   stewards: [
     {
       saltedUUID: "steward-1-uuid",
-      email: "teen@smithfamily.com",
       displayName: "Teen Smith",
       role: "steward",
       invitationCode: "Steward1-Code-789!",

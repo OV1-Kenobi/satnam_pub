@@ -32,7 +32,6 @@ describe("Zero-Knowledge Nsec Integration Tests", () => {
     const founder: TrustFounder = {
       saltedUUID: "test-founder-uuid-123",
       displayName: "Test Founder",
-      email: "founder@example.com",
       retainGuardianStatus: true,
       founderPassword: "SecureFounderPassword123!",
     };
@@ -40,7 +39,6 @@ describe("Zero-Knowledge Nsec Integration Tests", () => {
     const guardians: TrustParticipant[] = [
       {
         saltedUUID: "guardian-1-uuid",
-        email: "guardian1@example.com",
         displayName: "Guardian One",
         role: "guardian",
         invitationCode: "Guard1-Code-123!",
@@ -48,7 +46,6 @@ describe("Zero-Knowledge Nsec Integration Tests", () => {
       },
       {
         saltedUUID: "guardian-2-uuid",
-        email: "guardian2@example.com",
         displayName: "Guardian Two",
         role: "guardian",
         invitationCode: "Guard2-Code-456!",
@@ -59,7 +56,6 @@ describe("Zero-Knowledge Nsec Integration Tests", () => {
     const stewards: TrustParticipant[] = [
       {
         saltedUUID: "steward-1-uuid",
-        email: "steward1@example.com",
         displayName: "Steward One",
         role: "steward",
         invitationCode: "Steward1-Code-789!",

@@ -456,8 +456,7 @@ class ShareEncryption {
   ): string {
     try {
       const invitationData: InvitationData = {
-        // Required properties
-        recipientEmail: participant.email,
+        // Required properties (contact handled via Nostr or other channels)
         recipientName: participant.displayName,
         role: participant.role,
         invitationCode: participant.invitationCode || "",

@@ -289,9 +289,6 @@ class ZeroKnowledgeNsecManager {
     // Validate participant data
     const allParticipants = [...config.guardians, ...config.stewards];
     allParticipants.forEach((participant, index) => {
-      if (!participant.email || !participant.email.includes("@")) {
-        errors.push(`Invalid email for participant ${index + 1}`);
-      }
       if (!participant.displayName || participant.displayName.length < 2) {
         errors.push(`Invalid display name for participant ${index + 1}`);
       }
@@ -338,11 +335,9 @@ class ZeroKnowledgeNsecManager {
         "🔄 Generate new federation keys after emergency use",
         "📝 Document emergency usage for audit trail",
       ],
-      emergencyContacts: {
-        founder: config.founder.email,
-        guardians: config.guardians.map((g) => g.email),
-        stewards: config.stewards.map((s) => s.email),
-      },
+      // Contact details are intentionally omitted to keep recovery
+      // coordination on privacy-first channels (Nostr DMs, in-person,
+      // or other out-of-band methods) instead of legacy identifiers.
     };
 
     return JSON.stringify(instructions, null, 2);

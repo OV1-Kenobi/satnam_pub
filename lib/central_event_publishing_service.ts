@@ -4163,6 +4163,310 @@ export class CentralEventPublishingService {
       };
     }
   }
+
+  // =====================================================
+  // FROST SIGNING INTEGRATION (Phase 3)
+  // =====================================================
+
+  /**
+   * Publish a FROST-signed event to relays
+   *
+   * Wrapper around publishFederatedSigningEvent with FROST-specific logging
+   * and metadata. The underlying event structure is the same - FROST produces
+   * standard Schnorr signatures compatible with Nostr.
+   *
+   * @param signedEvent - The FROST-signed Nostr event
+   * @param sessionId - FROST session ID for tracking
+   * @param familyId - Family identifier for relay selection
+   * @returns Event ID of the published event
+   */
+  async publishFrostSignedEvent(
+    signedEvent: Event,
+    sessionId: string,
+    familyId?: string
+  ): Promise<{ success: boolean; eventId?: string; error?: string }> {
+    console.log(
+      `[CEPS] Publishing FROST-signed event for session ${sessionId}, family ${familyId}`
+    );
+
+    // FROST signatures are standard Schnorr signatures, so we can use the same
+    // publishing logic as SSS-signed events
+    const result = await this.publishFederatedSigningEvent(
+      signedEvent,
+      familyId
+    );
+
+    if (result.success) {
+      console.log(
+        `[CEPS] FROST-signed event published: ${result.eventId} (session: ${sessionId})`
+      );
+    } else {
+      console.error(
+        `[CEPS] Failed to publish FROST-signed event for session ${sessionId}:`,
+        result.error
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * Notify guardians that FROST signing is complete
+   *
+   * Wrapper around notifyGuardianSigningComplete with FROST-specific metadata.
+   * Includes session ID and signing method in the notification.
+   *
+   * @param guardianPubkeys - Array of guardian public keys (hex)
+   * @param notification - FROST-specific notification details
+   * @returns Results for each guardian notification
+   */
+  async notifyFrostSigningComplete(
+    guardianPubkeys: string[],
+    notification: {
+      sessionId: string;
+      familyId: string;
+      eventType: string;
+      eventId: string;
+      completedAt: number;
+      participatingGuardians: string[];
+      aggregatedSignature?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    results: Array<{
+      guardianPubkey: string;
+      success: boolean;
+      eventId?: string;
+      error?: string;
+    }>;
+  }> {
+    console.log(
+      `[CEPS] Notifying ${guardianPubkeys.length} guardians of FROST signing completion (session: ${notification.sessionId})`
+    );
+
+    // Use the existing notification method with FROST-specific event type
+    return this.notifyGuardianSigningComplete(guardianPubkeys, {
+      requestId: notification.sessionId,
+      familyId: notification.familyId,
+      eventType: `frost_${notification.eventType}`,
+      eventId: notification.eventId,
+      completedAt: notification.completedAt,
+      participatingGuardians: notification.participatingGuardians,
+    });
+  }
+
+  /**
+   * Request FROST nonce commitments from guardians
+   *
+   * Sends Round 1 requests to guardians to collect their nonce commitments.
+   * Uses NIP-59 gift-wrapped messages for privacy.
+   *
+   * @param guardianPubkeys - Array of guardian public keys (hex)
+   * @param request - FROST Round 1 request details
+   * @returns Results for each guardian request
+   */
+  async requestFrostNonceCommitments(
+    guardianPubkeys: string[],
+    request: {
+      sessionId: string;
+      familyId: string;
+      messageHash: string;
+      threshold: number;
+      expiresAt: number;
+      requesterPubkey: string;
+    }
+  ): Promise<{
+    success: boolean;
+    results: Array<{
+      guardianPubkey: string;
+      success: boolean;
+      eventId?: string;
+      error?: string;
+    }>;
+  }> {
+    // Validate inputs
+    if (!guardianPubkeys || guardianPubkeys.length === 0) {
+      console.error(
+        "[CEPS] requestFrostNonceCommitments: Empty guardianPubkeys array"
+      );
+      return { success: false, results: [] };
+    }
+
+    if (!request.sessionId || !request.familyId || !request.messageHash) {
+      console.error(
+        "[CEPS] requestFrostNonceCommitments: Missing required request parameters"
+      );
+      return { success: false, results: [] };
+    }
+
+    if (request.threshold < 1 || request.threshold > guardianPubkeys.length) {
+      console.error(
+        `[CEPS] requestFrostNonceCommitments: Invalid threshold ${request.threshold} for ${guardianPubkeys.length} guardians`
+      );
+      return { success: false, results: [] };
+    }
+
+    console.log(
+      `[CEPS] Requesting FROST nonce commitments from ${guardianPubkeys.length} guardians (session: ${request.sessionId})`
+    );
+
+    const results = [];
+
+    for (const guardianPubkey of guardianPubkeys) {
+      try {
+        const result = await this.publishGuardianApprovalRequest(
+          guardianPubkey,
+          {
+            requestId: request.sessionId,
+            familyId: request.familyId,
+            eventType: "frost_nonce_request",
+            eventTemplate: {
+              messageHash: request.messageHash,
+              round: 1,
+            },
+            threshold: request.threshold,
+            expiresAt: request.expiresAt,
+            requesterPubkey: request.requesterPubkey,
+          }
+        );
+
+        results.push({
+          guardianPubkey,
+          success: result.success,
+          eventId: result.eventId,
+          error: result.error,
+        });
+
+        // Rate limit: 100ms delay between requests
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } catch (error) {
+        results.push({
+          guardianPubkey,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    // Threshold-based success: need at least threshold successful requests
+    const successCount = results.filter((r) => r.success).length;
+    const thresholdMet = successCount >= request.threshold;
+    console.log(
+      `[CEPS] FROST nonce requests sent: ${successCount}/${results.length} successful (threshold: ${request.threshold}, met: ${thresholdMet})`
+    );
+
+    return { success: thresholdMet, results };
+  }
+
+  /**
+   * Request FROST partial signatures from guardians
+   *
+   * Sends Round 2 requests to guardians with aggregated nonce commitments.
+   * Uses NIP-59 gift-wrapped messages for privacy.
+   *
+   * @param guardianPubkeys - Array of guardian public keys (hex)
+   * @param request - FROST Round 2 request details
+   * @returns Results for each guardian request
+   */
+  async requestFrostPartialSignatures(
+    guardianPubkeys: string[],
+    request: {
+      sessionId: string;
+      familyId: string;
+      messageHash: string;
+      aggregatedNonces: string;
+      threshold: number;
+      expiresAt: number;
+      requesterPubkey: string;
+    }
+  ): Promise<{
+    success: boolean;
+    results: Array<{
+      guardianPubkey: string;
+      success: boolean;
+      eventId?: string;
+      error?: string;
+    }>;
+  }> {
+    // Validate inputs
+    if (!guardianPubkeys || guardianPubkeys.length === 0) {
+      console.error(
+        "[CEPS] requestFrostPartialSignatures: Empty guardianPubkeys array"
+      );
+      return { success: false, results: [] };
+    }
+
+    if (
+      !request.sessionId ||
+      !request.familyId ||
+      !request.messageHash ||
+      !request.aggregatedNonces
+    ) {
+      console.error(
+        "[CEPS] requestFrostPartialSignatures: Missing required request parameters"
+      );
+      return { success: false, results: [] };
+    }
+
+    if (request.threshold < 1 || request.threshold > guardianPubkeys.length) {
+      console.error(
+        `[CEPS] requestFrostPartialSignatures: Invalid threshold ${request.threshold} for ${guardianPubkeys.length} guardians`
+      );
+      return { success: false, results: [] };
+    }
+
+    console.log(
+      `[CEPS] Requesting FROST partial signatures from ${guardianPubkeys.length} guardians (session: ${request.sessionId})`
+    );
+
+    const results = [];
+
+    for (const guardianPubkey of guardianPubkeys) {
+      try {
+        const result = await this.publishGuardianApprovalRequest(
+          guardianPubkey,
+          {
+            requestId: request.sessionId,
+            familyId: request.familyId,
+            eventType: "frost_signature_request",
+            eventTemplate: {
+              messageHash: request.messageHash,
+              aggregatedNonces: request.aggregatedNonces,
+              round: 2,
+            },
+            threshold: request.threshold,
+            expiresAt: request.expiresAt,
+            requesterPubkey: request.requesterPubkey,
+          }
+        );
+
+        results.push({
+          guardianPubkey,
+          success: result.success,
+          eventId: result.eventId,
+          error: result.error,
+        });
+
+        // Rate limit: 100ms delay between requests
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } catch (error) {
+        results.push({
+          guardianPubkey,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    // Threshold-based success: need at least threshold successful requests
+    const successCount = results.filter((r) => r.success).length;
+    const thresholdMet = successCount >= request.threshold;
+    console.log(
+      `[CEPS] FROST signature requests sent: ${successCount}/${results.length} successful (threshold: ${request.threshold}, met: ${thresholdMet})`
+    );
+
+    return { success: thresholdMet, results };
+  }
 }
 
 export const central_event_publishing_service =

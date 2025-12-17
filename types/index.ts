@@ -5,5 +5,6 @@
  */
 
 export * from "./family";
+export * from "./frost";
 export * from "./tapsigner";
 export * from "./user";
