@@ -150,6 +150,20 @@ export interface UserIdentity {
   votingPower?: number;
   stewardApproved?: boolean;
   guardianApproved?: boolean;
+  /**
+   * Nostr public key (npub) for UI compatibility.
+   * SECURITY NOTE: Public keys are non-sensitive in Nostr protocol and safe to expose
+   * client-side. They are used for identity display and verification, not authorization.
+   * This aligns with MAXIMUM ENCRYPTION privacy model since npub is inherently public data.
+   */
+  npub?: string;
+
+  // NOTE: DUID is intentionally NOT included in this client-side interface.
+  // DUID operations must remain server-side only to prevent unauthorized usage.
+  // For permission-related operations, use the session token which the server
+  // validates and maps to the appropriate DUID internally.
+  // See: authenticateNIP07() and authenticateNIP05Password() which delegate to
+  // server endpoints specifically to avoid client-side DUID generation.
 }
 
 export interface AuthAttempt {

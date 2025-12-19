@@ -649,3 +649,79 @@ export function createDatabaseRateLimit(options: {
 setInterval(() => {
   DatabaseRateLimiter.cleanup();
 }, 60 * 60 * 1000);
+
+// ============================================================================
+// PERMISSION-SPECIFIC RATE LIMITS
+// ============================================================================
+
+/**
+ * Rate limiting for permission configuration endpoints
+ * Prevents spam and accidental misconfiguration
+ */
+export const permissionConfigRateLimit = createRateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 30, // 30 permission changes per minute
+  keyGenerator: (req) => {
+    const federationId = req.body?.federationId || "unknown";
+    const userId = req.user?.id || "anonymous";
+    return `perm-config:${federationId}:${userId}`;
+  },
+  message:
+    "Too many permission changes. Please wait before making more changes.",
+});
+
+/**
+ * Rate limiting for signing approval queue queries
+ */
+export const approvalQueueRateLimit = createRateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 60, // 60 queries per minute
+  keyGenerator: (req) => {
+    const userId = req.user?.id || req.ip || "anonymous";
+    return `approval-queue:${userId}`;
+  },
+  message: "Too many approval queue requests. Please slow down.",
+});
+
+/**
+ * Rate limiting for signing approval/rejection actions
+ * Stricter to prevent accidental mass approvals
+ */
+export const signingActionRateLimit = createRateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 20, // 20 approvals/rejections per minute
+  keyGenerator: (req) => {
+    const userId = req.user?.id || "anonymous";
+    return `signing-action:${userId}`;
+  },
+  message: "Too many approval actions. Please slow down.",
+});
+
+/**
+ * Rate limiting for audit log queries
+ */
+export const auditLogRateLimit = createRateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 30, // 30 queries per minute
+  keyGenerator: (req) => {
+    const userId = req.user?.id || req.ip || "anonymous";
+    return `audit-log:${userId}`;
+  },
+  message: "Too many audit log requests. Please slow down.",
+});
+
+/**
+ * Rate limiting for cross-federation delegation creation
+ * Very strict due to security implications
+ */
+export const delegationRateLimit = createRateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 5, // 5 delegations per 5 minutes
+  keyGenerator: (req) => {
+    const federationId = req.body?.sourceFederationId || "unknown";
+    const userId = req.user?.id || "anonymous";
+    return `delegation:${federationId}:${userId}`;
+  },
+  message:
+    "Too many delegation requests. Please wait before creating more delegations.",
+});

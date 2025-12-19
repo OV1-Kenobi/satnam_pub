@@ -9,6 +9,7 @@
 export interface FamilyMember {
   id: string;
   name?: string;
+  displayName?: string; // Optional display name (alias for name in some contexts)
   username: string; // REQUIRED - never undefined
   lightningAddress?: string; // OPTIONAL - can be undefined
   role: "private" | "offspring" | "adult" | "steward" | "guardian" | "admin";

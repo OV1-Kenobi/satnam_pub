@@ -17,6 +17,14 @@
 
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { createClient } from "@supabase/supabase-js";
+import type {
+  CreateSessionWithPermissionParams,
+  FederationRole,
+  PendingApprovalItem,
+  PermissionCheckResult,
+  SessionWithPermissionResult,
+  TimeWindowCheckResult,
+} from "../../src/types/permissions";
 
 // Initialize Supabase client for FROST session operations
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -1859,6 +1867,597 @@ export class FrostSessionManager {
         error: `Failed to send completion notifications: ${
           error instanceof Error ? error.message : String(error)
         }`,
+      };
+    }
+  }
+
+  // ============================================================================
+  // PERMISSION-INTEGRATED SESSION CREATION
+  // ============================================================================
+
+  /**
+   * Create a new FROST signing session with permission checks
+   *
+   * This method integrates with EventSigningPermissionService to:
+   * 1. Check time-based restrictions
+   * 2. Check cross-federation delegation (if applicable)
+   * 3. Validate creator has permission for event type
+   * 4. Initiate approval workflow if required
+   * 5. Create session normally if all checks pass
+   */
+  static async createSessionWithPermissionCheck(
+    params: CreateSessionWithPermissionParams
+  ): Promise<SessionWithPermissionResult> {
+    try {
+      // Lazy import to avoid circular dependencies
+      const { EventSigningPermissionService } = await import(
+        "../../src/services/eventSigningPermissionService"
+      );
+      const { SigningAuditService } = await import(
+        "../../src/services/signingAuditService"
+      );
+
+      // Step 1: Check permission
+      const permCheck = await EventSigningPermissionService.canSign(
+        params.familyId,
+        params.createdBy,
+        params.eventType
+      );
+
+      if (!permCheck.allowed) {
+        return {
+          success: false,
+          status: "denied",
+          error: `Permission denied: ${permCheck.reason}`,
+          permissionCheck: permCheck,
+        };
+      }
+
+      // Step 2: Check time-based restrictions if permission has an ID
+      let timeCheck: TimeWindowCheckResult = { allowed: true };
+      if (permCheck.permissionId || permCheck.overrideId) {
+        timeCheck = await EventSigningPermissionService.isWithinTimeWindow(
+          permCheck.permissionId,
+          permCheck.overrideId
+        );
+
+        if (!timeCheck.allowed) {
+          return {
+            success: false,
+            status: "denied",
+            error: `Time restriction: ${timeCheck.reason}`,
+            timeWindowCheck: timeCheck,
+            nextWindowStart: timeCheck.nextWindowStart,
+            cooldownRemaining: timeCheck.cooldownRemaining,
+          };
+        }
+      }
+
+      // Step 3: Check cross-federation delegation if applicable
+      let delegationId: string | undefined;
+      if (params.crossFederationContext) {
+        const delegationCheck =
+          await EventSigningPermissionService.checkDelegatedPermission(
+            params.crossFederationContext.sourceFederationId,
+            params.familyId,
+            params.createdBy,
+            params.eventType
+          );
+
+        if (!delegationCheck.allowed) {
+          return {
+            success: false,
+            status: "denied",
+            error: "Cross-federation permission denied",
+            permissionCheck: permCheck,
+          };
+        }
+
+        delegationId =
+          params.crossFederationContext.delegationId ||
+          delegationCheck.delegationId;
+      }
+
+      // Step 4: If approval required, create pending approval session
+      if (permCheck.requiresApproval) {
+        return await this.createPendingApprovalSession(
+          params,
+          permCheck,
+          delegationId
+        );
+      }
+
+      // Step 5: Create session normally
+      const sessionResult = await this.createSession({
+        familyId: params.familyId,
+        messageHash: params.messageHash,
+        eventTemplate: params.eventTemplate,
+        eventType: params.eventType,
+        participants: params.participants,
+        threshold: params.threshold,
+        createdBy: params.createdBy,
+        expirationSeconds: params.expirationSeconds,
+      });
+
+      if (!sessionResult.success) {
+        return {
+          success: false,
+          status: "denied",
+          error: sessionResult.error,
+        };
+      }
+
+      // Step 6: Create audit entry for successful session creation
+      // ATOMIC OPERATION: If audit entry fails, delete the session to maintain consistency
+      const auditResult = await SigningAuditService.createAuditEntry({
+        federationId: params.familyId,
+        sessionId: sessionResult.data?.session_id,
+        memberDuid: params.createdBy,
+        memberRole: "adult", // Will be resolved from DB in production
+        eventType: params.eventType,
+        permissionId: permCheck.permissionId,
+        overrideId: permCheck.overrideId,
+        approvalRequired: false,
+        delegationId,
+      });
+
+      // Compensating logic: If audit entry creation fails, clean up the session
+      if (!auditResult.success && sessionResult.data?.session_id) {
+        console.error(
+          "[FrostSessionManager] Audit entry creation failed, cleaning up session:",
+          auditResult.error
+        );
+        try {
+          // Delete the orphaned session to maintain consistency
+          await supabase
+            .from("frost_signing_sessions")
+            .delete()
+            .eq("session_id", sessionResult.data.session_id);
+        } catch (cleanupError) {
+          console.error(
+            "[FrostSessionManager] Failed to clean up orphaned session:",
+            cleanupError
+          );
+        }
+        return {
+          success: false,
+          status: "denied",
+          error: `Session created but audit logging failed: ${auditResult.error}. Session was rolled back.`,
+        };
+      }
+
+      return {
+        success: true,
+        sessionId: sessionResult.data?.session_id,
+        status: "created",
+        permissionCheck: permCheck,
+        timeWindowCheck: timeCheck,
+      };
+    } catch (error) {
+      console.error(
+        "[FrostSessionManager] createSessionWithPermissionCheck error:",
+        error
+      );
+      return {
+        success: false,
+        status: "denied",
+        error:
+          error instanceof Error ? error.message : "Permission check failed",
+      };
+    }
+  }
+
+  /**
+   * Create a pending approval session when approval is required
+   */
+  private static async createPendingApprovalSession(
+    params: CreateSessionWithPermissionParams,
+    permCheck: PermissionCheckResult,
+    delegationId?: string
+  ): Promise<SessionWithPermissionResult> {
+    try {
+      const { SigningAuditService } = await import(
+        "../../src/services/signingAuditService"
+      );
+
+      // Create audit entry for pending approval
+      const auditResult = await SigningAuditService.createAuditEntry({
+        federationId: params.familyId,
+        memberDuid: params.createdBy,
+        memberRole: "adult", // Will be resolved from DB in production
+        eventType: params.eventType,
+        eventContentPreview: params.eventTemplate?.substring(0, 200),
+        permissionId: permCheck.permissionId,
+        overrideId: permCheck.overrideId,
+        approvalRequired: true,
+        delegationId,
+      });
+
+      if (!auditResult.success) {
+        return {
+          success: false,
+          status: "denied",
+          error: `Failed to create approval request: ${auditResult.error}`,
+        };
+      }
+
+      return {
+        success: true,
+        status: "pending_approval",
+        approvalRequired: true,
+        approvalQueueId: auditResult.auditId,
+        permissionCheck: permCheck,
+      };
+    } catch (error) {
+      console.error(
+        "[FrostSessionManager] createPendingApprovalSession error:",
+        error
+      );
+      return {
+        success: false,
+        status: "denied",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Approval session creation failed",
+      };
+    }
+  }
+
+  // ============================================================================
+  // APPROVAL WORKFLOW METHODS
+  // ============================================================================
+
+  /**
+   * Approve a pending signing session
+   *
+   * @param auditLogId - The audit log entry ID (approval queue ID)
+   * @param approverId - The DUID of the approving member
+   * @param approverRole - The role of the approving member
+   * @returns Session creation result if threshold met
+   */
+  static async approveSession(params: {
+    auditLogId: string;
+    approverId: string;
+    approverRole: FederationRole;
+  }): Promise<SessionWithPermissionResult> {
+    try {
+      const { SigningAuditService } = await import(
+        "../../src/services/signingAuditService"
+      );
+
+      // Step 1: Get the audit entry
+      const { data: auditEntry, error: auditError } = await supabase
+        .from("signing_audit_log")
+        .select("*")
+        .eq("id", params.auditLogId)
+        .eq("status", "pending")
+        .single();
+
+      if (auditError || !auditEntry) {
+        return {
+          success: false,
+          status: "denied",
+          error: "Pending approval not found or already processed",
+        };
+      }
+
+      // Step 2: Verify approver has authority (must have role in approved_by_roles)
+      // SECURITY: Fail-secure - deny if permission lookup fails to prevent authorization bypass
+      const { data: permission, error: permissionError } = await supabase
+        .from("event_signing_permissions")
+        .select("approved_by_roles, approval_threshold")
+        .eq("id", auditEntry.permission_id)
+        .single();
+
+      if (permissionError || !permission) {
+        console.error(
+          "[FrostSessionManager] approveSession: Permission lookup failed for permission_id:",
+          auditEntry.permission_id,
+          "Error:",
+          permissionError
+        );
+        return {
+          success: false,
+          status: "denied",
+          error:
+            "Permission configuration not found - cannot verify approval authority",
+        };
+      }
+
+      const approvedByRoles = permission.approved_by_roles as FederationRole[];
+      if (!approvedByRoles.includes(params.approverRole)) {
+        return {
+          success: false,
+          status: "denied",
+          error: `Role '${params.approverRole}' is not authorized to approve this event type`,
+        };
+      }
+
+      // Step 3: Add approval
+      const updateResult = await SigningAuditService.updateStatus(
+        params.auditLogId,
+        "pending",
+        { approvedBy: params.approverId }
+      );
+
+      if (!updateResult.success) {
+        return {
+          success: false,
+          status: "denied",
+          error: updateResult.error,
+        };
+      }
+
+      // Step 4: Check if threshold is met
+      const { data: updatedAudit } = await supabase
+        .from("signing_audit_log")
+        .select("approved_by, event_type, federation_id, member_duid")
+        .eq("id", params.auditLogId)
+        .single();
+
+      const approvalCount =
+        (updatedAudit?.approved_by as string[])?.length || 0;
+      const threshold = permission?.approval_threshold || 1;
+
+      if (approvalCount < threshold) {
+        // Not yet enough approvals
+        return {
+          success: true,
+          status: "pending_approval",
+          approvalRequired: true,
+          approvalQueueId: params.auditLogId,
+          permissionCheck: {
+            allowed: true,
+            requiresApproval: true,
+            approvalThreshold: threshold,
+            reason: `Approval ${approvalCount}/${threshold}`,
+          },
+        };
+      }
+
+      // Step 5: Threshold met - update status to approved
+      await SigningAuditService.updateStatus(params.auditLogId, "approved");
+
+      // Step 6: Return approved status
+      // NOTE: Session creation is deferred - the caller must retrieve the original request
+      // parameters from the audit entry and call createSessionWithPermissionCheck again,
+      // or implement a separate session creation step. The audit entry stores:
+      // - event_type, federation_id, member_duid, event_content_preview
+      // Full request params should be stored in a separate pending_session_requests table
+      // in production for complete session reconstruction.
+      return {
+        success: true,
+        status: "approved", // Changed from "created" - session creation is the caller's responsibility
+        approvalQueueId: params.auditLogId,
+        permissionCheck: {
+          allowed: true,
+          requiresApproval: false,
+          reason:
+            "Approval threshold met - session creation deferred to caller",
+        },
+      };
+    } catch (error) {
+      console.error("[FrostSessionManager] approveSession error:", error);
+      return {
+        success: false,
+        status: "denied",
+        error: error instanceof Error ? error.message : "Approval failed",
+      };
+    }
+  }
+
+  /**
+   * Reject a pending signing session
+   *
+   * @param auditLogId - The audit log entry ID (approval queue ID)
+   * @param rejecterId - The DUID of the rejecting member
+   * @param rejecterRole - The role of the rejecting member (required for authorization)
+   * @param reason - Optional reason for rejection
+   * @returns Rejection result
+   */
+  static async rejectSession(params: {
+    auditLogId: string;
+    rejecterId: string;
+    rejecterRole: FederationRole;
+    reason?: string;
+  }): Promise<SessionWithPermissionResult> {
+    try {
+      const { SigningAuditService } = await import(
+        "../../src/services/signingAuditService"
+      );
+
+      // Step 1: Verify the audit entry exists and is pending
+      const { data: auditEntry, error: auditError } = await supabase
+        .from("signing_audit_log")
+        .select("id, status, federation_id, permission_id")
+        .eq("id", params.auditLogId)
+        .eq("status", "pending")
+        .single();
+
+      if (auditError || !auditEntry) {
+        return {
+          success: false,
+          status: "denied",
+          error: "Pending approval not found or already processed",
+        };
+      }
+
+      // Step 2: Verify rejecter has authority (must have role in approved_by_roles)
+      // SECURITY: Same authorization check as approveSession - only authorized roles can reject
+      if (auditEntry.permission_id) {
+        const { data: permission, error: permissionError } = await supabase
+          .from("event_signing_permissions")
+          .select("approved_by_roles")
+          .eq("id", auditEntry.permission_id)
+          .single();
+
+        if (permissionError || !permission) {
+          console.error(
+            "[FrostSessionManager] rejectSession: Permission lookup failed for permission_id:",
+            auditEntry.permission_id,
+            "Error:",
+            permissionError
+          );
+          return {
+            success: false,
+            status: "denied",
+            error:
+              "Permission configuration not found - cannot verify rejection authority",
+          };
+        }
+
+        const approvedByRoles =
+          permission.approved_by_roles as FederationRole[];
+        if (!approvedByRoles.includes(params.rejecterRole)) {
+          return {
+            success: false,
+            status: "denied",
+            error: `Role '${params.rejecterRole}' is not authorized to reject this event type`,
+          };
+        }
+      }
+
+      // Step 3: Update status to rejected
+      const updateResult = await SigningAuditService.updateStatus(
+        params.auditLogId,
+        "rejected",
+        {
+          errorMessage: params.reason || "Rejected by approver",
+        }
+      );
+
+      if (!updateResult.success) {
+        return {
+          success: false,
+          status: "denied",
+          error: updateResult.error,
+        };
+      }
+
+      return {
+        success: true,
+        status: "denied",
+        error: params.reason || "Session rejected by approver",
+        approvalQueueId: params.auditLogId,
+      };
+    } catch (error) {
+      console.error("[FrostSessionManager] rejectSession error:", error);
+      return {
+        success: false,
+        status: "denied",
+        error: error instanceof Error ? error.message : "Rejection failed",
+      };
+    }
+  }
+
+  /**
+   * Get pending approval queue for a federation
+   *
+   * @param federationId - The federation DUID
+   * @param approverRole - Optional filter by role that can approve
+   * @returns List of pending approval items
+   */
+  static async getPendingApprovals(params: {
+    federationId: string;
+    approverRole?: FederationRole;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    pendingApprovals?: PendingApprovalItem[];
+    error?: string;
+  }> {
+    try {
+      // Get pending audit entries for the federation
+      let query = supabase
+        .from("signing_audit_log")
+        .select(
+          `
+          id,
+          federation_id,
+          member_duid,
+          member_role,
+          event_type,
+          nostr_kind,
+          event_content_preview,
+          approved_by,
+          permission_id,
+          requested_at
+        `
+        )
+        .eq("federation_id", params.federationId)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+
+      if (params.limit) {
+        query = query.limit(params.limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        return {
+          success: false,
+          error: `Failed to fetch pending approvals: ${error.message}`,
+        };
+      }
+
+      // Map to PendingApprovalItem interface and calculate expiration
+      const pendingApprovals: PendingApprovalItem[] = await Promise.all(
+        (data || []).map(async (row) => {
+          // Get permission details for threshold
+          let requiredApprovals = 1;
+          if (row.permission_id) {
+            const { data: perm } = await supabase
+              .from("event_signing_permissions")
+              .select("approval_threshold")
+              .eq("id", row.permission_id)
+              .single();
+            requiredApprovals = perm?.approval_threshold || 1;
+          }
+
+          const requestedAt = new Date(row.requested_at);
+          const expiresAt = new Date(
+            requestedAt.getTime() + 24 * 60 * 60 * 1000
+          ); // 24hr default
+
+          return {
+            auditLogId: row.id,
+            sessionId: "", // Will be created upon approval
+            federationId: row.federation_id,
+            requesterDuid: row.member_duid,
+            requesterRole: row.member_role as FederationRole,
+            eventType: row.event_type,
+            nostrKind: row.nostr_kind,
+            eventContentPreview: row.event_content_preview,
+            requiredApprovals,
+            currentApprovals: (row.approved_by as string[])?.length || 0,
+            approvedBy: (row.approved_by as string[]) || [],
+            requestedAt,
+            expiresAt,
+          };
+        })
+      );
+
+      // Filter by approver role if specified
+      if (params.approverRole) {
+        // Only return items where the approverRole is in approved_by_roles
+        // This would require fetching permission data - for now return all
+        // The UI/API layer should handle this filtering
+      }
+
+      return {
+        success: true,
+        pendingApprovals,
+      };
+    } catch (error) {
+      console.error("[FrostSessionManager] getPendingApprovals error:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get pending approvals",
       };
     }
   }

@@ -14,6 +14,7 @@
  */
 
 import { FrostSessionManager } from "../../lib/frost/frost-session-manager";
+import type { SessionWithPermissionResult } from "../types/permissions";
 
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
@@ -221,6 +222,133 @@ export async function createFrostSession(
     return {
       success: false,
       error: `FROST session creation failed: ${errorMsg}`,
+    };
+  }
+}
+
+/**
+ * Extended FROST session parameters with permission checking
+ */
+export interface FrostSessionWithPermissionParams
+  extends FrostSessionSetupParams {
+  crossFederationContext?: {
+    sourceFederationId: string;
+    delegationId?: string;
+  };
+}
+
+/**
+ * Extended result type for permission-aware session creation
+ */
+export interface FrostSessionWithPermissionResult
+  extends FrostSessionSetupResult {
+  status?: "created" | "approved" | "pending_approval" | "denied";
+  approvalRequired?: boolean;
+  approvalQueueId?: string;
+  permissionCheck?: {
+    allowed: boolean;
+    reason?: string;
+  };
+}
+
+/**
+ * Create FROST signing session with permission checks
+ * Validates event signing permissions before session creation
+ *
+ * This is the recommended method for production use as it enforces:
+ * - Role-based permission validation
+ * - Time-based restrictions
+ * - Daily usage limits
+ * - Approval workflow for restricted actions
+ *
+ * @param params Session parameters including event type for permission checking
+ * @returns Session result with permission status
+ */
+export async function createFrostSessionWithPermissionCheck(
+  params: FrostSessionWithPermissionParams
+): Promise<FrostSessionWithPermissionResult> {
+  try {
+    // Validate participants
+    if (!params.participants || params.participants.length === 0) {
+      return {
+        success: false,
+        status: "denied",
+        error: "At least one participant required for FROST session",
+      };
+    }
+
+    // Validate custom threshold if provided
+    if (params.customThreshold !== undefined) {
+      const validation = validateFrostThreshold(
+        params.customThreshold,
+        params.participants.length
+      );
+      if (!validation.valid) {
+        return {
+          success: false,
+          status: "denied",
+          error: validation.error || "Invalid FROST threshold",
+        };
+      }
+    }
+
+    // Calculate threshold
+    const { threshold, minRequired } = calculateFrostThreshold(
+      params.participants,
+      params.customThreshold
+    );
+
+    if (params.participants.length < minRequired) {
+      return {
+        success: false,
+        status: "denied",
+        error: `Insufficient participants: ${params.participants.length}/${minRequired} required`,
+      };
+    }
+
+    // Extract participant DUIDs
+    const participantDuids = params.participants.map((p) => p.user_duid);
+
+    // Use permission-aware session creation
+    const sessionResult: SessionWithPermissionResult =
+      await FrostSessionManager.createSessionWithPermissionCheck({
+        familyId: params.federationDuid,
+        messageHash: params.messageHash,
+        eventTemplate: params.eventTemplate,
+        eventType: params.eventType || "generic",
+        participants: participantDuids,
+        threshold,
+        createdBy: params.creatorUserDuid,
+        crossFederationContext: params.crossFederationContext,
+      });
+
+    if (!sessionResult.success) {
+      return {
+        success: false,
+        status: sessionResult.status,
+        error: sessionResult.error,
+        approvalRequired: sessionResult.approvalRequired,
+        approvalQueueId: sessionResult.approvalQueueId,
+        permissionCheck: sessionResult.permissionCheck,
+      };
+    }
+
+    return {
+      success: true,
+      sessionId: sessionResult.sessionId,
+      threshold,
+      participantCount: params.participants.length,
+      status: sessionResult.status,
+      approvalRequired: sessionResult.approvalRequired,
+      approvalQueueId: sessionResult.approvalQueueId,
+      permissionCheck: sessionResult.permissionCheck,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    return {
+      success: false,
+      status: "denied",
+      error: `Permission-checked FROST session creation failed: ${errorMsg}`,
     };
   }
 }

@@ -11,6 +11,8 @@
  * - JWT authentication with family membership validation
  */
 
+import type { FederationRole } from "../types/permissions";
+
 // Environment variable access for browser compatibility
 function getEnvVar(key: string): string | undefined {
   return process.env[key];
@@ -379,7 +381,7 @@ export async function getAllFamilyWalletData(
   lightning: FamilyWalletData | null;
   fedimint: FamilyWalletData | null;
   totalBalance: number;
-  userRole: string;
+  userRole: FederationRole;
   permissions: {
     can_view_balance: boolean;
     can_spend: boolean;
@@ -460,7 +462,7 @@ export async function getAllFamilyWalletData(
       lightning: lightningData,
       fedimint: fedimintData,
       totalBalance,
-      userRole: availableWallet.user_role,
+      userRole: availableWallet.user_role as FederationRole,
       permissions: availableWallet.permissions,
       errors,
       availableWallets,

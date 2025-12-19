@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   Globe,
+  Key,
   QrCode,
   RefreshCw,
   Send,
@@ -16,7 +17,9 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { resolvePlatformLightningDomain } from '../config/domain.client';
+import { getEnvVar } from '../config/env.client';
 import { useNWCWallet } from '../hooks/useNWCWallet';
+import { useApprovalQueue } from '../hooks/usePermissions';
 import { useAuth } from './auth/AuthProvider'; // FIXED: Use unified auth system
 
 import NWCWalletSetupModal from './NWCWalletSetupModal';
@@ -34,6 +37,11 @@ import PaymentAutomationCard from './PaymentAutomationCard';
 import PaymentAutomationModal from './PaymentAutomationModal';
 import { PaymentModal } from './shared';
 import UnifiedFamilyPayments from './UnifiedFamilyPayments';
+
+// Import Permission Management Components
+import { MemberOverrideManager, PermissionConfigurationPanel } from './permissions';
+import SigningApprovalQueue from './frost/SigningApprovalQueue';
+import AuditLogViewer from './audit/AuditLogViewer';
 
 import LNBitsIntegrationPanel from './LNBitsIntegrationPanel';
 
@@ -73,6 +81,7 @@ import ToastContainer from './ToastContainer';
 
 // Import enhanced types
 import { FamilyMember } from '../types/shared';
+import type { FederationRole } from '../types/permissions';
 
 // Helper function for role validation
 const validateMemberRole = (role: unknown): FamilyMember['role'] | null => {
@@ -331,9 +340,12 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   } = useNWCWallet();
 
   // State management - using privacy-first federation data
-  const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd' | 'lnbits'>('overview');
+  const [currentView, setCurrentView] = useState<'overview' | 'lightning' | 'fedimint' | 'payments' | 'phoenixd' | 'lnbits' | 'permissions'>('overview');
   const [familyName] = useState(familyFederationData?.federationName || "Family Federation");
   const [familyFederationId] = useState(familyFederationData?.id);
+
+  // Permission approval queue for badge count
+  const { count: pendingApprovalCount } = useApprovalQueue(familyFederationId);
   // federationDuid available but not currently used
   // const [federationDuid] = useState(familyFederationData?.federationDuid);
 
@@ -369,7 +381,11 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
   const [showSovereigntyEducation, setShowSovereigntyEducation] = useState(false);
 
   // Feature flags
-  const lnbitsEnabled = (import.meta.env.VITE_LNBITS_INTEGRATION_ENABLED || '').toString().toLowerCase() === 'true';
+  const lnbitsEnabled = (
+    getEnvVar('VITE_LNBITS_INTEGRATION_ENABLED') || 'true'
+  )
+    .toString()
+    .toLowerCase() === 'true';
 
   // Enhanced treasury state - now loaded from family wallet APIs
   const [familyWalletData, setFamilyWalletData] = useState<{
@@ -377,7 +393,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     lightning: FamilyWalletData | null;
     fedimint: FamilyWalletData | null;
     totalBalance: number;
-    userRole: string;
+    userRole: FederationRole;
     permissions: {
       can_view_balance: boolean;
       can_spend: boolean;
@@ -388,7 +404,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     lightning: null,
     fedimint: null,
     totalBalance: 0,
-    userRole: 'offspring',
+    userRole: 'offspring' as FederationRole,
     permissions: {
       can_view_balance: false,
       can_spend: false,
@@ -806,6 +822,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
     { id: 'payments', label: 'Payments', icon: Activity },
     { id: 'phoenixd', label: 'PhoenixD', icon: Globe },
     ...(lnbitsEnabled ? [{ id: 'lnbits', label: 'LNbits', icon: Zap }] : []),
+    { id: 'permissions', label: 'Permissions', icon: Key, badge: pendingApprovalCount },
   ];
 
   const renderOverview = () => (
@@ -1048,9 +1065,106 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           return renderOverview();
         }
         return <LNBitsIntegrationPanel />;
+      case 'permissions':
+        return renderPermissions();
       default:
         return renderOverview();
     }
+  };
+
+  // Render permissions management view
+  const renderPermissions = () => {
+    // Get user's role from family wallet data
+    const userRole = familyWalletData.userRole || 'adult';
+    const canManage = userRole === 'guardian' || userRole === 'steward';
+
+    // Prepare members list for override manager
+    const membersList = familyMembers.map((m) => ({
+      duid: m.id || '',
+      displayName: m.username || 'Unknown',
+      role: m.role as 'offspring' | 'adult' | 'steward' | 'guardian',
+    }));
+    return (
+      <div className="space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-xl p-6 border border-purple-200 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-purple-900">
+                Signing Permissions
+              </h2>
+              <p className="text-sm text-purple-600 mt-1">
+                Manage event signing permissions for family federation members
+              </p>
+            </div>
+            {pendingApprovalCount > 0 && (
+              <div className="flex items-center space-x-2 bg-orange-100 text-orange-700 px-4 py-2 rounded-lg">
+                <AlertTriangle className="h-5 w-5" />
+                <span className="font-medium">
+                  {pendingApprovalCount} pending approval{pendingApprovalCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Approval Queue - Always visible for Guardians/Stewards */}
+        {canManage && (
+          <SigningApprovalQueue
+            federationId={familyFederationId || ''}
+            userRole={userRole}
+            userDuid={user?.npub || ''}
+            onApprovalChange={() => {
+              // Refresh data after approval action
+              showToast.success('Approval processed successfully');
+            }}
+          />
+        )}
+
+        {/* Two-column layout for configuration and overrides */}
+        {canManage ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Permission Configuration Panel */}
+            <PermissionConfigurationPanel
+              federationId={familyFederationId || ''}
+              userRole={userRole}
+              onPermissionChange={() => {
+                showToast.success('Permissions updated successfully');
+              }}
+            />
+
+            {/* Member Override Manager */}
+            <MemberOverrideManager
+              federationId={familyFederationId || ''}
+              userRole={userRole}
+              members={membersList}
+              onOverrideChange={() => {
+                showToast.success('Override updated successfully');
+              }}
+            />
+          </div>
+        ) : (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+            <div className="flex items-center space-x-3 text-yellow-700">
+              <Shield className="h-6 w-6" />
+              <div>
+                <h3 className="font-medium">Permission Configuration</h3>
+                <p className="text-sm mt-1">
+                  Only Guardians and Stewards can configure signing permissions.
+                  Contact your family federation administrator for changes.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Audit Log - Visible to all members */}
+        <AuditLogViewer
+          federationId={familyFederationId || ''}
+          memberDuid={canManage ? undefined : userDuid}
+        />
+      </div>
+    );
   };
 
   return (
@@ -1200,6 +1314,7 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
           <div className="flex flex-wrap gap-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
+              const badge = 'badge' in tab ? (tab as { badge?: number }).badge : undefined;
               return (
                 <button
                   key={tab.id}
@@ -1211,6 +1326,14 @@ export const FamilyFinancialsDashboard: React.FC<FamilyFinancialsDashboardProps>
                 >
                   <Icon className="h-4 w-4" />
                   <span>{tab.label}</span>
+                  {badge !== undefined && badge > 0 && (
+                    <span className={`ml-1 px-1.5 py-0.5 text-xs rounded-full ${currentView === tab.id
+                      ? 'bg-white text-orange-600'
+                      : 'bg-orange-500 text-white'
+                      }`}>
+                      {badge}
+                    </span>
+                  )}
                 </button>
               );
             })}
