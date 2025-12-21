@@ -13,3 +13,10 @@ export function getRequiredEnvVar(key: string): string {
   }
   return value;
 }
+
+/**
+ * Get DUID server secret for hashing operations
+ */
+export function getDuidServerSecret(): string | undefined {
+  return process.env.DUID_SERVER_SECRET;
+}

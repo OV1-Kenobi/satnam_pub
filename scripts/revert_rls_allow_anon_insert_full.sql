@@ -43,7 +43,7 @@ END $do$;
 DO $do$
 DECLARE
   pol_exists boolean;
-  has_name_duid boolean;
+  has_user_duid boolean;
   has_pubkey_duid boolean;
   has_domain boolean;
   policy_sql text;
@@ -57,10 +57,11 @@ BEGIN
     RETURN;
   END IF;
 
+  -- user_duid stores the same value as user_identities.id
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name_duid'
-  ) INTO has_name_duid;
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='user_duid'
+  ) INTO has_user_duid;
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='nip05_records' AND column_name='pubkey_duid'
@@ -70,7 +71,7 @@ BEGIN
     WHERE table_schema='public' AND table_name='nip05_records' AND column_name='domain'
   ) INTO has_domain;
 
-  IF has_name_duid AND has_pubkey_duid THEN
+  IF has_user_duid AND has_pubkey_duid THEN
     IF has_domain THEN
       policy_sql := $pol$
         CREATE POLICY anon_insert_nip05_records
@@ -78,7 +79,7 @@ BEGIN
         FOR INSERT
         TO anon
         WITH CHECK (
-          COALESCE(name_duid, '') <> ''
+          COALESCE(user_duid, '') <> ''
           AND COALESCE(pubkey_duid, '') <> ''
           AND lower(domain) IN ('satnam.pub','www.satnam.pub')
         );
@@ -90,7 +91,7 @@ BEGIN
         FOR INSERT
         TO anon
         WITH CHECK (
-          COALESCE(name_duid, '') <> '' AND COALESCE(pubkey_duid, '') <> ''
+          COALESCE(user_duid, '') <> '' AND COALESCE(pubkey_duid, '') <> ''
         );
       $pol$;
     END IF;
@@ -114,17 +115,18 @@ END $do$;
 -- user_identities: no hashed_* indexes are created in greenfield deployments
 -- (reserved for future indexes on DUIDs or encrypted fields if needed)
 
--- nip05_records: ensure unique index on name_duid (and domain if present); fallback to lower(name) if legacy schema
+-- nip05_records: ensure unique index on user_duid (and domain if present); fallback to lower(name) if legacy schema
+-- user_duid stores the same value as user_identities.id
 DO $$
 DECLARE
-  has_name_duid boolean;
+  has_user_duid boolean;
   has_domain boolean;
   has_name boolean;
 BEGIN
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name_duid'
-  ) INTO has_name_duid;
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='user_duid'
+  ) INTO has_user_duid;
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='nip05_records' AND column_name='domain'
@@ -134,10 +136,10 @@ BEGIN
     WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name'
   ) INTO has_name;
 
-  IF has_name_duid AND has_domain THEN
-    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_name_duid_domain ON public.nip05_records (name_duid, lower(domain))';
-  ELSIF has_name_duid THEN
-    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_name_duid ON public.nip05_records (name_duid)';
+  IF has_user_duid AND has_domain THEN
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_user_duid_domain ON public.nip05_records (user_duid, lower(domain))';
+  ELSIF has_user_duid THEN
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_nip05_records_user_duid ON public.nip05_records (user_duid)';
   ELSIF has_name THEN
     -- Normalize case for uniqueness if using plaintext name
     IF NOT EXISTS (

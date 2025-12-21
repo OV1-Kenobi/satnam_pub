@@ -4,9 +4,12 @@ interface Nip05Record {
   id: string;
   name: string;
   pubkey: string;
-  userId: string;
-  createdAt: Date;
-  updatedAt: Date;
+  user_duid?: string;
+  pubkey_duid?: string;
+  domain: string;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
 }
 
 /**
@@ -15,22 +18,35 @@ interface Nip05Record {
 export async function createNip05Record(
   name: string,
   pubkey: string,
-  userId: string
+  userDuid?: string,
+  domain: string = "satnam.pub"
 ): Promise<Nip05Record> {
   try {
-    // Insert new record directly, relying on DB uniqueness constraint
-    const result = await db.query(
-      `INSERT INTO nip05_records (name, pubkey, user_id, created_at, updated_at) 
-       VALUES ($1, $2, $3, NOW(), NOW()) 
-       RETURNING id, name, pubkey, user_id as "userId", created_at as "createdAt", updated_at as "updatedAt"`,
-      [name, pubkey, userId]
-    );
+    const client = await db.getClient();
+    const { data, error } = await client
+      .from("nip05_records")
+      .insert({
+        name,
+        pubkey,
+        user_duid: userDuid,
+        domain,
+        is_active: true,
+      })
+      .select()
+      .single();
 
-    return result.rows[0];
+    if (error) {
+      // Handle unique constraint violation
+      if (error.code === "23505") {
+        throw new Error("NIP-05 name already taken");
+      }
+      throw error;
+    }
+
+    return data as Nip05Record;
   } catch (err) {
-    // Handle unique constraint violation (PostgreSQL error code 23505)
-    if (err instanceof Error && "code" in err && err.code === "23505") {
-      throw new Error("NIP-05 name already taken");
+    if (err instanceof Error && err.message === "NIP-05 name already taken") {
+      throw err;
     }
     throw err;
   }
@@ -42,26 +58,40 @@ export async function createNip05Record(
 export async function getNip05RecordByName(
   name: string
 ): Promise<Nip05Record | null> {
-  const result = await db.query(
-    'SELECT id, name, pubkey, name_duid, pubkey_duid, domain, is_active, created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE name = $1 AND is_active = true',
-    [name]
-  );
+  const client = await db.getClient();
+  const { data, error } = await client
+    .from("nip05_records")
+    .select("*")
+    .eq("name", name)
+    .eq("is_active", true)
+    .single();
 
-  return result.rows.length > 0 ? result.rows[0] : null;
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Nip05Record;
 }
 
 /**
  * Get NIP-05 verification record by DUID (Privacy-First)
  */
 export async function getNip05RecordByDuid(
-  nameDuid: string
+  userDuid: string
 ): Promise<Nip05Record | null> {
-  const result = await db.query(
-    'SELECT id, name, pubkey, name_duid, pubkey_duid, domain, is_active, created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE name_duid = $1 AND is_active = true',
-    [nameDuid]
-  );
+  const client = await db.getClient();
+  const { data, error } = await client
+    .from("nip05_records")
+    .select("*")
+    .eq("user_duid", userDuid)
+    .eq("is_active", true)
+    .single();
 
-  return result.rows.length > 0 ? result.rows[0] : null;
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Nip05Record;
 }
 
 /**
@@ -70,12 +100,18 @@ export async function getNip05RecordByDuid(
 export async function getNip05RecordsByDomain(
   domain: string = "satnam.pub"
 ): Promise<Nip05Record[]> {
-  const result = await db.query(
-    'SELECT id, name, pubkey, name_duid, pubkey_duid, domain, is_active, created_at as "createdAt", updated_at as "updatedAt" FROM nip05_records WHERE domain = $1 AND is_active = true',
-    [domain]
-  );
+  const client = await db.getClient();
+  const { data, error } = await client
+    .from("nip05_records")
+    .select("*")
+    .eq("domain", domain)
+    .eq("is_active", true);
 
-  return result.rows;
+  if (error) {
+    throw error;
+  }
+
+  return (data || []) as Nip05Record[];
 }
 
 /**
@@ -83,45 +119,38 @@ export async function getNip05RecordsByDomain(
  */
 export async function updateNip05Record(
   id: string,
-  data: { name?: string; pubkey?: string }
+  updateData: { name?: string; pubkey?: string }
 ): Promise<Nip05Record> {
-  const { name, pubkey } = data;
-
-  // Build update query
-  let updateQuery = "UPDATE nip05_records SET updated_at = NOW()";
-  const queryParams: string[] = [];
-  let paramIndex = 1;
-
-  if (name) {
-    updateQuery += `, name = $${paramIndex}`;
-    queryParams.push(name);
-    paramIndex++;
-  }
-
-  if (pubkey) {
-    updateQuery += `, pubkey = $${paramIndex}`;
-    queryParams.push(pubkey);
-    paramIndex++;
-  }
-
-  updateQuery += ` WHERE id = $${paramIndex} RETURNING id, name, pubkey, user_id as "userId", created_at as "createdAt", updated_at as "updatedAt"`;
-  queryParams.push(id);
-
   try {
-    // Execute update, relying on DB uniqueness constraint
-    const result = await db.query(updateQuery, queryParams);
+    const client = await db.getClient();
+    const { data, error } = await client
+      .from("nip05_records")
+      .update({
+        ...updateData,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
 
-    if (result.rows.length === 0) {
+    if (error) {
+      // Handle unique constraint violation
+      if (error.code === "23505") {
+        throw new Error("NIP-05 name already taken");
+      }
+      throw error;
+    }
+
+    if (!data) {
       throw new Error("NIP-05 record not found");
     }
 
-    return result.rows[0];
+    return data as Nip05Record;
   } catch (err) {
-    // Handle unique constraint violation (PostgreSQL error code 23505)
-    if (err instanceof Error && "code" in err && err.code === "23505") {
-      throw new Error("NIP-05 name already taken");
+    if (err instanceof Error) {
+      throw err;
     }
-    throw err;
+    throw new Error("Failed to update NIP-05 record");
   }
 }
 
@@ -129,11 +158,17 @@ export async function updateNip05Record(
  * Delete a NIP-05 verification record
  */
 export async function deleteNip05Record(id: string): Promise<void> {
-  const result = await db.query("DELETE FROM nip05_records WHERE id = $1", [
-    id,
-  ]);
+  const client = await db.getClient();
+  const { error, count } = await client
+    .from("nip05_records")
+    .delete()
+    .eq("id", id);
 
-  if (result.rowCount === 0) {
+  if (error) {
+    throw error;
+  }
+
+  if (count === 0) {
     throw new Error("NIP-05 record not found");
   }
 }
@@ -145,18 +180,23 @@ export async function deleteNip05Record(id: string): Promise<void> {
 export async function generateNip05Json(): Promise<{
   names: Record<string, string>;
 }> {
-  const result = await db.query(
-    "SELECT name, pubkey FROM nip05_records WHERE is_active = true",
-    []
-  );
+  const client = await db.getClient();
+  const { data, error } = await client
+    .from("nip05_records")
+    .select("name, pubkey")
+    .eq("is_active", true);
+
+  if (error) {
+    throw error;
+  }
 
   const names: Record<string, string> = {};
 
-  for (const record of result.rows) {
-    names[record.name] = record.pubkey;
+  for (const record of data || []) {
+    if (record.name && record.pubkey) {
+      names[record.name] = record.pubkey;
+    }
   }
 
-  return {
-    names,
-  };
+  return { names };
 }

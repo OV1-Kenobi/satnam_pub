@@ -70,7 +70,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'nip05_records' AND table_schema = 'public') THEN
         CREATE TABLE nip05_records (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            name_duid TEXT NOT NULL, -- Privacy-first: only hashed name storage
+            user_duid TEXT NOT NULL, -- User DUID: same value as user_identities.id, computed as HMAC-SHA-256(secret, "username@domain")
             pubkey_duid TEXT NOT NULL, -- Privacy-first: only hashed pubkey storage
             domain VARCHAR(255) NOT NULL DEFAULT 'satnam.pub',
             is_active BOOLEAN NOT NULL DEFAULT true,
@@ -91,10 +91,39 @@ BEGIN
         END IF;
     END IF;
 
-    -- Add DUID columns if they don't exist
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'name_duid') THEN
-        ALTER TABLE nip05_records ADD COLUMN name_duid TEXT;
-        RAISE NOTICE '✓ Added name_duid column to nip05_records';
+    -- =====================================================
+    -- MIGRATION: Handle legacy name_duid → user_duid column rename
+    -- Note: user_duid stores the same value as user_identities.id (HMAC of username@domain)
+    -- =====================================================
+
+    -- Step 1: Check if legacy name_duid exists and user_duid doesn't (requires rename)
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'name_duid')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'user_duid') THEN
+        -- Rename the legacy column to the new name (preserves data and NOT NULL constraint)
+        ALTER TABLE nip05_records RENAME COLUMN name_duid TO user_duid;
+        RAISE NOTICE '✓ Renamed nip05_records.name_duid → user_duid (data preserved)';
+    -- Step 2: If user_duid doesn't exist at all, add it (fresh install case)
+    ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'user_duid') THEN
+        ALTER TABLE nip05_records ADD COLUMN user_duid TEXT NOT NULL;
+        RAISE NOTICE '✓ Added user_duid column to nip05_records (NOT NULL)';
+    ELSE
+        RAISE NOTICE '✓ nip05_records.user_duid already exists';
+    END IF;
+
+    -- Step 3: Ensure NOT NULL constraint is applied (migration case may not have it)
+    -- First check if there are any NULL values that need fixing
+    IF EXISTS (SELECT 1 FROM nip05_records WHERE user_duid IS NULL LIMIT 1) THEN
+        RAISE WARNING '⚠ Found NULL values in user_duid - cannot apply NOT NULL constraint';
+        RAISE WARNING '  These records need manual cleanup before constraint can be applied';
+    ELSE
+        -- Apply NOT NULL if not already set
+        BEGIN
+            ALTER TABLE nip05_records ALTER COLUMN user_duid SET NOT NULL;
+            RAISE NOTICE '✓ Applied NOT NULL constraint to user_duid';
+        EXCEPTION WHEN OTHERS THEN
+            -- Already NOT NULL, which is fine
+            RAISE NOTICE '✓ user_duid NOT NULL constraint already in place';
+        END;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'pubkey_duid') THEN
@@ -103,28 +132,126 @@ BEGIN
     END IF;
 END $$;
 
--- Add constraints after columns exist
+-- Add constraints after columns exist (with legacy cleanup)
 DO $$
+DECLARE
+    rec RECORD;
 BEGIN
-    -- Add unique constraint on name_duid + domain if it doesn't exist
-    IF NOT EXISTS (
+    -- =====================================================
+    -- CLEANUP: Drop old name_duid constraint if it exists
+    -- (This is the legacy constraint from before the rename)
+    -- =====================================================
+    IF EXISTS (
         SELECT 1 FROM information_schema.table_constraints
         WHERE constraint_name = 'nip05_records_name_duid_domain_unique'
         AND table_name = 'nip05_records'
     ) THEN
-        ALTER TABLE nip05_records ADD CONSTRAINT nip05_records_name_duid_domain_unique UNIQUE(name_duid, domain);
-        RAISE NOTICE '✓ Added name_duid domain unique constraint';
+        ALTER TABLE nip05_records DROP CONSTRAINT nip05_records_name_duid_domain_unique;
+        RAISE NOTICE '✓ Dropped legacy constraint: nip05_records_name_duid_domain_unique';
     END IF;
 
-    -- Add domain whitelist constraint if it doesn't exist
+    -- Add unique constraint on user_duid + domain if it doesn't exist
     IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'nip05_records_user_duid_domain_unique'
+        AND table_name = 'nip05_records'
+    ) THEN
+        ALTER TABLE nip05_records ADD CONSTRAINT nip05_records_user_duid_domain_unique UNIQUE(user_duid, domain);
+        RAISE NOTICE '✓ Added user_duid domain unique constraint';
+    END IF;
+
+    -- =====================================================
+    -- DOMAIN VALIDATION: Dynamic whitelist approach
+    -- WHITE-LABEL ARCHITECTURE: Do NOT use hardcoded domain constraints
+    -- Domain validation is enforced via:
+    --   1. nip05_domain_whitelist table (see nip05-password-schema.sql)
+    --   2. Application-level validation using environment variables
+    --   3. FK constraint to nip05_domain_whitelist (if table exists)
+    -- =====================================================
+
+    -- Drop legacy hardcoded domain constraint if it exists
+    IF EXISTS (
         SELECT 1 FROM information_schema.table_constraints
         WHERE constraint_name = 'nip05_records_domain_whitelist'
         AND table_name = 'nip05_records'
     ) THEN
-        ALTER TABLE nip05_records ADD CONSTRAINT nip05_records_domain_whitelist CHECK (domain IN ('satnam.pub', 'citadel.academy'));
-        RAISE NOTICE '✓ Added domain whitelist constraint';
+        ALTER TABLE nip05_records DROP CONSTRAINT nip05_records_domain_whitelist;
+        RAISE NOTICE '✓ Dropped hardcoded domain whitelist constraint (white-label incompatible)';
     END IF;
+
+    -- Analyze existing domain data for logging
+    RAISE NOTICE '📊 Domain data analysis:';
+    FOR rec IN
+        SELECT domain, COUNT(*) as cnt
+        FROM nip05_records
+        WHERE domain IS NOT NULL
+        GROUP BY domain
+        ORDER BY cnt DESC
+    LOOP
+        RAISE NOTICE '   • Domain: % (% records)', rec.domain, rec.cnt;
+    END LOOP;
+
+    -- Check for NULL domains
+    IF EXISTS (SELECT 1 FROM nip05_records WHERE domain IS NULL LIMIT 1) THEN
+        RAISE WARNING '⚠ Found records with NULL domain - these need cleanup';
+    END IF;
+
+    RAISE NOTICE '✓ Domain validation delegated to nip05_domain_whitelist table and application layer';
+END $$;
+
+-- =====================================================
+-- DOMAIN WHITELIST TABLE (for dynamic domain management)
+-- This supports white-label deployments where domains are configurable
+-- =====================================================
+CREATE TABLE IF NOT EXISTS nip05_domain_whitelist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain TEXT NOT NULL UNIQUE,
+    domain_hash TEXT NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    verification_required BOOLEAN NOT NULL DEFAULT TRUE,
+    added_by TEXT,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insert default domains if table was just created (idempotent)
+INSERT INTO nip05_domain_whitelist (domain, domain_hash, notes)
+SELECT 'satnam.pub', encode(sha256('satnam.pub'::bytea), 'hex'), 'Primary Satnam domain'
+WHERE NOT EXISTS (SELECT 1 FROM nip05_domain_whitelist WHERE domain = 'satnam.pub');
+
+INSERT INTO nip05_domain_whitelist (domain, domain_hash, notes)
+SELECT 'citadel.academy', encode(sha256('citadel.academy'::bytea), 'hex'), 'Citadel Academy domain'
+WHERE NOT EXISTS (SELECT 1 FROM nip05_domain_whitelist WHERE domain = 'citadel.academy');
+
+INSERT INTO nip05_domain_whitelist (domain, domain_hash, notes)
+SELECT 'my.satnam.pub', encode(sha256('my.satnam.pub'::bytea), 'hex'), 'Platform Lightning domain'
+WHERE NOT EXISTS (SELECT 1 FROM nip05_domain_whitelist WHERE domain = 'my.satnam.pub');
+
+-- Auto-register any existing domains from nip05_records that aren't in whitelist
+-- This ensures existing data is not orphaned during migration
+DO $$
+DECLARE
+    rec RECORD;
+BEGIN
+    FOR rec IN
+        SELECT DISTINCT n.domain
+        FROM nip05_records n
+        WHERE n.domain IS NOT NULL
+          AND n.domain != ''
+          AND NOT EXISTS (SELECT 1 FROM nip05_domain_whitelist w WHERE w.domain = n.domain)
+    LOOP
+        INSERT INTO nip05_domain_whitelist (domain, domain_hash, notes, is_active)
+        VALUES (
+            rec.domain,
+            encode(sha256(rec.domain::bytea), 'hex'),
+            'Auto-registered from existing nip05_records during migration',
+            TRUE
+        );
+        RAISE NOTICE '✓ Auto-registered domain from existing data: %', rec.domain;
+    END LOOP;
+
+    RAISE NOTICE '✓ Domain whitelist table ready for white-label deployments';
 END $$;
 
 -- =====================================================
@@ -804,9 +931,22 @@ END $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='nip05_records') THEN
+    -- Drop legacy name_duid index if it exists (from before the rename)
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_nip05_records_name_duid') THEN
+        DROP INDEX public.idx_nip05_records_name_duid;
+        RAISE NOTICE '✓ Dropped legacy index: idx_nip05_records_name_duid';
+    END IF;
+    -- Also drop legacy unique index variant
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'uq_nip05_records_name_duid_domain') THEN
+        DROP INDEX public.uq_nip05_records_name_duid_domain;
+        RAISE NOTICE '✓ Dropped legacy unique index: uq_nip05_records_name_duid_domain';
+    END IF;
+
+    -- Create standard indexes
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_domain ON nip05_records(domain)';
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_is_active ON nip05_records(is_active)';
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_name_duid ON nip05_records(name_duid)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_nip05_records_user_duid ON nip05_records(user_duid)';
+    RAISE NOTICE '✓ nip05_records indexes created/verified';
   END IF;
 END $$;
 

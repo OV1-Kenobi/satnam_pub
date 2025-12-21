@@ -435,7 +435,7 @@ async function resolveNpubToDUID(npub) {
     // Lookup in nip05_records table
     const { data: nip05Record, error } = await supabase
       .from('nip05_records')
-      .select('name_duid')
+      .select('user_duid')
       .eq('pubkey_duid', pubkey_duid)
       .eq('is_active', true)
       .single();
@@ -448,8 +448,8 @@ async function resolveNpubToDUID(npub) {
       return null;
     }
 
-    // The name_duid IS the DUID we need
-    return nip05Record.name_duid;
+    // user_duid stores the same value as user_identities.id
+    return nip05Record.user_duid;
 
   } catch (error) {
     console.error('SERVER-SIDE npub to DUID resolution failed:', error);

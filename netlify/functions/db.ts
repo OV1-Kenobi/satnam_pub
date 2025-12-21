@@ -317,10 +317,11 @@ const models = {
      * Get user identity by hashed npub
      */
     getByHashedNpub: async (pubkeyDuid: string) => {
+      // user_duid stores the same value as user_identities.id
       const result = await pool.query(
         `SELECT ui.*
          FROM nip05_records nr
-         JOIN user_identities ui ON ui.id = nr.name_duid
+         JOIN user_identities ui ON ui.id = nr.user_duid
          WHERE nr.pubkey_duid = $1 AND nr.is_active = true
          LIMIT 1`,
         [pubkeyDuid]

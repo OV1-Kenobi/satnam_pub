@@ -316,6 +316,13 @@
   status = 200
   force = true
 
+# Admin Account Control endpoint (platform/federation admin account management)
+[[redirects]]
+  from = "/api/admin/account-control"
+  to = "/.netlify/functions/admin-account-control"
+  status = 200
+  force = true
+
 # CRITICAL: Exclude browser-side ESM client modules from API proxy
 # These are client-side JavaScript files, NOT Netlify Functions
 [[redirects]]
@@ -627,6 +634,21 @@
     "netlify/functions_active/utils/env.ts"
   ]
 
+# Admin account control function configuration
+[functions."admin-account-control"]
+  node_bundler = "esbuild"
+  memory_size = 256
+  timeout = 15
+  included_files = [
+    "netlify/functions_active/utils/admin-auth.ts",
+    "netlify/functions_active/config/platform-admin.ts",
+    "netlify/functions_active/utils/env.ts",
+    "netlify/functions_active/utils/jwt-validation.ts",
+    "netlify/functions_active/utils/enhanced-rate-limiter.ts",
+    "netlify/functions_active/utils/error-handler.ts",
+    "netlify/functions_active/utils/security-headers.ts"
+  ]
+
 # Unified auth handler configuration
 [functions."auth-unified"]
   node_bundler = "esbuild"
@@ -736,6 +758,12 @@
 # Phase 2A Day 6: Scheduled PKARR Republishing
 [functions."scheduled-pkarr-republish"]
   schedule = "0 */6 * * *"  # Run every 6 hours (PKARR records have 24h TTL)
+  memory = 256
+  timeout = 60
+
+# Phase 5: Scheduled Orphan Detection
+[functions."scheduled-orphan-detection"]
+  schedule = "0 2 * * *"  # Run daily at 2 AM UTC
   memory = 256
   timeout = 60
 

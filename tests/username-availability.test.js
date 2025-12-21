@@ -241,13 +241,14 @@ describe('Unified Namespace Reservation (nip05_records entity_type)', () => {
    * as implemented in migration 055_nip05_entity_type.sql
    */
   const mockNip05Records = [
-    { name_duid: 'hash_alice', entity_type: 'user', federation_duid: null },
-    { name_duid: 'hash_smith-family', entity_type: 'federation', federation_duid: 'fed_123' },
-    { name_duid: 'hash_bob', entity_type: 'user', federation_duid: null },
+    { user_duid: 'hash_alice', entity_type: 'user', federation_duid: null },
+    { user_duid: 'hash_smith-family', entity_type: 'federation', federation_duid: 'fed_123' },
+    { user_duid: 'hash_bob', entity_type: 'user', federation_duid: null },
   ];
 
-  const mockCheckUnifiedNamespace = (nameDuid) => {
-    const record = mockNip05Records.find(r => r.name_duid === nameDuid);
+  const mockCheckUnifiedNamespace = (userDuid) => {
+    // user_duid stores the same value as user_identities.id
+    const record = mockNip05Records.find(r => r.user_duid === userDuid);
     if (!record) {
       return { available: true, entityType: null };
     }
@@ -274,7 +275,7 @@ describe('Unified Namespace Reservation (nip05_records entity_type)', () => {
     expect(result.federationDuid).toBe('fed_123');
   });
 
-  it('should return available for non-existent name_duid', () => {
+  it('should return available for non-existent user_duid', () => {
     const result = mockCheckUnifiedNamespace('hash_nonexistent');
 
     expect(result.available).toBe(true);

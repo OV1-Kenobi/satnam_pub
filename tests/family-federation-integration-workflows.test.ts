@@ -218,7 +218,7 @@ describe("Federation Identity Provisioning Workflows", () => {
     // Step 1: Reserve NIP-05 handle
     const nip05Result = {
       success: true,
-      name_duid: `hash_${federationHandle}`,
+      user_duid: `hash_${federationHandle}`, // Same value as user_identities.id
       entity_type: "federation" as const,
     };
 
@@ -267,7 +267,7 @@ describe("Federation Identity Provisioning Workflows", () => {
       expect(result.success).toBe(true);
       expect(result.nip05.success).toBe(true);
       expect(result.nip05.entity_type).toBe("federation");
-      expect(result.nip05.name_duid).toBe("hash_smith-family");
+      expect(result.nip05.user_duid).toBe("hash_smith-family");
     });
 
     it("should set entity_type to federation for federation handles", async () => {

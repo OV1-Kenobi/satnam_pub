@@ -127,7 +127,9 @@ CREATE TABLE IF NOT EXISTS signing_audit_log (
     override_id UUID REFERENCES member_signing_overrides(id) ON DELETE SET NULL,
     approval_required BOOLEAN NOT NULL DEFAULT false,
     approved_by JSONB DEFAULT '[]'::jsonb,
-    delegation_id UUID REFERENCES federation_permission_delegations(id) ON DELETE SET NULL, -- If signed via cross-federation delegation
+    -- NOTE: foreign key to federation_permission_delegations is added later in this
+    -- migration (after that table is created) to avoid dependency ordering issues.
+    delegation_id UUID, -- If signed via cross-federation delegation
 
     -- Result
     status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'signed', 'failed', 'expired')),
@@ -138,7 +140,12 @@ CREATE TABLE IF NOT EXISTS signing_audit_log (
     completed_at TIMESTAMP WITH TIME ZONE,
 
     -- Indexing helper
-    created_date DATE GENERATED ALWAYS AS (DATE(requested_at)) STORED
+    -- NOTE: generated column expressions must be IMMUTABLE.
+    -- Direct casts from timestamptz to date depend on the current TimeZone
+    -- setting and are only STABLE, which breaks generated columns.
+    -- Using "AT TIME ZONE 'UTC'" makes the expression immutable while
+    -- still giving a deterministic calendar date for indexing.
+    created_date DATE GENERATED ALWAYS AS ((requested_at AT TIME ZONE 'UTC')::date) STORED
 );
 
 COMMENT ON TABLE signing_audit_log IS
@@ -231,6 +238,25 @@ CREATE TABLE IF NOT EXISTS federation_permission_delegations (
 
 COMMENT ON TABLE federation_permission_delegations IS
 'Enables cross-federation permission delegation. A guardian can delegate specific signing permissions to another federation or member.';
+
+-- Ensure signing_audit_log.delegation_id has a proper foreign key once both
+-- tables exist. This is done here (after federation_permission_delegations is
+-- created) to avoid "relation does not exist" errors during table creation.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints tc
+        WHERE tc.table_name = 'signing_audit_log'
+          AND tc.constraint_name = 'signing_audit_log_delegation_id_fkey'
+    ) THEN
+        ALTER TABLE signing_audit_log
+        ADD CONSTRAINT signing_audit_log_delegation_id_fkey
+        FOREIGN KEY (delegation_id)
+        REFERENCES federation_permission_delegations(id)
+        ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- 2.3 Federation Alliances (Multi-federation permission sharing)
 CREATE TABLE IF NOT EXISTS federation_alliances (
@@ -433,9 +459,11 @@ ALTER TABLE default_permission_templates ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- EVENT SIGNING PERMISSIONS TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- Members can read their own role's permissions in their federation
+DROP POLICY IF EXISTS "esp_members_read_own" ON event_signing_permissions;
 CREATE POLICY "esp_members_read_own" ON event_signing_permissions
 FOR SELECT USING (
     EXISTS (
@@ -448,6 +476,7 @@ FOR SELECT USING (
 );
 
 -- Guardians can manage all permissions in their federation
+DROP POLICY IF EXISTS "esp_guardians_manage" ON event_signing_permissions;
 CREATE POLICY "esp_guardians_manage" ON event_signing_permissions
 FOR ALL USING (
     EXISTS (
@@ -460,6 +489,7 @@ FOR ALL USING (
 );
 
 -- Stewards can manage permissions for lower roles (offspring, adult)
+DROP POLICY IF EXISTS "esp_stewards_manage_lower" ON event_signing_permissions;
 CREATE POLICY "esp_stewards_manage_lower" ON event_signing_permissions
 FOR ALL USING (
     EXISTS (
@@ -474,15 +504,18 @@ FOR ALL USING (
 
 -- ============================================
 -- MEMBER SIGNING OVERRIDES TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- Members can read their own overrides
+DROP POLICY IF EXISTS "mso_members_read_own" ON member_signing_overrides;
 CREATE POLICY "mso_members_read_own" ON member_signing_overrides
 FOR SELECT USING (
     member_duid = auth.uid()::text
 );
 
 -- Guardians can manage all overrides in their federation
+DROP POLICY IF EXISTS "mso_guardians_manage" ON member_signing_overrides;
 CREATE POLICY "mso_guardians_manage" ON member_signing_overrides
 FOR ALL USING (
     EXISTS (
@@ -495,6 +528,7 @@ FOR ALL USING (
 );
 
 -- Stewards can manage overrides for lower-role members
+DROP POLICY IF EXISTS "mso_stewards_manage_lower" ON member_signing_overrides;
 CREATE POLICY "mso_stewards_manage_lower" ON member_signing_overrides
 FOR ALL USING (
     EXISTS (
@@ -510,6 +544,7 @@ FOR ALL USING (
 
 -- Adults can manage overrides for their offspring (parental control)
 -- SECURITY: Requires verified parent-child relationship via parent_member_duid column
+DROP POLICY IF EXISTS "mso_adults_manage_offspring" ON member_signing_overrides;
 CREATE POLICY "mso_adults_manage_offspring" ON member_signing_overrides
 FOR ALL USING (
     EXISTS (
@@ -531,15 +566,18 @@ FOR ALL USING (
 
 -- ============================================
 -- SIGNING AUDIT LOG TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- Members can read their own audit logs
+DROP POLICY IF EXISTS "sal_members_read_own" ON signing_audit_log;
 CREATE POLICY "sal_members_read_own" ON signing_audit_log
 FOR SELECT USING (
     member_duid = auth.uid()::text
 );
 
 -- Stewards and Guardians can read all audit logs in their federation
+DROP POLICY IF EXISTS "sal_managers_read_all" ON signing_audit_log;
 CREATE POLICY "sal_managers_read_all" ON signing_audit_log
 FOR SELECT USING (
     EXISTS (
@@ -552,6 +590,7 @@ FOR SELECT USING (
 );
 
 -- System/service role can insert audit logs (no direct user inserts for integrity)
+DROP POLICY IF EXISTS "sal_system_insert" ON signing_audit_log;
 CREATE POLICY "sal_system_insert" ON signing_audit_log
 FOR INSERT WITH CHECK (
     -- Only service role can insert audit logs to ensure integrity
@@ -563,9 +602,11 @@ FOR INSERT WITH CHECK (
 
 -- ============================================
 -- PERMISSION TIME WINDOWS TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- Members can read time windows for their permissions
+DROP POLICY IF EXISTS "ptw_members_read" ON permission_time_windows;
 CREATE POLICY "ptw_members_read" ON permission_time_windows
 FOR SELECT USING (
     EXISTS (
@@ -584,6 +625,7 @@ FOR SELECT USING (
 );
 
 -- Guardians/Stewards can manage time windows for permissions they control
+DROP POLICY IF EXISTS "ptw_managers_manage" ON permission_time_windows;
 CREATE POLICY "ptw_managers_manage" ON permission_time_windows
 FOR ALL USING (
     EXISTS (
@@ -606,9 +648,11 @@ FOR ALL USING (
 
 -- ============================================
 -- FEDERATION DELEGATIONS TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- Source federation guardians can manage delegations
+DROP POLICY IF EXISTS "fpd_source_guardians_manage" ON federation_permission_delegations;
 CREATE POLICY "fpd_source_guardians_manage" ON federation_permission_delegations
 FOR ALL USING (
     EXISTS (
@@ -621,6 +665,7 @@ FOR ALL USING (
 );
 
 -- Target federation members can read delegations granted to them
+DROP POLICY IF EXISTS "fpd_target_members_read" ON federation_permission_delegations;
 CREATE POLICY "fpd_target_members_read" ON federation_permission_delegations
 FOR SELECT USING (
     EXISTS (
@@ -634,9 +679,11 @@ FOR SELECT USING (
 
 -- ============================================
 -- FEDERATION ALLIANCES TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- Alliance member federation guardians can read alliance details
+DROP POLICY IF EXISTS "fa_members_read" ON federation_alliances;
 CREATE POLICY "fa_members_read" ON federation_alliances
 FOR SELECT USING (
     EXISTS (
@@ -651,6 +698,7 @@ FOR SELECT USING (
 );
 
 -- Only guardians of member federations can modify alliances
+DROP POLICY IF EXISTS "fa_guardians_manage" ON federation_alliances;
 CREATE POLICY "fa_guardians_manage" ON federation_alliances
 FOR ALL USING (
     EXISTS (
@@ -666,15 +714,18 @@ FOR ALL USING (
 
 -- ============================================
 -- DEFAULT PERMISSION TEMPLATES TABLE POLICIES
+-- (Idempotent: DROP IF EXISTS before CREATE)
 -- ============================================
 
 -- All authenticated users can read templates (for UI display)
+DROP POLICY IF EXISTS "dpt_authenticated_read" ON default_permission_templates;
 CREATE POLICY "dpt_authenticated_read" ON default_permission_templates
 FOR SELECT USING (
     auth.uid() IS NOT NULL
 );
 
 -- Only service role can modify templates
+DROP POLICY IF EXISTS "dpt_service_manage" ON default_permission_templates;
 CREATE POLICY "dpt_service_manage" ON default_permission_templates
 FOR ALL USING (
     current_setting('role') = 'service_role'

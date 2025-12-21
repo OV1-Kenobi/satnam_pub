@@ -301,17 +301,18 @@ async function handleNip07SigninInline(event, context, corsHeaders) {
     let npub;
     try { const { nip19 } = await import('nostr-tools'); npub = nip19.npubEncode(signedEvent.pubkey); } catch { npub = `npub${String(signedEvent.pubkey||'').slice(0,16)}...`; }
 
-    // Resolve DUID from npub using pubkey_duid -> name_duid
+    // Resolve DUID from npub using pubkey_duid -> user_duid
     const { createHmac } = await import('node:crypto');
     const duidSecret = process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY;
     if (!duidSecret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
     const pubkey_duid = createHmac('sha256', duidSecret).update(`NPUBv1:${npub}`).digest('hex');
     const { data: rec, error: recErr } = await supabase
-      .from('nip05_records').select('name_duid, nip05').eq('pubkey_duid', pubkey_duid).eq('is_active', true).single();
+      .from('nip05_records').select('user_duid, nip05').eq('pubkey_duid', pubkey_duid).eq('is_active', true).single();
     if (recErr || !rec) {
       return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Authentication failed' }) };
     }
-    const duid = rec.name_duid;
+    // user_duid is the same value as user_identities.id
+    const duid = rec.user_duid;
 
     // Lookup user
     const { data: user, error: userErr } = await supabase
@@ -829,14 +830,15 @@ async function handleCheckUsernameAvailabilityInline(event, context, corsHeaders
     const secret = (process.env.DUID_SERVER_SECRET || process.env.DUID_SECRET_KEY || '').trim();
     if (!secret) return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ success:false, error:'Server configuration error' }) };
     const identifier = `${username}@${domain}`;
-    const name_duid = createHmac('sha256', secret).update(identifier).digest('hex');
+    // user_duid = HMAC-SHA-256(secret, "username@domain") - same value as user_identities.id
+    const user_duid = createHmac('sha256', secret).update(identifier).digest('hex');
 
     const { supabase } = await import('./supabase.js');
     const { data, error } = await supabase
       .from('nip05_records')
       .select('id')
       .eq('domain', domain)
-      .eq('name_duid', name_duid)
+      .eq('user_duid', user_duid)
       .eq('is_active', true)
       .limit(1);
 

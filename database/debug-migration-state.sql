@@ -94,16 +94,16 @@ BEGIN
         
         -- Check for DUID columns
         SELECT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'nip05_records' 
-            AND column_name = 'name_duid'
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'nip05_records'
+            AND column_name = 'user_duid'
             AND table_schema = 'public'
         ) INTO column_exists;
-        
+
         IF column_exists THEN
-            RAISE NOTICE '  ✓ name_duid column EXISTS';
+            RAISE NOTICE '  ✓ user_duid column EXISTS';
         ELSE
-            RAISE NOTICE '  ❌ name_duid column MISSING';
+            RAISE NOTICE '  ❌ user_duid column MISSING';
         END IF;
         
     ELSE

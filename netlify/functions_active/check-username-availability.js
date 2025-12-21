@@ -77,14 +77,15 @@ async function checkUsernameAvailability(username) {
     const identifier = `${local}@${domain}`;
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(identifier);
-    const name_duid = hmac.digest('hex');
+    // user_duid = HMAC-SHA-256(secret, "username@domain") - same value as user_identities.id
+    const user_duid = hmac.digest('hex');
 
     // Check against nip05_records table
     const { data, error } = await supabase
       .from('nip05_records')
       .select('id')
       .eq('domain', domain)
-      .eq('name_duid', name_duid)
+      .eq('user_duid', user_duid)
       .eq('is_active', true)
       .limit(1);
 

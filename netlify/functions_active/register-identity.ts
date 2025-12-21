@@ -637,13 +637,13 @@ async function checkUsernameAvailability(username: string): Promise<boolean> {
     const identifier = `${local}@${domain}`;
     const hmac = crypto.createHmac("sha256", secret);
     hmac.update(identifier);
-    const name_duid = hmac.digest("hex");
+    const user_duid = hmac.digest("hex");
 
     const { data, error } = await supabase
       .from("nip05_records")
       .select("id")
       .eq("domain", domain)
-      .eq("name_duid", name_duid)
+      .eq("user_duid", user_duid)
       .eq("is_active", true)
       .limit(1);
 
@@ -1087,7 +1087,7 @@ export const handler: Handler = async (event, context) => {
   }
 
   // Track reserved NIP-05 reservation for cleanup across try/catch scope
-  let reservedNameDuid: string | null = null;
+  let reservedUserDuid: string | null = null;
   let reservedDomain: string | null = null;
 
   // Shared helper to extract and verify JWT and return userId
@@ -1816,7 +1816,8 @@ export const handler: Handler = async (event, context) => {
       const { createHmac } = await import("node:crypto");
       const secret = await getDUIDSecret();
 
-      const name_duid = createHmac("sha256", secret)
+      // user_duid = HMAC-SHA-256(secret, "username@domain") - same value as user_identities.id
+      const user_duid = createHmac("sha256", secret)
         .update(identifier)
         .digest("hex");
       const pubkey_duid = createHmac("sha256", secret)
@@ -1824,7 +1825,7 @@ export const handler: Handler = async (event, context) => {
         .digest("hex");
 
       // Track reservation details for potential cleanup on failure
-      reservedNameDuid = name_duid;
+      reservedUserDuid = user_duid;
       reservedDomain = domain;
 
       const { error: nip05InsertError } = await supabase
@@ -1834,7 +1835,7 @@ export const handler: Handler = async (event, context) => {
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          name_duid,
+          user_duid,
           pubkey_duid,
         });
 
@@ -2533,11 +2534,11 @@ export const handler: Handler = async (event, context) => {
 
     // Cleanup reserved NIP-05 if user creation failed after reservation
     try {
-      if (reservedNameDuid && reservedDomain) {
+      if (reservedUserDuid && reservedDomain) {
         await supabase
           .from("nip05_records")
           .delete()
-          .eq("name_duid", reservedNameDuid)
+          .eq("user_duid", reservedUserDuid)
           .eq("domain", reservedDomain);
         console.log("✅ Cleaned up reserved NIP-05 after registration failure");
       }

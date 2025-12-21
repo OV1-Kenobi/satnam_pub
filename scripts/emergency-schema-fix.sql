@@ -20,17 +20,71 @@ ADD COLUMN IF NOT EXISTS spending_limits JSONB DEFAULT '{"daily_limit": -1, "req
 ADD COLUMN IF NOT EXISTS privacy_settings JSONB DEFAULT '{"privacy_level": "maximum", "zero_knowledge_enabled": true, "over_encryption": true}';
 
 -- Step 2: Add missing columns to nip05_records table (if they don't exist)
+-- user_duid stores the same value as user_identities.id for direct JOINs
 ALTER TABLE nip05_records
-ADD COLUMN IF NOT EXISTS name_duid TEXT,
+ADD COLUMN IF NOT EXISTS user_duid TEXT,
 ADD COLUMN IF NOT EXISTS pubkey_duid TEXT,
 ADD COLUMN IF NOT EXISTS domain TEXT DEFAULT 'satnam.pub';
+
+-- Step 2b: Migrate data from legacy name_duid column if it exists
+-- This handles cases where old schema had name_duid instead of user_duid
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'nip05_records'
+      AND column_name = 'name_duid'
+  ) THEN
+    -- Migrate existing data from name_duid to user_duid
+    UPDATE nip05_records
+    SET user_duid = name_duid
+    WHERE name_duid IS NOT NULL AND (user_duid IS NULL OR user_duid = '');
+
+    RAISE NOTICE '✓ Migrated data from name_duid to user_duid';
+  END IF;
+END $$;
+
+-- Step 2c: Add foreign key constraint for referential integrity (if user_identities exists)
+-- This ensures user_duid references a valid user_identities.id
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'user_identities'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_nip05_user_duid'
+      AND conrelid = 'public.nip05_records'::regclass
+  ) THEN
+    -- Only add FK if all existing user_duid values are valid or NULL
+    IF NOT EXISTS (
+      SELECT 1 FROM nip05_records n
+      WHERE n.user_duid IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM user_identities u WHERE u.id = n.user_duid)
+      LIMIT 1
+    ) THEN
+      ALTER TABLE nip05_records
+      ADD CONSTRAINT fk_nip05_user_duid
+      FOREIGN KEY (user_duid)
+      REFERENCES user_identities(id)
+      ON DELETE CASCADE;
+
+      RAISE NOTICE '✓ Added foreign key constraint fk_nip05_user_duid';
+    ELSE
+      RAISE NOTICE '⚠ Skipped FK constraint: orphaned user_duid values exist - clean up first';
+    END IF;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE '⚠ Could not add FK constraint: %', SQLERRM;
+END $$;
 
 -- Step 3: Add column comments for documentation
 COMMENT ON COLUMN user_identities.is_active IS 'CRITICAL: Controls access to authenticated sections';
 COMMENT ON COLUMN user_identities.spending_limits IS 'JSON: User spending limits and approval requirements';
 COMMENT ON COLUMN user_identities.privacy_settings IS 'JSON: Privacy configuration and encryption settings';
 
-COMMENT ON COLUMN nip05_records.name_duid IS 'DUID: HMAC-SHA256 of username@domain with server secret';
+COMMENT ON COLUMN nip05_records.user_duid IS 'DUID: HMAC-SHA256 of username@domain with server secret - FK references user_identities.id';
 COMMENT ON COLUMN nip05_records.pubkey_duid IS 'DUID: HMAC-SHA256 of NPUBv1:npub with server secret';
 COMMENT ON COLUMN nip05_records.domain IS 'UNENCRYPTED: Whitelisted domain for verification';
 
@@ -83,7 +137,7 @@ GRANT ALL ON nip05_records TO service_role;
 
 -- Step 7: Create performance indexes
 CREATE INDEX IF NOT EXISTS idx_user_identities_is_active ON user_identities(is_active);
-CREATE INDEX IF NOT EXISTS idx_nip05_records_name_duid ON nip05_records(name_duid);
+CREATE INDEX IF NOT EXISTS idx_nip05_records_user_duid ON nip05_records(user_duid);
 CREATE INDEX IF NOT EXISTS idx_nip05_records_pubkey_duid ON nip05_records(pubkey_duid);
 CREATE INDEX IF NOT EXISTS idx_nip05_records_domain ON nip05_records(domain);
 

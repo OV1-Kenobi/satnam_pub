@@ -52,7 +52,8 @@ export const handler = async (event) => {
     }
 
     const identifier = `${localName.toLowerCase()}@${effectiveDomain}`;
-    const name_duid = crypto.createHmac('sha256', secret).update(identifier).digest('hex');
+    // user_duid = HMAC-SHA-256(secret, "username@domain") - same value as user_identities.id
+    const user_duid = crypto.createHmac('sha256', secret).update(identifier).digest('hex');
     const pubkey_duid = crypto.createHmac('sha256', secret).update(`NPUBv1:${newNpub}`).digest('hex');
 
     const supaMod = await import('./supabase.js');
@@ -63,12 +64,12 @@ export const handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'Server misconfiguration' }) };
     }
 
-    // Update pubkey_duid in DB for this name_duid
+    // Update pubkey_duid in DB for this user_duid
     const { error: updateErr } = await supabase
       .from('nip05_records')
       .update({ pubkey_duid: pubkey_duid, updated_at: new Date().toISOString() })
       .eq('domain', effectiveDomain)
-      .eq('name_duid', name_duid)
+      .eq('user_duid', user_duid)
       .eq('is_active', true);
 
     if (updateErr) {
@@ -92,7 +93,7 @@ export const handler = async (event) => {
     }
 
     // Upload artifact (upsert)
-    const path = `nip05_artifacts/${effectiveDomain}/${name_duid}.json`;
+    const path = `nip05_artifacts/${effectiveDomain}/${user_duid}.json`;
     try {
       const { error: uploadErr } = await supabase.storage
         .from('nip05-artifacts')

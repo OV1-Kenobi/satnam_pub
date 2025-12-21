@@ -2,10 +2,13 @@
 
 ## Implementation Plan
 
-**Date:** 2025-12-18
+**Date:** 2025-12-20
 **Status:** Draft
-**Version:** 1.1
+**Version:** 1.2
 **Related Document:** [KEYPEAR_P2P_PASSWORD_INTEGRATION.md](./KEYPEAR_P2P_PASSWORD_INTEGRATION.md)
+**Changelog:**
+
+- v1.2: Added Sections 13-15 covering security enhancements, Keet-Bitchat bridge (VPS-based), Campfire persistence nodes, usability improvements (NFC, pre-loaded bundles), and deployment narratives. Added Phase 6-7 to implementation plan.
 
 ---
 
@@ -36,10 +39,13 @@ This tiered model **eliminates the need to run Blossom servers for basic functio
 - **Keet-first multimedia**: Keet P2P is the primary channel for file sharing, voice notes, and video calls
 - **Blossom as premium upgrade**: Cross-client persistence and CDN features for paying users
 - **Complement Nostr, not replace**: Keet adds P2P resilience while Nostr relays remain the canonical text messaging layer
-- **Bridge architecture**: Satnam.pub serves as interoperability layer between Keet P2P and Nostr protocols
+- **Bridge architecture**: relay.satnam.pub serves as Keet-Bitchat-Nostr interoperability layer (VPS-based, with future Start9 local bridge option)
+- **Campfire persistence**: relay.satnam.pub runs headless Keet client to pin and persist public room messages
 - **Shared P2P foundation**: Leverages same Pear Runtime as Keypear for unified P2P experience
 - **Family-first messaging**: Keet Rooms map naturally to Family Federation group chat model
 - **Graceful degradation**: Falls back to Nostr relays when Keet P2P is unavailable
+- **Hybrid discovery**: Prioritizes local mDNS/DHT before global DHT for offline-first environments
+- **Surveillance resistance**: Traffic obfuscation, HTTPS tunneling, and firewall hooks for high-risk deployments
 
 ### Integration Benefits
 
@@ -727,6 +733,32 @@ export async function getUserServiceTier(): Promise<UserServiceTier> {
 | Beta release      | Enable for all users (free tier)  | 100% user rollout    |
 | Documentation     | User-facing tier explanation      | Help center articles |
 
+### Phase 6: Bridge & Campfire Infrastructure (Weeks 13-16)
+
+Infrastructure deployment on relay.satnam.pub VPS for Keet-Bitchat bridging and message persistence.
+
+| Task                      | Description                                 | Deliverable                      |
+| ------------------------- | ------------------------------------------- | -------------------------------- |
+| **Pear Runtime on VPS**   | Install Pear Runtime on relay.satnam.pub    | Headless Keet client running     |
+| **Keet-Bitchat Bridge**   | Deploy bridge service (Section 13.1.2)      | `services/keet-bitchat-bridge`   |
+| **Campfire Service**      | Deploy message persistence (Section 13.2)   | `services/keet-campfire`         |
+| **Public room pinning**   | Configure Announcements, Medical, Emergency | Rooms auto-joined and persisting |
+| **NFC payload extension** | Add Keet invite fields to NFC tags          | Updated tag writer tool          |
+| **Traffic obfuscation**   | Configure HTTPS tunneling (Section 13.3)    | WSS proxy on port 443            |
+| **Hybrid discovery**      | Enable local mDNS/DHT priority              | `lib/keet/discovery-config.ts`   |
+| **Distribution bundle**   | Create pre-loaded app bundle (Section 14.2) | `tools/build-satnam-bundle.ts`   |
+
+### Phase 7: Start9 Local Bridge (Future Enhancement)
+
+For fully offline community deployments without internet dependency.
+
+| Task                         | Description                              | Deliverable                      |
+| ---------------------------- | ---------------------------------------- | -------------------------------- |
+| **Start9 package**           | Package Keet bridge for Start9 ecosystem | StartOS service package          |
+| **Bluetooth receiver**       | Direct BLE GATT service for Bitchat      | Local bridge without Nostr relay |
+| **Local Campfire**           | Community-owned message persistence      | Start9-hosted room pinning       |
+| **Guardian laptop fallback** | Secondary Campfire on portable devices   | Guardian device configuration    |
+
 ---
 
 ## 7. Security Considerations
@@ -824,6 +856,21 @@ flowchart TB
 - [CEPS Architecture](../src/lib/central_event_publishing_service.ts) - Central Event Publishing Service
 - [Gift-Wrapped Messaging](../src/components/communications/GiftwrappedMessaging.tsx) - Current Nostr DM implementation
 - [Master Context Roles](../types/family-federation.ts) - Role hierarchy documentation
+- [Bitchat Phase 0-3 Documentation](../docs/planning/bitchat/) - Geohashed room implementation
+- [Relay Privacy Layer](../lib/relay-privacy-layer.ts) - relay.satnam.pub configuration
+
+### Document Structure
+
+| Section    | Topic                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| 1-6        | Core Keet integration, tiered service model, implementation phases                                          |
+| 7-10       | Security, risk assessment, success metrics, related documents                                               |
+| 11         | Bitchat geohashed room integration for community sovereignty                                                |
+| 12         | Unified identity management (Keet seed + Nostr nsec)                                                        |
+| **13**     | **Security & Resilience: Hybrid discovery, Keet-Bitchat bridge (VPS), Campfire nodes, traffic obfuscation** |
+| **14**     | **Usability & Onboarding: NFC tap-to-join, pre-loaded distribution, unified Nostr-Keet contacts**           |
+| **15**     | **Deployment Narrative: Training analogies, "Unstoppable Library" story, resilience matrix**                |
+| Appendix A | Keet technical specifications                                                                               |
 
 ---
 
@@ -2188,6 +2235,1319 @@ flowchart TD
     NSEC_SESSION --> SIGN
     KEET_SESSION --> SIGN
 ```
+
+---
+
+## 13. Security & Resilience Enhancements
+
+This section addresses advanced security, resilience, and usability patterns for deploying Keet P2P integration in challenging environments (e.g., refugee camps, disaster zones, areas under surveillance).
+
+### 13.1 Hybrid Discovery Strategy (LAN + DHT + Bluetooth Bridge)
+
+Keet primarily uses **HyperDHT** for peer discovery, which requires internet connectivity for global DHT bootstrap. In environments with intermittent connectivity, prioritize local discovery.
+
+#### 13.1.1 Discovery Priority Configuration
+
+> **⚠️ Pear Runtime API Compatibility Note (Phase 6 Pre-Implementation)**
+>
+> The flags `--local-only` and `--bootstrap=local` referenced below are **proposed
+> configuration options** based on Hyperswarm/DHT capabilities. Before implementing
+> Phase 6, verify against the current Pear Runtime API:
+>
+> **Known Pear Runtime configuration methods** (as of Dec 2024):
+>
+> - `Pear.config()` - Runtime configuration object
+> - `Hyperswarm` constructor options: `{ bootstrap: [...] }` - Custom bootstrap nodes
+> - `Hyperswarm.dht` options for DHT-level configuration
+>
+> **To verify available options**, check:
+>
+> - https://docs.pears.com/building-blocks/hyperswarm
+> - https://github.com/holepunchto/hyperswarm
+> - Run `pear --help` in Pear Runtime environment
+>
+> The implementation below uses programmatic Hyperswarm configuration rather than
+> CLI flags, which is the documented approach.
+
+```typescript
+// lib/keet/discovery-config.ts
+
+export interface HybridDiscoveryConfig {
+  // Priority order for peer discovery
+  discoveryPriority: ("local-mdns" | "local-dht" | "global-dht")[];
+
+  // Local network discovery
+  localDiscovery: {
+    enabled: boolean;
+    mdnsServiceType: string;
+    localDhtBootstrap: BootstrapNode[]; // Authenticated local nodes
+    timeout: number; // Timeout for local discovery phase
+  };
+
+  // Global DHT (fallback)
+  globalDht: {
+    enabled: boolean;
+    bootstrapNodes: string[]; // Holepunch bootstrap nodes
+    fallbackOnly: boolean; // Only use if local discovery fails
+    timeout: number;
+  };
+
+  // Security: Network isolation boundaries
+  security: {
+    // Reject global DHT results when local network is available
+    preferLocalWhenAvailable: boolean;
+    // Require public key verification for local bootstrap nodes
+    requireAuthenticatedBootstrap: boolean;
+    // Maximum stale age for cached bootstrap nodes
+    maxBootstrapAgeDays: number;
+  };
+}
+
+// Bootstrap node with authentication and freshness tracking
+export interface BootstrapNode {
+  ip: string;
+  port: number;
+  publicKey?: string; // Ed25519 key for authenticated handshake
+  addedAt: number; // Timestamp for staleness check
+  source: "bundle" | "discovery" | "manual"; // How node was added
+  verified: boolean; // Has been successfully connected
+}
+
+export const CAMP_DISCOVERY_CONFIG: HybridDiscoveryConfig = {
+  discoveryPriority: ["local-mdns", "local-dht", "global-dht"],
+  localDiscovery: {
+    enabled: true,
+    mdnsServiceType: "satnam-keet._tcp.local",
+    localDhtBootstrap: [], // Populated from bundle or mDNS discovery
+    timeout: 5000, // 5 seconds for local discovery
+  },
+  globalDht: {
+    enabled: true,
+    bootstrapNodes: [
+      // Default Holepunch bootstrap nodes (verified Dec 2024)
+      "bootstrap1.hyperdht.org:49737",
+      "bootstrap2.hyperdht.org:49737",
+      "bootstrap3.hyperdht.org:49737",
+    ],
+    fallbackOnly: true,
+    timeout: 10000, // 10 seconds for global DHT
+  },
+  security: {
+    preferLocalWhenAvailable: true,
+    requireAuthenticatedBootstrap: true,
+    maxBootstrapAgeDays: 30, // Treat as stale after 30 days
+  },
+};
+
+/**
+ * Priority-based peer resolution with explicit failover logic.
+ * Prevents eclipse attacks by preferring authenticated local peers.
+ */
+export async function resolvePeerWithPriority(
+  peerId: string,
+  config: HybridDiscoveryConfig = CAMP_DISCOVERY_CONFIG
+): Promise<Peer | null> {
+  const errors: string[] = [];
+
+  for (const method of config.discoveryPriority) {
+    try {
+      const result = await attemptDiscovery(peerId, method, config);
+      if (result) {
+        console.log(`[Discovery] Resolved ${peerId} via ${method}`);
+        return result;
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      errors.push(`${method}: ${msg}`);
+      console.warn(`[Discovery] ${method} failed for ${peerId}:`, msg);
+      // Continue to next method
+    }
+  }
+
+  console.error(`[Discovery] All methods failed for ${peerId}:`, errors);
+  return null;
+}
+
+async function attemptDiscovery(
+  peerId: string,
+  method: "local-mdns" | "local-dht" | "global-dht",
+  config: HybridDiscoveryConfig
+): Promise<Peer | null> {
+  switch (method) {
+    case "local-mdns":
+      return await discoverViaMdns(peerId, config.localDiscovery.timeout);
+
+    case "local-dht":
+      return await discoverViaLocalDht(
+        peerId,
+        config.localDiscovery.localDhtBootstrap,
+        config.localDiscovery.timeout,
+        config.security
+      );
+
+    case "global-dht":
+      // Security check: Skip global DHT if local network is available and preferred
+      if (config.security.preferLocalWhenAvailable) {
+        const localNetworkAvailable = await checkLocalNetworkAvailability();
+        if (localNetworkAvailable) {
+          console.warn(
+            "[Discovery] Skipping global DHT - local network available"
+          );
+          return null;
+        }
+      }
+      return await discoverViaGlobalDht(
+        peerId,
+        config.globalDht.bootstrapNodes,
+        config.globalDht.timeout
+      );
+
+    default:
+      throw new Error(`Unknown discovery method: ${method}`);
+  }
+}
+
+/**
+ * Local mDNS discovery (same LAN segment)
+ */
+async function discoverViaMdns(
+  peerId: string,
+  timeout: number
+): Promise<Peer | null> {
+  // Implementation: Use multicast DNS to find peer on local network
+  // This is automatically handled by Hyperswarm when on same network
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeout);
+
+    // Hyperswarm provides mDNS-like local discovery
+    // Implementation would use swarm.on('connection', ...) with local filter
+    clearTimeout(timer);
+    resolve(null); // Placeholder
+  });
+}
+
+/**
+ * Local DHT discovery via authenticated bootstrap nodes
+ */
+async function discoverViaLocalDht(
+  peerId: string,
+  bootstrapNodes: BootstrapNode[],
+  timeout: number,
+  security: HybridDiscoveryConfig["security"]
+): Promise<Peer | null> {
+  // Filter stale and unauthenticated nodes
+  const validNodes = bootstrapNodes.filter((node) => {
+    const ageMs = Date.now() - node.addedAt;
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+    if (ageDays > security.maxBootstrapAgeDays) {
+      console.warn(`[Discovery] Skipping stale bootstrap node: ${node.ip}`);
+      return false;
+    }
+
+    if (security.requireAuthenticatedBootstrap && !node.publicKey) {
+      console.warn(
+        `[Discovery] Skipping unauthenticated bootstrap node: ${node.ip}`
+      );
+      return false;
+    }
+
+    return true;
+  });
+
+  if (validNodes.length === 0) {
+    throw new Error("No valid local bootstrap nodes available");
+  }
+
+  // Create Hyperswarm with local-only bootstrap
+  // const swarm = new Hyperswarm({
+  //   bootstrap: validNodes.map(n => `${n.ip}:${n.port}`),
+  // });
+
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(null), timeout);
+  });
+}
+
+/**
+ * Global DHT discovery (internet-wide)
+ */
+async function discoverViaGlobalDht(
+  peerId: string,
+  bootstrapNodes: string[],
+  timeout: number
+): Promise<Peer | null> {
+  // Create Hyperswarm with global bootstrap nodes
+  // const swarm = new Hyperswarm({
+  //   bootstrap: bootstrapNodes,
+  // });
+
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(null), timeout);
+  });
+}
+
+/**
+ * Check if local network is available (for eclipse attack prevention)
+ */
+async function checkLocalNetworkAvailability(): Promise<boolean> {
+  // Implementation: Check if any local mDNS services are visible
+  // or if known local bootstrap nodes are reachable
+  return false; // Placeholder
+}
+
+/**
+ * Securely populate local DHT bootstrap from bundle or discovery
+ * Prevents eclipse attacks by verifying node authenticity
+ */
+export async function populateLocalBootstrap(
+  bundleNodes: BootstrapNode[]
+): Promise<BootstrapNode[]> {
+  const validatedNodes: BootstrapNode[] = [];
+
+  for (const node of bundleNodes) {
+    // Verify node is reachable and key matches
+    if (node.publicKey) {
+      const verified = await verifyBootstrapNode(node);
+      if (verified) {
+        validatedNodes.push({ ...node, verified: true });
+      } else {
+        console.warn(`[Bootstrap] Failed to verify node: ${node.ip}`);
+      }
+    } else {
+      // Unauthenticated nodes from trusted bundle only
+      if (node.source === "bundle") {
+        validatedNodes.push(node);
+      }
+    }
+  }
+
+  return validatedNodes;
+}
+
+async function verifyBootstrapNode(node: BootstrapNode): Promise<boolean> {
+  // Implementation: Perform authenticated handshake with node
+  // Verify Ed25519 signature matches claimed public key
+  return true; // Placeholder
+}
+
+interface Peer {
+  id: string;
+  address: string;
+  port: number;
+  publicKey?: string;
+  discoveryMethod: "local-mdns" | "local-dht" | "global-dht";
+}
+```
+
+#### 13.1.2 Keet-Bitchat Bridge Architecture
+
+Since Keet operates over IP (WiFi) and Bitchat operates over Bluetooth, a bridge node enables cross-network communication.
+
+**Phase 1 Implementation: relay.satnam.pub (VPS)**
+
+```mermaid
+flowchart TB
+    subgraph BluetoothMesh["Bluetooth Mesh (Bitchat)"]
+        BT_USER["User with BT only"]
+        BT_MSG["Bitchat Message"]
+    end
+
+    subgraph Bridge["relay.satnam.pub (VPS)"]
+        BT_LISTENER["Bitchat Relay Client\n(receives via Nostr)"]
+        BRIDGE_SVC["Keet-Bitchat Bridge Service"]
+        KEET_CLIENT["Headless Keet Client\n(Pear Runtime)"]
+    end
+
+    subgraph KeetP2P["Keet P2P Network"]
+        KEET_ROOM["Keet Geo-Room"]
+        WIFI_USER["User with WiFi"]
+    end
+
+    BT_MSG -->|"Publish to Nostr"| BT_LISTENER
+    BT_LISTENER --> BRIDGE_SVC
+    BRIDGE_SVC --> KEET_CLIENT
+    KEET_CLIENT --> KEET_ROOM
+    KEET_ROOM --> WIFI_USER
+
+    WIFI_USER -->|"Reply via Keet"| KEET_ROOM
+    KEET_ROOM --> KEET_CLIENT
+    KEET_CLIENT --> BRIDGE_SVC
+    BRIDGE_SVC --> BT_LISTENER
+    BT_LISTENER -->|"Publish to Nostr"| BT_MSG
+
+    style Bridge fill:#4a5568,color:#fff
+    style BRIDGE_SVC fill:#2d5a27,color:#fff
+```
+
+**Bridge Service Implementation:**
+
+```typescript
+// services/keet-bitchat-bridge/index.ts
+// Runs on relay.satnam.pub VPS
+
+import { KeetIntegration } from "../lib/keet/integration";
+import { NostrRelayClient } from "../lib/nostr/relay-client";
+
+export interface BridgeConfig {
+  // Nostr relay for Bitchat messages
+  nostrRelayUrl: "wss://relay.satnam.pub";
+
+  // Keet room mapping
+  geohashToKeetRoom: Map<string, string>;
+
+  // Message transformation
+  messageFormat: {
+    addBridgePrefix: boolean; // "[BT]" or "[WiFi]" prefix
+    preserveAuthorNpub: boolean;
+  };
+}
+
+export class KeetBitchatBridge {
+  private keet: KeetIntegration;
+  private nostr: NostrRelayClient;
+  private geohashRooms: Map<string, string> = new Map();
+  private processedMessageIds: Set<string> = new Set(); // De-duplication cache
+  private readonly MESSAGE_ID_TTL_MS = 300_000; // 5 minutes
+  private readonly RETRY_DELAYS = [1000, 5000, 15000, 30000]; // Exponential backoff
+  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private isRunning = false;
+
+  async start(): Promise<void> {
+    try {
+      // 1. Initialize headless Keet client with retry logic
+      await this.initializeWithRetry(
+        () => this.keet.initializeHeadless(),
+        "Keet initialization"
+      );
+
+      // 2. Connect to Nostr relay with retry logic
+      await this.initializeWithRetry(
+        () => this.nostr.connect(),
+        "Nostr relay connection"
+      );
+
+      // 3. Subscribe to Bitchat Nostr events (geo-room messages)
+      await this.nostr.subscribe({
+        kinds: [42], // NIP-28 channel messages
+        "#t": ["geo-*"], // Geohash-tagged messages
+      });
+
+      // 4. Bridge Bitchat → Keet with de-duplication
+      this.nostr.on("event", async (event) => {
+        await this.handleNostrEvent(event);
+      });
+
+      // 5. Bridge Keet → Bitchat with de-duplication
+      this.keet.onMessage(async (msg) => {
+        await this.handleKeetMessage(msg);
+      });
+
+      // 6. Start health monitoring
+      this.startHealthMonitor();
+      this.isRunning = true;
+      console.log("[KeetBitchatBridge] Bridge started successfully");
+    } catch (error) {
+      console.error("[KeetBitchatBridge] Failed to start bridge:", error);
+      throw error;
+    }
+  }
+
+  async stop(): Promise<void> {
+    this.isRunning = false;
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+    await this.keet.disconnect();
+    await this.nostr.disconnect();
+  }
+
+  // ============================================================================
+  // Message Handlers with De-duplication and Validation
+  // ============================================================================
+
+  private async handleNostrEvent(event: NostrEvent): Promise<void> {
+    // Validate event structure
+    if (!this.validateNostrEvent(event)) {
+      console.warn("[Bridge] Invalid Nostr event, skipping:", event.id);
+      return;
+    }
+
+    // De-duplication: Check origin tag to prevent echo
+    const originTag = event.tags.find((t) => t[0] === "origin");
+    if (originTag?.[1] === "keet-bridge") {
+      return; // This message came from Keet via the bridge, don't echo back
+    }
+
+    // De-duplication: Check message ID cache
+    const msgId = `nostr:${event.id}`;
+    if (this.isMessageProcessed(msgId)) {
+      return;
+    }
+    this.markMessageProcessed(msgId);
+
+    const geohash = this.extractGeohash(event);
+    if (!geohash) {
+      console.warn("[Bridge] No geohash found in event:", event.id);
+      return;
+    }
+
+    const keetRoomId = this.geohashRooms.get(geohash);
+    if (keetRoomId) {
+      try {
+        await this.keet.sendToRoom(keetRoomId, {
+          content: `[BT] ${event.content}`,
+          author: event.pubkey,
+          timestamp: event.created_at,
+          metadata: { bridgedFrom: "bitchat", originalId: event.id },
+        });
+      } catch (error) {
+        console.error("[Bridge] Failed to forward to Keet:", error);
+        // Don't remove from processed - prevents retry spam
+      }
+    }
+  }
+
+  private async handleKeetMessage(msg: KeetMessage): Promise<void> {
+    // Validate message structure
+    if (!msg.content || !msg.roomId) {
+      console.warn("[Bridge] Invalid Keet message, skipping");
+      return;
+    }
+
+    // De-duplication: Check if bridged from Bitchat
+    if (msg.metadata?.bridgedFrom === "bitchat") {
+      return; // Don't echo back to origin
+    }
+
+    // De-duplication: Check message ID cache
+    const msgId = `keet:${msg.id || msg.timestamp}`;
+    if (this.isMessageProcessed(msgId)) {
+      return;
+    }
+    this.markMessageProcessed(msgId);
+
+    const geohash = this.extractGeohashFromRoom(msg.roomId);
+    if (!geohash) {
+      console.warn("[Bridge] No geohash mapping for room:", msg.roomId);
+      return;
+    }
+
+    try {
+      await this.nostr.publish({
+        kind: 42,
+        content: `[WiFi] ${msg.content}`,
+        tags: [
+          ["t", `geo-${geohash}`],
+          ["origin", "keet-bridge"], // Mark origin to prevent echo
+        ],
+      });
+    } catch (error) {
+      console.error("[Bridge] Failed to publish to Nostr:", error);
+    }
+  }
+
+  // ============================================================================
+  // Helper Functions
+  // ============================================================================
+
+  /**
+   * Extract geohash from Nostr event tags.
+   * Looks for tags like ["t", "geo-u4pruydqq"] and extracts "u4pruydqq"
+   */
+  private extractGeohash(event: NostrEvent): string | null {
+    for (const tag of event.tags || []) {
+      if (tag[0] === "t" && tag[1]?.startsWith("geo-")) {
+        return tag[1].substring(4); // Remove "geo-" prefix
+      }
+    }
+    // Fallback: check "g" tag (NIP-52 geohash standard)
+    const gTag = event.tags?.find((t) => t[0] === "g");
+    return gTag?.[1] || null;
+  }
+
+  /**
+   * Extract geohash from Keet room mapping.
+   * Room IDs are mapped to geohashes during room creation.
+   */
+  private extractGeohashFromRoom(roomId: string): string | null {
+    for (const [geohash, mappedRoomId] of this.geohashRooms.entries()) {
+      if (mappedRoomId === roomId) {
+        return geohash;
+      }
+    }
+    return null;
+  }
+
+  private validateNostrEvent(event: NostrEvent): boolean {
+    return !!(
+      event &&
+      typeof event.id === "string" &&
+      typeof event.pubkey === "string" &&
+      typeof event.content === "string" &&
+      typeof event.created_at === "number" &&
+      Array.isArray(event.tags)
+    );
+  }
+
+  // ============================================================================
+  // De-duplication with TTL
+  // ============================================================================
+
+  private isMessageProcessed(msgId: string): boolean {
+    return this.processedMessageIds.has(msgId);
+  }
+
+  private markMessageProcessed(msgId: string): void {
+    this.processedMessageIds.add(msgId);
+    // Auto-cleanup after TTL
+    setTimeout(() => {
+      this.processedMessageIds.delete(msgId);
+    }, this.MESSAGE_ID_TTL_MS);
+  }
+
+  // ============================================================================
+  // Retry and Health Monitoring
+  // ============================================================================
+
+  private async initializeWithRetry(
+    fn: () => Promise<void>,
+    name: string
+  ): Promise<void> {
+    for (let attempt = 0; attempt < this.RETRY_DELAYS.length; attempt++) {
+      try {
+        await fn();
+        return;
+      } catch (error) {
+        const delay = this.RETRY_DELAYS[attempt];
+        console.warn(
+          `[Bridge] ${name} failed (attempt ${
+            attempt + 1
+          }), retrying in ${delay}ms`
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+    throw new Error(
+      `${name} failed after ${this.RETRY_DELAYS.length} attempts`
+    );
+  }
+
+  private startHealthMonitor(): void {
+    this.healthCheckInterval = setInterval(async () => {
+      const keetHealthy = await this.keet.isConnected().catch(() => false);
+      const nostrHealthy = await this.nostr.isConnected().catch(() => false);
+
+      if (!keetHealthy) {
+        console.warn("[Bridge] Keet connection lost, attempting reconnect...");
+        await this.initializeWithRetry(
+          () => this.keet.reconnect(),
+          "Keet reconnection"
+        ).catch(console.error);
+      }
+
+      if (!nostrHealthy) {
+        console.warn("[Bridge] Nostr connection lost, attempting reconnect...");
+        await this.initializeWithRetry(
+          () => this.nostr.reconnect(),
+          "Nostr reconnection"
+        ).catch(console.error);
+      }
+    }, 30_000); // Check every 30 seconds
+  }
+}
+```
+
+**Phase 2 Enhancement: Start9 Local Bridge (Future)**
+
+For fully offline scenarios, a local bridge on Start9 hardware:
+
+```typescript
+// Future: Start9-based local bridge
+export interface LocalBridgeConfig {
+  // Start9 runs headless Keet + Bitchat relay
+  start9NodeUrl: string;
+
+  // Local Bluetooth receiver (requires Bluetooth adapter)
+  bluetoothConfig: {
+    serviceUuid: string;
+    characteristicUuid: string;
+  };
+
+  // Advantages over VPS bridge:
+  // - Works without internet
+  // - Lower latency for local mesh
+  // - Community-owned infrastructure
+}
+```
+
+---
+
+### 13.2 "Campfire" Relay Nodes (Pinned Data Persistence)
+
+Keet is ephemeral by default—if all peers leave a room, data can be lost. Campfire nodes ensure message persistence.
+
+#### 13.2.1 Campfire Node Architecture
+
+```mermaid
+flowchart TB
+    subgraph CampfireNodes["Campfire Nodes (Always Online)"]
+        VPS["relay.satnam.pub\n(Primary Campfire)"]
+        GUARDIAN["Guardian Laptops\n(Secondary)"]
+        START9["Start9 Node\n(Future)"]
+    end
+
+    subgraph PublicRooms["Pinned Public Rooms"]
+        ANNOUNCE["📢 Announcements"]
+        MEDICAL["🏥 Medical"]
+        MARKET["🛒 Marketplace"]
+        EMERGENCY["🚨 Emergency"]
+    end
+
+    subgraph Users["Community Members"]
+        NEW["New Arrival"]
+        EXISTING["Existing Member"]
+    end
+
+    VPS -->|"Auto-join & Pin"| ANNOUNCE
+    VPS -->|"Auto-join & Pin"| MEDICAL
+    VPS -->|"Auto-join & Pin"| MARKET
+    VPS -->|"Auto-join & Pin"| EMERGENCY
+
+    GUARDIAN -.->|"Backup Pin"| ANNOUNCE
+    START9 -.->|"Future"| ANNOUNCE
+
+    NEW -->|"Join WiFi"| VPS
+    VPS -->|"Instant history sync"| NEW
+
+    style VPS fill:#2d5a27,color:#fff
+    style GUARDIAN fill:#4a5568,color:#fff
+    style START9 fill:#6b7280,color:#fff
+```
+
+#### 13.2.2 Campfire Service Implementation
+
+```typescript
+// services/keet-campfire/index.ts
+// Runs on relay.satnam.pub and Guardian devices
+
+export interface CampfireConfig {
+  // Rooms to automatically join and pin
+  pinnedRooms: {
+    roomId: string;
+    geohash: string;
+    category: "announcements" | "medical" | "marketplace" | "emergency";
+    retentionDays: number;
+  }[];
+
+  // Sync configuration
+  sync: {
+    syncOnStartup: true;
+    syncIntervalMs: 60000; // Sync every minute
+    maxHistoryMessages: 10000;
+  };
+
+  // Storage
+  storage: {
+    hypercorePath: "/var/lib/satnam/keet-campfire";
+    maxStorageGb: 10;
+  };
+}
+
+export class CampfireService {
+  private keet: KeetIntegration;
+  private pinnedRooms: Map<string, HypercoreLog>;
+
+  async initialize(config: CampfireConfig): Promise<void> {
+    // 1. Initialize headless Keet with persistent storage
+    await this.keet.initializeHeadless({
+      storagePath: config.storage.hypercorePath,
+      persistMessages: true,
+    });
+
+    // 2. Auto-join all pinned rooms
+    for (const room of config.pinnedRooms) {
+      await this.keet.joinRoom(room.roomId);
+      this.pinnedRooms.set(
+        room.roomId,
+        await this.keet.getRoomLog(room.roomId)
+      );
+      console.log(`[Campfire] Pinned room: ${room.category} (${room.geohash})`);
+    }
+
+    // 3. Continuously sync and persist
+    setInterval(() => this.syncAllRooms(), config.sync.syncIntervalMs);
+  }
+
+  async syncAllRooms(): Promise<void> {
+    for (const [roomId, log] of this.pinnedRooms) {
+      const newMessages = await this.keet.syncRoom(roomId);
+      console.log(
+        `[Campfire] Synced ${newMessages} new messages from ${roomId}`
+      );
+    }
+  }
+
+  // New arrivals can request history from campfire node
+  async serveHistory(roomId: string, since: number): Promise<KeetMessage[]> {
+    const log = this.pinnedRooms.get(roomId);
+    if (!log) return [];
+    return log.getMessagesSince(since);
+  }
+}
+```
+
+---
+
+### 13.3 Traffic Obfuscation (Surveillance Resistance)
+
+In environments with active surveillance, P2P traffic patterns can be distinctive. Pear Runtime uses the **Noise protocol** for encryption, but additional measures enhance privacy.
+
+#### 13.3.1 Traffic Obfuscation Strategies
+
+| Strategy            | Implementation                             | Use Case                              |
+| ------------------- | ------------------------------------------ | ------------------------------------- |
+| **HTTPS Wrapping**  | Tunnel Hyperswarm over WSS on port 443     | Evade DPI that blocks non-HTTPS       |
+| **Key Rotation**    | Rotate Noise session keys every N messages | Prevent long-term traffic correlation |
+| **Firewall Hooks**  | Reject connections from unknown IPs        | High-alert lockdown mode              |
+| **Traffic Padding** | Add random delays and dummy messages       | Obscure activity patterns             |
+
+#### 13.3.2 Privacy Configuration
+
+```typescript
+// lib/keet/privacy-config.ts
+
+export interface TrafficPrivacyConfig {
+  // HTTPS tunneling
+  httpsTunneling: {
+    enabled: boolean;
+    proxyUrl?: string; // WSS proxy endpoint
+    port: 443;
+  };
+
+  // Key rotation
+  keyRotation: {
+    enabled: true;
+    rotateEveryMessages: 100;
+    rotateEveryMinutes: 60;
+  };
+
+  // Connection filtering
+  firewall: {
+    enabled: boolean;
+    allowlist: string[]; // Known peer IDs
+    rejectUnknown: boolean; // Darknet mode
+  };
+
+  // Traffic shaping
+  trafficShaping: {
+    addRandomDelay: boolean;
+    minDelayMs: 100;
+    maxDelayMs: 2000;
+    sendDummyMessages: boolean;
+  };
+}
+
+export const HIGH_SURVEILLANCE_CONFIG: TrafficPrivacyConfig = {
+  httpsTunneling: {
+    enabled: true,
+    proxyUrl: "wss://relay.satnam.pub/keet-tunnel",
+    port: 443,
+  },
+  keyRotation: {
+    enabled: true,
+    rotateEveryMessages: 50,
+    rotateEveryMinutes: 30,
+  },
+  firewall: {
+    enabled: true,
+    allowlist: [], // Populated from Family Federation members
+    rejectUnknown: true,
+  },
+  trafficShaping: {
+    addRandomDelay: true,
+    minDelayMs: 200,
+    maxDelayMs: 3000,
+    sendDummyMessages: true,
+  },
+};
+```
+
+---
+
+## 14. Usability & Onboarding Improvements
+
+### 14.1 "Tap-to-Join" via NFC Integration
+
+Keet room invites are long URL strings (`pear://keet/...`). NFC simplifies onboarding.
+
+#### 14.1.1 NFC Tag Data Structure
+
+```typescript
+// Extend existing NFC Identity Tag to include Keet invites
+
+export interface SatnamNFCPayload {
+  // Existing fields
+  npub: string;
+  nip05?: string;
+
+  // NEW: Keet integration
+  keet: {
+    peerId: string; // User's Keet peer ID
+    inviteRooms: {
+      roomId: string;
+      inviteCode: string;
+      category: "personal" | "family" | "community";
+    }[];
+  };
+
+  // NEW: Community bootstrap
+  community?: {
+    campfireNodeUrl: string; // relay.satnam.pub
+    publicRoomInvites: string[]; // Announcements, Medical, etc.
+    localDhtBootstrap: string[]; // Local Pear node IPs
+  };
+}
+```
+
+#### 14.1.2 NFC Onboarding Flow
+
+```mermaid
+sequenceDiagram
+    participant User as New User
+    participant NFC as NFC Tag
+    participant Kiosk as Digital Kiosk
+    participant Campfire as relay.satnam.pub
+
+    User->>Kiosk: Tap NFC Identity Tag
+    Kiosk->>NFC: Read tag payload
+    NFC-->>Kiosk: {npub, keet.inviteRooms, community}
+
+    alt User has Satnam app
+        Kiosk->>User: Deep link to join rooms
+        User->>Campfire: Auto-join public rooms
+        Campfire-->>User: Sync message history
+    else User needs app
+        Kiosk->>User: Display QR for app download
+        Kiosk->>User: Provide pre-loaded SD card option
+    end
+
+    Note over User,Campfire: User now has identity + rooms + history
+```
+
+### 14.2 Pre-Loaded "Satnam OS" Distribution
+
+Downloading apps over slow connectivity is a bottleneck. Pre-loaded distribution accelerates onboarding.
+
+#### 14.2.1 Distribution Bundle Contents
+
+```typescript
+// tools/build-satnam-bundle.ts
+
+export interface SatnamBundleContents {
+  // Bundle metadata and versioning
+  metadata: {
+    version: string; // Semantic version: "1.2.3"
+    buildTimestamp: number; // Unix timestamp
+    bundleId: string; // Unique bundle identifier
+    minAppVersion: string; // Minimum compatible app version
+    expiresAt?: number; // Optional expiry for bootstrap data
+  };
+
+  // Security and verification
+  security: {
+    // Ed25519 signature of bundle contents (excluding this field)
+    bundleSignature: string;
+    // Public key used for signing (verify against pinned keys)
+    signingKeyId: string;
+    // SHA-256 hashes of each app binary for integrity verification
+    appHashes: Record<string, string>;
+    // Pinned signing keys (for offline verification)
+    trustedSigningKeys: Array<{
+      keyId: string;
+      publicKey: string; // Ed25519 public key (hex)
+      validUntil: number;
+    }>;
+  };
+
+  // Core applications with verification
+  apps: {
+    satnam: { path: string; sha256: string; version: string };
+    keet: { path: string; sha256: string; version: string };
+    cashu: { path: string; sha256: string; version: string };
+    nostrClient: { path: string; sha256: string; version: string };
+  };
+
+  // Bootstrap data with TTL
+  bootstrap: {
+    localDhtNodes: Array<{
+      ip: string;
+      port: number;
+      publicKey?: string; // For authenticated bootstrap
+      addedAt: number;
+    }>;
+    campfireRoomInvites: string[]; // Public room invite codes
+    geoRelaysJson: {
+      relays: object;
+      lastUpdated: number;
+      ttlSeconds: number; // How long to trust this data
+    };
+    // Fallback bootstrap for when local nodes are stale
+    fallbackBootstrap: {
+      dhtNodes: string[]; // Holepunch global DHT nodes
+      relayUrls: string[]; // Public Nostr relays
+    };
+  };
+
+  // Offline resources
+  resources: {
+    emergencyGuide: string; // PDF
+    medicalProtocols: string; // PDF
+    localMaps: string; // Offline map tiles
+  };
+
+  // Update mechanism
+  updateConfig: {
+    updateChannels: ("local-http" | "nostr-event" | "dht-announce")[];
+    checkIntervalHours: number;
+    autoUpdate: boolean;
+    rollbackEnabled: boolean;
+  };
+}
+
+// Distribution methods
+export type DistributionMethod =
+  | "microsd-card" // 8GB microSD with bundle
+  | "usb-drive" // USB drive for laptops
+  | "local-http" // Start9/VPS serves bundle over local WiFi
+  | "bluetooth-transfer"; // For extremely low bandwidth
+
+/**
+ * Bundle Security Verification
+ * MUST be called before installing any app from the bundle
+ */
+export async function verifyBundle(
+  bundle: SatnamBundleContents
+): Promise<{ valid: boolean; errors: string[] }> {
+  const errors: string[] = [];
+
+  // 1. Verify bundle signature
+  const trustedKey = bundle.security.trustedSigningKeys.find(
+    (k) => k.keyId === bundle.security.signingKeyId && k.validUntil > Date.now()
+  );
+  if (!trustedKey) {
+    errors.push("Signing key not found or expired");
+    return { valid: false, errors };
+  }
+
+  // Reconstruct bundle for signature verification (exclude signature field)
+  const bundleForSigning = { ...bundle };
+  bundleForSigning.security = { ...bundle.security, bundleSignature: "" };
+  const bundleBytes = new TextEncoder().encode(
+    JSON.stringify(bundleForSigning)
+  );
+
+  const signatureValid = await crypto.subtle.verify(
+    "Ed25519",
+    await importEd25519PublicKey(trustedKey.publicKey),
+    hexToBytes(bundle.security.bundleSignature),
+    bundleBytes
+  );
+
+  if (!signatureValid) {
+    errors.push("Bundle signature verification failed");
+    return { valid: false, errors };
+  }
+
+  // 2. Verify each app hash
+  for (const [appName, appInfo] of Object.entries(bundle.apps)) {
+    const expectedHash = bundle.security.appHashes[appName];
+    if (expectedHash && expectedHash !== appInfo.sha256) {
+      errors.push(`Hash mismatch for ${appName}`);
+    }
+  }
+
+  // 3. Check bundle expiry
+  if (bundle.metadata.expiresAt && bundle.metadata.expiresAt < Date.now()) {
+    errors.push("Bundle has expired - bootstrap data may be stale");
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Bundle Update Manager
+ * Handles post-distribution updates for bootstrap data
+ */
+export class BundleUpdateManager {
+  private currentBundle: SatnamBundleContents;
+  private readonly VERSION_HISTORY_KEY = "satnam_bundle_versions";
+
+  /**
+   * Check for updates via configured channels
+   */
+  async checkForUpdates(): Promise<UpdateCheckResult> {
+    const channels = this.currentBundle.updateConfig.updateChannels;
+    const results: UpdateCheckResult[] = [];
+
+    for (const channel of channels) {
+      try {
+        switch (channel) {
+          case "local-http":
+            results.push(await this.checkLocalHttpUpdate());
+            break;
+          case "nostr-event":
+            results.push(await this.checkNostrEventUpdate());
+            break;
+          case "dht-announce":
+            results.push(await this.checkDhtUpdate());
+            break;
+        }
+      } catch (error) {
+        console.warn(`Update check failed for ${channel}:`, error);
+      }
+    }
+
+    // Return first successful update found
+    return results.find((r) => r.updateAvailable) || { updateAvailable: false };
+  }
+
+  /**
+   * Apply update with rollback support
+   */
+  async applyUpdate(update: BundleUpdate): Promise<void> {
+    if (!this.currentBundle.updateConfig.rollbackEnabled) {
+      await this.installUpdate(update);
+      return;
+    }
+
+    // Save current version for rollback
+    const versionHistory = this.getVersionHistory();
+    versionHistory.push({
+      version: this.currentBundle.metadata.version,
+      timestamp: Date.now(),
+      bundleId: this.currentBundle.metadata.bundleId,
+    });
+    localStorage.setItem(
+      this.VERSION_HISTORY_KEY,
+      JSON.stringify(versionHistory)
+    );
+
+    // Install update
+    await this.installUpdate(update);
+  }
+
+  /**
+   * Rollback to previous version
+   */
+  async rollback(): Promise<boolean> {
+    const history = this.getVersionHistory();
+    const previous = history.pop();
+
+    if (!previous) {
+      console.error("No previous version to rollback to");
+      return false;
+    }
+
+    // Restore previous bundle (implementation depends on storage mechanism)
+    console.log(`Rolling back to version ${previous.version}`);
+    localStorage.setItem(this.VERSION_HISTORY_KEY, JSON.stringify(history));
+    return true;
+  }
+
+  private getVersionHistory(): Array<{
+    version: string;
+    timestamp: number;
+    bundleId: string;
+  }> {
+    const stored = localStorage.getItem(this.VERSION_HISTORY_KEY);
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  private async checkLocalHttpUpdate(): Promise<UpdateCheckResult> {
+    // Check Start9/local VPS for bundle updates
+    // Implementation: fetch from known local endpoints
+    return { updateAvailable: false };
+  }
+
+  private async checkNostrEventUpdate(): Promise<UpdateCheckResult> {
+    // Check for Kind:30078 (replaceable) bundle announcement events
+    // Implementation: query Nostr relays for bundle updates
+    return { updateAvailable: false };
+  }
+
+  private async checkDhtUpdate(): Promise<UpdateCheckResult> {
+    // Check DHT for bundle announcements
+    // Implementation: resolve satnam-bundle topic on DHT
+    return { updateAvailable: false };
+  }
+
+  private async installUpdate(update: BundleUpdate): Promise<void> {
+    // Implementation: verify and install update
+    console.log("Installing update:", update.version);
+  }
+}
+
+interface UpdateCheckResult {
+  updateAvailable: boolean;
+  newVersion?: string;
+  downloadUrl?: string;
+  signature?: string;
+}
+
+interface BundleUpdate {
+  version: string;
+  bundleContents: Partial<SatnamBundleContents>;
+}
+```
+
+### 14.3 Unified Contact Directory (Nostr ↔ Keet)
+
+Users shouldn't manage separate identities. Link Nostr profiles to Keet capabilities.
+
+#### 14.3.1 NIP-05 Extension for Keet
+
+```json
+// .well-known/nostr.json extension
+
+{
+  "names": {
+    "alice": "npub1alice..."
+  },
+  "keet": {
+    "npub1alice...": {
+      "peerId": "keet-peer-id-alice",
+      "directRoomInvite": "pear://keet/invite/abc123",
+      "capabilities": ["messaging", "video-call", "file-share"]
+    }
+  }
+}
+```
+
+#### 14.3.2 Profile Metadata Extension
+
+```typescript
+// Nostr kind:0 profile metadata extension
+
+export interface NostrProfileWithKeet {
+  // Standard NIP-01 fields
+  name: string;
+  about: string;
+  picture: string;
+  nip05: string;
+
+  // NEW: Keet integration fields
+  keet_peer_id?: string; // Keet peer identifier
+  keet_invite?: string; // Direct room invite URL
+  keet_capabilities?: ("messaging" | "video" | "file")[];
+}
+
+// UI Integration
+export function renderContactActions(profile: NostrProfileWithKeet) {
+  return {
+    message: {
+      primary: profile.keet_peer_id ? "Keet P2P" : "Nostr DM",
+      action: profile.keet_peer_id
+        ? `keet://dm/${profile.keet_peer_id}`
+        : `nostr:${profile.npub}`,
+    },
+    call: profile.keet_capabilities?.includes("video")
+      ? { enabled: true, action: `keet://call/${profile.keet_peer_id}` }
+      : { enabled: false },
+    fileShare: profile.keet_capabilities?.includes("file")
+      ? { enabled: true, action: `keet://share/${profile.keet_peer_id}` }
+      : { enabled: false },
+  };
+}
+```
+
+---
+
+## 15. Deployment Narrative Framework
+
+### 15.1 "The Water Pipe" Analogy (Training Material)
+
+For training community coordinators on P2P concepts:
+
+| Architecture                 | Analogy                                                 | Characteristics                                   |
+| ---------------------------- | ------------------------------------------------------- | ------------------------------------------------- |
+| **Centralized (WhatsApp)**   | "Carrying buckets to a distant central tank, then back" | Slow, tank dependency, tank owner controls access |
+| **Federated (Email/Matrix)** | "Multiple water tanks, connected by pipes"              | Better redundancy, but still tank-dependent       |
+| **Keet P2P**                 | "Direct pipes between tents"                            | Instant, free, works when central tank is cut     |
+| **Campfire Node**            | "Community reservoir"                                   | Keeps water available for everyone, even offline  |
+| **Keet-Bitchat Bridge**      | "Bucket brigade to pipe network converter"              | Connects those without pipes to the network       |
+
+### 15.2 "The Unstoppable Library" Narrative
+
+Position multimedia messaging as infrastructure, not just chat:
+
+> **Story Arc:** "When the internet was cut, the community didn't go dark. Using Keet on the local WiFi mesh:
+>
+> - Dr. Ahmed streamed a surgery tutorial to three field medics
+> - The school distributed textbooks as PDFs to 500 tablets instantly
+> - The marketplace updated prices in real-time
+> - Emergency alerts reached everyone within seconds
+>
+> We didn't just build a chat app; we built a **sovereign local internet**."
+
+### 15.3 Technical Stack Diagram (Documentation)
+
+```mermaid
+flowchart TB
+    subgraph Identity["🔐 Identity Layer"]
+        NOSTR["Nostr (NIP-05)"]
+        NFC["NFC Physical Key"]
+    end
+
+    subgraph Payments["💰 Payments Layer"]
+        LN["Lightning (L2)"]
+        CASHU["Cashu (L3 - Offline)"]
+    end
+
+    subgraph Messaging["💬 Messaging Layer"]
+        BITCHAT["Bitchat\n(Bluetooth Mesh)"]
+        KEET["Keet\n(Pear DHT - WiFi)"]
+        NOSTR_DM["Nostr DMs\n(Relay-based)"]
+    end
+
+    subgraph Storage["💾 Storage Layer"]
+        CAMPFIRE["Campfire Nodes\n(relay.satnam.pub)"]
+        START9["Start9\n(Future: Local Server)"]
+        BLOSSOM["Blossom CDN\n(Premium)"]
+    end
+
+    subgraph Hardware["🔧 Hardware Layer"]
+        PHONE["Smartphones"]
+        LAPTOP["Guardian Laptops"]
+        PEAR_HW["Pear Devices\n(Future)"]
+    end
+
+    NOSTR --> KEET
+    NFC --> NOSTR
+    LN --> CASHU
+    BITCHAT <-->|"Bridge"| KEET
+    KEET --> CAMPFIRE
+    KEET --> START9
+    PHONE --> BITCHAT
+    PHONE --> KEET
+    LAPTOP --> CAMPFIRE
+
+    style KEET fill:#2d5a27,color:#fff
+    style CAMPFIRE fill:#4a5568,color:#fff
+    style BITCHAT fill:#1e40af,color:#fff
+```
+
+### 15.4 Resilience Matrix (Failure Scenarios)
+
+| Failure Scenario     | Bitchat (Bluetooth) | Keet P2P (WiFi)     | Nostr (Internet) | Combined Resilience |
+| -------------------- | ------------------- | ------------------- | ---------------- | ------------------- |
+| **Internet down**    | ✅ Works            | ✅ Local DHT        | ❌ Fails         | ✅ BT + WiFi mesh   |
+| **WiFi down**        | ✅ Works            | ❌ Fails            | ❌ Fails         | ✅ BT fallback      |
+| **Power outage**     | ✅ Battery devices  | ✅ Battery devices  | ❌ Servers down  | ✅ Device mesh      |
+| **Government block** | ✅ No DNS needed    | ✅ DHT bypasses DNS | ⚠️ Relay blocked | ✅ P2P continues    |
+| **All relays down**  | ✅ No relays needed | ✅ No relays needed | ❌ Fails         | ✅ Pure P2P         |
+| **New user arrives** | ⚠️ Limited range    | ✅ Campfire sync    | ✅ Relay sync    | ✅ Multiple paths   |
 
 ---
 

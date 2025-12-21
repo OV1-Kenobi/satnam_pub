@@ -70,7 +70,7 @@ export interface Nip05Record {
   id: string; // UUID
   name: string; // Temporary plaintext for migration
   pubkey: string; // Temporary plaintext for migration
-  name_duid?: string;
+  user_duid?: string; // Same value as user_identities.id
   pubkey_duid?: string;
   domain: string;
   is_active: boolean;
@@ -138,7 +138,7 @@ export interface CreateFamilyMemberInput {
 export interface CreateNip05RecordInput {
   name: string;
   pubkey: string;
-  name_duid?: string;
+  user_duid?: string; // Same value as user_identities.id
   pubkey_duid?: string;
   domain?: string;
 }

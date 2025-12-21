@@ -317,7 +317,7 @@ export const models = {
     async create(data: {
       name: string;
       pubkey: string;
-      name_duid?: string;
+      user_duid?: string; // Same value as user_identities.id
       pubkey_duid?: string;
       domain?: string;
     }) {
@@ -329,12 +329,13 @@ export const models = {
         .single();
     },
 
-    async getByDuid(nameDuid: string, domain: string = "satnam.pub") {
+    async getByDuid(userDuid: string, domain: string = "satnam.pub") {
       const client = await initializeSupabaseClient();
+      // user_duid stores the same value as user_identities.id
       return await client
         .from("nip05_records")
         .select("*")
-        .eq("name_duid", nameDuid)
+        .eq("user_duid", userDuid)
         .eq("domain", domain)
         .eq("is_active", true)
         .single();

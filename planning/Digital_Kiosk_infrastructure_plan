@@ -1,0 +1,237 @@
+# Detailed Implementation: Digital Kiosk "Gathers The Circle"
+
+**Version:** 1.1 - "Granular Execution"  
+**Classification:** Internal Planning Document
+
+## Task 1: Pear Runtime & Keet (Core Communication)
+
+### 1.1 Install Pear CLI & Dependencies
+
+1.  **System Update:** `sudo apt update && sudo apt upgrade -y`
+2.  **Node.js Check:** Ensure Node.js v16+ is installed (`node -v`). If not, install via nvm.
+3.  **Install Pear:** `npm install -g pear`
+4.  **Verify:** Run `pear --version` to confirm installation.
+
+### 1.2 Create Systemd Service for Pear
+
+1.  **File Creation:** `sudo nano /etc/systemd/system/pear-seed.service`
+2.  **Content:**
+
+    ```ini
+    [Unit]
+    Description=Pear Runtime Seed Node
+    After=network.target
+
+    [Service]
+    User=camp_admin
+    ExecStart=/usr/bin/pear run pear://keet --seed --key <ROOM_KEY>
+    Restart=always
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+3.  **Replace Key:** Generate a room key on a Desktop Keet instance first, then paste it into `<ROOM_KEY>`.
+4.  **Enable:** `sudo systemctl enable pear-seed && sudo systemctl start pear-seed`
+
+### 1.3 Deploy PearPass Backend
+
+1.  **Clone/Fetch:** `pear run pear://pass.pears.com --seed` (This pulls the app logic).
+2.  **Service Creation:** Duplicate the `pear-seed.service` as `pearpass.service`.
+3.  **Command:** Change `ExecStart` to `pear run pear://pass.pears.com --seed`.
+4.  **Verification:** On a phone connected to the same WiFi, open PearPass and attempt to "Join" using the local peer discovery.
+
+---
+
+## Task 2: NostrCheck Server (Media & Relay)
+
+### 2.1 Prepare Storage
+
+1.  **Directory:** `mkdir -p /mnt/camp_library/nostr_media`
+2.  **Permissions:** `sudo chown -R 1000:1000 /mnt/camp_library/nostr_media` (Assuming container runs as UID 1000).
+
+### 2.2 Configure Docker Compose
+
+1.  **File:** `/opt/camp-infrastructure/docker-compose.yml`
+2.  **Service Block:**
+    ```yaml
+    nostrcheck:
+      image: nostrcheck/nostrcheck-server:latest
+      ports:
+        - "8000:8000"
+      volumes:
+        - /mnt/camp_library/nostr_media:/data/media
+        - ./nostr_config.json:/app/config.json
+      environment:
+        - DOMAIN=library.camp
+        - ADMIN_NSEC=<YOUR_ADMIN_NSEC>
+    ```
+
+### 2.3 Verify NIP-96
+
+1.  **Start:** `docker-compose up -d nostrcheck`
+2.  **Test:** Use a Nostr client (like Snort) to upload an image.
+3.  **Check:** Verify the file appears in `/mnt/camp_library/nostr_media`.
+
+---
+
+## Task 3: Zapstream Core (Livestreaming)
+
+### 3.1 Prepare Directories
+
+1.  **Directory:** `mkdir -p /mnt/camp_library/hls`
+2.  **Permissions:** `sudo chmod -R 777 /mnt/camp_library/hls` (Nginx/Zapstream needs write access).
+
+### 3.2 Configure Docker Compose
+
+1.  **Service Block:**
+    ```yaml
+    zapstream:
+      image: v0l/zap-stream-core:latest
+      ports:
+        - "1935:1935" # RTMP Ingest
+        - "3000:3000" # API
+      volumes:
+        - /mnt/camp_library/hls:/data/hls
+      environment:
+        - RELAY_URL=ws://nostrcheck:8000
+        - NOSTR_KEY=<YOUR_ADMIN_NSEC>
+    ```
+
+### 3.3 Verify Stream
+
+1.  **Start:** `docker-compose up -d zapstream`
+2.  **Test:** Use OBS on a laptop to stream to `rtmp://<KIOSK_IP>:1935/live`.
+3.  **Check:** Look for `.ts` and `.m3u8` files appearing in `/mnt/camp_library/hls`.
+
+---
+
+## Task 4: OBS Bridge (Headless Producer)
+
+### 4.1 Install FFmpeg & Xvfb
+
+1.  **Command:** `sudo apt install ffmpeg xvfb -y`
+
+### 4.2 Create Broadcast Script
+
+1.  **File:** `/opt/camp-infrastructure/start_broadcast.sh`
+2.  **Content:**
+
+    ```bash
+    #!/bin/bash
+    # 1. Start Virtual Display
+    Xvfb :99 -screen 0 1920x1080x24 &
+    export DISPLAY=:99
+
+    # 2. Launch Keet (Visible only to Xvfb)
+    pear run pear://keet &
+
+    # 3. Capture & Stream
+    ffmpeg -f x11grab -video_size 1920x1080 -i :99 \
+      -c:v libx264 -preset veryfast -b:v 3000k \
+      -f flv rtmp://localhost:1935/live/camp_tv
+    ```
+
+3.  **Permissions:** `chmod +x start_broadcast.sh`
+
+---
+
+## Task 5: Coturn Server (WebRTC Relay)
+
+### 5.1 Configure `turnserver.conf`
+
+1.  **File:** `/opt/camp-infrastructure/turnserver.conf`
+2.  **Content:**
+    ```ini
+    listening-port=3478
+    fingerprint
+    use-auth-secret
+    static-auth-secret=NorthStarSecret123
+    realm=library.camp
+    total-quota=100
+    st-turn=yes
+    ```
+
+### 5.2 Configure Docker Compose
+
+1.  **Service Block:**
+    ```yaml
+    coturn:
+      image: coturn/coturn
+      network_mode: host
+      volumes:
+        - ./turnserver.conf:/etc/coturn/turnserver.conf
+    ```
+
+### 5.3 Verify Relay
+
+1.  **Tool:** Go to `https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/`
+2.  **Input:** `turn:<KIOSK_IP>:3478`, user/pass.
+3.  **Success:** You should see candidates of type `relay`.
+
+---
+
+## Task 6: Cloudflare Tunnel (Global Link)
+
+### 6.1 Install Cloudflared
+
+1.  **Download:** `curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb`
+2.  **Install:** `sudo dpkg -i cloudflared.deb`
+
+### 6.2 Authenticate & Route
+
+1.  **Login:** `cloudflared tunnel login` (Requires browser, copy link to your laptop).
+2.  **Create:** `cloudflared tunnel create camp-kiosk`
+3.  **Route:** `cloudflared tunnel route dns camp-kiosk tv.yourdomain.com`
+
+### 6.3 Run Tunnel
+
+1.  **Command:** `cloudflared tunnel run --url http://localhost:3000 camp-kiosk` (Points to Zapstream API).
+2.  **Service:** Create a systemd service `cloudflared.service` to keep it running.
+
+---
+
+## Task 7: Iroh Node (Sync)
+
+### 7.1 Install Iroh
+
+1.  **Script:** `curl -fsSL https://sh.iroh.computer/install.sh | sh`
+
+### 7.2 Create Sync Service
+
+1.  **File:** `/etc/systemd/system/iroh-serve.service`
+2.  **Content:**
+    ```ini
+    [Service]
+    ExecStart=/usr/local/bin/iroh provide /mnt/camp_library/public
+    Restart=always
+    ```
+3.  **Start:** `sudo systemctl start iroh-serve`
+
+### 7.3 Generate Ticket
+
+1.  **Command:** `iroh ticket list` (or equivalent command to get the join ticket).
+2.  **Action:** Save this ticket to `ticket.txt` in the root folder for admins to share.
+
+---
+
+## Task 8: Rollback & Safety
+
+### 8.1 Git Backup
+
+1.  **Init:** `cd /opt/camp-infrastructure && git init`
+2.  **Ignore:** Create `.gitignore` for `*.log`, `nostr_media/`, `hls/`.
+3.  **Commit:** `git add . && git commit -m "Initial config"`
+
+### 8.2 Kill Switch Script
+
+1.  **File:** `/usr/local/bin/camp-lockdown`
+2.  **Content:**
+    ```bash
+    #!/bin/bash
+    systemctl stop cloudflared
+    ufw deny 3478/udp
+    ufw deny 1935/tcp
+    echo "CAMP LOCKDOWN ACTIVE: Global Tunnels & Ingest Ports Closed."
+    ```
+3.  **Test:** Run it and verify `cloudflared` is dead (`systemctl status cloudflared`).

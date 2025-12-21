@@ -293,7 +293,7 @@ function getDUIDSecret() {
  * @param {string} params.domain - Identity domain (my.satnam.pub)
  * @param {string} params.federationNpub - Federation's Nostr public key (npub1...)
  * @param {string} params.federationDuid - Federation DUID for referential integrity
- * @returns {Promise<{ success: boolean, name_duid?: string, error?: string }>}
+ * @returns {Promise<{ success: boolean, user_duid?: string, error?: string }>}
  */
 async function reserveFederationNip05({
   normalizedHandle,
@@ -306,8 +306,9 @@ async function reserveFederationNip05({
     const secret = getDUIDSecret();
 
     // Compute DUIDs matching user registration pattern
+    // user_duid = HMAC-SHA-256(secret, "handle@domain") - same as user_identities.id for users
     const identifier = `${normalizedHandle}@${domain}`;
-    const name_duid = createHmac('sha256', secret).update(identifier).digest('hex');
+    const user_duid = createHmac('sha256', secret).update(identifier).digest('hex');
     const pubkey_duid = createHmac('sha256', secret).update(`NPUBv1:${federationNpub}`).digest('hex');
 
     // Use supabaseAdmin (service role) to bypass RLS for NIP-05 reservation
@@ -322,7 +323,7 @@ async function reserveFederationNip05({
       .insert({
         domain,
         is_active: true,
-        name_duid,
+        user_duid,
         pubkey_duid,
         entity_type: 'federation',
         federation_duid: federationDuid,
@@ -340,7 +341,7 @@ async function reserveFederationNip05({
     }
 
     console.log(`✅ Reserved federation handle in nip05_records: ${normalizedHandle}@${domain}`);
-    return { success: true, name_duid };
+    return { success: true, user_duid };
   } catch (error) {
     console.error('Federation NIP-05 reservation error:', error instanceof Error ? error.message : error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown reservation error' };

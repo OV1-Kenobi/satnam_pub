@@ -3,7 +3,8 @@
 -- This prevents namespace collisions by having a single authoritative source for handle@domain availability
 --
 -- Privacy-first design:
---   - No plaintext identifiers stored (uses name_duid, pubkey_duid)
+--   - No plaintext identifiers stored (uses user_duid, pubkey_duid)
+--   - user_duid stores the same value as user_identities.id for direct JOINs
 --   - entity_type only distinguishes 'user' vs 'federation' for resolution routing
 --   - Federation pubkey_duid uses federation_duid for referential integrity
 --

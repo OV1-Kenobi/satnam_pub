@@ -27,6 +27,7 @@ import IndividualPaymentAutomationModal from "./components/IndividualPaymentAuto
 import SignInModal from "./components/SignInModal";
 
 import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
+import { AdminAccountControlDashboard } from "./components/admin";
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
 import { UnifiedNFCSetupFlow } from "./components/nfc";
@@ -103,6 +104,7 @@ function App() {
     | "settings"
     | "amber-intent-callback"
     | "admin-dashboard"
+    | "admin-account-control"
     | "public-profile"
     | "family-invitation"
   >("landing");
@@ -850,6 +852,23 @@ function App() {
         setShowCommunications={setShowCommunications}
       >
         <HierarchicalAdminDashboard />
+      </PageWrapper>
+    );
+  }
+
+  if (currentView === "admin-account-control") {
+    return (
+      <PageWrapper
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        setSignInModalOpen={setSignInModalOpen}
+        handleProtectedRoute={handleProtectedRoute}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        showCommunications={showCommunications}
+        setShowCommunications={setShowCommunications}
+      >
+        <AdminAccountControlDashboard />
       </PageWrapper>
     );
   }

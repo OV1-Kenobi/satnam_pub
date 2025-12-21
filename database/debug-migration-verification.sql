@@ -54,13 +54,13 @@ BEGIN
         END IF;
         
         -- Check for required DUID columns
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'name_duid') THEN
-            RAISE WARNING '❌ MISSING: nip05_records.name_duid column required for privacy-first operations';
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'user_duid') THEN
+            RAISE WARNING '❌ MISSING: nip05_records.user_duid column required for privacy-first operations';
             issues_found := issues_found + 1;
         ELSE
-            RAISE NOTICE '✅ nip05_records.name_duid - privacy-first column exists';
+            RAISE NOTICE '✅ nip05_records.user_duid - privacy-first column exists';
         END IF;
-        
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'nip05_records' AND column_name = 'pubkey_duid') THEN
             RAISE WARNING '❌ MISSING: nip05_records.pubkey_duid column required for privacy-first operations';
             issues_found := issues_found + 1;
@@ -90,11 +90,20 @@ BEGIN
         RAISE WARNING '❌ user_identities table does not exist!';
         issues_found := issues_found + 1;
     ELSE
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_identities' AND column_name = 'hashed_username') THEN
-            RAISE WARNING '❌ MISSING: user_identities.hashed_username column required for privacy-first operations';
+        -- Verify id column exists as TEXT (DUID primary key)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_identities' AND column_name = 'id' AND data_type = 'text') THEN
+            RAISE WARNING '❌ MISSING: user_identities.id (TEXT) column required as DUID primary key';
             issues_found := issues_found + 1;
         ELSE
-            RAISE NOTICE '✅ user_identities.hashed_username - privacy-first column exists';
+            RAISE NOTICE '✅ user_identities.id (DUID PRIMARY KEY) - privacy-first column exists';
+        END IF;
+
+        -- Verify user_salt exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_identities' AND column_name = 'user_salt') THEN
+            RAISE WARNING '❌ MISSING: user_identities.user_salt column required for privacy-first operations';
+            issues_found := issues_found + 1;
+        ELSE
+            RAISE NOTICE '✅ user_identities.user_salt - privacy-first column exists';
         END IF;
         
         -- Show current user_identities structure (first 10 columns)

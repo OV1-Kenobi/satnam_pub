@@ -1,7 +1,8 @@
 -- Migration: Enforce privacy-first nip05_records (server-side DUID hashing)
 -- Objective:
 -- 1) Remove plaintext columns (name, pubkey, etc.) from nip05_records
--- 2) Store only name_duid and pubkey_duid using server-side secret (DUID_SERVER_SECRET)
+-- 2) Store only user_duid and pubkey_duid using server-side secret (DUID_SERVER_SECRET)
+--    Note: user_duid stores the same value as user_identities.id (HMAC of username@domain)
 -- 3) Keep domain and is_active for scoping; maintain created_at/updated_at
 -- 4) Create indexes for fast availability checks
 -- 5) RLS: allow anon INSERT with DUID fields; SELECT only DUID fields for anon (no leakage)
@@ -20,7 +21,7 @@ BEGIN
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         domain text NOT NULL DEFAULT 'satnam.pub',
         is_active boolean NOT NULL DEFAULT true,
-        name_duid text NOT NULL,
+        user_duid text NOT NULL, -- Same value as user_identities.id
         pubkey_duid text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
@@ -100,13 +101,14 @@ BEGIN
 END $do$;
 
 -- 2) Ensure DUID columns exist (initially nullable for legacy rows)
+-- Note: user_duid stores the same value as user_identities.id (HMAC of username@domain)
 DO $do$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='name_duid'
+    WHERE table_schema='public' AND table_name='nip05_records' AND column_name='user_duid'
   ) THEN
-    ALTER TABLE public.nip05_records ADD COLUMN name_duid text;
+    ALTER TABLE public.nip05_records ADD COLUMN user_duid text;
   END IF;
 
   IF NOT EXISTS (
@@ -125,7 +127,7 @@ TRUNCATE TABLE public.nip05_records;
 
 -- 2c) Enforce NOT NULL on DUID columns after cleanup
 ALTER TABLE public.nip05_records
-  ALTER COLUMN name_duid SET NOT NULL,
+  ALTER COLUMN user_duid SET NOT NULL,
   ALTER COLUMN pubkey_duid SET NOT NULL;
 
 -- 3) Ensure domain/is_active columns exist (and defaults)
@@ -139,9 +141,9 @@ ALTER TABLE public.nip05_records
 DO $do$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='uq_nip05_records_name_duid_domain'
+    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='uq_nip05_records_user_duid_domain'
   ) THEN
-    EXECUTE 'CREATE UNIQUE INDEX uq_nip05_records_name_duid_domain ON public.nip05_records (domain, name_duid)';
+    EXECUTE 'CREATE UNIQUE INDEX uq_nip05_records_user_duid_domain ON public.nip05_records (domain, user_duid)';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='nip05_records' AND indexname='idx_nip05_records_pubkey_duid'
@@ -167,10 +169,11 @@ GRANT USAGE ON SCHEMA public TO anon;
 GRANT INSERT, SELECT ON TABLE public.nip05_records TO anon;
 
 -- Allow anon INSERT if DUID fields are present and domain is allowed
+-- Note: user_duid stores the same value as user_identities.id
 CREATE POLICY anon_insert_nip05_records ON public.nip05_records
   FOR INSERT TO anon
   WITH CHECK (
-    COALESCE(name_duid,'') <> ''
+    COALESCE(user_duid,'') <> ''
     AND COALESCE(pubkey_duid,'') <> ''
     AND domain IN ('my.satnam.pub')
   );

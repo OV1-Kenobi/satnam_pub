@@ -53,13 +53,14 @@ export class UserService {
       hmac.update(`NPUBv1:${npub}`);
       const pubkey_duid = hmac.digest("hex");
       const recRes = await db.query(
-        "SELECT name_duid FROM nip05_records WHERE pubkey_duid = $1 AND is_active = true LIMIT 1",
+        "SELECT user_duid FROM nip05_records WHERE pubkey_duid = $1 AND is_active = true LIMIT 1",
         [pubkey_duid]
       );
       if (recRes.rows.length === 0) {
         return null;
       }
-      const duid = recRes.rows[0].name_duid as string;
+      // user_duid stores the same value as user_identities.id
+      const duid = recRes.rows[0].user_duid as string;
       const result = await db.query(
         "SELECT * FROM user_identities WHERE id = $1 AND is_active = true LIMIT 1",
         [duid]
