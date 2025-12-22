@@ -662,8 +662,22 @@ async function checkUsernameAvailability(username: string): Promise<boolean> {
 
     let isAvailable = !data || data.length === 0;
 
+    // DIAGNOSTIC: Log availability check result for debugging
+    console.log(
+      `[USERNAME_AVAILABILITY] nip05_records check for "${local}@${domain}":`,
+      {
+        hasData: !!data,
+        dataLength: data?.length ?? 0,
+        isAvailable,
+        user_duid_prefix: user_duid.substring(0, 10) + "...",
+        queryDomain: domain,
+      }
+    );
+
     // Check against federation_lightning_config to prevent user/federation namespace collisions
     // Federations use the same handle@my.satnam.pub namespace as individual users
+    // NOTE: This check may fail silently if anon role lacks SELECT on federation_lightning_config
+    // In that case, RLS returns empty array (not error), so we proceed safely
     if (isAvailable) {
       try {
         const { data: federations, error: fedErr } = await supabase
@@ -671,6 +685,17 @@ async function checkUsernameAvailability(username: string): Promise<boolean> {
           .select("federation_duid")
           .eq("federation_handle", local)
           .limit(1);
+
+        console.log(
+          `[USERNAME_AVAILABILITY] federation_lightning_config check for "${local}":`,
+          {
+            hasError: !!fedErr,
+            errorCode: (fedErr as any)?.code,
+            hasData: !!federations,
+            dataLength: federations?.length ?? 0,
+          }
+        );
+
         if (!fedErr && federations && federations.length > 0) {
           isAvailable = false;
           console.log(
@@ -685,11 +710,15 @@ async function checkUsernameAvailability(username: string): Promise<boolean> {
       }
     }
 
+    // Final result logging
     console.log(
-      `Username availability: ${username} -> ${
-        isAvailable ? "available" : "taken"
-      }`
+      `[USERNAME_AVAILABILITY] Final result for "${local}@${domain}":`,
+      {
+        isAvailable,
+        timestamp: new Date().toISOString(),
+      }
     );
+
     return isAvailable;
   } catch (error) {
     console.error("Username availability check error:", error);

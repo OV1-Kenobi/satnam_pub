@@ -104,27 +104,24 @@ async function checkUsernameAvailability(username) {
 
     let isAvailable = !data || data.length === 0;
 
-    if (isAvailable) {
-      // Double-check against user_identities via canonical DUID to avoid silent duplicates
-      try {
-        const identifierFull = `${local}@${domain}`;
-        const { generateDUIDFromNIP05 } = await import('../../lib/security/duid-generator.js');
-        const duid = await generateDUIDFromNIP05(identifierFull);
-        const { data: users, error: userErr } = await supabase
-          .from('user_identities')
-          .select('id')
-          .eq('id', duid)
-          .limit(1);
-        if (!userErr && users && users.length > 0) {
-          isAvailable = false;
-        }
-      } catch (duidErr) {
-        console.warn('DUID availability cross-check failed; relying on nip05_records only:', duidErr);
-      }
-    }
+    // DIAGNOSTIC: Log availability check result for debugging
+    console.log(`[USERNAME_AVAILABILITY] nip05_records check for "${local}@${domain}":`, {
+      hasData: !!data,
+      dataLength: data?.length ?? 0,
+      isAvailable,
+      user_duid_prefix: user_duid.substring(0, 10) + '...',
+      queryDomain: domain,
+    });
+
+    // NOTE: user_identities cross-check removed as redundant
+    // The nip05_records table is the authoritative source for username reservations
+    // Both tables use the same DUID (HMAC-SHA-256 of username@domain) as primary key
+    // If nip05_records doesn't have the record, the username hasn't been reserved
 
     // Check against federation_lightning_config to prevent user/federation namespace collisions
     // Federations use the same handle@my.satnam.pub namespace as individual users
+    // NOTE: This check may fail silently if anon role lacks SELECT on federation_lightning_config
+    // In that case, RLS returns empty array (not error), so we proceed safely
     if (isAvailable) {
       try {
         const { data: federations, error: fedErr } = await supabase
@@ -132,6 +129,14 @@ async function checkUsernameAvailability(username) {
           .select('federation_duid')
           .eq('federation_handle', local)
           .limit(1);
+
+        console.log(`[USERNAME_AVAILABILITY] federation_lightning_config check for "${local}":`, {
+          hasError: !!fedErr,
+          errorCode: fedErr?.code,
+          hasData: !!federations,
+          dataLength: federations?.length ?? 0,
+        });
+
         if (!fedErr && federations && federations.length > 0) {
           isAvailable = false;
           console.log(`[USERNAME_AVAILABILITY] Handle "${local}" is already taken by a federation`);
@@ -140,6 +145,12 @@ async function checkUsernameAvailability(username) {
         console.warn('Federation handle cross-check failed; relying on nip05_records only:', fedCheckErr);
       }
     }
+
+    // Final result logging
+    console.log(`[USERNAME_AVAILABILITY] Final result for "${local}@${domain}":`, {
+      isAvailable,
+      timestamp: new Date().toISOString(),
+    });
 
     if (!isAvailable) {
       // Generate a suggestion for taken usernames
