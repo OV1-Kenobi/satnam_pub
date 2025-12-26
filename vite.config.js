@@ -117,7 +117,7 @@ export default defineConfig({
     sourcemap: true,
     minify: isProduction ? "terser" : false,
     target: "es2020", // Use more conservative target for better compatibility
-    chunkSizeWarningLimit: 400, // Reduced from 600kb to encourage smaller chunks
+    chunkSizeWarningLimit: 500, // Increased to accommodate admin/permissions features
 
     // CRITICAL FIX: Ensure proper ES module output for dynamic imports
     format: "es",
