@@ -3,6 +3,8 @@
  * Uses fetch API and Web Crypto API instead of Node.js modules
  */
 
+import { getEnvVar } from "../config/env.client";
+
 interface NodeStatus {
   connected: boolean;
   [key: string]: any;
@@ -39,7 +41,7 @@ export class LightningClient {
   private apiBaseUrl: string;
 
   constructor() {
-    this.apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
+    this.apiBaseUrl = getEnvVar("VITE_API_URL") || "/api";
   }
 
   async getNodeStatus(): Promise<NodeStatus> {
@@ -217,7 +219,7 @@ export class LightningClient {
    */
   getPrivacyConfig() {
     return {
-      serviceUrl: import.meta.env.VITE_LNPROXY_URL || "https://lnproxy.com",
+      serviceUrl: getEnvVar("VITE_LNPROXY_URL") || "https://lnproxy.com",
       defaultRoutingBudget: 1000, // Default routing budget in sats
     };
   }

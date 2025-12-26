@@ -8,6 +8,7 @@
  */
 
 import axios, { AxiosResponse } from "axios";
+import { getEnvVar } from "../config/env.client";
 import {
   SatnamPrivacyLayer,
   type PrivacyWrappedInvoice,
@@ -152,7 +153,8 @@ export class PhoenixdClient {
         "PhoenixdClient is browser-only and cannot run in server environment"
       );
     }
-    if (typeof import.meta !== "undefined" && (import.meta as any)?.env?.DEV) {
+    // Use getEnvVar for environment variable access (compatible with both browser and CJS bundling)
+    if (getEnvVar("NODE_ENV") === "development") {
       // Development-only deprecation warning
       console.warn(
         "⚠️  [DEPRECATED] PhoenixdClient is deprecated; use Netlify function /phoenixd-proxy instead."

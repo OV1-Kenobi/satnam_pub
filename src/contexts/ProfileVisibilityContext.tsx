@@ -6,7 +6,7 @@
  * Provides context and hooks for managing profile visibility across the app.
  */
 
-import React, { createContext, ReactNode, useEffect, useState } from 'react';
+import React, { type ReactNode, useEffect, useState } from 'react';
 import ProfileAPI from '../lib/api/profile-endpoints';
 import { ProfileVisibility } from '../lib/services/profile-service';
 import { VisibilitySettings } from '../types/profile';
@@ -22,7 +22,9 @@ interface ProfileVisibilityContextValue {
   refreshSettings: () => Promise<void>;
 }
 
-export const ProfileVisibilityContext = createContext<ProfileVisibilityContextValue | undefined>(
+// Use React.createContext to ensure React is available at module initialization
+// This prevents TDZ errors when chunks load in different order
+export const ProfileVisibilityContext = React.createContext<ProfileVisibilityContextValue | undefined>(
   undefined
 );
 

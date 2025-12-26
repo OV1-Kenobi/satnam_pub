@@ -10,6 +10,7 @@ import { LightningClient } from "./lightning-client";
 import { PhoenixdClient } from "./phoenixd-client";
 
 import { resolvePlatformLightningDomain } from "../config/domain.client";
+import { getEnvVar } from "../config/env.client";
 
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
@@ -135,15 +136,14 @@ export class NTAG424ProductionManager {
    */
   private getMasterKey(): string {
     // In production, this should come from Supabase Vault
-    const vaultKey = import.meta.env.VITE_NTAG424_MASTER_KEY;
+    const vaultKey = getEnvVar("VITE_NTAG424_MASTER_KEY");
     if (vaultKey && vaultKey !== "your-master-key-here") {
       return vaultKey;
     }
 
     // Fallback for development
     const devKey =
-      import.meta.env.VITE_NTAG424_MASTER_KEY ||
-      "dev-ntag424-master-key-32-chars";
+      getEnvVar("VITE_NTAG424_MASTER_KEY") || "dev-ntag424-master-key-32-chars";
     console.warn(
       "⚠️ Using development NTAG424 master key. Use Supabase Vault in production."
     );
