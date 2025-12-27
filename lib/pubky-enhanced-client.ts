@@ -18,10 +18,29 @@ function getEnvVar(key: string): string | undefined {
 
 import { ed25519 } from "@noble/curves/ed25519";
 import axios from "axios";
-import * as sss from "shamirs-secret-sharing";
 import { v4 as uuidv4 } from "uuid";
-import * as z32 from "z32";
 import db from "./db";
+
+// Dynamic import helpers for server-side only modules
+// These modules use Node.js APIs and should not be bundled for browser
+let sssModule: typeof import("shamirs-secret-sharing") | null = null;
+let z32Module: typeof import("z32") | null = null;
+
+async function getSSSModule(): Promise<
+  typeof import("shamirs-secret-sharing")
+> {
+  if (!sssModule) {
+    sssModule = await import("shamirs-secret-sharing");
+  }
+  return sssModule;
+}
+
+async function getZ32Module(): Promise<typeof import("z32")> {
+  if (!z32Module) {
+    z32Module = await import("z32");
+  }
+  return z32Module;
+}
 
 // Type definitions
 export interface PubkyConfig {
@@ -431,8 +450,8 @@ export class EnhancedPubkyClient {
       const publicKey = ed25519.getPublicKey(privateKey);
 
       // Create the Pubky URL and z32 address
-      const pubkyUrl = this.encodePubkyUrl(publicKey);
-      const z32Address = this.encodeZ32(publicKey);
+      const pubkyUrl = await this.encodePubkyUrl(publicKey);
+      const z32Address = await this.encodeZ32(publicKey);
 
       return {
         private_key: Buffer.from(privateKey).toString("hex"),
@@ -469,8 +488,8 @@ export class EnhancedPubkyClient {
       const publicKey = ed25519.getPublicKey(privateKey);
 
       // Create the Pubky URL and z32 address
-      const pubkyUrl = this.encodePubkyUrl(publicKey);
-      const z32Address = this.encodeZ32(publicKey);
+      const pubkyUrl = await this.encodePubkyUrl(publicKey);
+      const z32Address = await this.encodeZ32(publicKey);
 
       return {
         private_key: privateKeyHex,
@@ -926,7 +945,7 @@ export class EnhancedPubkyClient {
 
       // Split the encryption key using Shamir's Secret Sharing
       const threshold = Math.ceil(guardianKeypairs.length * 0.6);
-      const keyShares = this.splitSecret(
+      const keyShares = await this.splitSecret(
         encryptionKey,
         threshold,
         guardianKeypairs.length
@@ -1031,7 +1050,7 @@ export class EnhancedPubkyClient {
       }
 
       // Reconstruct the encryption key
-      const encryptionKey = this.combineShares(keyShares);
+      const encryptionKey = await this.combineShares(keyShares);
 
       // Get the encrypted domain data
       const encryptedDataUrl = `${domainPubkyUrl}/backup/domain-data`;
@@ -1065,16 +1084,17 @@ export class EnhancedPubkyClient {
   /**
    * Encode a Pubky URL from a public key
    */
-  private encodePubkyUrl(publicKey: Uint8Array): string {
-    const z32 = this.encodeZ32(publicKey);
-    return `pubky://${z32}`;
+  private async encodePubkyUrl(publicKey: Uint8Array): Promise<string> {
+    const z32Encoded = await this.encodeZ32(publicKey);
+    return `pubky://${z32Encoded}`;
   }
 
   /**
    * Encode a public key in z-base-32 format
    */
-  private encodeZ32(publicKey: Uint8Array): string {
+  private async encodeZ32(publicKey: Uint8Array): Promise<string> {
     // Using the proper z32 library for z-base-32 encoding
+    const z32 = await getZ32Module();
     return z32.encode(publicKey);
   }
 
@@ -1341,11 +1361,12 @@ export class EnhancedPubkyClient {
    * Split a secret using Shamir's Secret Sharing
    * Uses the shamirs-secret-sharing library for secure secret splitting
    */
-  private splitSecret(
+  private async splitSecret(
     secret: string,
     threshold: number,
     shares: number
-  ): string[] {
+  ): Promise<string[]> {
+    const sss = await getSSSModule();
     const secretBuffer = Buffer.from(secret, "hex");
     const splitShares = sss.split({
       secret: secretBuffer,
@@ -1359,7 +1380,10 @@ export class EnhancedPubkyClient {
    * Combine shares to reconstruct a secret
    * Uses the shamirs-secret-sharing library for secure secret reconstruction
    */
-  private combineShares(shares: { index: number; share: string }[]): string {
+  private async combineShares(
+    shares: { index: number; share: string }[]
+  ): Promise<string> {
+    const sss = await getSSSModule();
     const shareBuffers = shares.map((s) => Buffer.from(s.share, "hex"));
     const combined = sss.combine({ shares: shareBuffers });
     return combined.toString("hex");

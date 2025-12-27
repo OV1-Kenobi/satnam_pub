@@ -6,12 +6,25 @@
 
 // Removed invalid import of non-existent module "./nostr-browser"
 
-// Phase 1: Import CEPS for kind:0 resolution
-import { CentralEventPublishingService } from "../../lib/central_event_publishing_service";
+// Phase 1: CEPS is imported dynamically to prevent Supabase client initialization at page load
 // Note: PubkyDHTClient is imported dynamically in tryPkarrResolution() to avoid bundling server-side code
 
 // Import domain resolver for white-label compatibility
 import { resolvePlatformLightningDomain } from "../config/domain.client";
+
+// Lazy-loaded CEPS instance to prevent initialization at module load time
+let _cepsModule:
+  | typeof import("../../lib/central_event_publishing_service")
+  | null = null;
+
+async function getCEPS(): Promise<
+  import("../../lib/central_event_publishing_service").CentralEventPublishingService
+> {
+  if (!_cepsModule) {
+    _cepsModule = await import("../../lib/central_event_publishing_service");
+  }
+  return new _cepsModule.CentralEventPublishingService();
+}
 
 export interface NIP05VerificationResult {
   verified: boolean;
@@ -899,8 +912,8 @@ export class HybridNIP05Verifier {
   ): Promise<HybridVerificationResult> {
     const startTime = Date.now();
     try {
-      // Create CEPS instance for kind:0 resolution
-      const ceps = new CentralEventPublishingService();
+      // Create CEPS instance for kind:0 resolution (lazy-loaded to prevent Supabase init at page load)
+      const ceps = await getCEPS();
 
       // Create timeout promise
       const timeoutPromise = new Promise<null>((resolve) => {
@@ -1147,7 +1160,8 @@ export class HybridNIP05Verifier {
   ): Promise<MethodVerificationResult | null> {
     const startTime = Date.now();
     try {
-      const ceps = new CentralEventPublishingService();
+      // Lazy-loaded to prevent Supabase init at page load
+      const ceps = await getCEPS();
       const timeoutPromise = new Promise<null>((resolve) => {
         setTimeout(() => resolve(null), this.config.kind0Timeout || 3000);
       });
@@ -1461,8 +1475,8 @@ export class HybridNIP05Verifier {
         return null;
       }
 
-      // First, try to get node ID from kind:0 metadata
-      const ceps = new CentralEventPublishingService();
+      // First, try to get node ID from kind:0 metadata (lazy-loaded to prevent Supabase init at page load)
+      const ceps = await getCEPS();
       const timeoutPromise = new Promise<null>((resolve) => {
         setTimeout(() => resolve(null), this.config.kind0Timeout || 3000);
       });
