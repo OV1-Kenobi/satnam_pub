@@ -4,33 +4,32 @@
  * @module admin
  */
 
+// Shared types (from centralized types file to avoid circular dependencies)
+export type { RemovalLogEntry, RemovalStats } from "../../types/admin";
+
 // Main Dashboard
 export { AdminAccountControlDashboard } from "./AdminAccountControlDashboard";
-export type {
-  RemovalStats,
-  RemovalLogEntry,
-} from "./AdminAccountControlDashboard";
 
 // Auth Guard
 export {
-  AdminAuthGuard,
   AdminAuthContext,
+  AdminAuthGuard,
+  canManageFederationAccounts,
+  hasPermission,
   useAdminContext,
   useRequiredAdminContext,
-  hasPermission,
-  canManageFederationAccounts,
 } from "./AdminAuthGuard";
 export type {
-  AdminRole,
-  AdminContext,
   AdminAuthGuardProps,
+  AdminContext,
+  AdminRole,
 } from "./AdminAuthGuard";
 
 // Tab Components
 export { AccountsTab } from "./AccountsTab";
-export { OverviewTab } from "./OverviewTab";
-export { OrphansTab } from "./OrphansTab";
 export { AuditLogTab } from "./AuditLogTab";
+export { OrphansTab } from "./OrphansTab";
+export { OverviewTab } from "./OverviewTab";
 export { PendingDeletionsTab } from "./PendingDeletionsTab";
 
 // Modals

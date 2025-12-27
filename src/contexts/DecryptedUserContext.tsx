@@ -1,6 +1,6 @@
 /**
  * PRIVACY-FIRST Decrypted User Context
- * 
+ *
  * This context manages decrypted user data in memory during the user session.
  * It maintains strict privacy principles:
  * - Decrypted data exists ONLY in browser memory
@@ -9,7 +9,7 @@
  * - Uses existing supabase client for database operations
  */
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import React, { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useDecryptedCurrentUser } from '../hooks/useClientDecryption';
 import type { DecryptedUserProfile } from '../lib/client-decryption';
 
@@ -29,7 +29,9 @@ interface DecryptedUserContextType {
   isAuthenticated: boolean;
 }
 
-const DecryptedUserContext = createContext<DecryptedUserContextType | undefined>(undefined);
+// Use React.createContext instead of destructured createContext to prevent TDZ errors
+// when chunks load before React is fully initialized
+const DecryptedUserContext = React.createContext<DecryptedUserContextType | undefined>(undefined);
 
 /**
  * PRIVACY-FIRST: Decrypted User Provider

@@ -1,11 +1,11 @@
 /**
  * Secure Message Signing Provider
- * 
+ *
  * Provides a complete message signing interface with consent modal integration.
  * Wraps the useSecureMessageSigning hook with UI components for user consent.
  */
 
-import { createContext, useContext, useState, type FC, type ReactNode } from 'react';
+import React, { useContext, useState, type FC, type ReactNode } from 'react';
 import { MessageType, SigningMethod, SigningResult, UnsignedEvent, useSecureMessageSigning } from '../../lib/messaging/secure-message-signing';
 import { MethodSelectionData, MethodSelectionModal } from './MethodSelectionModal';
 import { NsecConsentData, NsecConsentModal } from './NsecConsentModal';
@@ -23,7 +23,9 @@ interface SecureMessageSigningContextType {
   clearError: () => void;
 }
 
-const SecureMessageSigningContext = createContext<SecureMessageSigningContextType | null>(null);
+// Use React.createContext instead of destructured createContext to prevent TDZ errors
+// when chunks load before React is fully initialized
+const SecureMessageSigningContext = React.createContext<SecureMessageSigningContextType | null>(null);
 
 interface SecureMessageSigningProviderProps {
   children: ReactNode;

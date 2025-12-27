@@ -6,7 +6,8 @@
 
 import { BarChart3, CheckCircle, Clock, RotateCcw, Trash2, XCircle } from "lucide-react";
 import React from "react";
-import type { RemovalStats } from "./AdminAccountControlDashboard";
+// Import from dedicated types file to avoid circular dependency with AdminAccountControlDashboard
+import type { RemovalStats } from "../../types/admin";
 
 interface OverviewTabProps {
   stats: RemovalStats | null;

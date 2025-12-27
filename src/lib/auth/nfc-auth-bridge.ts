@@ -1,11 +1,24 @@
 // NFC Authentication Bridge
 // Orchestrates the existing NTAG424AuthModal for vault NFC checks.
 // Browser-only. Uses React portal to mount the modal on demand.
+//
+// IMPORTANT: NTAG424AuthModal is dynamically imported to break circular dependency:
+// NTAG424AuthModal → AuthProvider → unified-auth-system → nfc-auth-bridge → NTAG424AuthModal
 
 import React from "react";
 import { createRoot } from "react-dom/client";
-import NTAG424AuthModal from "../../components/NTAG424AuthModal";
 import { showToast } from "../../services/toastService";
+
+// Cached dynamic import for NTAG424AuthModal to break circular dependency
+let NTAG424ModalPromise: Promise<
+  typeof import("../../components/NTAG424AuthModal")
+> | null = null;
+function getNTAG424Modal() {
+  if (!NTAG424ModalPromise) {
+    NTAG424ModalPromise = import("../../components/NTAG424AuthModal");
+  }
+  return NTAG424ModalPromise;
+}
 
 function mountTransientModal(element: React.ReactElement): {
   dispose: () => void;
@@ -38,6 +51,9 @@ export async function openNFCModalAndAwaitResult(
     });
     return false;
   }
+
+  // Dynamically import NTAG424AuthModal to break circular dependency
+  const { default: NTAG424AuthModal } = await getNTAG424Modal();
 
   return new Promise<boolean>((resolve) => {
     let settled = false;

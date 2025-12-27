@@ -26,8 +26,6 @@ import IndividualFinancesDashboard from "./components/IndividualFinancesDashboar
 import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
 import SignInModal from "./components/SignInModal";
 
-import HierarchicalAdminDashboard from "./components/admin/HierarchicalAdminDashboard";
-import { AdminAccountControlDashboard } from "./components/admin";
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
 import { UnifiedNFCSetupFlow } from "./components/nfc";
@@ -45,11 +43,11 @@ import Navigation from "./components/shared/Navigation";
 import PageWrapper from "./components/shared/PageWrapper";
 import { useCredentialCleanup } from "./hooks/useCredentialCleanup";
 
-import { validateInvitation } from "./lib/invitation-validator";
 import {
-  storeEncryptedInvitationToken,
-  clearInvitationToken
+  clearInvitationToken,
+  storeEncryptedInvitationToken
 } from "./lib/crypto/invitation-token-storage";
+import { validateInvitation } from "./lib/invitation-validator";
 
 import { showToast } from "./services/toastService";
 
@@ -65,6 +63,12 @@ const FamilyFoundryLandingPage = lazy(() => import("./components/pages/FamilyFou
 const FeaturesOverview = lazy(() => import("./components/FeaturesOverview"));
 const NFCProvisioningGuide = lazy(() => import("./components/NFCProvisioningGuide"));
 const NostrEcosystem = lazy(() => import("./components/NostrEcosystem"));
+
+// Lazy-loaded admin components to prevent TDZ errors and reduce initial bundle size
+const HierarchicalAdminDashboard = lazy(() => import("./components/admin/HierarchicalAdminDashboard"));
+const AdminAccountControlDashboard = lazy(() =>
+  import("./components/admin").then(m => ({ default: m.AdminAccountControlDashboard }))
+);
 
 
 
@@ -851,7 +855,9 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <HierarchicalAdminDashboard />
+        <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full"></div></div>}>
+          <HierarchicalAdminDashboard />
+        </Suspense>
       </PageWrapper>
     );
   }
@@ -868,7 +874,9 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <AdminAccountControlDashboard />
+        <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full"></div></div>}>
+          <AdminAccountControlDashboard />
+        </Suspense>
       </PageWrapper>
     );
   }

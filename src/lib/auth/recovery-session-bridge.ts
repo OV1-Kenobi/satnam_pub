@@ -8,6 +8,7 @@
  * by leveraging their emergency recovery credentials, eliminating dependency on NIP-07 extensions.
  */
 
+import { userSigningPreferences } from "../user-signing-preferences";
 import { nsecSessionBridge } from "./nsec-session-bridge";
 import type { UserIdentity } from "./user-identities-auth";
 import { userIdentitiesAuth } from "./user-identities-auth";
@@ -152,9 +153,6 @@ export class RecoverySessionBridge {
       // Step 3: Create temporary session using NSECSessionBridge with user policy
       let sessionId: string | null = null;
       try {
-        const { userSigningPreferences } = await import(
-          "../user-signing-preferences"
-        );
         const prefs = await userSigningPreferences.getUserPreferences();
         const enableTimeout = prefs?.sessionLifetimeMode === "timed";
         const duration = enableTimeout
@@ -416,9 +414,6 @@ export class RecoverySessionBridge {
       try {
         console.log(
           "🔐 RecoverySessionBridge: Loading user signing preferences..."
-        );
-        const { userSigningPreferences } = await import(
-          "../user-signing-preferences"
         );
         const prefs = await userSigningPreferences.getUserPreferences();
         const enableTimeout = prefs?.sessionLifetimeMode === "timed";

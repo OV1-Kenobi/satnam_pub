@@ -37,6 +37,7 @@ const utf8 = (s: string) => te.encode(s);
 
 // Import session manager at top-level (TS/ESM) - recovery bridge imported lazily to avoid circular deps
 import { secureNsecManager } from "../src/lib/secure-nsec-manager";
+import { userSigningPreferences } from "../src/lib/user-signing-preferences";
 
 // Import relay privacy layer for metadata protection
 import {
@@ -1861,8 +1862,7 @@ export class CentralEventPublishingService {
     browserLifetime: boolean;
   }> {
     try {
-      const prefsMod = await import("../src/lib/user-signing-preferences");
-      const prefs = await prefsMod.userSigningPreferences.getUserPreferences();
+      const prefs = await userSigningPreferences.getUserPreferences();
       if (!prefs) {
         return {
           sessionDurationMs: 15 * 60 * 1000,

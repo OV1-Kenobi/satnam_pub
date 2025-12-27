@@ -4,12 +4,14 @@
  * ✅ Master Context Compliance: Contexts separated from React components
  */
 
-import { createContext } from "react";
+import React from "react";
 import { AuthContextType } from "../../types/auth";
 
 // Create authentication context
+// Use React.createContext instead of destructured createContext to prevent TDZ errors
+// when chunks load before React is fully initialized
 export const FamilyFederationAuthContext =
-  createContext<AuthContextType | null>(null);
+  React.createContext<AuthContextType | null>(null);
 
 // Export context name for debugging
 export const CONTEXT_NAME = "FamilyFederationAuthContext";

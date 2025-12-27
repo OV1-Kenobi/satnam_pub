@@ -28,32 +28,11 @@ import { OrphansTab } from "./OrphansTab";
 import { OverviewTab } from "./OverviewTab";
 import { PendingDeletionsTab } from "./PendingDeletionsTab";
 
-// Types
-export interface RemovalStats {
-  total: number;
-  completed: number;
-  failed: number;
-  pending: number;
-  rolledBack: number;
-  rollbackAvailable: number;
-  totalRecordsDeleted: number;
-}
+// Types imported from dedicated types file to avoid circular dependencies
+import type { RemovalLogEntry, RemovalStats } from "../../types/admin";
 
-export interface RemovalLogEntry {
-  id: string;
-  admin_user_duid: string;
-  admin_type: "platform" | "federation";
-  target_user_duid: string;
-  target_nip05_duid: string;
-  target_account_type: string;
-  removal_reason: string;
-  status: string;
-  rollback_expires_at: string | null;
-  rollback_executed: boolean;
-  records_deleted: number;
-  requested_at: string;
-  completed_at: string | null;
-}
+// Re-export types for backward compatibility with existing imports
+export type { RemovalLogEntry, RemovalStats } from "../../types/admin";
 
 type TabId = "overview" | "accounts" | "deletions" | "orphans" | "audit" | "monitoring";
 

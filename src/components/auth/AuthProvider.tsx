@@ -8,7 +8,7 @@ console.log('[AuthProvider] Version: 2025-01-14-PROD-FIX');
  * while maintaining privacy-first architecture with comprehensive protection.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type FC, type ReactNode } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type FC, type ReactNode } from 'react';
 // Removed direct import to break circular dependency - will be loaded dynamically
 import { UnifiedAuthActions, UnifiedAuthState, useUnifiedAuth } from '../../lib/auth/unified-auth-system';
 
@@ -26,7 +26,9 @@ type AuthContextType = UnifiedAuthState & UnifiedAuthActions & {
 };
 
 // Safe lazy context initialization to avoid production bundling/runtime edge cases
-let AuthContextRef: ReturnType<typeof createContext<AuthContextType | null>> | null = null;
+// Use React.createContext instead of destructured createContext to prevent TDZ errors
+// when chunks load before React is fully initialized
+let AuthContextRef: React.Context<AuthContextType | null> | null = null;
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -41,14 +43,14 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   const [isRegistrationFlow, setIsRegistrationFlow] = useState(false);
   const [isLoginFlow, setIsLoginFlow] = useState(false);
 
-  // Lazily ensure context exists; if createContext fails, render children without provider to avoid white screen
+  // Lazily ensure context exists; if React.createContext fails, render children without provider to avoid white screen
   const ContextOrNull = useMemo(() => {
     if (AuthContextRef) return AuthContextRef;
     try {
-      AuthContextRef = createContext<AuthContextType | null>(null);
+      AuthContextRef = React.createContext<AuthContextType | null>(null);
       return AuthContextRef;
     } catch (e) {
-      console.error('[AuthProvider] createContext failed; running without provider for landing page:', e);
+      console.error('[AuthProvider] React.createContext failed; running without provider for landing page:', e);
       return null;
     }
   }, []);
