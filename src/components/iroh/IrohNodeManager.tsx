@@ -14,8 +14,14 @@
 
 import { CheckCircle, Copy, Info, Loader2, RefreshCw, Server, Trash2, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
-import { irohVerificationService } from '../../services/irohVerificationService';
 import { showToast } from '../../services/toastService';
+
+// Dynamic import for irohVerificationService to enable code splitting
+// This module is also dynamically imported by nip05-verification.ts for lazy loading when Iroh is disabled
+const getIrohVerificationService = async () => {
+  const { irohVerificationService } = await import('../../services/irohVerificationService');
+  return irohVerificationService;
+};
 
 interface IrohNodeManagerProps {
   nodeId?: string;
@@ -92,7 +98,8 @@ export const IrohNodeManager: React.FC<IrohNodeManagerProps> = ({
     setNodeStatus(prev => ({ ...prev, testing: true, error: null }));
 
     try {
-      const result = await irohVerificationService.verifyNode({ node_id: nodeId });
+      const irohService = await getIrohVerificationService();
+      const result = await irohService.verifyNode({ node_id: nodeId });
 
       setNodeStatus({
         isReachable: result.is_reachable,
@@ -259,8 +266,8 @@ export const IrohNodeManager: React.FC<IrohNodeManagerProps> = ({
           {nodeStatus.isReachable !== null && !nodeStatus.testing && (
             <div
               className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm ${nodeStatus.isReachable
-                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                : 'bg-red-500/20 text-red-300 border border-red-500/30'
                 }`}
               role="status"
               aria-live="polite"
@@ -426,8 +433,8 @@ export const IrohNodeManager: React.FC<IrohNodeManagerProps> = ({
           {nodeStatus.isReachable !== null && !nodeStatus.testing && (
             <div
               className={`flex items-start space-x-2 px-3 py-2 rounded-lg text-sm ${nodeStatus.isReachable
-                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                : 'bg-red-500/20 text-red-300 border border-red-500/30'
                 }`}
               role="status"
               aria-live="polite"

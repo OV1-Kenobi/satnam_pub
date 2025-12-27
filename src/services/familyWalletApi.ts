@@ -13,12 +13,12 @@
 
 import type { FederationRole } from "../types/permissions";
 
-// Environment variable access for browser compatibility
-function getEnvVar(key: string): string | undefined {
-  return process.env[key];
+// Lazy getter to prevent TDZ errors in production builds
+// Environment variables are accessed at call time, not module load time
+function getApiBase(): string {
+  const env = (process.env || {}) as Record<string, string | undefined>;
+  return env["VITE_API_BASE_URL"] || "/api";
 }
-
-const API_BASE = getEnvVar("VITE_API_BASE_URL") || "/api";
 
 // Types for family wallet data
 export interface FamilyWalletData {
@@ -154,7 +154,10 @@ async function makeAuthenticatedRequest(
   // Retry logic for transient failures
   for (let attempt = 0; attempt <= retryAttempts; attempt++) {
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, requestOptions);
+      const response = await fetch(
+        `${getApiBase()}${endpoint}`,
+        requestOptions
+      );
 
       // Check for specific error conditions that shouldn't be retried
       if (

@@ -1,4 +1,5 @@
 import { config } from "../../config/config.js";
+import { clientMessageService } from "./messaging/client-message-service";
 
 export interface GiftwrappedMessageConfig {
   content: string;
@@ -67,9 +68,8 @@ export class GiftwrappedCommunicationService {
       );
 
       // Use the ClientMessageService which handles hybrid signing
-      const { clientMessageService } = await import(
-        "./messaging/client-message-service"
-      );
+      // Static import used since GiftwrappedMessaging.tsx and usePrivacyFirstMessaging.ts
+      // already statically import this module, making dynamic import pointless for code splitting
 
       const messageData = {
         recipient: config.recipient,

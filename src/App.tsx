@@ -18,13 +18,16 @@ import EducationPlatform from "./components/EducationPlatform";
 import EmergencyRecoveryPage from './components/EmergencyRecoveryPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import FamilyCoordination from "./components/FamilyCoordination";
-import FamilyDashboard from "./components/FamilyDashboard";
 import FamilyFoundryWizard from "./components/FamilyFoundryWizard";
 import FamilyPaymentAutomationModal from "./components/FamilyPaymentAutomationModal";
 import IdentityForge from "./components/IdentityForge";
-import IndividualFinancesDashboard from "./components/IndividualFinancesDashboard";
 import IndividualPaymentAutomationModal from "./components/IndividualPaymentAutomationModal";
 import SignInModal from "./components/SignInModal";
+
+// Phase 1 Optimization: Lazy-load dashboard components to reduce critical path bundle size
+// These components were contributing ~200-300KB to the admin-components chunk on initial load
+const FamilyDashboard = lazy(() => import("./components/FamilyDashboard"));
+const IndividualFinancesDashboard = lazy(() => import("./components/IndividualFinancesDashboard"));
 
 import LNBitsIntegrationPanel from "./components/LNBitsIntegrationPanel";
 import LNURLDisplay from "./components/LNURLDisplay";
@@ -465,7 +468,14 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <FamilyDashboard onBack={() => setCurrentView("landing")} />
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full"></div>
+            <span className="ml-3 text-white">Loading Family Dashboard...</span>
+          </div>
+        }>
+          <FamilyDashboard onBack={() => setCurrentView("landing")} />
+        </Suspense>
       </PageWrapper>
     );
   }
@@ -482,19 +492,26 @@ function App() {
         showCommunications={showCommunications}
         setShowCommunications={setShowCommunications}
       >
-        <IndividualFinancesDashboard
-          memberId="current-user"
-          memberData={{
-            id: "current-user",
-            username: "Current User",
-            auth_hash: "mock-auth-hash",
-            lightningAddress: "user@my.satnam.pub",
-            role: "adult",
-            is_discoverable: false,
-            created_at: Date.now()
-          }}
-          onBack={() => setCurrentView("landing")}
-        />
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full"></div>
+            <span className="ml-3 text-white">Loading Individual Finances...</span>
+          </div>
+        }>
+          <IndividualFinancesDashboard
+            memberId="current-user"
+            memberData={{
+              id: "current-user",
+              username: "Current User",
+              auth_hash: "mock-auth-hash",
+              lightningAddress: "user@my.satnam.pub",
+              role: "adult",
+              is_discoverable: false,
+              created_at: Date.now()
+            }}
+            onBack={() => setCurrentView("landing")}
+          />
+        </Suspense>
       </PageWrapper>
     );
   }

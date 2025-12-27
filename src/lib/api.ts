@@ -6,8 +6,10 @@
 import { getEnvVar } from "../config/env.client";
 import { authManager } from "../utils/authManager.js";
 
-// API Configuration
-const API_BASE_URL = getEnvVar("VITE_API_BASE_URL") || "/api";
+// API Configuration - Lazy getter to prevent TDZ errors in production builds
+function getApiBaseUrl(): string {
+  return getEnvVar("VITE_API_BASE_URL") || "/api";
+}
 
 /**
  * API Response type
@@ -35,8 +37,8 @@ interface UnauthSession {
 export class ApiClient {
   private baseURL: string;
 
-  constructor(baseURL: string = API_BASE_URL) {
-    this.baseURL = baseURL;
+  constructor(baseURL?: string) {
+    this.baseURL = baseURL ?? getApiBaseUrl();
   }
 
   protected async request<T>(

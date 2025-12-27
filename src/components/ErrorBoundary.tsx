@@ -47,11 +47,49 @@ function getErrorBoundaryClass() {
       }
 
       static getDerivedStateFromError(error: Error): State {
+        // This method must be pure with no side effects (React requirement)
+        // TDZ logging is handled in componentDidCatch
         return { hasError: true, error };
       }
 
+      /**
+       * Detect if an error is a Temporal Dead Zone (TDZ) error
+       * These occur when variables are accessed before their declaration in production builds
+       */
+      static detectTDZError(error: Error): boolean {
+        const message = error.message;
+        const stack = error.stack || '';
+
+        // Actual TDZ error pattern - very specific to avoid false positives
+        // True TDZ errors have signature: "Cannot access 'variableName' before initialization"
+        const tdzPatterns = [
+          /cannot access ['"]?\w+['"]? before initialization/i,
+        ];
+
+        // Check if error matches TDZ patterns
+        const isTDZ = tdzPatterns.some(pattern =>
+          pattern.test(message) || pattern.test(stack)
+        );
+
+        // Additional check: if error occurs in chunk files during initialization
+        const isChunkError = stack.includes('chunk') ||
+          stack.includes('vendor') ||
+          stack.includes('.js:') && !stack.includes('node_modules');
+
+        return isTDZ && isChunkError;
+      }
+
       componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error('ErrorBoundary caught an error:', error, errorInfo);
+        const isTDZError = ErrorBoundaryImpl.detectTDZError(error);
+
+        // Enhanced error logging with TDZ detection
+        console.error('ErrorBoundary caught an error:', {
+          error,
+          errorInfo,
+          isTDZError,
+          chunkInfo: this.extractChunkInfo(errorInfo),
+          timestamp: new Date().toISOString()
+        });
 
         // Call the onError callback if provided
         if (this.props.onError) {
@@ -60,6 +98,18 @@ function getErrorBoundaryClass() {
 
         // Update state with error info
         this.setState({ error, errorInfo });
+      }
+
+      /**
+       * Extract chunk information from error stack for debugging
+       */
+      extractChunkInfo(errorInfo: ErrorInfo): object {
+        const stack = errorInfo?.componentStack || '';
+        const chunkMatches = stack.match(/([a-zA-Z0-9-]+)-[A-Za-z0-9]+\.js/g);
+        return {
+          chunks: chunkMatches || [],
+          componentStack: stack.split('\n').slice(0, 5).join('\n')
+        };
       }
 
       handleRetry = () => {
@@ -95,28 +145,55 @@ function getErrorBoundaryClass() {
                   </div>
                 </div>
 
-                {process.env.NODE_ENV === 'development' && this.state.error && (
-                  <div className="mb-4 p-3 bg-gray-700/50 rounded border border-gray-600">
-                    <details className="text-sm">
-                      <summary className="text-gray-300 cursor-pointer mb-2">
-                        Error Details (Development)
-                      </summary>
-                      <div className="text-red-400 font-mono text-xs">
-                        <div className="mb-2">
-                          <strong>Error:</strong> {this.state.error.message}
-                        </div>
-                        {this.state.errorInfo && (
-                          <div>
-                            <strong>Stack:</strong>
-                            <pre className="mt-1 overflow-auto">
-                              {this.state.errorInfo.componentStack}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    </details>
+                {/* TDZ Error indicator for production debugging */}
+                {this.state.error && ErrorBoundaryImpl.detectTDZError(this.state.error) && (
+                  <div className="mb-4 p-3 bg-yellow-900/30 rounded border border-yellow-600/50">
+                    <div className="text-yellow-400 text-sm font-medium mb-1">
+                      ⚠️ Module Initialization Error Detected
+                    </div>
+                    <p className="text-yellow-300/70 text-xs">
+                      This may be caused by a chunk loading order issue.
+                      Try refreshing the page or clearing your browser cache.
+                    </p>
                   </div>
                 )}
+
+                {/* Debug mode: show details when ?debug=true in production */}
+                {(process.env.NODE_ENV === 'development' ||
+                  (typeof window !== 'undefined' && window.location.search.includes('debug=true'))) &&
+                  this.state.error && (
+                    <div className="mb-4 p-3 bg-gray-700/50 rounded border border-gray-600">
+                      <details className="text-sm" open={process.env.NODE_ENV === 'development'}>
+                        <summary className="text-gray-300 cursor-pointer mb-2">
+                          Error Details {process.env.NODE_ENV === 'production' ? '(Debug Mode)' : '(Development)'}
+                        </summary>
+                        <div className="text-red-400 font-mono text-xs">
+                          <div className="mb-2">
+                            <strong>Error:</strong> {this.state.error.message}
+                          </div>
+                          <div className="mb-2">
+                            <strong>Type:</strong> {ErrorBoundaryImpl.detectTDZError(this.state.error) ? 'TDZ/Module Init' : 'Runtime'}
+                          </div>
+                          {this.state.errorInfo && (
+                            <div>
+                              <strong>Component Stack:</strong>
+                              <pre className="mt-1 overflow-auto max-h-40">
+                                {this.state.errorInfo.componentStack}
+                              </pre>
+                            </div>
+                          )}
+                          {this.state.error.stack && (
+                            <div className="mt-2">
+                              <strong>Error Stack:</strong>
+                              <pre className="mt-1 overflow-auto max-h-40 text-gray-400">
+                                {this.state.error.stack.split('\n').slice(0, 10).join('\n')}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      </details>
+                    </div>
+                  )}
 
                 <div className="space-y-3">
                   <button

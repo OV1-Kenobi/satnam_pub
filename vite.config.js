@@ -278,8 +278,20 @@ export default defineConfig({
           // Source code chunking - be more specific to avoid mixed imports
           // Priority order: most specific first to avoid conflicts
 
+          // Vault configuration - must be checked BEFORE general config to go to security chunk
+          // This breaks the security → vault-config → security cycle
+          // Note: vault-config.ts exists in both src/lib/ and lib/ (root)
+          if (id.includes('lib/vault-config')) {
+            return 'security';
+          }
+
+          // Pubky enhanced client - merge with admin-components (which now includes auth)
+          if (id.includes('lib/pubky-enhanced-client') || id.includes('lib/pubky/')) {
+            return 'admin-components';
+          }
+
           // Configuration - keep separate to avoid circular dependencies
-          // This must be loaded early and independently
+          // This must be loaded early and independently (excludes vault which goes to security)
           if (id.includes('src/config/')) {
             return 'config';
           }
@@ -304,40 +316,73 @@ export default defineConfig({
             return 'supabase-vendor';
           }
 
-          // Authentication - keep together (including recent auth-adapter changes)
-          if (id.includes('src/lib/auth/') ||
+          // ========================================================================
+          // PHASE 2 OPTIMIZATION: Split admin-components into focused chunks
+          // Previous 680KB admin-components chunk is now split into:
+          // - auth-core: Essential auth modules for critical path (~100KB target)
+          // - admin-components: Admin dashboard components (lazy-loaded)
+          // - dashboard-features: User dashboard components (lazy-loaded)
+          // - services-utilities: Services, hooks, and utilities
+          // ========================================================================
+
+          // AUTH-CORE: Essential authentication modules (critical path)
+          // These are needed immediately for session validation and must stay lean
+          if (id.includes('src/lib/auth/unified-auth-system') ||
+              id.includes('src/lib/auth/client-session-vault') ||
+              id.includes('src/lib/auth/secure-token-manager') ||
+              id.includes('src/lib/auth/passphrase-provider') ||
+              id.includes('src/lib/auth/fetch-with-auth') ||
+              id.includes('src/lib/auth/user-identities-auth') ||
+              id.includes('src/lib/auth/token-binding') ||
+              id.includes('src/lib/auth/nfc-vault-policy') ||
+              id.includes('src/lib/auth/nfc-auth-bridge') ||
+              id.includes('src/lib/auth/nsec-session-bridge') ||
+              id.includes('src/lib/auth/recovery-session-bridge') ||
+              id.includes('src/components/auth/AuthProvider') ||
+              id.includes('src/components/auth/PassphraseVaultModal') ||
               id.includes('src/hooks/useAuth') ||
               id.includes('src/hooks/usePrivacyFirstAuth') ||
               id.includes('src/hooks/useFamilyFederationAuth') ||
               id.includes('src/utils/authManager') ||
               id.includes('src/utils/secureSession')) {
-            return 'auth';
+            return 'auth-core';
           }
 
-          // Nostr functionality (browser-only) - merge with crypto-vendor since they're related
+          // Other auth modules that aren't critical path (can be lazy-loaded)
+          if (id.includes('src/lib/auth/')) {
+            return 'auth-extended';
+          }
+
+          // Nostr services - split into services-utilities (not critical path)
           // IMPORTANT: Only include code under src/ (client). Exclude server files under lib/ and netlify/functions.
           if (
             id.includes('src/lib/nostr-browser') ||
             id.includes('src/lib/nip05-verification') ||
             (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))
           ) {
-            return 'crypto-vendor';
+            return 'services-utilities';
           }
 
-          // Lightning and payments
+          // Lightning and payments - move to services-utilities (loaded on demand)
           if (id.includes('src/lib/enhanced-family-coordinator') ||
               id.includes('src/lib/family-liquidity-manager') ||
               id.includes('src/lib/liquidity-intelligence') ||
               id.includes('src/lib/internal-lightning-bridge') ||
               id.includes('src/lib/payment-automation')) {
-            return 'lightning';
+            return 'services-utilities';
           }
 
           // Privacy and security utilities
+          // Note: vault-config is handled earlier with higher priority
           if (id.includes('src/lib/privacy/') ||
               id.includes('src/lib/security/') ||
               id.includes('src/lib/crypto/')) {
             return 'security';
+          }
+
+          // Steward/FROST NFC MFA - merge with components to break components ↔ frost-nfc-mfa cycle
+          if (id.includes('src/lib/steward/')) {
+            return 'components';
           }
 
           // PHASE 2: Components - split by feature and directory
@@ -347,7 +392,8 @@ export default defineConfig({
               return 'landing-pages';
             }
 
-            // Admin components (admin dashboard, analytics, etc.)
+            // ADMIN-COMPONENTS: Admin dashboard components (lazy-loaded, not critical path)
+            // These are accessed via /admin-dashboard and /admin-account-control routes
             if (id.includes('src/components/admin/')) {
               return 'admin-components';
             }
@@ -367,13 +413,15 @@ export default defineConfig({
               return 'profile-components';
             }
 
-            // Dashboard components (all *Dashboard.tsx files)
-            if (id.includes('Dashboard.tsx') ||
+            // DASHBOARD-FEATURES: User dashboard components (lazy-loaded via React.lazy)
+            // FamilyDashboard and IndividualFinancesDashboard are now lazy-loaded in App.tsx
+            if (id.includes('FamilyDashboard') ||
+                id.includes('IndividualFinancesDashboard') ||
                 id.includes('FamilyFinancials') ||
                 id.includes('IndividualFinances') ||
                 id.includes('EnhancedFamily') ||
                 id.includes('EnhancedLiquidity')) {
-              return 'dashboard-components';
+              return 'dashboard-features';
             }
 
             // Modal components (remaining modals not in ui-modals)
@@ -407,7 +455,8 @@ export default defineConfig({
               return 'wallet-components';
             }
 
-            // Platform and ecosystem components - large feature area
+            // Platform and ecosystem components - merged with main components to break cycle
+            // components ↔ platform-components have bidirectional dependencies
             if (id.includes('NostrEcosystem') ||
                 id.includes('DynasticSovereignty') ||
                 id.includes('EducationPlatform') ||
@@ -423,10 +472,11 @@ export default defineConfig({
                 id.includes('PhoenixDFamilyManager') ||
                 id.includes('GuardianOnboardingGuide') ||
                 id.includes('NameTagCredentialingQuest')) {
-              return 'platform-components';
+              return 'components';
             }
 
-            // Utility and shared UI components
+            // Utility and shared UI components - keep in services-utilities
+            // These are loaded on demand when specific features are accessed
             if (id.includes('ErrorBoundary') ||
                 id.includes('ContactCard') ||
                 id.includes('ContactsList') ||
@@ -463,22 +513,31 @@ export default defineConfig({
                 id.includes('ContactsManagerModal') ||
                 id.includes('NotificationsTab') ||
                 id.includes('OTPVerificationPanel')) {
-              return 'ui-utils-components';
+              return 'services-utilities';
             }
 
             // Everything else stays in components
             return 'components';
           }
 
-          // Services - keep together to avoid initialization order issues
-          // This includes verification services, toast service, etc.
+          // SERVICES-UTILITIES: Services layer (loaded on demand)
+          // Services provide API calls and are not needed on critical path
           if (id.includes('src/services/')) {
-            return 'services';
+            return 'services-utilities';
           }
 
-          // Hooks
-          if (id.includes('src/hooks/')) {
-            return 'hooks';
+          // Crypto-factory - keep in services-utilities (loaded on demand via CryptoPreloader)
+          // Note: crypto-factory is in utils/, not lib/
+          if (id.includes('utils/crypto-factory')) {
+            return 'services-utilities';
+          }
+
+          // Hooks - split between auth-core (critical) and services-utilities (non-critical)
+          // Auth-related hooks are handled above in auth-core section
+          // Remaining hooks go to services-utilities
+          if (id.includes('src/hooks/') ||
+              id.includes('src/lib/contexts/')) {
+            return 'services-utilities';
           }
 
           // Utils

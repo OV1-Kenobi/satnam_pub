@@ -8,7 +8,11 @@
 import { getEnvVar } from "../../config/env.client";
 import { ProfileVisibility, UserProfile } from "../services/profile-service";
 
-const API_BASE = getEnvVar("VITE_API_BASE_URL") || "/.netlify/functions";
+// Lazy initialization to prevent TDZ errors in production builds
+// Environment variables are accessed at call time, not module load time
+function getApiBase(): string {
+  return getEnvVar("VITE_API_BASE_URL") || "/.netlify/functions";
+}
 
 export interface ProfileAPIResponse<T> {
   success: boolean;
@@ -26,7 +30,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<UserProfile>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=getProfile&username=${encodeURIComponent(
+        `${getApiBase()}/unified-profiles?action=getProfile&username=${encodeURIComponent(
           username
         )}`
       );
@@ -57,7 +61,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<UserProfile>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=getProfile&npub=${encodeURIComponent(
+        `${getApiBase()}/unified-profiles?action=getProfile&npub=${encodeURIComponent(
           npub
         )}`
       );
@@ -86,7 +90,7 @@ export class ProfileAPI {
     token: string
   ): Promise<ProfileAPIResponse<UserProfile>> {
     try {
-      const response = await fetch(`${API_BASE}/profile/me`, {
+      const response = await fetch(`${getApiBase()}/profile/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -120,7 +124,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<{ success: boolean }>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=updateVisibility`,
+        `${getApiBase()}/unified-profiles?action=updateVisibility`,
         {
           method: "PATCH",
           headers: {
@@ -163,7 +167,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<{ success: boolean }>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=updateVisibility`,
+        `${getApiBase()}/unified-profiles?action=updateVisibility`,
         {
           method: "PATCH",
           headers: {
@@ -217,7 +221,7 @@ export class ProfileAPI {
   > {
     try {
       const url = new URL(
-        `${API_BASE}/unified-profiles`,
+        `${getApiBase()}/unified-profiles`,
         window.location.origin
       );
       url.searchParams.append("action", "getAnalytics");
@@ -260,7 +264,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<{ success: boolean }>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=trackView`,
+        `${getApiBase()}/unified-profiles?action=trackView`,
         {
           method: "POST",
           headers: {
@@ -301,7 +305,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<UserProfile[]>> {
     try {
       const url = new URL(
-        `${API_BASE}/unified-profiles`,
+        `${getApiBase()}/unified-profiles`,
         window.location.origin
       );
       url.searchParams.append("action", "searchProfiles");
@@ -340,7 +344,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<{ profile_theme: any }>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=updateTheme`,
+        `${getApiBase()}/unified-profiles?action=updateTheme`,
         {
           method: "PATCH",
           headers: {
@@ -382,7 +386,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<{ profile_banner_url: string }>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=updateBanner`,
+        `${getApiBase()}/unified-profiles?action=updateBanner`,
         {
           method: "PATCH",
           headers: {
@@ -430,7 +434,7 @@ export class ProfileAPI {
   ): Promise<ProfileAPIResponse<{ social_links: Record<string, any> }>> {
     try {
       const response = await fetch(
-        `${API_BASE}/unified-profiles?action=updateSocialLinks`,
+        `${getApiBase()}/unified-profiles?action=updateSocialLinks`,
         {
           method: "PATCH",
           headers: {
