@@ -6,7 +6,7 @@
  * Allows stewards without physical cards to participate (backward compatible)
  */
 
-import { frostNfcMfa, NfcMfaSignatureEnvelope } from "./frost-nfc-mfa";
+import { getFrostNfcMfa, type NfcMfaSignatureEnvelope } from "./frost-nfc-mfa";
 
 // Lazy import to prevent client creation on page load
 let supabaseClient: any = null;
@@ -111,6 +111,7 @@ export async function verifyNfcMfaSignatures(
     for (const [participantId, nfcSignature] of Object.entries(nfcSignatures)) {
       try {
         // Verify signature using Web Crypto API
+        const frostNfcMfa = getFrostNfcMfa();
         const verifyResult = await frostNfcMfa.verifyNfcMfaSignature(
           operationHash,
           nfcSignature

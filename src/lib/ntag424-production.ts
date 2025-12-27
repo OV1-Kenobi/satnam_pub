@@ -1397,8 +1397,80 @@ export class NTAG424ProductionManager {
   }
 }
 
-// Export singleton instance
-export const ntag424Manager = new NTAG424ProductionManager();
+// ============================================================================
+// LAZY SINGLETON EXPORTS
+// ============================================================================
+
+/**
+ * Options for configuring the NTAG424ProductionManager singleton instance.
+ *
+ * Tests can inject mocked dependencies and/or force a fresh instance by
+ * passing `reset: true`. Production code should call `getNTAG424Manager()`
+ * with no arguments to use the shared singleton.
+ */
+export interface NTAG424ManagerOptions {
+  supabaseClient?: unknown;
+  lightningClient?: LightningClient;
+  phoenixdClient?: PhoenixdClient;
+  /** Reset and recreate the singleton (intended for tests only). */
+  reset?: boolean;
+}
+
+// Internal singleton instance
+let ntag424ManagerInstance: NTAG424ProductionManager | null = null;
+
+/**
+ * Get the lazy singleton instance of NTAG424ProductionManager.
+ *
+ * The instance is created on first use instead of at module import time,
+ * preventing TDZ-style initialization issues when this module participates
+ * in chunk-level circular dependencies.
+ */
+export function getNTAG424Manager(
+  options?: NTAG424ManagerOptions
+): NTAG424ProductionManager {
+  if (options?.reset) {
+    ntag424ManagerInstance = null;
+  }
+
+  if (!ntag424ManagerInstance) {
+    ntag424ManagerInstance = new NTAG424ProductionManager(
+      options?.supabaseClient,
+      options?.lightningClient,
+      options?.phoenixdClient
+    );
+  }
+
+  return ntag424ManagerInstance;
+}
+
+/**
+ * Backward-compatible singleton export using a lazy Proxy wrapper.
+ *
+ * This preserves the original `ntag424Manager.method()` calling style while
+ * deferring actual NTAG424ProductionManager construction until the first
+ * property access. Methods are bound to the underlying instance to ensure
+ * the correct `this` context.
+ */
+export const ntag424Manager = new Proxy<NTAG424ProductionManager>(
+  {} as NTAG424ProductionManager,
+  {
+    get(_target, prop, _receiver) {
+      const instance = getNTAG424Manager();
+      const value = (instance as any)[prop as keyof NTAG424ProductionManager];
+      return typeof value === "function" ? value.bind(instance) : value;
+    },
+    set(_target, prop, value) {
+      const instance = getNTAG424Manager();
+      (instance as any)[prop as keyof NTAG424ProductionManager] = value;
+      return true;
+    },
+    has(_target, prop) {
+      const instance = getNTAG424Manager();
+      return prop in instance;
+    },
+  }
+);
 
 /**
  * Test function to verify NTAG424 production module functionality

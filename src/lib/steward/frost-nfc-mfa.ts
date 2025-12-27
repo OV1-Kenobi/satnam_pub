@@ -263,5 +263,22 @@ export class FrostNfcMfa {
   }
 }
 
-// Export singleton instance
-export const frostNfcMfa = new FrostNfcMfa();
+// ============================================================================
+// LAZY SINGLETON EXPORT
+// ============================================================================
+
+let frostNfcMfaInstance: FrostNfcMfa | null = null;
+
+/**
+ * Get the lazy singleton instance of FrostNfcMfa.
+ *
+ * The instance is created on first use instead of at module import time to
+ * avoid initialization-order issues when this module participates in circular
+ * dependencies with NFC auth and steward approval flows.
+ */
+export function getFrostNfcMfa(): FrostNfcMfa {
+  if (!frostNfcMfaInstance) {
+    frostNfcMfaInstance = new FrostNfcMfa();
+  }
+  return frostNfcMfaInstance;
+}

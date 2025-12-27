@@ -189,7 +189,7 @@ async function decryptAesGcmFromHex(
   ct.set(body, 0);
   ct.set(tag, body.length);
   const ptBuf = await (globalThis.crypto as Crypto).subtle.decrypt(
-    { name: "AES-GCM", iv, tagLength: 128 },
+    { name: "AES-GCM", iv: iv as unknown as BufferSource, tagLength: 128 },
     key,
     ct as unknown as BufferSource
   );

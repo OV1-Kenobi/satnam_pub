@@ -8,18 +8,17 @@
  * - Implements high-value operation detection in approval flow
  */
 
+import { getFrostNfcMfa } from "./frost-nfc-mfa";
 import {
+  getFamilyNfcMfaPolicy,
+  shouldEnforceNfcMfa,
+} from "./frost-nfc-mfa-policy";
+import {
+  cleanupSessionAnonymization,
+  initializeSessionAnonymization,
   logNfcMfaEvent,
   truncateHash,
-  initializeSessionAnonymization,
-  cleanupSessionAnonymization,
 } from "./nfc-mfa-privacy-logger";
-import {
-  shouldEnforceNfcMfa,
-  getFamilyNfcMfaPolicy,
-  type FamilyNfcMfaPolicy,
-} from "./frost-nfc-mfa-policy";
-import { frostNfcMfa } from "./frost-nfc-mfa";
 
 /**
  * Extended approval request payload with NFC MFA fields
@@ -117,6 +116,7 @@ export async function verifyApprovalResponseNfcSignature(
     }
 
     // Verify NFC signature against operation hash using FrostNfcMfa service
+    const frostNfcMfa = getFrostNfcMfa();
     const verifyResult = await frostNfcMfa.verifyNfcMfaSignature(
       operationHash,
       {

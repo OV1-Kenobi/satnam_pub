@@ -3,12 +3,12 @@
  * Tests for FrostSessionManager NFC MFA integration
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FrostSessionManager } from "../lib/frost/frost-session-manager";
 import {
   getNfcMfaPolicy,
-  verifyNfcMfaSignatures,
   shouldBlockOnNfcMfaFailure,
+  verifyNfcMfaSignatures,
 } from "../src/lib/steward/frost-nfc-mfa-integration";
 
 // Mock Supabase
@@ -19,12 +19,14 @@ vi.mock("../src/lib/supabase", () => ({
   },
 }));
 
-// Mock FrostNfcMfa
+// Mock FrostNfcMfa lazy singleton
+const mockFrostNfcMfa = {
+  verifyNfcMfaSignature: vi.fn(),
+  storeNfcMfaSignature: vi.fn(),
+};
+
 vi.mock("../src/lib/steward/frost-nfc-mfa", () => ({
-  frostNfcMfa: {
-    verifyNfcMfaSignature: vi.fn(),
-    storeNfcMfaSignature: vi.fn(),
-  },
+  getFrostNfcMfa: () => mockFrostNfcMfa,
 }));
 
 describe("Phase 2: FROST Session Integration with NFC MFA", () => {
@@ -117,14 +119,13 @@ describe("Phase 2: FROST Session Integration with NFC MFA", () => {
 
   describe("verifyNfcMfaSignatures()", () => {
     it("should verify NFC MFA signatures successfully", async () => {
-      const { frostNfcMfa } = await import("../src/lib/steward/frost-nfc-mfa");
       const { supabase } = await import("../src/lib/supabase");
 
       const sessionId = "frost_session_123";
       const operationHash = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";
       const nfcSignatures = {
         steward_1: {
-          curve: "P-256",
+          curve: "P-256" as const,
           publicKey: "04abc123...",
           signature: "def456...",
           timestamp: Date.now(),
@@ -133,11 +134,11 @@ describe("Phase 2: FROST Session Integration with NFC MFA", () => {
       };
       const policy = { policy: "required" as const, requiresNfcMfa: true };
 
-      (frostNfcMfa.verifyNfcMfaSignature as any).mockResolvedValue({
+      (mockFrostNfcMfa.verifyNfcMfaSignature as any).mockResolvedValue({
         valid: true,
       });
 
-      (frostNfcMfa.storeNfcMfaSignature as any).mockResolvedValue({
+      (mockFrostNfcMfa.storeNfcMfaSignature as any).mockResolvedValue({
         success: true,
       });
 
@@ -163,14 +164,13 @@ describe("Phase 2: FROST Session Integration with NFC MFA", () => {
     });
 
     it("should handle verification failures", async () => {
-      const { frostNfcMfa } = await import("../src/lib/steward/frost-nfc-mfa");
       const { supabase } = await import("../src/lib/supabase");
 
       const sessionId = "frost_session_123";
       const operationHash = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";
       const nfcSignatures = {
         steward_1: {
-          curve: "P-256",
+          curve: "P-256" as const,
           publicKey: "04abc123...",
           signature: "def456...",
           timestamp: Date.now() - 400000, // Expired
@@ -179,7 +179,7 @@ describe("Phase 2: FROST Session Integration with NFC MFA", () => {
       };
       const policy = { policy: "required" as const, requiresNfcMfa: true };
 
-      (frostNfcMfa.verifyNfcMfaSignature as any).mockResolvedValue({
+      (mockFrostNfcMfa.verifyNfcMfaSignature as any).mockResolvedValue({
         valid: false,
         error: "Signature expired",
       });
@@ -282,7 +282,7 @@ describe("Phase 2: FROST Session Integration with NFC MFA", () => {
       const operationHash = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";
       const nfcSignatures = {
         steward_1: {
-          curve: "P-256",
+          curve: "P-256" as const,
           publicKey: "04abc123...",
           signature: "def456...",
           timestamp: Date.now(),
@@ -294,8 +294,10 @@ describe("Phase 2: FROST Session Integration with NFC MFA", () => {
       vi.spyOn(FrostSessionManager, "getSession").mockResolvedValue({
         success: true,
         data: {
+          id: sessionId,
           session_id: sessionId,
           family_id: "family_123",
+          message_hash: operationHash,
           participants: ["steward_1"],
           threshold: 1,
           status: "completed",

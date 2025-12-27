@@ -7,13 +7,13 @@
 
 import CryptoJS from "crypto-js";
 import { getEnvVar } from "../config/env.client";
+import fetchWithAuth from "./auth/fetch-with-auth";
 import {
-  ntag424Manager,
-  type NTAG424SpendOperation,
+  getNTAG424Manager,
   type NTAG424SignOperation,
+  type NTAG424SpendOperation,
 } from "./ntag424-production";
 import { secureNsecManager } from "./secure-nsec-manager";
-import fetchWithAuth from "./auth/fetch-with-auth";
 import { stewardApprovalClient } from "./steward/approval-client";
 
 // NFC Web API types
@@ -713,9 +713,10 @@ export class NFCAuthService {
           signature: "",
         };
 
-        const operationHash = await ntag424Manager.getOperationHashForClient(
-          unsignedOperation
-        );
+        const operationHash =
+          await getNTAG424Manager().getOperationHashForClient(
+            unsignedOperation
+          );
 
         // Best-effort publish of steward approval requests; failures are logged but do not leak sensitive data
         try {
@@ -766,7 +767,7 @@ export class NFCAuthService {
       const operation = await this.createSignedSpendOperation(request, auth);
 
       // Execute the spend operation via NTAG424 production manager
-      const success = await ntag424Manager.executeTapToSpend(operation);
+      const success = await getNTAG424Manager().executeTapToSpend(operation);
 
       // Stop listening
       await this.stopListening();
@@ -853,9 +854,10 @@ export class NFCAuthService {
           signature: "",
         };
 
-        const operationHash = await ntag424Manager.getOperationHashForClient(
-          unsignedOperation
-        );
+        const operationHash =
+          await getNTAG424Manager().getOperationHashForClient(
+            unsignedOperation
+          );
 
         try {
           const expiresAt =
@@ -905,7 +907,7 @@ export class NFCAuthService {
       const operation = await this.createSignedSignOperation(request, auth);
 
       // Execute the sign operation via NTAG424 production manager
-      const signature = await ntag424Manager.executeTapToSign(operation);
+      const signature = await getNTAG424Manager().executeTapToSign(operation);
 
       // Stop listening
       await this.stopListening();
@@ -970,9 +972,8 @@ export class NFCAuthService {
     };
 
     // Compute deterministic operation hash via NTAG424ProductionManager
-    const operationHashHex = await ntag424Manager.getOperationHashForClient(
-      operation
-    );
+    const operationHashHex =
+      await getNTAG424Manager().getOperationHashForClient(operation);
 
     // Sign with per-card P-256 key for hardware-backed spend operations
     const { publicKeyHex, signatureHex } = await this.signOperationHashWithP256(
@@ -1016,9 +1017,8 @@ export class NFCAuthService {
       signature: "",
     };
 
-    const operationHashHex = await ntag424Manager.getOperationHashForClient(
-      operation
-    );
+    const operationHashHex =
+      await getNTAG424Manager().getOperationHashForClient(operation);
 
     let curve: "P-256" | "secp256k1";
     let publicKeyHex: string;

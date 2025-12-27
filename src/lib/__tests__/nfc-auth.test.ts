@@ -1,16 +1,20 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   NFCAuthService,
   type NTAG424DNAAuth,
-  type TapToSpendRequest,
   type TapToSignRequest,
+  type TapToSpendRequest,
 } from "../nfc-auth";
 import {
-  ntag424Manager,
-  type NTAG424SpendOperation,
+  getNTAG424Manager,
   type NTAG424SignOperation,
+  type NTAG424SpendOperation,
 } from "../ntag424-production";
 import { stewardApprovalClient } from "../steward/approval-client";
+
+// Use the lazy singleton in tests via the getter to avoid module-import
+// side effects while preserving the original variable name.
+const ntag424Manager = getNTAG424Manager();
 
 describe("NFCAuthService NTAG424 operation producers", () => {
   afterEach(() => {
