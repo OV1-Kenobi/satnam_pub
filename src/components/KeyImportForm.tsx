@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 
 export interface KeyImportResult {
   npub: string;
@@ -26,28 +25,30 @@ export const KeyImportForm: React.FC<KeyImportFormProps> = ({ onImported, onErro
 
     setLoading(true);
     try {
+      const { getCEPS } = await import("../lib/ceps");
+      const CEPS = await getCEPS();
       let npub = '';
       let pubHex = '';
       let isPrivate = false;
 
       if (/^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(raw)) {
         // nsec -> canonical derivation via CEPS (nostr-tools under the hood)
-        npub = CEPS.deriveNpubFromNsec(raw);
-        pubHex = CEPS.decodeNpub(npub);
+        npub = (CEPS as any).deriveNpubFromNsec(raw);
+        pubHex = (CEPS as any).decodeNpub(npub);
         isPrivate = true;
       } else if (/^npub1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(raw)) {
         // npub -> decode to hex
-        pubHex = CEPS.decodeNpub(raw);
+        pubHex = (CEPS as any).decodeNpub(raw);
         if (pubHex.length !== 64) throw new Error('Invalid public key length');
         npub = raw;
         isPrivate = false;
       } else if (/^[0-9a-fA-F]{64}$/.test(raw)) {
         // hex private key (discouraged, but support with warning)
         const privHex = raw.toLowerCase();
-        const pubFromHex = CEPS.getPublicKeyHex(privHex);
+        const pubFromHex = (CEPS as any).getPublicKeyHex(privHex);
         if (!pubFromHex || pubFromHex.length !== 64) throw new Error('Invalid public key derivation');
         pubHex = pubFromHex;
-        npub = CEPS.encodeNpub(pubHex);
+        npub = (CEPS as any).encodeNpub(pubHex);
         isPrivate = true;
       } else {
         return onError?.('Invalid key format. Use nsec1..., npub1..., or 64-hex');

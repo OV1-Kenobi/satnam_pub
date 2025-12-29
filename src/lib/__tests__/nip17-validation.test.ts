@@ -8,24 +8,38 @@
  * - Encryption/decryption round-trip correctness
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { Event } from "nostr-tools";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type SecureNsecSessionProvider } from "../../../lib/secure-nsec-session-registry";
 
-// Mock SecureNsecManager for active session
-vi.mock("../secure-nsec-manager", () => ({
-  secureNsecManager: {
-    getActiveSessionId: () => "test-session-id",
-    useTemporaryNsec: async (
-      _sessionId: string,
-      fn: (nsecHex: string) => Promise<any>
-    ) => {
-      // Use a test private key (32 bytes = 64 hex chars)
-      const testPrivHex =
-        "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-      return fn(testPrivHex);
-    },
+// Register a test secure session provider so CEPS can seal events without
+// pulling in the real browser secure-nsec manager.
+const TEST_SESSION_ID = "test-session-id";
+const TEST_PRIV_HEX =
+  "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+
+const testSessionProvider: SecureNsecSessionProvider = {
+  async createPostRegistrationSession() {
+    return TEST_SESSION_ID;
   },
-}));
+  getActiveSessionId() {
+    return TEST_SESSION_ID;
+  },
+  async useTemporaryNsec<T>(
+    sessionId: string,
+    fn: (nsecHex: string) => Promise<T>
+  ): Promise<T> {
+    if (sessionId !== TEST_SESSION_ID) {
+      throw new Error("Unexpected session id in test provider");
+    }
+    return fn(TEST_PRIV_HEX);
+  },
+  getSessionStatus() {
+    return { active: true, sessionId: TEST_SESSION_ID };
+  },
+  clearTemporarySession() {
+    // no-op for tests
+  },
+};
 
 // Mock nostr-tools to avoid complex crypto operations in tests
 vi.mock("nostr-tools", async () => {
@@ -60,11 +74,19 @@ const importCEPS = async () =>
   (await import("../../../lib/central_event_publishing_service"))
     .central_event_publishing_service;
 
+const setupTestSecureSession = async () => {
+  const { registerSecureNsecSessionProvider } = await import(
+    "../../../lib/secure-nsec-session-registry"
+  );
+  registerSecureNsecSessionProvider(testSessionProvider);
+};
+
 describe("NIP-17 Gift-Wrap Implementation Validation", () => {
   let CEPS: any;
 
   beforeEach(async () => {
     vi.resetModules();
+    await setupTestSecureSession();
     CEPS = await importCEPS();
   });
 

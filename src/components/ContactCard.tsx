@@ -14,11 +14,6 @@ import { showToast } from '../services/toastService';
 import { Contact } from '../types/contacts';
 import ContextualAvatar from './ContextualAvatar';
 
-import { CentralEventPublishingService } from '../../lib/central_event_publishing_service';
-
-
-
-
 interface ContactCardProps {
   contact: Contact;
   onEdit: (contact: Contact) => void;
@@ -131,7 +126,8 @@ export const ContactCard: React.FC<ContactCardProps> = ({
       showToast.success('Vouch submitted');
       // CEPS integration: robust, non-blocking messaging with hierarchy
       try {
-        const ceps: any = new CentralEventPublishingService();
+        const { getCEPS } = await import('../lib/ceps');
+        const ceps: any = await getCEPS();
         const recipientNpub: string = contact.npub;
         const recipientHex: string = (() => {
           try { return ceps.npubToHex(recipientNpub); } catch { return recipientNpub; }
@@ -469,12 +465,12 @@ export const ContactCard: React.FC<ContactCardProps> = ({
           {contact.cachedTrustScore !== undefined && (
             <span
               className={`px-2 py-1 rounded-full text-xs font-medium border ${contact.cachedTrustScore >= 80
-                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                  : contact.cachedTrustScore >= 60
-                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                    : contact.cachedTrustScore >= 40
-                      ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                      : 'bg-red-500/20 text-red-400 border-red-500/30'
+                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                : contact.cachedTrustScore >= 60
+                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                  : contact.cachedTrustScore >= 40
+                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                    : 'bg-red-500/20 text-red-400 border-red-500/30'
                 }`}
               title={`Trust Score: ${contact.cachedTrustScore.toFixed(1)}/100`}
             >

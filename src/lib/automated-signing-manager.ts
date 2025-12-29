@@ -5,12 +5,9 @@
  * for scheduled payments and messages with NIP-59 notification integration.
  */
 
-import {
-  central_event_publishing_service,
-  CentralEventPublishingService,
-} from "../../lib/central_event_publishing_service";
 // FIXED: Use static import for bundle optimization instead of dynamic import
 import { showToast } from "../services/toastService";
+import { getCEPS } from "./ceps";
 import { FeatureFlags } from "./feature-flags";
 
 // Define proper PaymentData interface for type safety
@@ -67,10 +64,13 @@ export interface PaymentExecutionResult {
 
 export class AutomatedSigningManager {
   private static instance: AutomatedSigningManager;
-  private centralEventPublisher: CentralEventPublishingService;
+  private centralEventPublisher: any = null;
 
   private constructor() {
-    this.centralEventPublisher = central_event_publishing_service;
+    // Initialize CEPS lazily
+    getCEPS().then((ceps) => {
+      this.centralEventPublisher = ceps;
+    });
   }
 
   public static getInstance(): AutomatedSigningManager {
@@ -78,6 +78,13 @@ export class AutomatedSigningManager {
       AutomatedSigningManager.instance = new AutomatedSigningManager();
     }
     return AutomatedSigningManager.instance;
+  }
+
+  private async ensureCEPS(): Promise<any> {
+    if (!this.centralEventPublisher) {
+      this.centralEventPublisher = await getCEPS();
+    }
+    return this.centralEventPublisher;
   }
 
   /**
@@ -219,7 +226,8 @@ export class AutomatedSigningManager {
       const signedEvent = await nostr.signEvent(paymentEvent);
 
       // Publish the signed event to relays for transparency
-      await this.centralEventPublisher.publishEvent(signedEvent);
+      const ceps = await this.ensureCEPS();
+      await ceps.publishEvent(signedEvent);
 
       // Execute the actual payment (integrate with payment infrastructure)
       const transactionId = await this.processPayment(paymentData);
@@ -475,7 +483,8 @@ export class AutomatedSigningManager {
       }
 
       // Publish the signed event via CentralEventPublishingService
-      await this.centralEventPublisher.publishEvent(signedEvent);
+      const cepsPublish = await this.ensureCEPS();
+      await cepsPublish.publishEvent(signedEvent);
 
       console.log("Payment event published successfully:", {
         eventId: signedEvent.id,
@@ -577,15 +586,13 @@ export class AutomatedSigningManager {
       }
 
       // Delegate signing to CEPS to centralize private key usage
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../lib/central_event_publishing_service"
-      );
+      const { signEventWithCeps } = await import("./ceps");
 
       const eventToSign = {
         ...unsignedEvent,
       };
 
-      const signedEvent = await CEPS.signEventWithActiveSession(eventToSign);
+      const signedEvent = await signEventWithCeps(eventToSign);
 
       console.log("Event signed successfully with NIP-05 context");
       return signedEvent;
@@ -1342,8 +1349,9 @@ export class AutomatedSigningManager {
 
       // Emergency fallback - try simple server DM
       try {
+        const cepsFallback = await this.ensureCEPS();
         const simpleContent = `✅ Payment sent: ${paymentData.amount} sats`;
-        await this.centralEventPublisher.sendServerDM(
+        await cepsFallback.sendServerDM(
           notificationConfig.notificationNpub,
           simpleContent
         );
@@ -1374,10 +1382,8 @@ export class AutomatedSigningManager {
       }
 
       // Send gift-wrapped direct message
-      await this.centralEventPublisher.sendGiftWrappedDirectMessage(
-        contact,
-        messageContent
-      );
+      const cepsGift = await this.ensureCEPS();
+      await cepsGift.sendGiftWrappedDirectMessage(contact, messageContent);
 
       console.log("Gift-wrapped notification sent successfully");
       return true;
@@ -1516,7 +1522,8 @@ export class AutomatedSigningManager {
       await this.updateRecipientCapability(recipientNpub, false, "nip04");
 
       // Send via server DM (uses NIP-04 encryption)
-      await this.centralEventPublisher.sendServerDM(recipientNpub, content);
+      const cepsNip04 = await this.ensureCEPS();
+      await cepsNip04.sendServerDM(recipientNpub, content);
 
       console.log("NIP-04 fallback message sent successfully");
     } catch (error) {
@@ -1582,8 +1589,9 @@ export class AutomatedSigningManager {
 
       // Emergency fallback - try simple server DM
       try {
+        const cepsFailFallback = await this.ensureCEPS();
         const simpleContent = `❌ Payment failed: ${paymentData.amount} sats - ${result.error}`;
-        await this.centralEventPublisher.sendServerDM(
+        await cepsFailFallback.sendServerDM(
           notificationConfig.notificationNpub,
           simpleContent
         );
@@ -1658,8 +1666,9 @@ export class AutomatedSigningManager {
 
       // Emergency fallback - try simple server DM
       try {
+        const cepsInsuffFallback = await this.ensureCEPS();
         const simpleContent = `⚠️ Insufficient funds for payment of ${paymentData.amount.toLocaleString()} sats`;
-        await this.centralEventPublisher.sendServerDM(
+        await cepsInsuffFallback.sendServerDM(
           notificationConfig.notificationNpub,
           simpleContent
         );

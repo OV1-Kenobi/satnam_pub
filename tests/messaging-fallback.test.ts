@@ -4,30 +4,6 @@ const importCEPS = async () =>
   (await import("../lib/central_event_publishing_service"))
     .central_event_publishing_service;
 
-// Mock SecureNsecManager for nip04 fallback encryption path
-vi.mock("../src/lib/secure-nsec-manager", () => {
-  return {
-    secureNsecManager: {
-      getActiveSessionId: () => "sess-1",
-      useTemporaryNsec: async (
-        _id: string,
-        fn: (n: string) => Promise<string>
-      ) => fn("deadbeef".repeat(8)),
-    },
-    SecureNsecManager: class MockSecureNsecManager {
-      static getInstance() {
-        return {
-          getActiveSessionId: () => "sess-1",
-          useTemporaryNsec: async (
-            _id: string,
-            fn: (n: string) => Promise<string>
-          ) => fn("deadbeef".repeat(8)),
-        };
-      }
-    },
-  };
-});
-
 // Mock user prefs to control signing
 vi.mock("../src/lib/user-signing-preferences", () => ({
   userSigningPreferences: {
@@ -71,6 +47,35 @@ describe("Gift-wrapped messaging nip07-first with nip04 fallback", () => {
   let CEPS: any;
   beforeEach(async () => {
     vi.resetModules();
+
+    const { registerSecureNsecSessionProvider } = await import(
+      "../lib/secure-nsec-session-registry"
+    );
+
+    const provider: SecureNsecSessionProvider = {
+      async createPostRegistrationSession(): Promise<string> {
+        return "sess-1";
+      },
+      getActiveSessionId: () => "sess-1",
+      async useTemporaryNsec<T>(
+        _sessionId: string,
+        operation: (nsecHex: string) => Promise<T>
+      ): Promise<T> {
+        return operation("deadbeef".repeat(8));
+      },
+      getSessionStatus() {
+        return {
+          active: true,
+          sessionId: "sess-1",
+        };
+      },
+      clearTemporarySession() {
+        // no-op for tests
+      },
+    };
+
+    registerSecureNsecSessionProvider(provider);
+
     CEPS = await importCEPS();
   });
 

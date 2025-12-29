@@ -5,7 +5,7 @@
  */
 
 import { bytesToHex } from "@noble/curves/utils";
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { derivePubkeyHexFromNsec } from "../../../lib/utils/nostr-encoding-utils";
 import {
   CryptoOperationResult,
   MemoryWipeTarget,
@@ -73,7 +73,7 @@ class ZeroKnowledgeNsecManager {
       sk
     );
     const nsec = bytesToHex(sk);
-    const publicKey = CEPS.getPublicKeyHex(nsec);
+    const publicKey = derivePubkeyHexFromNsec(nsec);
 
     // Track sensitive data for cleanup
     const sensitiveData: MemoryWipeTarget[] = [{ data: nsec, type: "string" }];
@@ -213,7 +213,7 @@ class ZeroKnowledgeNsecManager {
 
       // Convert to nsec format
       const nsec = CryptoUtils.bigIntToHex(reconstructedSecret, 64);
-      const publicKey = CEPS.getPublicKeyHex(nsec);
+      const publicKey = derivePubkeyHexFromNsec(nsec);
 
       // Track reconstructed nsec for cleanup
       sensitiveData.push({ data: nsec, type: "string" });

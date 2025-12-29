@@ -15,8 +15,7 @@ import {
   User,
   Users,
   X,
-  CreditCard,
-  Zap,
+  Zap
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -33,7 +32,6 @@ import { recoverySessionBridge } from "../lib/auth/recovery-session-bridge";
 import SecureTokenManager from "../lib/auth/secure-token-manager";
 import type { UserIdentity } from "../lib/auth/user-identities-auth";
 
-import { central_event_publishing_service, central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 
 
 
@@ -41,6 +39,7 @@ import { resolvePlatformLightningDomain } from '../config/domain.client';
 
 import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 
+import { getCEPS } from "../lib/ceps";
 import { secureNsecManager } from "../lib/secure-nsec-manager";
 import { SecurePeerInvitationModal } from "./SecurePeerInvitationModal";
 
@@ -56,18 +55,16 @@ import { isLightningAddressReachable, parseLightningAddress } from "../utils/lig
 
 import { createBoltcard, createLightningAddress, provisionWallet } from "@/api/endpoints/lnbits.js";
 
+import { lazy, Suspense } from "react";
 import { clientConfig } from "../config/env.client";
 import { createAttestation } from "../lib/attestation-manager";
 import {
-  recoverEncryptedInvitationToken,
-  clearInvitationToken
+  clearInvitationToken,
+  recoverEncryptedInvitationToken
 } from "../lib/crypto/invitation-token-storage";
-import { ActionContextSelector } from "./ActionContextSelector";
 import { VerificationOptInStep } from "./identity/VerificationOptInStep";
 import IrohNodeManager from "./iroh/IrohNodeManager";
-import { lazy, Suspense } from "react";
 import { UnifiedNFCSetupFlow } from "./nfc";
-import type { NFCCardType } from "./nfc";
 
 // Lazy load NFCProvisioningGuide to enable code splitting
 const NFCProvisioningGuide = lazy(() => import("./NFCProvisioningGuide"));
@@ -621,9 +618,10 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         try {
           // Canonical derivation via CEPS using nostr-tools under the hood
-          const publicKeyHex = CEPS.derivePubkeyHexFromNsec(cleanedKey);
+          const CEPS = await getCEPS();
+          const publicKeyHex = (CEPS as any).derivePubkeyHexFromNsec(cleanedKey);
           publicKey = publicKeyHex;
-          npub = CEPS.encodeNpub(publicKeyHex);
+          npub = (CEPS as any).encodeNpub(publicKeyHex);
 
           // Store ephemeral nsec for full access (zero-knowledge compliance)
           setEphemeralNsecProtected(cleanedKey);
@@ -639,8 +637,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
 
         try {
           // Validate and decode the npub via central service
-
-          const pubHex = CEPS.decodeNpub(cleanedKey);
+          const CEPS = await getCEPS();
+          const pubHex = (CEPS as any).decodeNpub(cleanedKey);
           publicKey = pubHex;
           npub = cleanedKey;
           isViewOnly = true;
@@ -692,8 +690,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
   const detectNostrProfile = async (publicKey: string) => {
     try {
       // Convert hex public key to npub format for profile service
-
-      const npub = central_event_publishing_service.encodeNpub(publicKey);
+      const CEPS = await getCEPS();
+      const npub = (CEPS as any).encodeNpub(publicKey);
 
       // Use existing NostrProfileService to fetch profile with timeout
       const profileService = new NostrProfileService();
@@ -946,7 +944,8 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       try {
         // Task 2: Capture Kind:0 event ID after publishing
         // Add timeout to prevent hanging on relay issues
-        const publishPromise = central_event_publishing_service.publishProfile(ephemeralNsec, profileMetadata);
+        const CEPSPublish = await getCEPS();
+        const publishPromise = (CEPSPublish as any).publishProfile(ephemeralNsec, profileMetadata);
         const timeoutPromise = new Promise<string>((_, reject) =>
           setTimeout(() => reject(new Error('Profile publishing timeout')), 15000) // 15 second timeout
         );
@@ -1167,13 +1166,13 @@ const IdentityForge: React.FC<IdentityForgeProps> = ({
       }
       try {
         // Decode npub to hex and ensure 64-hex length
-
-        const pubHexFromNpub = CEPS.decodeNpub(keyPair.npub);
+        const CEPSValidate = await getCEPS();
+        const pubHexFromNpub = (CEPSValidate as any).decodeNpub(keyPair.npub);
         if (!pubHexFromNpub || pubHexFromNpub.length !== 64) {
           throw new Error(`Invalid underlying pubkey length from npub: ${pubHexFromNpub?.length}`);
         }
         // Decode nsec to bytes and ensure 32-byte length
-        const privateKeyBytes = CEPS.decodeNsec(keyPair.nsec);
+        const privateKeyBytes = (CEPSValidate as any).decodeNsec(keyPair.nsec);
         if (!privateKeyBytes || privateKeyBytes.length !== 32) {
           throw new Error(`Invalid underlying private key length from nsec: ${privateKeyBytes?.length}`);
         }

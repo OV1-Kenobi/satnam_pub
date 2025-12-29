@@ -335,6 +335,8 @@ export class ApiClient {
     npub: string;
     nip05?: string;
     email?: string;
+    // Optional Iroh node identifier for this user
+    iroh_node_id?: string | null;
     bio?: string;
     displayName?: string;
     lightningAddress?: string;

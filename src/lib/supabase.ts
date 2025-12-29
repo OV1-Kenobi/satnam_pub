@@ -6,6 +6,17 @@ import { createClient } from "@supabase/supabase-js";
 // Bootstrap credentials from environment - ONLY for accessing Vault
 
 /**
+ * Centralized browser Supabase client singleton.
+ *
+ * IMPORTANT:
+ * - This module owns the only browser Supabase client instance.
+ * - Browser code MUST import { supabase } from "src/lib/supabase" (or the
+ *   appropriate relative path) instead of calling `createClient()` directly.
+ * - All database access in the browser should go through higher-level
+ *   services or a database manager that internally uses this singleton.
+ */
+
+/**
  * Environment variable getter with browser and Netlify Function compatibility
  * CRITICAL: For browser code, use import.meta.env (Vite's native pattern)
  * For Netlify Functions, use process.env

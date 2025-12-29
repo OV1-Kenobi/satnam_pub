@@ -7,7 +7,7 @@
  * for pairing. Browser-only; no Node.js APIs.
  */
 
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { getCEPS } from "../ceps";
 import type {
   SignerAdapter,
   SignerCapability,
@@ -33,6 +33,20 @@ interface CEPSWithNip46 {
     encryption: string;
   }) => Promise<{ signerPubHex?: string }>;
   verifyEvent?: (ev: unknown) => boolean;
+}
+
+// Cached CEPS instance to avoid repeated async calls
+let _cachedCeps: CEPSWithNip46 | null = null;
+let _cepsPromise: Promise<CEPSWithNip46> | null = null;
+
+async function ensureCeps(): Promise<CEPSWithNip46> {
+  if (_cachedCeps) return _cachedCeps;
+  if (!_cepsPromise) {
+    _cepsPromise = getCEPS().then(
+      (ceps) => (_cachedCeps = ceps as unknown as CEPSWithNip46)
+    );
+  }
+  return _cepsPromise;
 }
 
 function getFlag(key: string, def: boolean): boolean {
@@ -139,7 +153,7 @@ export class AmberAdapter implements SignerAdapter {
       if (!isAndroid()) return "unavailable";
       // Reflect CEPS pairing state (NIP-46) and local NIP-55 state
       try {
-        const cepsTyped = CEPS as unknown as CEPSWithNip46;
+        const cepsTyped = await ensureCeps();
         const st = cepsTyped.getNip46PairingState?.();
         if (st && st.signerPubHex) this.paired = true;
       } catch {}
@@ -170,16 +184,16 @@ export class AmberAdapter implements SignerAdapter {
     }
 
     // NIP-46 fallback flow
+    const cepsTyped = await ensureCeps();
     const sk = new Uint8Array(32);
     crypto.getRandomValues(sk);
     const clientPrivHex = bytesToHex(sk);
-    const clientPubHex = CEPS.getPublicKeyHex(clientPrivHex);
+    const clientPubHex = cepsTyped.getPublicKeyHex?.(clientPrivHex) ?? "";
 
     const secret = new Uint8Array(32);
     crypto.getRandomValues(secret);
     const secretHex = bytesToHex(secret);
 
-    const cepsTyped = CEPS as unknown as CEPSWithNip46;
     const relays = cepsTyped.getRelays?.() as string[] | undefined;
     const relay =
       Array.isArray(relays) && relays.length
@@ -234,7 +248,7 @@ export class AmberAdapter implements SignerAdapter {
       this.nip55Pending.clear();
     } catch {}
     try {
-      const cepsTyped = CEPS as unknown as CEPSWithNip46;
+      const cepsTyped = await ensureCeps();
       cepsTyped.clearNip46Pairing?.();
     } catch {}
   }
@@ -393,7 +407,8 @@ export class AmberAdapter implements SignerAdapter {
     try {
       if (!ev || typeof ev !== "object")
         throw new Error("amber_nip55_no_event");
-      const verified = CEPS.verifyEvent(ev as any);
+      const cepsForVerify = await ensureCeps();
+      const verified = cepsForVerify.verifyEvent?.(ev as any);
       if (!verified) throw new Error("amber_nip55_invalid_signature");
       if (
         this.nip55SignerPubHex &&
@@ -436,8 +451,8 @@ export class AmberAdapter implements SignerAdapter {
     }
 
     // NIP-46 fallback signing
+    const cepsTyped = await ensureCeps();
     if (!this.paired) {
-      const cepsTyped = CEPS as unknown as CEPSWithNip46;
       const st = cepsTyped.getNip46PairingState?.();
       if (!(st && st.signerPubHex)) {
         throw new Error(
@@ -446,7 +461,6 @@ export class AmberAdapter implements SignerAdapter {
       }
       this.paired = true;
     }
-    const cepsTyped = CEPS as unknown as CEPSWithNip46;
     const res = await cepsTyped.nip46SignEvent?.(unsigned);
     return res?.event ?? res;
   }
@@ -472,16 +486,16 @@ export class AmberAdapter implements SignerAdapter {
    * Generate a NIP-46 pairing URI for external signers to scan
    * Returns the nostrconnect:// URI along with ephemeral credentials
    */
-  generatePairingUri(options?: {
+  async generatePairingUri(options?: {
     permissions?: string;
     appName?: string;
     appUrl?: string;
-  }): {
+  }): Promise<{
     uri: string;
     clientPubKeyHex: string;
     secretHex: string;
     relay: string;
-  } {
+  }> {
     const {
       permissions = "sign_event,nip44_encrypt,nip44_decrypt",
       appName = "Satnam",
@@ -489,10 +503,11 @@ export class AmberAdapter implements SignerAdapter {
     } = options ?? {};
 
     // Generate ephemeral client keypair
+    const cepsForPayment = await ensureCeps();
     const sk = new Uint8Array(32);
     crypto.getRandomValues(sk);
     const clientPrivHex = bytesToHex(sk);
-    const clientPubHex = CEPS.getPublicKeyHex(clientPrivHex);
+    const clientPubHex = cepsForPayment.getPublicKeyHex?.(clientPrivHex) ?? "";
 
     // Generate random secret
     const secret = new Uint8Array(32);
@@ -500,8 +515,7 @@ export class AmberAdapter implements SignerAdapter {
     const secretHex = bytesToHex(secret);
 
     // Get relay
-    const cepsTyped = CEPS as unknown as CEPSWithNip46;
-    const relays = cepsTyped.getRelays?.() as string[] | undefined;
+    const relays = cepsForPayment.getRelays?.() as string[] | undefined;
     const relay =
       Array.isArray(relays) && relays.length
         ? relays[0]
@@ -537,11 +551,11 @@ export class AmberAdapter implements SignerAdapter {
   /**
    * Get current pairing state
    */
-  getPairingState(): {
+  async getPairingState(): Promise<{
     isPaired: boolean;
     signerPubKeyHex: string | null;
     pairingUri: string | null;
-  } {
+  }> {
     // Check NIP-55 state
     if (this.nip55SignerPubHex) {
       return {
@@ -553,7 +567,7 @@ export class AmberAdapter implements SignerAdapter {
 
     // Check CEPS NIP-46 state
     try {
-      const cepsTyped = CEPS as unknown as CEPSWithNip46;
+      const cepsTyped = await ensureCeps();
       const st = cepsTyped.getNip46PairingState?.();
       if (st && st.signerPubHex) {
         return {

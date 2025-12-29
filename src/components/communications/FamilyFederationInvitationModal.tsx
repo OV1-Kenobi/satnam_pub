@@ -1,8 +1,8 @@
 import { useState } from 'react';
+import { getCEPS } from '../../lib/ceps';
 import { FamilyNostrFederation, NostrEvent } from '../../lib/fedimint/family-nostr-federation.js';
-import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 import { showToast } from '../../services/toastService';
-import { central_event_publishing_service } from '../../../lib/central_event_publishing_service';
+import { PrivacyLevel, getDefaultPrivacyLevel } from '../../types/privacy';
 
 interface FamilyData {
   federationId: string;
@@ -75,7 +75,8 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
     // Encrypted DM implementation using NIP-04/44 via CEPS
     console.log('Sending family invitation via encrypted DM with selective privacy');
     try {
-      const messageId = await central_event_publishing_service.sendStandardDirectMessage(recipient, content);
+      const CEPS = await getCEPS();
+      const messageId = await (CEPS as any).sendStandardDirectMessage(recipient, content);
       return { success: true, method: 'encrypted', messageId };
     } catch (error) {
       console.error('Encrypted DM failed:', error);
@@ -87,7 +88,8 @@ export function FamilyFederationInvitationModal({ isOpen, onClose, familyData }:
     // Standard message implementation - uses same encrypted DM but with less metadata protection
     console.log('Sending family invitation via standard message with minimal encryption');
     try {
-      const messageId = await central_event_publishing_service.sendStandardDirectMessage(recipient, content);
+      const CEPS = await getCEPS();
+      const messageId = await (CEPS as any).sendStandardDirectMessage(recipient, content);
       return { success: true, method: 'minimal', messageId };
     } catch (error) {
       console.error('Standard message failed:', error);

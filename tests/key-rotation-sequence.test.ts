@@ -4,7 +4,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NostrKeyRecoveryService } from "../src/lib/auth/nostr-key-recovery";
 
 // Helpers
-const mkQueryBuilder = () => ({
+type MockQueryBuilder = {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  insert: ReturnType<typeof vi.fn>;
+};
+
+type MockSupabaseClient = {
+  from: (table: string) => MockQueryBuilder;
+  rpc: ReturnType<typeof vi.fn>;
+  update?: ReturnType<typeof vi.fn>;
+};
+
+const mkQueryBuilder = (): MockQueryBuilder => ({
   select: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
   single: vi.fn().mockResolvedValue({
@@ -24,14 +38,17 @@ const mkQueryBuilder = () => ({
   update: vi.fn().mockReturnThis(),
   insert: vi.fn().mockReturnThis(),
 });
-const mockSupabase = {
-  from: vi.fn((table: string) => mkQueryBuilder()),
-  rpc: vi.fn().mockResolvedValue({ data: null }),
-};
 
-vi.mock("../src/lib/supabase", () => ({
-  supabase: mockSupabase,
-}));
+let mockSupabase: MockSupabaseClient;
+
+vi.mock("../src/lib/supabase", () => {
+  const local: MockSupabaseClient = {
+    from: vi.fn((_table: string) => mkQueryBuilder()),
+    rpc: vi.fn().mockResolvedValue({ data: null }),
+  };
+  mockSupabase = local;
+  return { supabase: local };
+});
 
 // Mock CEPS publish (delegation/metadata/migration flows)
 vi.mock("../../lib/central_event_publishing_service", () => ({

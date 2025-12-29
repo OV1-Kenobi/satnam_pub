@@ -31,7 +31,7 @@ import { PostAuthInvitationModal } from './PostAuthInvitationModal';
 
 import NTAG424AuthModal from './NTAG424AuthModal';
 
-import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
+import { encodeNpubWithCeps, getCEPS } from "../lib/ceps";
 
 // At the top of the file, outside the component
 let nip07SessionId: string | undefined;
@@ -221,7 +221,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
           return;
         }
 
-        const signers = CEPS.getRegisteredSigners?.() || [];
+        const ceps = await getCEPS();
+        const signers = (ceps as any).getRegisteredSigners?.() || [];
         const amber = signers.find((s: any) => s.id === 'amber');
         if (!amber) {
           setAmberStatus('unavailable');
@@ -337,7 +338,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
       }
 
 
-      const npub = CEPS.encodeNpub(publicKey);
+      const npub = await encodeNpubWithCeps(publicKey);
 
       setNip07State({
         step: 'signing',
@@ -426,7 +427,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
       let amber = existingAmberSigner;
       if (!amber) {
-        const signers = CEPS.getRegisteredSigners?.() || [];
+        const ceps = await getCEPS();
+        const signers = (ceps as any).getRegisteredSigners?.() || [];
         amber = signers.find((s: any) => s.id === 'amber');
       }
 
@@ -469,7 +471,7 @@ const SignInModal: React.FC<SignInModalProps> = ({
 
       const pubkey = (signedEvent && (signedEvent as any).pubkey) as string | undefined;
       if (pubkey && typeof pubkey === 'string') {
-        const npub = CEPS.encodeNpub(pubkey);
+        const npub = await encodeNpubWithCeps(pubkey);
         setNip07State(prev => ({
           ...prev,
           npub
@@ -521,7 +523,8 @@ const SignInModal: React.FC<SignInModalProps> = ({
   const handlePrimarySignerSignIn = async () => {
     try {
       // Prefer Amber on Android when connected; fall back to NIP-07
-      const signers = CEPS.getRegisteredSigners?.() || [];
+      const ceps = await getCEPS();
+      const signers = (ceps as any).getRegisteredSigners?.() || [];
       const amber = signers.find((s: any) => s.id === 'amber');
       if (amber) {
         const status = await amber.getStatus();

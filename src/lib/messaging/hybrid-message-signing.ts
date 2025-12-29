@@ -15,8 +15,8 @@ import {
   SigningMethod,
   userSigningPreferences,
 } from "../user-signing-preferences";
-// CEPS singleton (exported as central_event_publishing_service)
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+// CEPS singleton (lazy loaded)
+import { getCEPS, signEventWithCeps } from "../ceps";
 
 // Security level types
 export type SecurityLevel = "maximum" | "high" | "medium" | "low";
@@ -218,7 +218,8 @@ export class HybridMessageSigning {
       );
 
       // Ask CEPS if a signing session exists (RecoverySessionBridge or SecureNsecManager)
-      const sessionId = CEPS.getActiveSigningSessionId();
+      const ceps = await getCEPS();
+      const sessionId = (ceps as any).getActiveSigningSessionId();
       console.log(
         "🔐 HybridMessageSigning: CEPS session check:",
         sessionId ? "EXISTS" : "NONE"
@@ -239,7 +240,7 @@ export class HybridMessageSigning {
 
       // Inject pubkey before delegating to CEPS
       const pubkeyHex = await (
-        CEPS as unknown as {
+        ceps as unknown as {
           getUserPubkeyHexForVerification: () => Promise<string>;
         }
       ).getUserPubkeyHexForVerification();
@@ -248,7 +249,7 @@ export class HybridMessageSigning {
         pubkey: (event as any).pubkey ?? pubkeyHex,
         created_at: event.created_at || Math.floor(Date.now() / 1000),
       };
-      const signedEvent = await CEPS.signEventWithActiveSession(eventToSign);
+      const signedEvent = await signEventWithCeps(eventToSign);
 
       return {
         success: true,
@@ -300,7 +301,8 @@ export class HybridMessageSigning {
     });
 
     // Secure Session (Primary Method) via CEPS session bridge
-    const activeSessionId = CEPS.getActiveSigningSessionId();
+    const ceps = await getCEPS();
+    const activeSessionId = (ceps as any).getActiveSigningSessionId();
     const hasActiveSession = !!activeSessionId;
     console.log("🔐 HybridMessageSigning: Session availability check:", {
       activeSessionId: activeSessionId ? "EXISTS" : "NONE",

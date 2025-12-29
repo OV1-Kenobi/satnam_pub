@@ -217,10 +217,8 @@ export function useKeyRotation() {
         profileUpdateEventId?: string;
       }> => {
         try {
-          const mod = await import(
-            "../../lib/central_event_publishing_service"
-          );
-          const CEPS = mod.central_event_publishing_service;
+          const { getCEPS } = await import("../lib/ceps");
+          const CEPS = await getCEPS();
           const days =
             typeof opts?.days === "number" ? opts.days : deprecationDays;
           const result: {
@@ -246,8 +244,8 @@ export function useKeyRotation() {
             async (oldNsecHex) => {
               // 1) Delegation (NIP-26): old -> new
               try {
-                const newPubkeyHex = await CEPS.npubToHex(newNpub);
-                const del = await CEPS.publishNIP26Delegation(
+                const newPubkeyHex = await (CEPS as any).npubToHex(newNpub);
+                const del = await (CEPS as any).publishNIP26Delegation(
                   oldNsecHex,
                   newPubkeyHex,
                   [0, 1, 1777],
@@ -266,7 +264,7 @@ export function useKeyRotation() {
                 if (current?.nip05) profileContent.nip05 = current.nip05;
                 if (current?.lightningAddress)
                   profileContent.lud16 = current.lightningAddress;
-                const kind0Id = await CEPS.publishProfile(
+                const kind0Id = await (CEPS as any).publishProfile(
                   oldNsecHex,
                   profileContent
                 );
@@ -283,13 +281,16 @@ export function useKeyRotation() {
 
               // 3) Notices (best-effort) - optional, do not block on failure
               try {
-                if (typeof CEPS.publishNIP41Deprecation === "function") {
-                  const oldPubkeyHex = CEPS.getPublicKeyHex(oldNsecHex);
-                  const newPubkeyHex = CEPS.npubToHex(newNpub);
-                  const noticeResult = await CEPS.publishNIP41Deprecation(
-                    oldPubkeyHex,
-                    newPubkeyHex
+                if (
+                  typeof (CEPS as any).publishNIP41Deprecation === "function"
+                ) {
+                  const oldPubkeyHex = (CEPS as any).getPublicKeyHex(
+                    oldNsecHex
                   );
+                  const newPubkeyHex = (CEPS as any).npubToHex(newNpub);
+                  const noticeResult = await (
+                    CEPS as any
+                  ).publishNIP41Deprecation(oldPubkeyHex, newPubkeyHex);
                   if (noticeResult.success && noticeResult.eventId) {
                     result.noticeEventIds = [
                       ...(result.noticeEventIds || []),
@@ -430,12 +431,10 @@ export function useKeyRotation() {
 
         // 2) Privacy-first contacts (encrypted_contacts) via CEPS helper
         try {
-          const mod = await import(
-            "../../lib/central_event_publishing_service"
-          );
-          const { central_event_publishing_service: CEPS2 } = mod as any;
+          const { getCEPS } = await import("../lib/ceps");
+          const CEPS2 = await getCEPS();
           const contacts: Array<{ npub: string; relayHints?: string[] }> =
-            await CEPS2.loadAndDecryptContacts();
+            await (CEPS2 as any).loadAndDecryptContacts();
           for (const c of contacts) {
             const np = String(c?.npub || "").trim();
             if (np && np !== oldNpub && np !== newNpub) recipients.add(np);
@@ -495,8 +494,8 @@ export function useKeyRotation() {
         }
 
         // Prepare CEPS and session for sending
-        const mod2 = await import("../../lib/central_event_publishing_service");
-        const CEPS2 = (mod2 as any).central_event_publishing_service;
+        const { getCEPS: getCEPS2 } = await import("../lib/ceps");
+        const CEPS2 = await getCEPS2();
         const { secureNsecManager } = await import(
           "../lib/secure-nsec-manager"
         );
@@ -512,7 +511,7 @@ export function useKeyRotation() {
             // 3a) Send to decrypted recipients via standard DM
             const tasks1 = Array.from(recipients).map(async (npub) => {
               try {
-                const id = await CEPS2.sendStandardDirectMessage(
+                const id = await (CEPS2 as any).sendStandardDirectMessage(
                   npub,
                   combined
                 );
@@ -531,6 +530,7 @@ export function useKeyRotation() {
             // 3b) Send to encrypted contacts via gift-wrapped path (no plaintext npub exposure)
             const tasks2 = encryptedContactCandidates.map(async (row) => {
               try {
+                // Partial contact object for CEPS - cast to any for flexibility
                 const contact = {
                   sessionId: sessionId,
                   encryptedNpub: row.encrypted_npub,
@@ -539,11 +539,18 @@ export function useKeyRotation() {
                   supportsGiftWrap: !!row.supports_gift_wrap,
                   preferredEncryption:
                     (row.preferred_encryption as any) || "auto",
+                  // Additional required fields with default values
+                  tagsHash: "",
+                  addedAt: Date.now(),
+                  addedByHash: "",
                 };
-                const res = await CEPS2.sendGiftWrappedDirectMessage(contact, {
-                  plaintext,
-                  meta: metadata,
-                });
+                const res = await (CEPS2 as any).sendGiftWrappedDirectMessage(
+                  contact,
+                  {
+                    plaintext,
+                    meta: metadata,
+                  }
+                );
                 if (res && res.success && res.messageId) {
                   eventIds.push(res.messageId);
                   sent += 1;

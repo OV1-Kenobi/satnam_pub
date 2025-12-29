@@ -1,9 +1,9 @@
 import { Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
 import { resolvePlatformLightningDomain } from '../../config/domain.client';
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
 import fetchWithAuth from '../../lib/auth/fetch-with-auth';
+import { getCEPS } from '../../lib/ceps';
 import type { MessageSendResult } from '../../lib/messaging/client-message-service';
 import { nip05Utils } from '../../lib/nip05-verification';
 import { showToast } from '../../services/toastService';
@@ -188,7 +188,8 @@ export function PeerInvitationModal({
   // Default to standard NIP-04/44 direct messaging for external compatibility
   const sendMessage = async (content: string, recipient: string): Promise<MessageSendResult> => {
     try {
-      const eventId = await CEPS.sendStandardDirectMessage(recipient, content);
+      const CEPS = await getCEPS();
+      const eventId = await (CEPS as any).sendStandardDirectMessage(recipient, content);
       const result: MessageSendResult = { success: true, messageId: eventId, signingMethod: 'nip04', securityLevel: 'standard' };
       return result;
     } catch (error) {
@@ -222,7 +223,7 @@ export function PeerInvitationModal({
         setProgress({ total: tokens.length, current: i + 1 });
 
         // Resolve recipient to npub (supports npub and NIP-05)
-
+        const CEPS = await getCEPS();
         let recipientNpubResolved: string | null = null;
         try {
           if (recipientRaw.startsWith('npub1')) {
@@ -230,7 +231,7 @@ export function PeerInvitationModal({
           } else if (recipientRaw.includes('@') && nip05Utils.validateFormat(recipientRaw)) {
             const verification = await nip05Utils.verify(recipientRaw);
             if (verification.verified && verification.pubkey) {
-              recipientNpubResolved = CEPS.encodeNpub(verification.pubkey);
+              recipientNpubResolved = (CEPS as any).encodeNpub(verification.pubkey);
             } else {
               throw new Error(verification.error || 'NIP-05 could not be verified');
             }
@@ -285,8 +286,10 @@ export function PeerInvitationModal({
         const invitationMessage = `${header}${intro}${referralInfo}${linkLine}`;
 
         // 3) Send via CEPS (standard NIP-04/44)
+        // At this point recipientNpubResolved is guaranteed to be a valid string (continue statements above handle null cases)
+        const recipientNpub = recipientNpubResolved!;
         try {
-          const result = await sendMessage(invitationMessage, recipientNpubResolved);
+          const result = await sendMessage(invitationMessage, recipientNpub);
           if (result.success) {
             successCount++;
             // 3b) Log the outgoing message into conversation history (protocol: nip04)
@@ -296,7 +299,7 @@ export function PeerInvitationModal({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   content: invitationMessage,
-                  recipient: recipientNpubResolved,
+                  recipient: recipientNpub,
                   communicationType: 'individual',
                   messageType: 'direct',
                   encryptionLevel: 'enhanced',
@@ -311,7 +314,7 @@ export function PeerInvitationModal({
             // 3c) Auto-add contact for successful peer invite exchange
             try {
               await messaging.addContact({
-                npub: recipientNpubResolved,
+                npub: recipientNpub,
                 displayName: recipientRaw,
                 trustLevel: 'known',
                 preferredEncryption: 'auto',

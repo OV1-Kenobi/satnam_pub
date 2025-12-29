@@ -21,6 +21,7 @@
 
 import { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+import { requireAnyAdmin } from "./utils/admin-auth.js";
 import {
   RATE_LIMITS,
   checkRateLimit,
@@ -40,7 +41,6 @@ import {
   preflightResponse,
   successResponse,
 } from "./utils/security-headers.js";
-import { requireAnyAdmin } from "./utils/admin-auth.js";
 
 // ============================================================================
 // Types
@@ -83,16 +83,22 @@ interface AcknowledgeRequest {
 }
 
 // ============================================================================
-// Initialize Supabase
+// Initialize Supabase (lazy env access to avoid module-level getEnvVar() calls)
 // ============================================================================
 
-const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
-const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
+function getSupabaseConfig(): { url: string; serviceKey: string } {
+  const url = getEnvVar("VITE_SUPABASE_URL");
+  const serviceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Missing Supabase configuration");
+  if (!url || !serviceKey) {
+    throw new Error("Missing Supabase configuration");
+  }
+
+  return { url, serviceKey };
 }
 
+const { url: supabaseUrl, serviceKey: supabaseServiceKey } =
+  getSupabaseConfig();
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // ============================================================================

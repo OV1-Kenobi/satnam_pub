@@ -17,31 +17,33 @@ type NostrEvent = {
   sig: string;
 };
 import { useCallback, useEffect, useRef, useState } from "react";
-import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 import {
   DEFAULT_UNIFIED_CONFIG,
   UnifiedMessagingConfig,
   UnifiedMessagingService,
 } from "../../lib/unified-messaging-service";
+import {
+  GEOCHAT_CONTACTS_ENABLED,
+  NOISE_EXPERIMENTAL_ENABLED,
+} from "../config/env.client";
 import fetchWithAuth from "../lib/auth/fetch-with-auth";
-import { clientMessageService } from "../lib/messaging/client-message-service";
-import { secureNsecManager } from "../lib/secure-nsec-manager";
-import { GEOCHAT_CONTACTS_ENABLED } from "../config/env.client";
+import { getCEPS } from "../lib/ceps";
 import {
   addContactFromGeoMessage,
-  verifyContactWithPhysicalMFA,
   Phase3Error,
+  verifyContactWithPhysicalMFA,
   type StartPrivateChatParams,
   type StartPrivateChatResult,
   type VerifyContactWithPhysicalMFAParams,
   type VerifyContactWithPhysicalMFAResult,
 } from "../lib/geochat";
-import { NOISE_EXPERIMENTAL_ENABLED } from "../config/env.client";
+import { clientMessageService } from "../lib/messaging/client-message-service";
 import {
-  NoiseSessionManager,
   NoiseOverNostrAdapter,
+  NoiseSessionManager,
   type NoiseHandshakePattern,
 } from "../lib/noise";
+import { secureNsecManager } from "../lib/secure-nsec-manager";
 
 export interface PrivacyWarningContent {
   title: string;
@@ -73,6 +75,10 @@ export interface PrivacyMessagingState {
     groupMessagesEnabled: boolean;
     specificGroupsCount: number;
     lastUpdated?: Date;
+    // NIP-05 disclosure tracking
+    nip05Disclosed?: boolean;
+    disclosureScope?: "direct" | "groups" | "specific-groups";
+    disclosedNip05?: string;
   };
 
   // Privacy warning state
@@ -261,9 +267,10 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     // Prefer session-derived pubkey; avoid calling window.nostr automatically
     if (state.sessionId) {
       try {
+        const ceps = await getCEPS();
         const hex = await secureNsecManager.useTemporaryNsec(
           state.sessionId,
-          async (nsecHex: string) => CEPS.getPublicKeyHex(nsecHex)
+          async (nsecHex: string) => (ceps as any).getPublicKeyHex(nsecHex)
         );
         if (hex && typeof hex === "string") return hex;
       } catch (error) {
@@ -330,33 +337,36 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
       });
 
       // Parallel subscription: standard NIP-04 DMs addressed to this recipient
+      const cepsSub = await getCEPS();
       const recipientHex = recipient.startsWith("npub1")
-        ? CEPS.npubToHex(recipient)
+        ? (cepsSub as any).npubToHex(recipient)
         : recipient;
-      const stdSub = CEPS.subscribeMany(
+      const stdSub = (cepsSub as any).subscribeMany(
         [],
         [{ kinds: [4], "#p": [recipientHex] }],
         {
           onevent: async (e: any) => {
             try {
-              const { plaintext, protocol } =
-                await CEPS.decryptStandardDirectMessageWithActiveSession(
-                  e?.pubkey,
-                  e?.content
-                );
-              const myNpub = CEPS.encodeNpub(recipientHex);
-              const senderNpub = CEPS.encodeNpub(e?.pubkey);
+              const { plaintext, protocol } = await (
+                cepsSub as any
+              ).decryptStandardDirectMessageWithActiveSession(
+                e?.pubkey,
+                e?.content
+              );
+              const myNpub = (cepsSub as any).encodeNpub(recipientHex);
+              const senderNpub = (cepsSub as any).encodeNpub(e?.pubkey);
 
               // PRIVACY-FIRST: Re-encrypt plaintext using NIP-44 before storing in database
               // This ensures server never stores readable content (zero-knowledge architecture)
               // Use sender's pubkey to derive conversation key so both parties can decrypt
               let encryptedContentForStorage: string;
               try {
-                encryptedContentForStorage =
-                  await CEPS.encryptNip44WithActiveSession(
-                    e?.pubkey, // sender's pubkey - conversation key derived from our nsec + their pubkey
-                    plaintext
-                  );
+                encryptedContentForStorage = await (
+                  cepsSub as any
+                ).encryptNip44WithActiveSession(
+                  e?.pubkey, // sender's pubkey - conversation key derived from our nsec + their pubkey
+                  plaintext
+                );
               } catch (encryptErr) {
                 console.warn(
                   "STD-DM RX: failed to re-encrypt for storage, skipping persistence",
@@ -1012,7 +1022,8 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         let identityRevealed = contactResult.identityRevealed;
         if (revealIdentity && !identityRevealed) {
           try {
-            await CEPS.sendStandardDirectMessage(
+            const cepsReveal = await getCEPS();
+            await (cepsReveal as any).sendStandardDirectMessage(
               npub,
               JSON.stringify({
                 type: "identity_reveal",
@@ -1194,20 +1205,21 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
           // XX pattern: No prior knowledge of remote key needed
           handshakeResult = await sessionManager.initiateXXHandshake(peerNpub);
         } else if (pattern === "IK") {
-          // IK requires remote static key - derive from npub
-          // Convert npub to bytes for use as static key
-          const remoteStaticKey = new TextEncoder().encode(
-            peerNpub.slice(0, 32)
-          );
+          // IK requires remote static key - decode npub to get actual public key bytes
+          const cepsKey = await getCEPS();
+          const peerHex = (cepsKey as any).npubToHex(peerNpub);
+          const { hexToBytes } = await import("@noble/hashes/utils");
+          const remoteStaticKey = hexToBytes(peerHex);
           handshakeResult = await sessionManager.initiateIKHandshake(
             peerNpub,
             remoteStaticKey
           );
         } else {
-          // NK pattern: Requires remote static key
-          const remoteStaticKey = new TextEncoder().encode(
-            peerNpub.slice(0, 32)
-          );
+          // NK pattern: Requires remote static key - decode npub to get actual public key bytes
+          const cepsKey = await getCEPS();
+          const peerHex = (cepsKey as any).npubToHex(peerNpub);
+          const { hexToBytes } = await import("@noble/hashes/utils");
+          const remoteStaticKey = hexToBytes(peerHex);
           handshakeResult = await sessionManager.initiateNKHandshake(
             peerNpub,
             remoteStaticKey
@@ -1224,7 +1236,8 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         );
 
         // Send via CEPS (simplified - in production would use proper send function)
-        await CEPS.sendStandardDirectMessage(peerNpub, content);
+        const cepsNoise = await getCEPS();
+        await (cepsNoise as any).sendStandardDirectMessage(peerNpub, content);
 
         setState((prev) => ({
           ...prev,
@@ -1305,7 +1318,11 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         );
 
         // Send via CEPS
-        await CEPS.sendStandardDirectMessage(peerNpub, wrappedContent);
+        const cepsNoiseSend = await getCEPS();
+        await (cepsNoiseSend as any).sendStandardDirectMessage(
+          peerNpub,
+          wrappedContent
+        );
 
         setState((prev) => ({ ...prev, loading: false }));
         return true;
@@ -1334,15 +1351,17 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
     ): Promise<string | null> => {
       if (!encryptedContent || !peerNpub) return null;
       try {
+        const cepsDecrypt = await getCEPS();
         const peerHex = peerNpub.startsWith("npub1")
-          ? CEPS.npubToHex(peerNpub)
+          ? (cepsDecrypt as any).npubToHex(peerNpub)
           : peerNpub;
         // Use existing decrypt method which handles NIP-04/NIP-44 fallback
-        const { plaintext } =
-          await CEPS.decryptStandardDirectMessageWithActiveSession(
-            peerHex,
-            encryptedContent
-          );
+        const { plaintext } = await (
+          cepsDecrypt as any
+        ).decryptStandardDirectMessageWithActiveSession(
+          peerHex,
+          encryptedContent
+        );
         return plaintext;
       } catch (err) {
         console.warn("Failed to decrypt stored message:", err);
@@ -1381,7 +1400,8 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
         }
 
         // Get my npub from active session to determine message direction
-        const sessionId = CEPS.getActiveSigningSessionId();
+        const cepsFetch = await getCEPS();
+        const sessionId = (cepsFetch as any).getActiveSigningSessionId();
         let myNpub = "";
         if (sessionId) {
           const pubHex = await secureNsecManager.useTemporaryNsec(
@@ -1392,7 +1412,7 @@ export function usePrivacyFirstMessaging(): PrivacyMessagingState &
               return getPublicKey(hexToBytes(privHex));
             }
           );
-          if (pubHex) myNpub = CEPS.encodeNpub(pubHex);
+          if (pubHex) myNpub = (cepsFetch as any).encodeNpub(pubHex);
         }
 
         const decryptedMessages = await Promise.all(

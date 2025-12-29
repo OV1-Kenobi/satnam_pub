@@ -1,7 +1,7 @@
 /*
  * Unified Tapsigner NFC Card Integration (ESM, TypeScript)
  * - Single handler for all Tapsigner operations
- * - Action-based routing pattern (register, verify, sign, lnbits_link, status)
+ * - Action-based routing pattern (register, verify, sign, lnbits_link, status, list)
  * - Zero-knowledge architecture: no plaintext card UIDs or private keys
  * - RLS enforcement via owner_hash (privacy-first)
  * - Audit logging to tapsigner_operations_log table
@@ -608,6 +608,94 @@ async function handleStatus(
 }
 
 /**
+ * GET /api/tapsigner/list
+ * Get all registered Tapsigner cards for the authenticated user
+ */
+async function handleList(
+  event: any,
+  session: any,
+  supabase: any,
+  requestId: string
+): Promise<any> {
+  try {
+    // Query all cards for this user
+    const { data: cards, error } = await supabase
+      .from("tapsigner_registrations")
+      .select(
+        "id, card_id, public_key_hex, family_role, pin_attempts, pin_locked_until, created_at, last_used"
+      )
+      .eq("owner_hash", session.hashedId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      logError(error.message, { requestId, action: "list" });
+      return json(500, { success: false, error: "Failed to fetch cards" });
+    }
+
+    // Get wallet links for all cards
+    const cardIds = (cards || []).map((c: any) => c.card_id);
+    const { data: links } =
+      cardIds.length > 0
+        ? await supabase
+            .from("tapsigner_lnbits_links")
+            .select(
+              "card_id, wallet_id, spend_limit_sats, tap_to_spend_enabled"
+            )
+            .in("card_id", cardIds)
+        : { data: [] };
+
+    // Type for wallet link records
+    type WalletLink = {
+      card_id: string;
+      wallet_id: string;
+      spend_limit_sats: number;
+      tap_to_spend_enabled: boolean;
+    };
+
+    // Map links by card_id for quick lookup
+    const linkMap = new Map<string, WalletLink>(
+      (links || []).map((l: WalletLink) => [l.card_id, l])
+    );
+
+    // Transform cards for response
+    const transformedCards = (cards || []).map((card: any) => {
+      const link = linkMap.get(card.card_id);
+      return {
+        cardId: card.card_id,
+        isRegistered: true,
+        familyRole: card.family_role,
+        pinAttempts: card.pin_attempts || 0,
+        isLocked: card.pin_locked_until
+          ? new Date(card.pin_locked_until) > new Date()
+          : false,
+        createdAt: card.created_at,
+        lastUsed: card.last_used,
+        walletLink: link
+          ? {
+              walletId: link.wallet_id,
+              spendLimitSats: link.spend_limit_sats,
+              tapToSpendEnabled: link.tap_to_spend_enabled,
+            }
+          : null,
+      };
+    });
+
+    return json(200, {
+      success: true,
+      data: {
+        cards: transformedCards,
+        count: transformedCards.length,
+      },
+    });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "List failed";
+    logError(errorMsg, { requestId, action: "list" });
+
+    return json(500, { success: false, error: "Failed to fetch cards" });
+  }
+}
+
+/**
  * POST /api/tapsigner/sign-nostr-event
  * Sign a Nostr event using Tapsigner card with 2FA PIN validation
  * Feature: Nostr Remote Signer Integration with PIN 2FA
@@ -1147,6 +1235,8 @@ export const handler: Handler = async (event) => {
         return await handleLnbitsLink(event, session, supabase, requestId);
       case "status":
         return await handleStatus(event, session, supabase, requestId);
+      case "list":
+        return await handleList(event, session, supabase, requestId);
       default:
         return json(404, {
           success: false,

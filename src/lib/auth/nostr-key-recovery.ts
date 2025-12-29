@@ -6,10 +6,9 @@
  */
 
 import { FederationRole } from "../../types/auth";
+import { getCEPS, signEventWithCeps } from "../ceps";
 import { SecureBuffer } from "../security/secure-buffer";
 import { UserIdentity } from "./user-identities-auth";
-
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
 
 import { config } from "../../../config";
 
@@ -404,7 +403,7 @@ export class NostrKeyRecoveryService {
           .toString(36)
           .substring(2, 11)}`;
         const rotationData: KeyRotationData = {
-          oldNpub: currentUser.hashed_npub || "",
+          oldNpub: currentUser.npub || currentUser.hashedId || "",
           newNpub,
           rotationId,
           timestamp: Date.now(),
@@ -592,12 +591,13 @@ export class NostrKeyRecoveryService {
       } as any;
 
       // Sign via CEPS
-      const signed = await CEPS.signEventWithActiveSession(
-        whitelistEventUnsigned
-      ).catch(async () => CEPS.signEvent(whitelistEventUnsigned, currentNsec));
+      const ceps = await getCEPS();
+      const signed = await signEventWithCeps(whitelistEventUnsigned).catch(
+        async () => (ceps as any).signEvent(whitelistEventUnsigned, currentNsec)
+      );
 
       // Publish via CEPS
-      const id = await CEPS.publishEvent(signed as any, relays);
+      const id = await (ceps as any).publishEvent(signed as any, relays);
       const eventId = typeof id === "string" ? id : (signed as any)?.id;
       const publishResult = { success: !!eventId };
 
@@ -652,11 +652,16 @@ export class NostrKeyRecoveryService {
         created_at: Math.floor(Date.now() / 1000),
       } as any;
 
-      const signed = await CEPS.signEventWithActiveSession(
-        migrationEventUnsigned
-      ).catch(async () => CEPS.signEvent(migrationEventUnsigned, newNsec));
+      const cepsMigration = await getCEPS();
+      const signed = await signEventWithCeps(migrationEventUnsigned).catch(
+        async () =>
+          (cepsMigration as any).signEvent(migrationEventUnsigned, newNsec)
+      );
 
-      const id = await CEPS.publishEvent(signed as any, relays);
+      const id = await (cepsMigration as any).publishEvent(
+        signed as any,
+        relays
+      );
       const eventId = typeof id === "string" ? id : (signed as any)?.id;
       const publishResult = { success: !!eventId };
 
@@ -710,9 +715,10 @@ export class NostrKeyRecoveryService {
       let successCount = 0;
 
       // Publish to each relay individually via CEPS
+      const cepsPublish = await getCEPS();
       const publishPromises = targetRelays.map(async (relayUrl) => {
         try {
-          const id = await CEPS.publishEvent(event, [relayUrl]);
+          const id = await (cepsPublish as any).publishEvent(event, [relayUrl]);
           relayResults.push({ relay: relayUrl, success: !!id });
           successCount += id ? 1 : 0;
         } catch (error) {
@@ -878,10 +884,13 @@ export class NostrKeyRecoveryService {
         created_at: now,
       };
 
-      const event = await CEPS.signEventWithActiveSession(
-        whitelistUnsigned as any
-      ).catch(async () =>
-        CEPS.signEvent(whitelistUnsigned as any, currentNsec)
+      const cepsWhitelist = await getCEPS();
+      const event = await signEventWithCeps(whitelistUnsigned as any).catch(
+        async () =>
+          (cepsWhitelist as any).signEvent(
+            whitelistUnsigned as any,
+            currentNsec
+          )
       );
 
       const publish = await this.publishEventToRelays(event as any, relays);
@@ -943,9 +952,12 @@ export class NostrKeyRecoveryService {
         created_at: now,
       };
 
-      const delegEvent = await CEPS.signEventWithActiveSession(
+      const cepsDeleg = await getCEPS();
+      const delegEvent = await signEventWithCeps(
         delegNoteUnsigned as any
-      ).catch(async () => CEPS.signEvent(delegNoteUnsigned as any, oldNsecHex));
+      ).catch(async () =>
+        (cepsDeleg as any).signEvent(delegNoteUnsigned as any, oldNsecHex)
+      );
 
       const publishRes = await this.publishEventToRelays(
         delegEvent as any,
@@ -1027,12 +1039,13 @@ export class NostrKeyRecoveryService {
         ],
       };
 
-      const oldEvent = await CEPS.signEventWithActiveSession(
-        oldUnsigned as any
-      ).catch(async () => CEPS.signEvent(oldUnsigned as any, oldNsecHex));
-      const newEvent = await CEPS.signEventWithActiveSession(
-        newUnsigned as any
-      ).catch(async () => CEPS.signEvent(newUnsigned as any, newNsecHex));
+      const cepsMeta = await getCEPS();
+      const oldEvent = await signEventWithCeps(oldUnsigned as any).catch(
+        async () => (cepsMeta as any).signEvent(oldUnsigned as any, oldNsecHex)
+      );
+      const newEvent = await signEventWithCeps(newUnsigned as any).catch(
+        async () => (cepsMeta as any).signEvent(newUnsigned as any, newNsecHex)
+      );
 
       const oldRes = await this.publishEventToRelays(oldEvent, relays);
       if (!oldRes.success)
@@ -1319,7 +1332,8 @@ export class NostrKeyRecoveryService {
 
       // Step 3: Create SecureNsecManager session with the new nsec (policy-driven)
       try {
-        const policy = await CEPS.getSigningPolicy();
+        const cepsPolicy = await getCEPS();
+        const policy = await (cepsPolicy as any).getSigningPolicy();
         await (
           await import("../secure-nsec-manager")
         ).secureNsecManager.createPostRegistrationSession(

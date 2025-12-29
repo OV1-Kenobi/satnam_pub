@@ -8,7 +8,7 @@
 
 import { hybridMessageSigning, SigningResult } from "./hybrid-message-signing";
 // Use CEPS for npub->hex conversion to avoid direct nostr-tools usage here
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { getCEPS } from "../ceps";
 
 import { showToast } from "../../services/toastService";
 
@@ -43,19 +43,18 @@ export interface MessageData {
 }
 
 import type {
-  MessageSendResult,
   MessageDataWithAttachments,
+  MessageSendResult,
   NIP17MessageContent,
-  AttachmentDescriptor,
 } from "./types";
 export type {
-  MessageSendResult,
   MessageDataWithAttachments,
+  MessageSendResult,
   NIP17MessageContent,
 } from "./types";
 
 // Import Blossom utilities for attachment tags
-import { buildImetaTag, buildFallbackTag } from "../api/blossom-client";
+import { buildFallbackTag, buildImetaTag } from "../api/blossom-client";
 
 export class ClientMessageService {
   private baseUrl: string;
@@ -157,11 +156,12 @@ export class ClientMessageService {
       // Third-tier fallback: NIP-44 direct publish when NIP-17 discovery failed and NIP-59 fallback also failed
       if (error instanceof Nip59FallbackError) {
         try {
+          const ceps = await getCEPS();
           const recipientHex = messageData.recipient.startsWith("npub1")
-            ? CEPS.npubToHex(messageData.recipient)
+            ? (ceps as any).npubToHex(messageData.recipient)
             : messageData.recipient;
           const ciphertext = await (
-            CEPS as any
+            ceps as any
           ).encryptNip44WithActiveSession?.(recipientHex, messageData.content);
           if (
             typeof ciphertext !== "string" ||
@@ -174,7 +174,7 @@ export class ClientMessageService {
             throw new Error("NIP-44 encryption failed");
           }
           const now = Math.floor(Date.now() / 1000);
-          const ev = await (CEPS as any).signEventWithActiveSession?.({
+          const ev = await (ceps as any).signEventWithActiveSession?.({
             kind: 4,
             created_at: now,
             tags: [["p", recipientHex]],
@@ -183,7 +183,7 @@ export class ClientMessageService {
           if (!ev || typeof ev !== "object") {
             throw new Error("NIP-44 sign failed");
           }
-          const id = await (CEPS as any).publishOptimized?.(ev, {
+          const id = await (ceps as any).publishOptimized?.(ev, {
             recipientPubHex: recipientHex,
             includeFallback: true,
           });
@@ -231,10 +231,11 @@ export class ClientMessageService {
     messageData: MessageData
   ): Promise<Partial<NostrEvent>> {
     const USE_NIP17 = (import.meta as any).env?.VITE_USE_NIP17 === "true";
+    const ceps = await getCEPS();
 
     // Normalize recipient to hex for p-tag
     const recipientHex = messageData.recipient.startsWith("npub1")
-      ? CEPS.npubToHex(messageData.recipient)
+      ? (ceps as any).npubToHex(messageData.recipient)
       : messageData.recipient;
 
     if (USE_NIP17) {
@@ -242,7 +243,7 @@ export class ClientMessageService {
       // NIP-17 relay discovery (kind:10050 inbox relays) with TTL cache handled in CEPS
       try {
         const inboxRelays = await (
-          CEPS as any
+          ceps as any
         ).resolveInboxRelaysFromKind10050?.(recipientHex);
         if (!Array.isArray(inboxRelays) || inboxRelays.length === 0) {
           // Recipient not ready for NIP-17; fallback to NIP-59 per requirement
@@ -285,15 +286,15 @@ export class ClientMessageService {
 
             if (
               !senderHex &&
-              typeof (CEPS as any)?.getUserPubkeyHexForVerification ===
+              typeof (ceps as any)?.getUserPubkeyHexForVerification ===
                 "function"
             ) {
               try {
                 senderHex = await (
-                  CEPS as any
+                  ceps as any
                 ).getUserPubkeyHexForVerification();
               } catch (err) {
-                console.warn("Failed to get pubkey from CEPS:", err);
+                console.warn("Failed to get pubkey from ceps:", err);
               }
             }
             if (!senderHex) {
@@ -301,7 +302,7 @@ export class ClientMessageService {
                 "No sender public key available for NIP-59 wrapping"
               );
             }
-            const wrappedFallback = await CEPS.wrapGift59(
+            const wrappedFallback = await (ceps as any).wrapGift59(
               signedInner as any,
               recipientHex
             );
@@ -330,16 +331,19 @@ export class ClientMessageService {
         console.warn("NIP-17 inbox relay discovery error:", e);
       }
       // Proceed with NIP-17 construction (recipient has inbox relays)
-      const unsigned14 = CEPS.buildUnsignedKind14DirectMessage(
+      const unsigned14 = (ceps as any).buildUnsignedKind14DirectMessage(
         messageData.content,
         recipientHex
       );
       try {
-        const sealed13 = await CEPS.sealKind13WithActiveSession(
+        const sealed13 = await (ceps as any).sealKind13WithActiveSession(
           unsigned14 as any,
           recipientHex
         );
-        const wrapped = await CEPS.giftWrap1059(sealed13 as any, recipientHex);
+        const wrapped = await (ceps as any).giftWrap1059(
+          sealed13 as any,
+          recipientHex
+        );
         if (!wrapped || typeof wrapped !== "object") {
           throw new Error("NIP-17 wrapping failed: invalid wrapped event");
         }
@@ -389,15 +393,19 @@ export class ClientMessageService {
 
     // Determine sender pubkey hex for wrapping
     let senderHex: string | null = null;
+    const cepsForWrap = await getCEPS();
 
     if (
       !senderHex &&
-      typeof (CEPS as any)?.getUserPubkeyHexForVerification === "function"
+      typeof (cepsForWrap as any)?.getUserPubkeyHexForVerification ===
+        "function"
     ) {
       try {
-        senderHex = await (CEPS as any).getUserPubkeyHexForVerification();
+        senderHex = await (
+          cepsForWrap as any
+        ).getUserPubkeyHexForVerification();
       } catch (err) {
-        console.warn("Failed to get pubkey from CEPS:", err);
+        console.warn("Failed to get pubkey from ceps:", err);
       }
     }
     if (!senderHex) {
@@ -406,7 +414,10 @@ export class ClientMessageService {
 
     // Proper NIP-59: wrap the SIGNED inner event via CEPS (produces kind:1059)
     try {
-      const wrapped = await CEPS.wrapGift59(signedInner as any, recipientHex);
+      const wrapped = await (cepsForWrap as any).wrapGift59(
+        signedInner as any,
+        recipientHex
+      );
 
       // Validate wrapped event structure
       if (!wrapped || typeof wrapped !== "object") {
@@ -567,7 +578,7 @@ export class ClientMessageService {
   /**
    * Subscribe to NIP-59 gift-wrapped DMs for the recipient and attempt client-side unwrap
    */
-  subscribeToGiftWrappedForRecipient(
+  async subscribeToGiftWrappedForRecipient(
     recipient: string,
     handlers: {
       onInner?: (inner: NostrEvent) => void;
@@ -575,14 +586,15 @@ export class ClientMessageService {
       onError?: (error: string) => void;
       onEose?: () => void;
     }
-  ): any {
+  ): Promise<any> {
     try {
+      const ceps = await getCEPS();
       const recipientHex = recipient.startsWith("npub1")
-        ? CEPS.npubToHex(recipient)
+        ? (ceps as any).npubToHex(recipient)
         : recipient;
       const filters = [{ kinds: [1059], "#p": [recipientHex] }];
 
-      return CEPS.subscribeMany([], filters, {
+      return (ceps as any).subscribeMany([], filters, {
         onevent: async (e: any) => {
           // Structured analytics (no content exposure)
           try {
@@ -592,7 +604,7 @@ export class ClientMessageService {
               created_at: e?.created_at,
             });
 
-            const sessionId = CEPS.getActiveSigningSessionId();
+            const sessionId = (ceps as any).getActiveSigningSessionId();
             if (!sessionId) {
               console.info("🔓 NIP59-RX: session unavailable; cannot unwrap");
               showToast.info(
@@ -605,7 +617,9 @@ export class ClientMessageService {
             }
 
             // Use CEPS unwrap with the active secure session
-            const inner = await CEPS.unwrapGift59WithActiveSession(e as any);
+            const inner = await (ceps as any).unwrapGift59WithActiveSession(
+              e as any
+            );
 
             if (!inner) {
               console.warn(
@@ -644,7 +658,7 @@ export class ClientMessageService {
             // For NIP-59 path we still try to verify; for NIP-17 inner events may be unsigned
             const isSigned = typeof (inner as any).sig === "string";
             if (isSigned) {
-              const validSig = CEPS.verifyEvent(inner as NostrEvent);
+              const validSig = (ceps as any).verifyEvent(inner as NostrEvent);
               if (!validSig) {
                 console.warn("🔓 NIP59-RX: inner signature invalid", {
                   innerId: (inner as any).id,
@@ -692,7 +706,7 @@ export class ClientMessageService {
   /**
    * Subscribe to NIP-17 (sealed) messages: accept unsigned inner events (kinds 14, 15)
    */
-  subscribeToNip17ForRecipient(
+  async subscribeToNip17ForRecipient(
     recipient: string,
     handlers: {
       onInner?: (inner: NostrEvent) => void;
@@ -700,22 +714,25 @@ export class ClientMessageService {
       onError?: (error: string) => void;
       onEose?: () => void;
     }
-  ): any {
+  ): Promise<any> {
     try {
+      const ceps = await getCEPS();
       const recipientHex = recipient.startsWith("npub1")
-        ? CEPS.npubToHex(recipient)
+        ? (ceps as any).npubToHex(recipient)
         : recipient;
       const filters = [{ kinds: [1059], "#p": [recipientHex] }];
-      return CEPS.subscribeMany([], filters, {
+      return (ceps as any).subscribeMany([], filters, {
         onevent: async (e: any) => {
           try {
-            const sessionId = CEPS.getActiveSigningSessionId();
+            const sessionId = (ceps as any).getActiveSigningSessionId();
             if (!sessionId) {
               handlers.onError?.("session_unavailable");
               handlers.onRaw?.(e as NostrEvent);
               return;
             }
-            const inner = await CEPS.unwrapGift59WithActiveSession(e as any);
+            const inner = await (ceps as any).unwrapGift59WithActiveSession(
+              e as any
+            );
             if (!inner) {
               handlers.onError?.("invalid_format");
               handlers.onRaw?.(e as NostrEvent);

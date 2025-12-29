@@ -11,24 +11,24 @@
  * ✅ Integrates with existing QR code generation utility
  */
 
-import { useState, useCallback } from 'react';
 import {
-  UserPlus,
-  Copy,
-  Check,
-  QrCode,
-  Send,
   AlertCircle,
+  Check,
+  Copy,
   Loader2,
+  QrCode,
   RefreshCw,
+  Send,
   Shield,
-  ShieldOff
+  ShieldOff,
+  UserPlus
 } from 'lucide-react';
-import { generateQRCodeDataURL } from '../../utils/qr-code-browser';
-import { SecureTokenManager } from '../../lib/auth/secure-token-manager';
-import { nip05Utils } from '../../lib/nip05-verification';
+import { useCallback, useState } from 'react';
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
-import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
+import { SecureTokenManager } from '../../lib/auth/secure-token-manager';
+import { getCEPS } from '../../lib/ceps';
+import { nip05Utils } from '../../lib/nip05-verification';
+import { generateQRCodeDataURL } from '../../utils/qr-code-browser';
 
 // Master Context role hierarchy
 type MasterContextRole = 'guardian' | 'steward' | 'adult' | 'offspring';
@@ -124,13 +124,14 @@ export function InvitationGenerator({
           }
 
           try {
+            const CEPS = await getCEPS();
             const verification = await nip05Utils.verify(trimmedTarget);
             if (!verification.verified || !verification.pubkey) {
               setError(verification.error || 'NIP-05 could not be verified for this identifier');
               setIsGenerating(false);
               return;
             }
-            const npub = CEPS.encodeNpub(verification.pubkey);
+            const npub = (CEPS as any).encodeNpub(verification.pubkey);
             inviteeNpub = npub;
             resolvedNpub = npub;
             resolvedNip05 = trimmedTarget.toLowerCase();
@@ -281,7 +282,8 @@ export function InvitationGenerator({
       // This bypasses the messaging hook's session requirement since we already have an authenticated user
       let cepsSendSucceeded = false;
       try {
-        const messageId = await CEPS.sendStandardDirectMessage(resolvedTargetNpub, content);
+        const CEPS = await getCEPS();
+        const messageId = await (CEPS as any).sendStandardDirectMessage(resolvedTargetNpub, content);
         if (messageId) {
           setDmStatus('Invitation sent via Nostr DM');
           cepsSendSucceeded = true;

@@ -10,7 +10,9 @@
  * - Supports batch operations while nsec is available in memory
  * - Preserves existing Identity Forge architecture and completion flow
  */
-import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
+
+import { type SecureNsecSessionProvider } from "../../lib/secure-nsec-session-registry";
+import { decodeNsecToBytes } from "../../lib/utils/nsec-utils";
 
 interface TemporaryNsecSession {
   nsecHex: string;
@@ -102,9 +104,9 @@ class SecureNsecManager {
     let nsecHex: string;
 
     if (/^nsec1/i.test(nsecInput)) {
-      // Convert bech32 nsec to hex format via CEPS for consistency
+      // Convert bech32 nsec to hex format via shared nsec-utils helper
       try {
-        const bytes = CEPS.decodeNsec(nsecInput);
+        const bytes = decodeNsecToBytes(nsecInput);
         nsecHex = Array.from(bytes)
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
@@ -422,6 +424,61 @@ export { SecureNsecManager };
 
 // Export singleton instance
 export const secureNsecManager = SecureNsecManager.getInstance();
+
+/**
+ * Bridge/adapter that exposes SecureNsecManager through the
+ * SecureNsecSessionProvider interface used by CEPS.
+ */
+export class SecureNsecManagerSessionProvider
+  implements SecureNsecSessionProvider
+{
+  private readonly manager: SecureNsecManager;
+
+  constructor(manager?: SecureNsecManager) {
+    this.manager = manager ?? secureNsecManager;
+  }
+
+  async createPostRegistrationSession(
+    nsecInput: string,
+    maxDurationMs?: number,
+    maxOperations?: number,
+    browserLifetime?: boolean
+  ): Promise<string> {
+    return this.manager.createPostRegistrationSession(
+      nsecInput,
+      maxDurationMs,
+      maxOperations,
+      browserLifetime
+    );
+  }
+
+  getActiveSessionId(): string | null {
+    return this.manager.getActiveSessionId();
+  }
+
+  async useTemporaryNsec<T>(
+    sessionId: string,
+    operation: (nsecHex: string) => Promise<T>
+  ): Promise<T> {
+    return this.manager.useTemporaryNsec(sessionId, operation);
+  }
+
+  getSessionStatus(sessionId?: string): {
+    active: boolean;
+    remainingTime?: number;
+    remainingOperations?: number;
+    sessionId?: string;
+  } {
+    return this.manager.getSessionStatus(sessionId);
+  }
+
+  clearTemporarySession(): void {
+    this.manager.clearTemporarySession();
+  }
+}
+
+// Default bridge instance used by application startup registration.
+export const secureNsecSessionProvider = new SecureNsecManagerSessionProvider();
 
 // Cleanup on page unload
 if (typeof window !== "undefined") {

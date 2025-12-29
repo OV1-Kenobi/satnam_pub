@@ -5,9 +5,9 @@ import { useAuth } from "./auth/AuthProvider";
 import KeyRotationWizard from "./KeyRotationWizard";
 import ProfileVisibilitySettings from "./ProfileVisibilitySettings";
 
-import { central_event_publishing_service as CEPS } from "../../lib/central_event_publishing_service";
 import { getEnvVar } from "../config/env.client";
 import { showToast } from "../services/toastService";
+import { apiClient } from "../utils/api-client";
 import AmberConnectButton from "./auth/AmberConnectButton";
 import SignerMethodSettings from "./auth/SignerMethodSettings";
 import IrohNodeManager from "./iroh/IrohNodeManager";
@@ -73,20 +73,67 @@ const Settings: React.FC = () => {
   const [showUnifiedNfcSetup, setShowUnifiedNfcSetup] = useState(false);
 
   useEffect(() => {
-    try {
-      const list = (CEPS as any).getRegisteredSigners?.() as any[] | undefined;
-      const amber = Array.isArray(list) ? list.find((s) => s.id === "amber") : undefined;
-      if (!amber) {
+    const checkAmber = async () => {
+      try {
+        const { getCEPS } = await import("../lib/ceps");
+        const CEPS = await getCEPS();
+        const list = (CEPS as any).getRegisteredSigners?.() as any[] | undefined;
+        const amber = Array.isArray(list) ? list.find((s) => s.id === "amber") : undefined;
+        if (!amber) {
+          setAmberConnected(false);
+          return;
+        }
+        Promise.resolve(amber.getStatus?.())
+          .then((st: any) => setAmberConnected(st === "connected"))
+          .catch(() => setAmberConnected(false));
+      } catch {
         setAmberConnected(false);
+      }
+    };
+    checkAmber();
+  }, [onAndroid]);
+
+  // Fetch registered Tapsigner cards when component mounts
+  useEffect(() => {
+    if (!tapsignerEnabled) return;
+
+    const fetchTapsignerCards = async () => {
+      // Only fetch if user is authenticated
+      if (!auth.sessionToken) {
+        setTapsignerCards([]);
+        setLoadingTapsignerCards(false);
         return;
       }
-      Promise.resolve(amber.getStatus?.())
-        .then((st: any) => setAmberConnected(st === "connected"))
-        .catch(() => setAmberConnected(false));
-    } catch {
-      setAmberConnected(false);
-    }
-  }, [onAndroid]);
+
+      try {
+        setLoadingTapsignerCards(true);
+
+        const response = await fetch("/api/tapsigner-unified/list", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${auth.sessionToken}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.data?.cards) {
+          setTapsignerCards(data.data.cards);
+        } else {
+          console.error("Failed to fetch Tapsigner cards:", data.error);
+          setTapsignerCards([]);
+        }
+      } catch (error) {
+        console.error("Error fetching Tapsigner cards:", error);
+        setTapsignerCards([]);
+      } finally {
+        setLoadingTapsignerCards(false);
+      }
+    };
+
+    fetchTapsignerCards();
+  }, [tapsignerEnabled, auth.sessionToken]);
 
   const onTogglePrefer = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = !!e.target.checked;
@@ -116,13 +163,30 @@ const Settings: React.FC = () => {
   const handleIrohNodeIdChange = async (nodeId: string | undefined) => {
     setUserIrohNodeId(nodeId);
 
-    // Save to user profile metadata (placeholder - implement API call)
+    const npub = auth.user?.npub;
+    if (!npub) {
+      showToast.error("Unable to update Iroh node ID: missing identity", { duration: 3000 });
+      return;
+    }
+
     try {
-      // TODO: API call to update user profile
-      // await updateUserProfile({ iroh_node_id: nodeId });
-      showToast.success('Iroh node ID updated', { duration: 2000 });
+      const result = await apiClient.updateUserProfile({
+        npub,
+        iroh_node_id: nodeId ?? null,
+      });
+
+      if (!result?.success) {
+        showToast.error(result?.error || "Failed to update Iroh node ID", {
+          duration: 3000,
+        });
+        return;
+      }
+
+      showToast.success("Iroh node ID updated", { duration: 2000 });
     } catch (error) {
-      showToast.error('Failed to update Iroh node ID', { duration: 3000 });
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to update Iroh node ID";
+      showToast.error(errorMessage, { duration: 3000 });
     }
   };
 

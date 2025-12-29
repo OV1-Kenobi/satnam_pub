@@ -53,6 +53,20 @@ const TDZ_PATTERNS = [
     pattern: /^(?:export\s+)?(?:const|let)\s+\w+\s*=\s*new\s+\w+\(/gm,
     severity: 'info',
     fix: 'Consider lazy instantiation to avoid TDZ if class imports circular dependencies'
+  },
+  {
+    name: 'Module-level singleton getInstance() call',
+    pattern:
+      /^(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*\w+\.getInstance\s*\(/gm,
+    severity: 'info',
+    fix: 'Consider lazy accessors instead of module-level singletons, especially across layers (src/lib ↔ lib ↔ netlify).'
+  },
+  {
+    name: 'Cross-layer import (src ↔ lib)',
+    pattern:
+      /from\s+['"].*(?:\.\.\/)?lib\/central_event_publishing_service['"]/gm,
+    severity: 'warning',
+    fix: 'Avoid mutual imports between src/lib and lib/*.ts; extract shared helpers into a third module.'
   }
 ];
 
@@ -124,10 +138,31 @@ function main() {
   console.log('🔍 TDZ Error Detection Script');
   console.log('='.repeat(50));
   console.log('Scanning for patterns that may cause Temporal Dead Zone errors...\n');
-  
+
+  // Expanded scanning scope: include src/, lib/, and Netlify functions directories
   const srcDir = path.join(rootDir, 'src');
-  const files = getAllFiles(srcDir);
-  
+  const libDir = path.join(rootDir, 'lib');
+  const netlifyFunctionsDir = path.join(rootDir, 'netlify', 'functions');
+  const netlifyFunctionsActiveDir = path.join(
+    rootDir,
+    'netlify',
+    'functions_active'
+  );
+
+  const dirsToScan = [
+    srcDir,
+    libDir,
+    netlifyFunctionsDir,
+    netlifyFunctionsActiveDir,
+  ].filter((dir) => fs.existsSync(dir));
+
+  const files = dirsToScan.flatMap((dir) => getAllFiles(dir));
+
+  console.log(
+    `Scanning directories: ${dirsToScan
+      .map((d) => path.relative(rootDir, d) || '.')
+      .join(', ')}`
+  );
   console.log(`Found ${files.length} TypeScript/TSX files to analyze\n`);
   
   let allIssues = [];

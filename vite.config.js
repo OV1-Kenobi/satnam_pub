@@ -327,13 +327,15 @@ export default defineConfig({
 
           // AUTH-CORE: Essential authentication modules (critical path)
           // These are needed immediately for session validation and must stay lean
+          // Includes toastService to break auth-core → services-utilities cycle
+          // Note: lib/auth/token-binding is in root lib/, not src/lib/
           if (id.includes('src/lib/auth/unified-auth-system') ||
               id.includes('src/lib/auth/client-session-vault') ||
               id.includes('src/lib/auth/secure-token-manager') ||
               id.includes('src/lib/auth/passphrase-provider') ||
               id.includes('src/lib/auth/fetch-with-auth') ||
               id.includes('src/lib/auth/user-identities-auth') ||
-              id.includes('src/lib/auth/token-binding') ||
+              id.includes('lib/auth/token-binding') ||
               id.includes('src/lib/auth/nfc-vault-policy') ||
               id.includes('src/lib/auth/nfc-auth-bridge') ||
               id.includes('src/lib/auth/nsec-session-bridge') ||
@@ -344,7 +346,8 @@ export default defineConfig({
               id.includes('src/hooks/usePrivacyFirstAuth') ||
               id.includes('src/hooks/useFamilyFederationAuth') ||
               id.includes('src/utils/authManager') ||
-              id.includes('src/utils/secureSession')) {
+              id.includes('src/utils/secureSession') ||
+              id.includes('src/services/toastService')) {
             return 'auth-core';
           }
 
@@ -353,22 +356,42 @@ export default defineConfig({
             return 'auth-extended';
           }
 
-          // Nostr services - split into services-utilities (not critical path)
-          // IMPORTANT: Only include code under src/ (client). Exclude server files under lib/ and netlify/functions.
-          if (
-            id.includes('src/lib/nostr-browser') ||
-            id.includes('src/lib/nip05-verification') ||
-            (id.includes('src/lib/') && (id.includes('nostr') || id.includes('nip05') || id.includes('nip07')))
-          ) {
-            return 'services-utilities';
-          }
+          // ========================================================================
+          // PHASE 3 OPTIMIZATION: Consolidated services-utilities chunk
+          // Analysis showed that nostr-services, lightning-services, and core-hooks
+          // all have bidirectional dependencies with services-utilities.
+          // Merging them into a single consolidated chunk eliminates circular imports.
+          // Final structure maintains the original architecture while keeping
+          // the chunk under the 500KB limit (~415KB consolidated).
+          // ========================================================================
 
-          // Lightning and payments - move to services-utilities (loaded on demand)
-          if (id.includes('src/lib/enhanced-family-coordinator') ||
+          // SERVICES-UTILITIES: Consolidated services, hooks, and Nostr/Lightning layer
+          // Includes: Nostr services, Lightning services, hooks, contexts, and general services
+          // All consolidated to eliminate bidirectional dependency cycles
+          if (id.includes('src/hooks/') ||
+              id.includes('src/lib/hooks/') ||
+              id.includes('src/lib/contexts/') ||
+              id.includes('src/lib/nostr/') ||
+              id.includes('src/lib/nostr-browser') ||
+              id.includes('src/lib/nostr-profile-service') ||
+              id.includes('src/lib/nip05-verification') ||
+              id.includes('src/lib/nip42/') ||
+              id.includes('src/lib/nip46/') ||
+              id.includes('src/lib/messaging/') ||
+              id.includes('src/lib/gift-wrapped-messaging/') ||
+              id.includes('src/lib/signers/') ||
+              id.includes('src/lib/noise/') ||
+              id.includes('src/lib/enhanced-family-coordinator') ||
               id.includes('src/lib/family-liquidity-manager') ||
               id.includes('src/lib/liquidity-intelligence') ||
               id.includes('src/lib/internal-lightning-bridge') ||
-              id.includes('src/lib/payment-automation')) {
+              id.includes('src/lib/payment-automation') ||
+              id.includes('src/lib/phoenixd-client') ||
+              id.includes('src/lib/enhanced-phoenixd-manager') ||
+              id.includes('src/lib/lightning-client') ||
+              id.includes('src/lib/cross-mint-cashu-manager') ||
+              id.includes('src/lib/geochat/') ||
+              id.includes('src/lib/family-wallet')) {
             return 'services-utilities';
           }
 
@@ -415,6 +438,8 @@ export default defineConfig({
 
             // DASHBOARD-FEATURES: User dashboard components (lazy-loaded via React.lazy)
             // FamilyDashboard and IndividualFinancesDashboard are now lazy-loaded in App.tsx
+            // Note: Creates services-utilities ↔ dashboard-features cycle, but keeping separate
+            // to avoid components chunk exceeding 500KB limit
             if (id.includes('FamilyDashboard') ||
                 id.includes('IndividualFinancesDashboard') ||
                 id.includes('FamilyFinancials') ||
@@ -520,8 +545,9 @@ export default defineConfig({
             return 'components';
           }
 
-          // SERVICES-UTILITIES: Services layer (loaded on demand)
-          // Services provide API calls and are not needed on critical path
+          // SERVICES-UTILITIES: General services layer (loaded on demand)
+          // Note: Nostr and Lightning services are handled earlier by their respective chunks
+          // This catches remaining general services like contacts, attestations, etc.
           if (id.includes('src/services/')) {
             return 'services-utilities';
           }
@@ -529,14 +555,6 @@ export default defineConfig({
           // Crypto-factory - keep in services-utilities (loaded on demand via CryptoPreloader)
           // Note: crypto-factory is in utils/, not lib/
           if (id.includes('utils/crypto-factory')) {
-            return 'services-utilities';
-          }
-
-          // Hooks - split between auth-core (critical) and services-utilities (non-critical)
-          // Auth-related hooks are handled above in auth-core section
-          // Remaining hooks go to services-utilities
-          if (id.includes('src/hooks/') ||
-              id.includes('src/lib/contexts/')) {
             return 'services-utilities';
           }
 

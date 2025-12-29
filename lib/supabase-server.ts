@@ -14,38 +14,72 @@ function getEnvVar(key: string): string | undefined {
 
 import { createClient } from "@supabase/supabase-js";
 
-// Server-side environment variables
-const supabaseUrl = getEnvVar("VITE_SUPABASE_URL") || getEnvVar("SUPABASE_URL");
-const supabaseKey =
-  getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("SUPABASE_ANON_KEY");
-
 // Fallback to development values if not set
 const defaultUrl = "https://your-project.supabase.co";
 const defaultKey = "your-anon-key";
 
-// For development/testing, use default values if env vars not set
-const finalUrl = supabaseUrl || defaultUrl;
-const finalKey = supabaseKey || defaultKey;
+// True lazy getters - compute on first access only
+let _cachedUrl: string | null = null;
+let _cachedKey: string | null = null;
 
-console.log("⚠️  DEPRECATED: Using lib/supabase-server.ts");
-console.log("   Consider migrating to src/lib/supabase.ts singleton");
-console.log(`   URL: ${finalUrl}`);
-console.log(
-  `   Key: ${finalKey ? finalKey.substring(0, 20) + "..." : "not set"}`
-);
+function getFinalUrl(): string {
+  if (_cachedUrl === null) {
+    _cachedUrl =
+      getEnvVar("VITE_SUPABASE_URL") || getEnvVar("SUPABASE_URL") || defaultUrl;
+  }
+  return _cachedUrl;
+}
 
-// Create server-side Supabase client (LEGACY - for migration scripts only)
-export const supabase = createClient(finalUrl, finalKey, {
-  auth: {
-    persistSession: false, // Server-side doesn't need session persistence
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
-  },
-  global: {
-    headers: {
-      "x-client-info": "satnam-migration-tools@1.0.0",
-      "x-deprecated": "true",
-    },
+function getFinalKey(): string {
+  if (_cachedKey === null) {
+    _cachedKey =
+      getEnvVar("VITE_SUPABASE_ANON_KEY") ||
+      getEnvVar("SUPABASE_ANON_KEY") ||
+      defaultKey;
+  }
+  return _cachedKey;
+}
+
+// Lazy singleton for the Supabase client
+let _supabaseClient: ReturnType<typeof createClient> | null = null;
+let _loggedDeprecation = false;
+
+function logDeprecationWarning(): void {
+  if (_loggedDeprecation) return;
+  _loggedDeprecation = true;
+  const url = getFinalUrl();
+  const key = getFinalKey();
+  console.log("⚠️  DEPRECATED: Using lib/supabase-server.ts");
+  console.log("   Consider migrating to src/lib/supabase.ts singleton");
+  console.log(`   URL: ${url}`);
+  console.log(`   Key: ${key ? key.substring(0, 20) + "..." : "not set"}`);
+}
+
+function getSupabaseClient(): ReturnType<typeof createClient> {
+  if (_supabaseClient === null) {
+    logDeprecationWarning();
+    _supabaseClient = createClient(getFinalUrl(), getFinalKey(), {
+      auth: {
+        persistSession: false, // Server-side doesn't need session persistence
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          "x-client-info": "satnam-migration-tools@1.0.0",
+          "x-deprecated": "true",
+        },
+      },
+    });
+  }
+  return _supabaseClient;
+}
+
+// Export as a getter proxy for backward compatibility
+// This defers client creation until first property access
+export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+  get(_target, prop) {
+    return (getSupabaseClient() as any)[prop];
   },
 });
 
@@ -74,7 +108,7 @@ export async function testSupabaseConnection(): Promise<{
     return {
       connected: true,
       info: {
-        url: finalUrl,
+        url: getFinalUrl(),
         tablesAccessible: data?.length > 0,
       },
     };
@@ -119,15 +153,21 @@ export const mockSupabaseOperations = {
   },
 };
 
-// Detect if we're in a testing/development environment without real Supabase
-export const isSupabaseMocked =
-  finalUrl === defaultUrl || finalKey === defaultKey;
+// Lazy check for mocked Supabase - computed on first access
+let _isSupabaseMockedCached: boolean | null = null;
 
-if (isSupabaseMocked) {
-  console.log(
-    "⚠️  Using mock Supabase operations (no real database connection)"
-  );
-  console.log(
-    "   Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables for real database access"
-  );
+export function isSupabaseMocked(): boolean {
+  if (_isSupabaseMockedCached === null) {
+    _isSupabaseMockedCached =
+      getFinalUrl() === defaultUrl || getFinalKey() === defaultKey;
+    if (_isSupabaseMockedCached) {
+      console.log(
+        "⚠️  Using mock Supabase operations (no real database connection)"
+      );
+      console.log(
+        "   Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables for real database access"
+      );
+    }
+  }
+  return _isSupabaseMockedCached;
 }

@@ -37,14 +37,20 @@ import {
 
 // Security utilities (Phase 2 hardening)
 
-// Initialize Supabase client
-const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
-const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
+// Initialize Supabase client (lazy env access to avoid module-level getEnvVar calls)
+function getSupabaseConfig(): { url: string; serviceKey: string } {
+  const url = getEnvVar("VITE_SUPABASE_URL");
+  const serviceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Missing Supabase configuration");
+  if (!url || !serviceKey) {
+    throw new Error("Missing Supabase configuration");
+  }
+
+  return { url, serviceKey };
 }
 
+const { url: supabaseUrl, serviceKey: supabaseServiceKey } =
+  getSupabaseConfig();
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 interface WebAuthnRegisterRequest {

@@ -4,7 +4,7 @@
  * Provides event signing via window.nostr. Payment/threshold are not supported by NIP-07.
  */
 
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { verifyEventWithCeps } from "../ceps";
 import type {
   SignerAdapter,
   SignerCapability,
@@ -96,7 +96,7 @@ export class Nip07Adapter implements SignerAdapter {
       const signed = await ext.signEvent(unsigned as Record<string, unknown>);
       // Verify via CEPS if possible
       try {
-        const ok = (CEPS as any).verifyEvent?.(signed);
+        const ok = await verifyEventWithCeps(signed as any);
         if (ok === false) throw new Error("Invalid signature from extension");
       } catch {
         // ignore verification if unavailable

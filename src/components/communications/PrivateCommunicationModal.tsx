@@ -31,13 +31,13 @@ import { PrivacyLevelSelector } from './PrivacyLevelSelector'
 
 import { resolvePlatformLightningDomain } from '../../config/domain.client'
 
-import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service'
-import type { MessageSendResult } from '../../lib/messaging/client-message-service'
-import { getPrivacyMethodLabel } from '../../lib/messaging/utils'
-import { PeerInvitationModal } from './PeerInvitationModal'
 import { NOISE_EXPERIMENTAL_ENABLED } from '../../config/env.client'
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging'
 import { getAuthHeaders } from '../../lib/auth/fetch-with-auth'
+import { getCEPS } from '../../lib/ceps'
+import type { MessageSendResult } from '../../lib/messaging/client-message-service'
+import { getPrivacyMethodLabel } from '../../lib/messaging/utils'
+import { PeerInvitationModal } from './PeerInvitationModal'
 
 
 
@@ -594,11 +594,12 @@ export function PrivateCommunicationModal({
     setError(null)
 
     try {
+      const CEPS = await getCEPS();
       let result: MessageSendResult;
 
       if (messageType === 'individual') {
         // Send individual message using CEPS gift-wrapped pathway (with nip04 fallback inside CEPS)
-        const sendRes = await CEPS.sendGiftWrappedDirectMessage(
+        const sendRes = await (CEPS as any).sendGiftWrappedDirectMessage(
           {
             sessionId: 'client-ui', // UI-scoped; CEPS uses internal userSession
             displayNameHash: recipientDisplay || 'recipient',
@@ -639,7 +640,7 @@ export function PrivateCommunicationModal({
         // Send group message via CEPS group announcement (or group messaging service)
         const group = groups.find(g => g.id === selectedGroup);
         if (!group) throw new Error('Group not found');
-        result = await CEPS.publishGroupAnnouncement('', selectedGroup, message);
+        result = await (CEPS as any).publishGroupAnnouncement('', selectedGroup, message);
 
         if (result.success) {
           // Save to history

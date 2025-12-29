@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { useCallback, useEffect, useState } from "react";
+import { getCEPS } from "../../lib/ceps";
 import type { SignerAdapter, SignerCapability, SignerStatus } from "../../lib/signers/signer-adapter";
 
 interface Row {
@@ -56,12 +56,21 @@ export default function SignerMethodSettings(): JSX.Element {
     }
   });
 
-  const signers: SignerAdapter[] = useMemo(() => {
-    try {
-      return CEPS.getRegisteredSigners?.() || [];
-    } catch {
-      return [];
-    }
+  const [signers, setSigners] = useState<SignerAdapter[]>([]);
+
+  // Load signers from CEPS asynchronously
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const ceps = await getCEPS();
+        const list = (ceps as any).getRegisteredSigners?.() || [];
+        if (mounted) setSigners(list);
+      } catch {
+        // Signers not available
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   const refresh = useCallback(async () => {

@@ -17,27 +17,23 @@ import {
 
 // Helpers
 const te = new TextEncoder();
-const hexToBytes = (hex: string): Uint8Array =>
-  new Uint8Array((hex.match(/.{1,2}/g) || []).map((b) => parseInt(b, 16)));
-const bytesToHex = (bytes: Uint8Array): string =>
-  Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a[i] ^ b[i];
-  }
-  return diff === 0;
-}
-
 const utf8 = (s: string) => te.encode(s);
 
-// Import session manager at top-level (TS/ESM) - recovery bridge imported lazily to avoid circular deps
-import { secureNsecManager } from "../src/lib/secure-nsec-manager";
+// Import signing preferences; secure nsec session provider is resolved via
+// a lightweight registry to avoid circular dependencies.
 import { userSigningPreferences } from "../src/lib/user-signing-preferences";
+import {
+  getSecureNsecSessionProvider,
+  type SecureNsecSessionProvider,
+} from "./secure-nsec-session-registry";
+import { bytesToHex, hexToBytes, timingSafeEqual } from "./utils/crypto-utils";
+import {
+  deriveNpubFromNsec as utilDeriveNpubFromNsec,
+  derivePubkeyHexFromNsec as utilDerivePubkeyHexFromNsec,
+  encodeNpub as utilEncodeNpub,
+  encodeNsec as utilEncodeNsec,
+} from "./utils/nostr-encoding-utils";
+import { decodeNsecToBytes } from "./utils/nsec-utils";
 
 // Import relay privacy layer for metadata protection
 import {
@@ -586,23 +582,22 @@ export class CentralEventPublishingService {
       // Accept 64-hex or bech32 nsec only
       if (/^[0-9a-fA-F]{64}$/.test(nsec)) return getPublicKey(nsec);
       try {
-        const dec = nip19.decode(nsec);
-        if (dec.type === "nsec") {
-          const data = dec.data as Uint8Array | string;
-          const seckey = typeof data === "string" ? data : bytesToHex(data);
-          return getPublicKey(seckey);
-        }
-      } catch {}
-      throw new Error("Invalid nsec: expected 64-hex or bech32 'nsec1...'");
+        return utilDerivePubkeyHexFromNsec(nsec);
+      } catch {
+        throw new Error("Invalid nsec: expected 64-hex or bech32 'nsec1...'");
+      }
     })();
     const userHash = await PrivacyUtils.hashIdentifier(pubHex);
     const ttlHours = options?.ttlHours ?? this.config.session.ttlHours;
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
-    // Do NOT store nsec; create SecureNsecManager session instead (using policy)
+    // Do NOT store nsec; create secure session instead (using policy)
     const policy = await this.getSigningPolicy();
+    const sessionProvider = this.getRequiredSecureSessionProvider(
+      "initializeNsecSession"
+    );
     try {
-      await secureNsecManager.createPostRegistrationSession(
+      await sessionProvider.createPostRegistrationSession(
         nsec,
         policy.sessionDurationMs,
         policy.maxOperations,
@@ -610,7 +605,7 @@ export class CentralEventPublishingService {
       );
     } catch (e) {
       throw new Error(
-        `[CEPS] SecureNsecManager session creation failed: ${
+        `[CEPS] secure session creation failed: ${
           e instanceof Error ? e.message : String(e)
         }`
       );
@@ -813,11 +808,12 @@ export class CentralEventPublishingService {
 
   // ---- Dynamic identity retrieval (SecureSession first, then NIP-07, DB fallback) ----
   private async getUserPubkeyHexForVerification(): Promise<string> {
-    // 1) Prefer SecureSession: derive pubkey from the active SecureNsecManager session
+    // 1) Prefer SecureSession: derive pubkey from the active secure session
     try {
+      const provider = this.getSecureSessionProvider();
       const sessionId = this.getActiveSigningSessionId();
-      if (sessionId) {
-        const pubHex = await secureNsecManager.useTemporaryNsec(
+      if (provider && sessionId) {
+        const pubHex = await provider.useTemporaryNsec(
           sessionId,
           async (nsecHex: string) => {
             try {
@@ -1770,9 +1766,10 @@ export class CentralEventPublishingService {
     });
   }
 
-  // ---- Centralized session-based signing (SecureNsecManager integration) ----
+  // ---- Centralized session-based signing (secure nsec session provider) ----
   /**
-   * Get active signing session id from either RecoverySessionBridge or SecureNsecManager
+   * Get active signing session id from either RecoverySessionBridge or the
+   * registered SecureNsecSessionProvider.
    */
   private _recoverySessionBridge: any = null;
   private _recoverySessionBridgeLoaded = false;
@@ -1789,6 +1786,22 @@ export class CentralEventPublishingService {
       this._recoverySessionBridgeLoaded = true;
     }
     return this._recoverySessionBridge;
+  }
+
+  private getSecureSessionProvider(): SecureNsecSessionProvider | null {
+    return getSecureNsecSessionProvider();
+  }
+
+  private getRequiredSecureSessionProvider(
+    context: string
+  ): SecureNsecSessionProvider {
+    const provider = getSecureNsecSessionProvider();
+    if (!provider) {
+      throw new Error(
+        `[CEPS] Secure nsec session provider not registered (${context})`
+      );
+    }
+    return provider;
   }
 
   getActiveSigningSessionId(): string | null {
@@ -1811,8 +1824,9 @@ export class CentralEventPublishingService {
         });
       } catch {}
 
-      // 3) Direct SecureNsecManager check
-      const direct = secureNsecManager.getActiveSessionId();
+      // 3) Direct secure session provider check
+      const provider = this.getSecureSessionProvider();
+      const direct = provider?.getActiveSessionId() ?? null;
       try {
         console.log("🔐 CEPS.getActiveSigningSessionId: direct status", {
           active: !!direct,
@@ -1888,14 +1902,16 @@ export class CentralEventPublishingService {
     }
   }
 
-  // Lazily hydrate CEPS userSession from an existing SecureNsecManager session
+  // Lazily hydrate CEPS userSession from an existing secure session
   private async ensureActiveUserSession(): Promise<void> {
     try {
       if (this.userSession) return;
+      const provider = this.getSecureSessionProvider();
+      if (!provider) return;
       const activeId = this.getActiveSigningSessionId();
       if (!activeId) return;
       // Derive pubkey from active secure session without exposing nsec
-      const pubHex = await secureNsecManager.useTemporaryNsec(
+      const pubHex = await provider.useTemporaryNsec(
         activeId,
         async (privHex: string) => {
           try {
@@ -2030,15 +2046,18 @@ export class CentralEventPublishingService {
 
       const sessionId = this.getActiveSigningSessionId();
       if (!sessionId) throw new Error("No active signing session");
+      const provider = this.getRequiredSecureSessionProvider(
+        "signEventWithActiveSession"
+      );
 
       // Pre-check session status for clearer errors
-      const status = (secureNsecManager as any).getSessionStatus?.(sessionId);
+      const status = provider.getSessionStatus?.(sessionId);
       if (!status?.active) {
         throw new Error("Signing session expired or operation limit reached");
       }
 
-      // Use SecureNsecManager to execute signing with ephemeral access
-      const ev = await secureNsecManager.useTemporaryNsec(
+      // Use secure session provider to execute signing with ephemeral access
+      const ev = await provider.useTemporaryNsec(
         sessionId,
         async (nsecHex: string) => {
           const toSign = {
@@ -2055,7 +2074,7 @@ export class CentralEventPublishingService {
         const policy = await this.getSigningPolicy();
         if (policy.singleUse) {
           try {
-            (secureNsecManager as any).clearTemporarySession?.(sessionId);
+            provider.clearTemporarySession?.();
           } catch {}
         }
       } catch {}
@@ -2121,7 +2140,7 @@ export class CentralEventPublishingService {
 
   /**
    * Sign an event using the preferred external signer when connected and capable.
-   * Falls back to the active SecureNsecManager session if preference is not available.
+   * Falls back to the active secure session provider if preference is not available.
    * Note: This preserves zero-knowledge posture and will not auto-prompt extensions.
    */
   public async signEventWithPreferredOrSession(
@@ -2315,45 +2334,28 @@ export class CentralEventPublishingService {
       : bytesToHex(dec.data as Uint8Array);
   }
   nsecToBytes(nsec: string): Uint8Array {
-    // Accept bech32 (nsec1...) or 64-hex
-    try {
-      const dec = nip19.decode(nsec);
-      if (dec.type === "nsec") {
-        return typeof dec.data === "string"
-          ? hexToBytes(dec.data as string)
-          : (dec.data as Uint8Array);
-      }
-    } catch {}
-    if (/^[0-9a-fA-F]{64}$/.test(nsec)) return hexToBytes(nsec);
-    throw new Error("Invalid nsec format");
+    // Delegate to shared helper that accepts bech32 (nsec1...) or 64-hex
+    return decodeNsecToBytes(nsec);
   }
   decodeNpub(npub: string): string {
     return this.npubToHex(npub);
   }
   encodeNpub(pubkeyHex: string): string {
-    return nip19.npubEncode(pubkeyHex);
+    return utilEncodeNpub(pubkeyHex);
   }
   encodeNsec(privBytes: Uint8Array): string {
-    // Pass raw bytes to nip19.nsecEncode to match current nostr-tools API
-    return (nip19 as any).nsecEncode(privBytes);
+    // Pass raw bytes to utility-backed nip19.nsecEncode to match current nostr-tools API
+    return utilEncodeNsec(privBytes);
   }
   decodeNsec(nsec: string): Uint8Array {
-    const dec = nip19.decode(nsec);
-    if (dec.type !== "nsec") {
-      throw new Error("Invalid nsec format");
-    }
-    return typeof dec.data === "string"
-      ? hexToBytes(dec.data as string)
-      : (dec.data as Uint8Array);
+    // Delegate to shared helper to avoid CEPS 5 secure session circular deps
+    return decodeNsecToBytes(nsec);
   }
   derivePubkeyHexFromNsec(nsec: string): string {
-    const privBytes = this.nsecToBytes(nsec);
-    const privHex = bytesToHex(privBytes);
-    return getPublicKey(privHex);
+    return utilDerivePubkeyHexFromNsec(nsec);
   }
   deriveNpubFromNsec(nsec: string): string {
-    const pubHex = this.derivePubkeyHexFromNsec(nsec);
-    return nip19.npubEncode(pubHex);
+    return utilDeriveNpubFromNsec(nsec);
   }
 
   // ---- NIP-17 builders and wrappers ----
@@ -2428,31 +2430,31 @@ export class CentralEventPublishingService {
     unsignedEvent: any,
     recipientPubkeyHex: string
   ): Promise<Event> {
+    const provider = this.getRequiredSecureSessionProvider(
+      "sealKind13WithActiveSession"
+    );
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) throw new Error("No active signing session");
-    return await secureNsecManager.useTemporaryNsec(
-      sessionId,
-      async (nsecHex) => {
-        const privHex = nsecHex;
-        const pubHex = getPublicKey(privHex);
-        const now = Math.floor(Date.now() / 1000);
-        // NIP-17: seal content via nip44 (sender priv -> recipient pub)
-        const nip44Mod = await import("nostr-tools/nip44");
-        const ciphertext = await (nip44Mod as any).encrypt(
-          privHex,
-          recipientPubkeyHex,
-          JSON.stringify(unsignedEvent)
-        );
-        const unsignedSeal: any = {
-          kind: 13,
-          created_at: now,
-          tags: [],
-          content: ciphertext,
-          pubkey: pubHex,
-        };
-        return finalizeEvent(unsignedSeal as any, privHex) as Event;
-      }
-    );
+    return await provider.useTemporaryNsec(sessionId, async (nsecHex) => {
+      const privHex = nsecHex;
+      const pubHex = getPublicKey(privHex);
+      const now = Math.floor(Date.now() / 1000);
+      // NIP-17: seal content via nip44 (sender priv -> recipient pub)
+      const nip44Mod = await import("nostr-tools/nip44");
+      const ciphertext = await (nip44Mod as any).encrypt(
+        privHex,
+        recipientPubkeyHex,
+        JSON.stringify(unsignedEvent)
+      );
+      const unsignedSeal: any = {
+        kind: 13,
+        created_at: now,
+        tags: [],
+        content: ciphertext,
+        pubkey: pubHex,
+      };
+      return finalizeEvent(unsignedSeal as any, privHex) as Event;
+    });
   }
 
   async giftWrap1059(
@@ -2491,10 +2493,11 @@ export class CentralEventPublishingService {
     innerSignedEvent: Event,
     recipientPubkeyHex: string
   ): Promise<Event> {
+    const provider = this.getRequiredSecureSessionProvider("wrapGift59");
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId)
       throw new Error("No active signing session for NIP-59 wrap");
-    const wrapped = await secureNsecManager.useTemporaryNsec(
+    const wrapped = await provider.useTemporaryNsec(
       sessionId,
       async (privHex: string) => {
         return (await (nip59 as any).wrapEvent?.(
@@ -2531,23 +2534,21 @@ export class CentralEventPublishingService {
   async unwrapGift59WithActiveSession(
     outerEvent: Event
   ): Promise<Event | null> {
+    const provider = this.getSecureSessionProvider();
+    if (!provider) return null;
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) return null;
     try {
-      return await secureNsecManager.useTemporaryNsec(
-        sessionId,
-        async (nsecHex) => {
-          try {
-            const fn =
-              (nip59 as any).unwrapEvent || (nip59 as any).openGiftWrap;
-            if (!fn) throw new Error("NIP-59 unwrap not available");
-            return (await fn(outerEvent, nsecHex)) as Event;
-          } catch (innerErr) {
-            // Swallow unwrap errors and return null for robustness
-            return null as any;
-          }
+      return await provider.useTemporaryNsec(sessionId, async (nsecHex) => {
+        try {
+          const fn = (nip59 as any).unwrapEvent || (nip59 as any).openGiftWrap;
+          if (!fn) throw new Error("NIP-59 unwrap not available");
+          return (await fn(outerEvent, nsecHex)) as Event;
+        } catch (innerErr) {
+          // Swallow unwrap errors and return null for robustness
+          return null as any;
         }
-      );
+      });
     } catch (e) {
       return null;
     }
@@ -2558,19 +2559,19 @@ export class CentralEventPublishingService {
     recipientPubkeyHex: string,
     plaintext: string
   ): Promise<string> {
+    const provider = this.getRequiredSecureSessionProvider(
+      "encryptNip44WithActiveSession"
+    );
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) throw new Error("No active signing session");
-    return await secureNsecManager.useTemporaryNsec(
-      sessionId,
-      async (nsecHex) => {
-        const mod = await import("nostr-tools/nip44");
-        return (await (mod as any).encrypt(
-          nsecHex,
-          recipientPubkeyHex,
-          plaintext
-        )) as string;
-      }
-    );
+    return await provider.useTemporaryNsec(sessionId, async (nsecHex) => {
+      const mod = await import("nostr-tools/nip44");
+      return (await (mod as any).encrypt(
+        nsecHex,
+        recipientPubkeyHex,
+        plaintext
+      )) as string;
+    });
   }
 
   // ---- Relay discovery (kind:10050) and optimized publishing ----
@@ -2758,14 +2759,14 @@ export class CentralEventPublishingService {
     recipientPubHex: string,
     content: string
   ): Promise<string> {
+    const provider = this.getRequiredSecureSessionProvider(
+      "encryptWithActiveSession"
+    );
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) throw new Error("No active signing session");
-    const enc = await secureNsecManager.useTemporaryNsec(
-      sessionId,
-      async (nsecHex) => {
-        return await nip04.encrypt(nsecHex, recipientPubHex, content);
-      }
-    );
+    const enc = await provider.useTemporaryNsec(sessionId, async (nsecHex) => {
+      return await nip04.encrypt(nsecHex, recipientPubHex, content);
+    });
     return enc;
   }
 
@@ -2774,9 +2775,12 @@ export class CentralEventPublishingService {
     senderPubHex: string,
     ciphertext: string
   ): Promise<{ plaintext: string; protocol: "nip04" | "nip44" }> {
+    const provider = this.getRequiredSecureSessionProvider(
+      "decryptStandardDirectMessageWithActiveSession"
+    );
     const sessionId = this.getActiveSigningSessionId();
     if (!sessionId) throw new Error("No active signing session");
-    const result = await secureNsecManager.useTemporaryNsec(
+    const result = await provider.useTemporaryNsec(
       sessionId,
       async (nsecHex) => {
         // Try NIP-04 first, then fall back to NIP-44 if available
@@ -2819,7 +2823,7 @@ export class CentralEventPublishingService {
   }
 
   // Open NIP-17 sealed DM (kind 13, optionally gift-wrapped in kind 1059)
-  // using the active SecureNsecManager session and nip44.
+  // using the active secure session and nip44.
   async openNip17DmWithActiveSession(
     outerOrInner: Event
   ): Promise<{ senderPubHex: string; content: string } | null> {
@@ -2840,11 +2844,12 @@ export class CentralEventPublishingService {
       if (typeof ciphertext !== "string" || !ciphertext) return null;
       if (!senderPubHex || typeof senderPubHex !== "string") return null;
 
+      const provider = this.getSecureSessionProvider();
       const sessionId = this.getActiveSigningSessionId();
-      if (!sessionId) return null;
+      if (!provider || !sessionId) return null;
 
       // Step 2: Decrypt sealed nip44 payload using the active session
-      const decrypted = await secureNsecManager.useTemporaryNsec(
+      const decrypted = await provider.useTemporaryNsec(
         sessionId,
         async (nsecHex: string) => {
           try {
@@ -2978,15 +2983,16 @@ export class CentralEventPublishingService {
     // If NIP-07 unavailable but gift preferred, try wrapping a session-signed DM
     if (preferGift) {
       try {
+        const provider = this.getSecureSessionProvider();
         const sessionId = this.getActiveSigningSessionId();
-        if (sessionId) {
+        if (provider && sessionId) {
           const unsignedDm: any = {
             kind: 4,
             created_at: Math.floor(Date.now() / 1000),
             tags: [["p", recipientHex]],
             content,
           };
-          const wrapped = await (secureNsecManager as any).useTemporaryNsec(
+          const wrapped = await provider.useTemporaryNsec(
             sessionId,
             async (privHex: string) => {
               return (nip59 as any).wrapEvent?.(
@@ -3039,7 +3045,7 @@ export class CentralEventPublishingService {
     recipientNpub: string,
     plaintext: string
   ): Promise<string> {
-    // Lazily hydrate CEPS userSession from an active SecureNsecManager session if available
+    // Lazily hydrate CEPS userSession from an active secure session if available
     await this.ensureActiveUserSession();
     if (!this.userSession) throw new Error("No active session");
 
@@ -3532,10 +3538,11 @@ export class CentralEventPublishingService {
     profileContent: any
   ): Promise<string> {
     // Ensure SecureSession is active; if not, create a temporary one from provided privateNsec
+    const provider = this.getSecureSessionProvider();
     let sessionId = this.getActiveSigningSessionId();
-    if (!sessionId && privateNsec) {
+    if (provider && !sessionId && privateNsec) {
       try {
-        sessionId = await secureNsecManager.createPostRegistrationSession(
+        sessionId = await provider.createPostRegistrationSession(
           privateNsec,
           15 * 60 * 1000
         );

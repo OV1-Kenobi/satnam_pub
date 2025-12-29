@@ -12,19 +12,8 @@
 // Import domain resolver for white-label compatibility
 import { resolvePlatformLightningDomain } from "../config/domain.client";
 
-// Lazy-loaded CEPS instance to prevent initialization at module load time
-let _cepsModule:
-  | typeof import("../../lib/central_event_publishing_service")
-  | null = null;
-
-async function getCEPS(): Promise<
-  import("../../lib/central_event_publishing_service").CentralEventPublishingService
-> {
-  if (!_cepsModule) {
-    _cepsModule = await import("../../lib/central_event_publishing_service");
-  }
-  return new _cepsModule.CentralEventPublishingService();
-}
+// Use centralized lazy CEPS loader
+import { getCEPS } from "./ceps";
 
 export interface NIP05VerificationResult {
   verified: boolean;

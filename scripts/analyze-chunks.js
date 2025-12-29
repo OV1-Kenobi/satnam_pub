@@ -59,6 +59,26 @@ function analyzeChunk(filePath) {
   if (earlyVarPattern.test(content.substring(0, 500))) {
     tdzRisks.push('Early module-level variable initialization');
   }
+
+  // Detect CEPS  secureNsecManager cross-layer cycle within the same chunk
+  const hasCepsIdentifier = content.includes('central_event_publishing_service');
+  const hasSecureNsecManager = content.includes('secureNsecManager');
+  const hasCepsSecureCycle = hasCepsIdentifier && hasSecureNsecManager;
+  if (hasCepsSecureCycle) {
+    tdzRisks.push(
+      'CEPS  secureNsecManager cross-layer cycle detected in same chunk'
+    );
+  }
+
+  // Look for singleton factory patterns near the start of the chunk
+  const header = content.substring(0, 1000);
+  const hasSingletonHeader = /getInstance\s*\(/.test(header);
+  if (hasSingletonHeader) {
+    tdzRisks.push('Module-level singleton getInstance() pattern near chunk start');
+  }
+
+  // Flag high-risk TDZ combinations: CEPS/Nsec cycle + singleton initialization
+  const highRiskTdz = hasCepsSecureCycle && hasSingletonHeader;
   
   return {
     name: fileName,
@@ -66,6 +86,7 @@ function analyzeChunk(filePath) {
     dynamicImports,
     chunkRefs: [...new Set(chunkRefs)],
     tdzRisks,
+    highRiskTdz,
     hasReact: content.includes('react') || content.includes('React'),
     hasContext: content.includes('Context') || content.includes('createContext'),
   };
@@ -159,7 +180,9 @@ function main() {
     const flags = [];
     if (chunk.hasReact) flags.push('React');
     if (chunk.hasContext) flags.push('Context');
-    if (chunk.tdzRisks.length > 0) flags.push('⚠️TDZ-Risk');
+    if (chunk.tdzRisks.length > 0) {
+      flags.push(chunk.highRiskTdz ? '🔥High-TDZ-Risk' : '⚠️TDZ-Risk');
+    }
     
     console.log(`  ${chunk.name} (${sizeKB} KB) ${flags.length ? `[${flags.join(', ')}]` : ''}`);
     

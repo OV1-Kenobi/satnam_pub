@@ -2,15 +2,21 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
+import { registerSecureNsecSessionProvider } from "../lib/secure-nsec-session-registry";
 import AppWithErrorBoundary from './App';
 import { AuthProvider } from "./components/auth/AuthProvider";
 import { CryptoPreloader } from "./components/CryptoPreloader";
 import { getEnvVar } from './config/env.client';
 import "./index.css";
+import { secureNsecSessionProvider } from "./lib/secure-nsec-manager";
 import { initializeSentry } from "./lib/sentry";
 
 // Initialize Sentry error tracking (Phase 2B-2 Day 15)
 initializeSentry();
+
+// Bridge SecureNsecManager into the CEPS secure session registry so that
+// CentralEventPublishingService can use real secure nsec sessions.
+registerSecureNsecSessionProvider(secureNsecSessionProvider);
 
 // Early diagnostics: inspect React module shape in production builds
 if (import.meta.env && import.meta.env.PROD) {

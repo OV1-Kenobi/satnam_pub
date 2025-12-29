@@ -6,7 +6,7 @@ import React, { useEffect, useState } from "react";
  * forwards them to the registered Amber adapter via CEPS, then navigates back.
  */
 
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { getCEPS } from "../../lib/ceps";
 
 function getFlag(key: string, def: boolean): boolean {
   try {
@@ -29,31 +29,42 @@ const AmberIntentCallback: React.FC = () => {
   );
 
   useEffect(() => {
-    try {
-      const strict = getFlag("VITE_AMBER_STRICT_NIP55_VALIDATION", true);
-      if (strict) {
-        const expectedOrigin = "https://www.satnam.pub";
-        if (typeof window !== "undefined" && window.location.origin !== expectedOrigin) {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const strict = getFlag("VITE_AMBER_STRICT_NIP55_VALIDATION", true);
+        if (strict) {
+          const expectedOrigin = "https://www.satnam.pub";
+          if (typeof window !== "undefined" && window.location.origin !== expectedOrigin) {
+            if (mounted) {
+              setStatus("error");
+              setMessage("Amber callback origin invalid");
+            }
+            return;
+          }
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const ceps = await getCEPS();
+        const signers = (ceps as any).getRegisteredSigners?.() as any[] | undefined;
+        const amber = Array.isArray(signers)
+          ? (signers.find((s) => s.id === "amber") as any)
+          : undefined;
+        if (amber && typeof amber.nip55HandleCallbackParams === "function") {
+          amber.nip55HandleCallbackParams(params);
+        }
+        if (mounted) {
+          setStatus("done");
+          setMessage("Processed. Returning...");
+        }
+      } catch (e) {
+        if (mounted) {
           setStatus("error");
-          setMessage("Amber callback origin invalid");
-          return;
+          setMessage(e instanceof Error ? e.message : "Unknown error");
         }
       }
-
-      const params = new URLSearchParams(window.location.search);
-      const signers = (CEPS as any).getRegisteredSigners?.() as any[] | undefined;
-      const amber = Array.isArray(signers)
-        ? (signers.find((s) => s.id === "amber") as any)
-        : undefined;
-      if (amber && typeof amber.nip55HandleCallbackParams === "function") {
-        amber.nip55HandleCallbackParams(params);
-      }
-      setStatus("done");
-      setMessage("Processed. Returning...");
-    } catch (e) {
-      setStatus("error");
-      setMessage(e instanceof Error ? e.message : "Unknown error");
-    }
+    })();
 
     // Clean URL and navigate back or to landing
     const t = setTimeout(() => {
@@ -73,7 +84,10 @@ const AmberIntentCallback: React.FC = () => {
         }
       } catch { }
     }, 500);
-    return () => clearTimeout(t);
+    return () => {
+      mounted = false;
+      clearTimeout(t);
+    };
   }, []);
 
   return (

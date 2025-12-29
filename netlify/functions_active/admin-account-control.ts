@@ -19,6 +19,7 @@
 import { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import * as crypto from "node:crypto";
+import { requireAnyAdmin, type AdminContext } from "./utils/admin-auth.js";
 import {
   RATE_LIMITS,
   checkRateLimit,
@@ -38,7 +39,6 @@ import {
   preflightResponse,
   successResponse,
 } from "./utils/security-headers.js";
-import { requireAnyAdmin, type AdminContext } from "./utils/admin-auth.js";
 
 // Helper to get DUID server secret
 function getDuidServerSecret(): string | undefined {
@@ -75,17 +75,24 @@ interface RemovalResult {
 }
 
 // ============================================================================
-// Initialize Supabase
+// Initialize Supabase (lazy initialization on first use)
 // ============================================================================
 
-const supabaseUrl = getEnvVar("VITE_SUPABASE_URL");
-const supabaseServiceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
+let _supabaseClient: ReturnType<typeof createClient> | null = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Missing Supabase configuration");
+function getSupabaseClient(): ReturnType<typeof createClient> {
+  if (!_supabaseClient) {
+    const url = getEnvVar("VITE_SUPABASE_URL");
+    const serviceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!url || !serviceKey) {
+      throw new Error("Missing Supabase configuration");
+    }
+
+    _supabaseClient = createClient(url, serviceKey);
+  }
+  return _supabaseClient;
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // ============================================================================
 // Main Handler
@@ -219,7 +226,7 @@ async function handleRemoveAccount(
 
   // Federation admin scope check
   if (admin.adminType === "federation" && admin.federationId) {
-    const { data: targetMember, error: memberError } = await supabase
+    const { data: targetMember, error: memberError } = await getSupabaseClient()
       .from("family_members")
       .select("federation_id")
       .eq("user_duid", targetDuid)
@@ -251,17 +258,20 @@ async function handleRemoveAccount(
     .slice(0, 16);
 
   // Call the RPC function
-  const { data, error } = await supabase.rpc("remove_user_account_by_nip05", {
-    p_target_nip05_duid: targetDuid,
-    p_admin_user_duid: admin.userDuid,
-    p_admin_type: admin.adminType,
-    p_admin_federation_id: admin.federationId || null,
-    p_removal_reason: reason || "admin_removal",
-    p_removal_notes: notes || null,
-    p_request_id: crypto.randomUUID(),
-    p_ip_hash: ipHash,
-    p_ua_hash: uaHash,
-  });
+  const { data, error } = await getSupabaseClient().rpc(
+    "remove_user_account_by_nip05",
+    {
+      p_target_nip05_duid: targetDuid,
+      p_admin_user_duid: admin.userDuid,
+      p_admin_type: admin.adminType,
+      p_admin_federation_id: admin.federationId || null,
+      p_removal_reason: reason || "admin_removal",
+      p_removal_notes: notes || null,
+      p_request_id: crypto.randomUUID(),
+      p_ip_hash: ipHash,
+      p_ua_hash: uaHash,
+    }
+  );
 
   if (error) {
     console.error("RPC error:", error);
@@ -302,11 +312,14 @@ async function handleRollback(
     return errorResponse(400, "Invalid removal log ID format", requestOrigin);
   }
 
-  const { data, error } = await supabase.rpc("rollback_account_removal", {
-    p_removal_log_id: removalLogId,
-    p_admin_user_duid: admin.userDuid,
-    p_rollback_reason: rollbackReason || null,
-  });
+  const { data, error } = await getSupabaseClient().rpc(
+    "rollback_account_removal",
+    {
+      p_removal_log_id: removalLogId,
+      p_admin_user_duid: admin.userDuid,
+      p_rollback_reason: rollbackReason || null,
+    }
+  );
 
   if (error) {
     console.error("Rollback RPC error:", error);
@@ -337,7 +350,7 @@ async function handleListRemovals(
 ) {
   const { limit = 50, offset = 0 } = request;
 
-  let query = supabase
+  let query = getSupabaseClient()
     .from("admin_account_removal_log")
     .select("*")
     .order("created_at", { ascending: false })
@@ -395,7 +408,7 @@ async function handleCleanupOrphans(
   const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   // Build the query to find orphans
-  let orphanQuery = supabase
+  let orphanQuery = getSupabaseClient()
     .from("nip05_records")
     .select("id, user_duid, domain, created_at, entity_type")
     .lt("created_at", cutoffTime)
@@ -405,7 +418,17 @@ async function handleCleanupOrphans(
     orphanQuery = orphanQuery.ilike("domain", domain);
   }
 
-  const { data: candidates, error: queryError } = await orphanQuery;
+  // Type for orphan candidate records
+  type OrphanCandidate = {
+    id: string;
+    user_duid: string;
+    domain: string;
+    created_at: string;
+    entity_type: string;
+  };
+
+  const { data: candidatesRaw, error: queryError } = await orphanQuery;
+  const candidates = candidatesRaw as OrphanCandidate[] | null;
 
   if (queryError) {
     console.error("Orphan query error:", queryError);
@@ -427,7 +450,7 @@ async function handleCleanupOrphans(
 
   // Check which user_duids actually exist in user_identities
   const userDuids = Array.from(new Set(candidates.map((c) => c.user_duid)));
-  const { data: existingUsers, error: userError } = await supabase
+  const { data: existingUsers, error: userError } = await getSupabaseClient()
     .from("user_identities")
     .select("id")
     .in("id", userDuids);
@@ -437,7 +460,9 @@ async function handleCleanupOrphans(
     return errorResponse(500, userError.message, requestOrigin);
   }
 
-  const existingUserDuids = new Set((existingUsers || []).map((u) => u.id));
+  const existingUserDuids = new Set(
+    ((existingUsers as { id: string }[]) || []).map((u) => u.id)
+  );
   const orphans = candidates.filter((c) => !existingUserDuids.has(c.user_duid));
 
   if (orphans.length === 0) {
@@ -474,7 +499,7 @@ async function handleCleanupOrphans(
 
   // Actually delete the orphans
   const orphanIds = orphans.map((o) => o.id);
-  const { error: deleteError, count } = await supabase
+  const { error: deleteError, count } = await getSupabaseClient()
     .from("nip05_records")
     .delete()
     .in("id", orphanIds);

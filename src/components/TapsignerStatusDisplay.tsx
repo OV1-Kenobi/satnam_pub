@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { getEnvVar } from "../config/env.client";
-import { apiClient } from "../utils/api-client";
+import { useAuth } from "./auth/AuthProvider";
 
 /**
  * Card status data structure
@@ -88,6 +88,7 @@ export const TapsignerStatusDisplay: React.FC<TapsignerStatusDisplayProps> = ({
   showActions = true,
   compact = false,
 }) => {
+  const auth = useAuth();
   // Feature flag check
   const TAPSIGNER_ENABLED =
     getEnvVar("VITE_TAPSIGNER_ENABLED") === "true";
@@ -114,18 +115,37 @@ export const TapsignerStatusDisplay: React.FC<TapsignerStatusDisplayProps> = ({
       return;
     }
 
+    // Require authentication to view card status
+    if (!auth.sessionToken) {
+      setCardStatus(null);
+      setError("Not authenticated");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await apiClient.get(
-        `/api/tapsigner-unified?action=status&cardId=${encodeURIComponent(cardId)}`
+      const response = await fetch(
+        `/api/tapsigner-unified?action=status&cardId=${encodeURIComponent(
+          cardId
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${auth.sessionToken}`,
+            "Content-Type": "application/json",
+          },
+        }
       );
 
-      if (response.success && response.data) {
-        setCardStatus(response.data as CardStatus);
+      const data = await response.json();
+
+      if (response.ok && data.success && data.data) {
+        setCardStatus(data.data as CardStatus);
       } else {
-        setError(response.error || "Failed to fetch card status");
+        setError(data.error || "Failed to fetch card status");
       }
     } catch (err) {
       const errorMsg =
@@ -134,7 +154,7 @@ export const TapsignerStatusDisplay: React.FC<TapsignerStatusDisplayProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [cardId]);
+  }, [cardId, auth.sessionToken]);
 
   /**
    * Load card status on mount and when cardId changes
@@ -407,8 +427,8 @@ export const TapsignerStatusDisplay: React.FC<TapsignerStatusDisplayProps> = ({
                   <div
                     key={i}
                     className={`h-2 w-2 rounded-full ${i < cardStatus.pinAttempts
-                        ? "bg-green-400"
-                        : "bg-gray-600"
+                      ? "bg-green-400"
+                      : "bg-gray-600"
                       }`}
                   />
                 ))}

@@ -147,46 +147,58 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
 
 /**
  * Hook to use authentication context
+ *
+ * Behavior:
+ * - If an AuthProvider has been mounted, return the context value created there
+ *   (which is already backed by useUnifiedAuth and includes flow flags).
+ * - If no AuthProvider/context is available (e.g. certain tests or
+ *   ultra-minimal landing pages), fall back to a fully functional
+ *   useUnifiedAuth instance instead of a hardcoded stub.
+ *
+ * This keeps public/landing pages safe while ensuring components that call
+ * useAuth outside of AuthProvider still get real authentication behavior
+ * (NIP-07, NIP-05/password, NFC, session validation), wired through
+ * UnifiedAuthSystem and the AuthResult/UserIdentity types.
  */
 export const useAuth = (): AuthContextType => {
-  // Complete stub that conforms to UnifiedAuthState & UnifiedAuthActions
-  const stub: AuthContextType = {
-    // UnifiedAuthState
-    user: null,
-    sessionToken: null,
-    authenticated: false,
-    loading: false,
-    error: null,
-    accountActive: false,
-    sessionValid: false,
-    lastValidated: null,
-    // UnifiedAuthActions
-    authenticateNIP05Password: async () => false,
-    authenticateNIP07: async () => false,
-    authenticateNFC: async () => false,
-    validateSession: async () => false,
-    refreshSession: async () => false,
-    logout: async () => { /* noop */ },
-    canAccessProtectedArea: () => false,
-    requireAuthentication: async () => false,
-    checkAccountStatus: async () => false,
-    clearError: () => { /* noop */ },
-    handleAuthSuccess: async () => false,
-    // Integration helpers
-    isRegistrationFlow: false,
-    isLoginFlow: false,
-    setIsRegistrationFlow: () => { /* noop */ },
-    setIsLoginFlow: () => { /* noop */ },
-  };
-
+  // If no context has ever been created, fall back to a direct unified auth hook.
+  // NOTE: AuthContextRef is a module-level singleton. For any given component
+  // using this hook, AuthContextRef will be either always null (no provider in
+  // the tree) or always non-null (provider present), so this branch is stable
+  // across that component's lifetime.
   if (!AuthContextRef) {
-    // Provide stub before provider exists (allows landing page to render)
-    return stub;
+    const unified = useUnifiedAuth();
+    const [isRegistrationFlow, setIsRegistrationFlow] = useState(false);
+    const [isLoginFlow, setIsLoginFlow] = useState(false);
+
+    return {
+      ...unified,
+      isRegistrationFlow,
+      isLoginFlow,
+      setIsRegistrationFlow,
+      setIsLoginFlow,
+    };
   }
+
   const context = useContext(AuthContextRef);
+
   if (!context) {
-    return stub;
+    // Extremely defensive fallback: if the context exists but no value is
+    // provided, fall back to a direct unified auth instance rather than a
+    // non-functional stub.
+    const unified = useUnifiedAuth();
+    const [isRegistrationFlow, setIsRegistrationFlow] = useState(false);
+    const [isLoginFlow, setIsLoginFlow] = useState(false);
+
+    return {
+      ...unified,
+      isRegistrationFlow,
+      isLoginFlow,
+      setIsRegistrationFlow,
+      setIsLoginFlow,
+    };
   }
+
   return context;
 };
 

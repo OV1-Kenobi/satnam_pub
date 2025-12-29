@@ -291,18 +291,14 @@ export function useSecureMessageSigning() {
       }
 
       // Delegate signing to CEPS to centralize nsec usage
-      const { central_event_publishing_service: CEPS } = await import(
-        "../../../lib/central_event_publishing_service"
-      );
+      const { signEventWithCeps } = await import("../ceps");
 
       const eventToSign = {
         ...event,
         created_at: event.created_at || Math.floor(Date.now() / 1000),
       };
 
-      const signedEvent = await CEPS.signEventWithActiveSession(
-        eventToSign as any
-      );
+      const signedEvent = await signEventWithCeps(eventToSign as any);
 
       return {
         success: true,

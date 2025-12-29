@@ -13,32 +13,30 @@
  */
 
 import type { Event as NostrEvent } from "nostr-tools";
-import {
-  central_event_publishing_service as CEPS,
-  DEFAULT_UNIFIED_CONFIG,
-} from "../../../lib/central_event_publishing_service";
-import { GeoRelaySelector } from "../noise/geo-relay-selector";
+import { DEFAULT_UNIFIED_CONFIG } from "../../../lib/unified-messaging-service";
 import {
   clientConfig,
   GEOCHAT_CONTACTS_ENABLED,
-  GEOCHAT_TRUST_WEIGHT,
   GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT,
+  GEOCHAT_TRUST_WEIGHT,
 } from "../../config/env.client";
+import { getCEPS } from "../ceps";
+import { GeoRelaySelector } from "../noise/geo-relay-selector";
 import {
+  DEFAULT_GEO_ROOM_CONFIG,
   GeoRoomError,
   Phase3Error,
-  type GeoRoomSubscription,
-  type SubscribeToGeoRoomParams,
-  type PublishGeoRoomMessageParams,
-  type PublishGeoRoomMessageResult,
-  type GeoRoomServiceConfig,
   type AddContactFromGeoMessageParams,
   type AddContactFromGeoMessageResult,
+  type GeoRoomServiceConfig,
+  type GeoRoomSubscription,
+  type MFAChallenge,
+  type PhysicalMFAAttestation,
+  type PublishGeoRoomMessageParams,
+  type PublishGeoRoomMessageResult,
+  type SubscribeToGeoRoomParams,
   type VerifyContactWithPhysicalMFAParams,
   type VerifyContactWithPhysicalMFAResult,
-  type PhysicalMFAAttestation,
-  type MFAChallenge,
-  DEFAULT_GEO_ROOM_CONFIG,
 } from "./types";
 
 // Base32 geohash alphabet for validation
@@ -187,7 +185,11 @@ export async function publishGeoRoomMessage(
     };
 
     // Publish via CEPS
-    const eventId = await CEPS.publishEvent(event as NostrEvent, relays);
+    const ceps = await getCEPS();
+    const eventId = await (ceps as any).publishEvent(
+      event as NostrEvent,
+      relays
+    );
 
     return {
       eventId,
@@ -283,7 +285,8 @@ function createSubscriptionHandle(
       ];
 
       // Subscribe to new relays
-      const newSubscription = CEPS.subscribeMany(relays, filters, {
+      const ceps = await getCEPS();
+      const newSubscription = (ceps as any).subscribeMany(relays, filters, {
         onevent: (event: NostrEvent) => {
           if (state.isActive) {
             state.params.onEvent(event);
@@ -347,7 +350,8 @@ export async function subscribeToGeoRoom(
     };
 
     // Subscribe via CEPS
-    const cepsSubscription = CEPS.subscribeMany(relays, filters, {
+    const ceps = await getCEPS();
+    const cepsSubscription = (ceps as any).subscribeMany(relays, filters, {
       onevent: (event: NostrEvent) => {
         if (state.isActive) {
           onEvent(event);
@@ -628,7 +632,8 @@ export async function shareAttestationViaDM(
     };
 
     // Send via CEPS gift-wrapped DM
-    await CEPS.sendStandardDirectMessage(
+    const ceps = await getCEPS();
+    await (ceps as any).sendStandardDirectMessage(
       recipientNpub,
       JSON.stringify(sharedPayload)
     );
@@ -688,7 +693,8 @@ export async function addContactFromGeoMessage(
 
   try {
     // Add contact via CEPS with geo-room context
-    const contactId = await CEPS.addContact({
+    const ceps = await getCEPS();
+    const contactId = await (ceps as any).addContact({
       npub,
       displayName: displayName || `Geo Contact (${truncatedGeohash})`,
       trustLevel: "known", // Initial trust level for geo contacts
@@ -754,7 +760,8 @@ export async function addContactFromGeoMessage(
         };
 
         // Send identity revelation via NIP-59 giftwrapped DM
-        await CEPS.sendStandardDirectMessage(
+        const cepsForReveal = await getCEPS();
+        await (cepsForReveal as any).sendStandardDirectMessage(
           npub,
           JSON.stringify(identityPayload)
         );

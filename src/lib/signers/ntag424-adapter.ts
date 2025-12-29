@@ -10,7 +10,7 @@
  * - CRITICAL: Signs events directly using secureNsecManager to avoid infinite recursion with CEPS
  */
 
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import { signEventWithCeps } from "../ceps";
 import type {
   SignerAdapter,
   SignerCapability,
@@ -97,7 +97,7 @@ export class Ntag424Adapter implements SignerAdapter {
 
   async signEvent(unsigned: unknown): Promise<unknown> {
     await this.requireNfcAuth("event");
-    return await CEPS.signEventWithActiveSession(unsigned as any);
+    return await signEventWithCeps(unsigned as any);
   }
 
   async authorizePayment(
@@ -116,7 +116,7 @@ export class Ntag424Adapter implements SignerAdapter {
         ],
         content: JSON.stringify(request as JsonRecord),
       } as any;
-      const ev = await CEPS.signEventWithActiveSession(unsigned);
+      const ev = await signEventWithCeps(unsigned);
       return { authorized: true, proof: { type: "nostr-event", payload: ev } };
     } catch (e) {
       return {
@@ -145,7 +145,7 @@ export class Ntag424Adapter implements SignerAdapter {
       ],
       content: JSON.stringify(payload as JsonRecord),
     } as any;
-    const ev = await CEPS.signEventWithActiveSession(unsigned);
+    const ev = await signEventWithCeps(unsigned);
     return { partial: ev, meta: { method: this.id } };
   }
 

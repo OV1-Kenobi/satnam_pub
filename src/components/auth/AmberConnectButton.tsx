@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { central_event_publishing_service as CEPS } from "../../../lib/central_event_publishing_service";
+import React, { useEffect, useState } from "react";
+import { getCEPS } from "../../lib/ceps";
 import type { SignerAdapter, SignerStatus } from "../../lib/signers/signer-adapter";
 
 function isAndroid(): boolean {
@@ -28,13 +28,23 @@ const AmberConnectButton: React.FC<{ className?: string }> = ({ className }) => 
   const [error, setError] = useState<string>("");
   const [showInfo, setShowInfo] = useState(false);
 
-  const amber = useMemo<SignerAdapter | undefined>(() => {
-    try {
-      const list = (CEPS as any).getRegisteredSigners?.() as SignerAdapter[] | undefined;
-      return Array.isArray(list) ? list.find((s) => s.id === "amber") : undefined;
-    } catch {
-      return undefined;
-    }
+  const [amber, setAmber] = useState<SignerAdapter | undefined>(undefined);
+
+  // Load amber signer from CEPS asynchronously
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const ceps = await getCEPS();
+        const list = (ceps as any).getRegisteredSigners?.() as SignerAdapter[] | undefined;
+        if (mounted && Array.isArray(list)) {
+          setAmber(list.find((s) => s.id === "amber"));
+        }
+      } catch {
+        // Signer not available
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {

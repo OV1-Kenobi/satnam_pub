@@ -20,17 +20,24 @@ function getEnvVar(key: string): string | undefined {
 
 import { createClient } from "@supabase/supabase-js";
 
-// Test Supabase client configuration
-const TEST_SUPABASE_URL =
-  getEnvVar("VITE_SUPABASE_URL") || "https://your-test-project.supabase.co";
+// Test Supabase client configuration (lazy env access to avoid module-level getEnvVar calls)
+function getTestSupabaseUrl(): string {
+  return (
+    getEnvVar("VITE_SUPABASE_URL") || "https://your-test-project.supabase.co"
+  );
+}
+
 // Use service role key for tests if available (for full database access), otherwise use anon key
-const TEST_SUPABASE_KEY =
-  getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
-  getEnvVar("VITE_SUPABASE_ANON_KEY") ||
-  "your-test-anon-key";
+function getTestSupabaseKey(): string {
+  return (
+    getEnvVar("SUPABASE_SERVICE_ROLE_KEY") ||
+    getEnvVar("VITE_SUPABASE_ANON_KEY") ||
+    "your-test-anon-key"
+  );
+}
 
 export const getTestSupabaseClient = () => {
-  return createClient(TEST_SUPABASE_URL, TEST_SUPABASE_KEY);
+  return createClient(getTestSupabaseUrl(), getTestSupabaseKey());
 };
 
 // Global test cleanup function

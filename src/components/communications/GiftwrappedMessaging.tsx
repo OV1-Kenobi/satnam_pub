@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GroupData } from '../../../api/endpoints/communications';
 import { addGroupMember, blockSender as blockSenderAPI, createGroup, createGroupTopic, deleteMessage as deleteMessageAPI, getGroupDetails, leaveGroup, listUserGroups, removeGroupMember, updateGroupPreferences } from '../../../api/endpoints/communications';
-import { central_event_publishing_service as CEPS } from '../../../lib/central_event_publishing_service';
 import { usePrivacyFirstMessaging } from '../../hooks/usePrivacyFirstMessaging';
+import { getCEPS } from '../../lib/ceps';
 import { nostrProfileService } from '../../lib/nostr-profile-service';
 import { ErrorBoundary } from '../ErrorBoundary';
 
@@ -19,17 +19,17 @@ import { SecurePeerInvitationModal } from '../SecurePeerInvitationModal';
 import { PeerInvitationModal } from './PeerInvitationModal';
 import { VideoMeetingLauncher } from './VideoMeetingLauncher';
 
+import { clientConfig } from '../../config/env.client';
 import fetchWithAuth from '../../lib/auth/fetch-with-auth';
 import { GiftwrappedCommunicationService } from '../../lib/giftwrapped-communication-service';
-import { clientConfig } from '../../config/env.client';
 import { GeoRoomTab } from './GeoRoomTab';
 import { Note2SelfModal } from './Note2SelfModal';
 
 // Blossom attachment components
-import { AttachmentPicker } from '../messaging/AttachmentPicker';
-import { AttachmentRenderer } from '../messaging/AttachmentRenderer';
 import type { AttachmentDescriptor } from '../../lib/api/blossom-client';
 import { ClientMessageService } from '../../lib/messaging/client-message-service';
+import { AttachmentPicker } from '../messaging/AttachmentPicker';
+import { AttachmentRenderer } from '../messaging/AttachmentRenderer';
 
 
 
@@ -99,6 +99,12 @@ interface GiftwrappedMessagingProps {
 }
 
 export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }: GiftwrappedMessagingProps) {
+  // Cached CEPS instance for synchronous access
+  const cepsRef = useRef<any>(null);
+  useEffect(() => {
+    getCEPS().then(ceps => { cepsRef.current = ceps; });
+  }, []);
+
   // const [messages, setMessages] = useState<GiftWrappedMessage[]>([]); // unused
   const [newMessage, setNewMessage] = useState('');
   const [subject, setSubject] = useState('');
@@ -270,7 +276,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
     // Fallback: Use CEPS session signing for NIP-05/password authenticated users
     try {
-      const signedEvent = await CEPS.signEventWithActiveSession(event);
+      const CEPS = await getCEPS();
+      const signedEvent = await (CEPS as any).signEventWithActiveSession(event);
       return signedEvent;
     } catch (sessionError) {
       throw new Error(
@@ -635,31 +642,35 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
 
   // Prefetch Nostr profiles for NIP-59 threads when no contact match exists
   useEffect(() => {
-    const seen = new Set<string>();
-    for (const thread of unifiedThreads) {
-      if (thread.isServerThread) continue;
-      const first = thread.items.find((i) => i.senderId);
-      let pubHex: string | null = null;
-      try {
-        pubHex = first && first.senderId ? String(first.senderId) : null;
-      } catch {
-        pubHex = null;
-      }
-      if (!pubHex) continue;
-      let npub: string;
-      try {
-        npub = pubHex.startsWith("npub1") ? pubHex : CEPS.encodeNpub(pubHex);
-      } catch {
-        continue;
-      }
-      if (seen.has(npub) || profiles[npub]) continue;
-      seen.add(npub);
-      void nostrProfileService.fetchProfileWithDebounce(npub).then((p) => {
-        if (p) {
-          setProfiles((prev: Record<string, NostrProfile>) => (prev[npub] ? prev : { ...prev, [npub]: p }));
+    const prefetchProfiles = async () => {
+      const CEPS = await getCEPS();
+      const seen = new Set<string>();
+      for (const thread of unifiedThreads) {
+        if (thread.isServerThread) continue;
+        const first = thread.items.find((i) => i.senderId);
+        let pubHex: string | null = null;
+        try {
+          pubHex = first && first.senderId ? String(first.senderId) : null;
+        } catch {
+          pubHex = null;
         }
-      });
-    }
+        if (!pubHex) continue;
+        let npub: string;
+        try {
+          npub = pubHex.startsWith("npub1") ? pubHex : (CEPS as any).encodeNpub(pubHex);
+        } catch {
+          continue;
+        }
+        if (seen.has(npub) || profiles[npub]) continue;
+        seen.add(npub);
+        void nostrProfileService.fetchProfileWithDebounce(npub).then((p) => {
+          if (p) {
+            setProfiles((prev: Record<string, NostrProfile>) => (prev[npub] ? prev : { ...prev, [npub]: p }));
+          }
+        });
+      }
+    };
+    prefetchProfiles();
   }, [unifiedThreads, profiles]);
 
   // Render thread header with contact/profile info
@@ -672,7 +683,7 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
     let npub: string | null = null;
     try {
       const first = thread.items.find(i => i.senderId);
-      npub = first && first.senderId ? CEPS.encodeNpub(first.senderId) : null;
+      npub = first && first.senderId && cepsRef.current ? cepsRef.current.encodeNpub(first.senderId) : null;
     } catch {
       npub = null;
     }
@@ -1007,8 +1018,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
   const getThreadNpub = (thread: { isServerThread: boolean; items: UnifiedMsg[]; }): string | null => {
     if (thread.isServerThread) return null;
     const first = thread.items.find(i => i.senderId);
-    if (first && first.senderId) {
-      try { return CEPS.encodeNpub(first.senderId); } catch { return null; }
+    if (first && first.senderId && cepsRef.current) {
+      try { return cepsRef.current.encodeNpub(first.senderId); } catch { return null; }
     }
     return null;
   };
@@ -1137,8 +1148,8 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
                             void (async () => {
                               try {
                                 let npub: string | null = null;
-                                if (m.senderId) {
-                                  try { npub = CEPS.encodeNpub(m.senderId); } catch { }
+                                if (m.senderId && cepsRef.current) {
+                                  try { npub = cepsRef.current.encodeNpub(m.senderId); } catch { }
                                 }
                                 if (!npub) {
                                   showToast.info('Invite not available for this message');
@@ -1262,18 +1273,19 @@ export function GiftwrappedMessaging({ familyMember, isModal = false, onClose }:
             duration: 5000
           });
         }
-        const deliveryId = await CEPS.sendStandardDirectMessage(recipient, contentToSend);
+        const CEPS = await getCEPS();
+        const deliveryId = await (CEPS as any).sendStandardDirectMessage(recipient, contentToSend);
         // Persist a normalized record (protocol='nip04')
         // PRIVACY-FIRST: Encrypt content using NIP-44 before storing in database
         // This ensures server never stores readable content (zero-knowledge architecture)
         try {
           // Get recipient pubkey in hex for NIP-44 encryption
           const recipientHex = recipient.startsWith('npub1')
-            ? CEPS.npubToHex(recipient)
+            ? (CEPS as any).npubToHex(recipient)
             : recipient;
 
           // Encrypt using NIP-44 conversation key (our nsec + recipient pubkey)
-          const encryptedContentForStorage = await CEPS.encryptNip44WithActiveSession(
+          const encryptedContentForStorage = await (CEPS as any).encryptNip44WithActiveSession(
             recipientHex,
             contentToSend
           );
