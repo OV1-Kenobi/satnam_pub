@@ -6,8 +6,8 @@
  * @compliance Privacy-first, zero-knowledge, RLS policies
  */
 
-import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 import { getApiBaseUrlFromClientEnv } from "../config/env.client";
+import { fetchWithAuth } from "../lib/auth/fetch-with-auth";
 
 export type AttestationEventType =
   | "account_creation"
@@ -78,9 +78,15 @@ function normalizeMetadataToString(metadata: unknown): string | undefined {
 export async function createAttestation(
   request: AttestationRequest
 ): Promise<Attestation> {
+  // FIX: Provide more helpful error message for missing/invalid verificationId
+  if (!request.verificationId) {
+    throw new Error(
+      "Missing verificationId - verification record was not created during registration. You can create verification records later from your profile settings."
+    );
+  }
   if (!isValidUuid(request.verificationId)) {
     throw new Error(
-      "Invalid verificationId format (must be valid UUID from verification results)"
+      `Invalid verificationId format: "${request.verificationId}" is not a valid UUID. Expected format from verification results.`
     );
   }
 

@@ -52,7 +52,18 @@ export const VerificationOptInStep: React.FC<VerificationOptInStepProps> = ({
     return null;
   }
 
+  // FIX: Validate verificationId before allowing attestation creation
+  const isValidVerificationId = verificationId &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(verificationId);
+
   const handleCreateAttestation = async () => {
+    // FIX: Early validation with user-friendly error message
+    if (!isValidVerificationId) {
+      setError('Verification not available. Your account was created successfully - you can verify later from your profile settings.');
+      console.warn('VerificationOptInStep: Missing or invalid verificationId:', verificationId);
+      return;
+    }
+
     try {
       setIsCreating(true);
       setError(null);
@@ -213,13 +224,19 @@ export const VerificationOptInStep: React.FC<VerificationOptInStepProps> = ({
         </button>
         <button
           onClick={handleCreateAttestation}
-          disabled={isCreating}
+          disabled={isCreating || !isValidVerificationId}
+          title={!isValidVerificationId ? 'Verification not available - you can verify later' : undefined}
           className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg transition-colors font-medium flex items-center justify-center space-x-2"
         >
           {isCreating ? (
             <>
               <Loader className="h-4 w-4 animate-spin" />
               <span>Creating Attestation...</span>
+            </>
+          ) : !isValidVerificationId ? (
+            <>
+              <AlertCircle className="h-4 w-4" />
+              <span>Not Available</span>
             </>
           ) : (
             <>

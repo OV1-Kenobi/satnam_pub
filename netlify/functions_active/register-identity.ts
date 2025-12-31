@@ -2335,6 +2335,7 @@ export const handler: Handler = async (event, context) => {
     // Baseline multi-method verification record for attestations
     // Create an initial multi_method_verification_results row so all
     // downstream attestations (OpenTimestamps, Iroh, etc.) share a stable UUID.
+    // FIX: Use supabaseAdmin (service role) to bypass RLS since anon role lacks INSERT permission
     try {
       const nip05Identifier =
         validatedData.nip05 ||
@@ -2348,48 +2349,60 @@ export const handler: Handler = async (event, context) => {
       const verificationAttemptId = crypto.randomUUID();
       const baselineVerificationId = crypto.randomUUID();
 
-      const { error: verificationInsertError } = await supabase
-        .from("multi_method_verification_results")
-        .insert({
-          id: baselineVerificationId,
-          verification_attempt_id: verificationAttemptId,
-          identifier_hash: identifierHash,
-          kind0_verified: false,
-          kind0_response_time_ms: 0,
-          kind0_error: "not_run",
-          kind0_nip05: null,
-          kind0_pubkey: null,
-          pkarr_verified: false,
-          pkarr_response_time_ms: 0,
-          pkarr_error: "not_run",
-          pkarr_nip05: null,
-          pkarr_pubkey: null,
-          dns_verified: false,
-          dns_response_time_ms: 0,
-          dns_error: "not_run",
-          dns_nip05: null,
-          dns_pubkey: null,
-          trust_score: 0,
-          trust_level: "none",
-          agreement_count: 0,
-          methods_agree: false,
-          verified: false,
-          primary_method: "none",
-          user_duid: profileResult.data!.id,
-          ip_address_hash: null,
-        });
+      // Import supabaseAdmin for service-role access (bypasses RLS)
+      const { supabaseAdmin } = await import(
+        "../../netlify/functions/supabase.js"
+      );
 
-      if (verificationInsertError) {
+      if (!supabaseAdmin) {
         console.error(
-          "❌ Failed to log baseline multi-method verification result:",
-          verificationInsertError
+          "❌ supabaseAdmin not configured - multi_method_verification_results insert requires service role"
         );
+        // Continue without verification_id; frontend will handle gracefully
       } else {
-        verificationResultId = baselineVerificationId;
-        console.log(
-          "✅ Baseline multi-method verification result created:",
-          verificationResultId
-        );
+        const { error: verificationInsertError } = await supabaseAdmin
+          .from("multi_method_verification_results")
+          .insert({
+            id: baselineVerificationId,
+            verification_attempt_id: verificationAttemptId,
+            identifier_hash: identifierHash,
+            kind0_verified: false,
+            kind0_response_time_ms: 0,
+            kind0_error: "not_run",
+            kind0_nip05: null,
+            kind0_pubkey: null,
+            pkarr_verified: false,
+            pkarr_response_time_ms: 0,
+            pkarr_error: "not_run",
+            pkarr_nip05: null,
+            pkarr_pubkey: null,
+            dns_verified: false,
+            dns_response_time_ms: 0,
+            dns_error: "not_run",
+            dns_nip05: null,
+            dns_pubkey: null,
+            trust_score: 0,
+            trust_level: "none",
+            agreement_count: 0,
+            methods_agree: false,
+            verified: false,
+            primary_method: "none",
+            user_duid: profileResult.data!.id,
+            ip_address_hash: null,
+          });
+
+        if (verificationInsertError) {
+          console.error(
+            "❌ Failed to log baseline multi-method verification result:",
+            verificationInsertError
+          );
+        } else {
+          verificationResultId = baselineVerificationId;
+          console.log(
+            "✅ Baseline multi-method verification result created:",
+            verificationResultId
+          );
+        }
       }
     } catch (verificationBootstrapError) {
       const message =
