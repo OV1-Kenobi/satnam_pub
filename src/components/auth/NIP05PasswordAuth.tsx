@@ -69,6 +69,8 @@ export function NIP05PasswordAuth({
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [isChanging, setIsChanging] = useState(false);
+  // Password reset modal state
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
 
   // Hybrid verification states (Phase 1 Week 3)
   const [showVerificationStatus, setShowVerificationStatus] = useState(false);
@@ -514,8 +516,17 @@ export function NIP05PasswordAuth({
 
             </form>
 
-            {/* Change Password toggle */}
-            <div className="mt-3 text-center">
+            {/* Password Links */}
+            <div className="mt-3 text-center flex justify-center space-x-4">
+              <button
+                type="button"
+                onClick={() => setShowPasswordReset(true)}
+                className="text-purple-300 hover:text-white text-sm underline"
+                disabled={isLoading}
+              >
+                Forgot Password?
+              </button>
+              <span className="text-purple-400">|</span>
               <button
                 type="button"
                 onClick={() => setShowChangePassword((v) => !v)}
@@ -603,6 +614,17 @@ export function NIP05PasswordAuth({
           </div>
         </div>
       </div>
+
+      {/* Password Reset Modal */}
+      <PasswordResetModal
+        isOpen={showPasswordReset}
+        onClose={() => setShowPasswordReset(false)}
+        onSuccess={(sessionToken) => {
+          setShowPasswordReset(false);
+          setSuccess('Password reset successful! You are now signed in.');
+          // Could trigger auth refresh here if needed
+        }}
+      />
     </div >
   );
 }

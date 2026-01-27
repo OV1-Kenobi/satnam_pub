@@ -61,6 +61,23 @@ class CryptoUtils {
   static base64ToUint8Array(base64: string): Uint8Array {
     return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   }
+
+  /**
+   * Convert ArrayBuffer to hex string (matches Node.js Buffer.toString('hex'))
+   */
+  static arrayBufferToHex(buffer: ArrayBuffer): string {
+    return Array.from(new Uint8Array(buffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * Convert hex string to Uint8Array
+   */
+  static hexToUint8Array(hex: string): Uint8Array {
+    const matches = hex.match(/.{1,2}/g) || [];
+    return new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
+  }
 }
 
 // Types for authentication
@@ -182,21 +199,34 @@ export interface AuthAttempt {
 }
 
 /**
- * Password hashing utilities (matching register-identity.js)
+ * Password hashing utilities (matching register-identity.ts backend exactly)
+ *
+ * CRITICAL: Server-side uses Node.js crypto.pbkdf2 with:
+ * - Salt: Base64 string passed directly (crypto.pbkdf2 converts to bytes internally)
+ * - Hash output: Hex-encoded (buffer.toString('hex'))
+ *
+ * Web Crypto API requires explicit byte conversion, so we must match Node.js behavior:
+ * - Salt: TextEncoder.encode(salt) for UTF-8 byte representation of the Base64 string
+ * - Hash output: Hex-encoded to match server storage format
  */
-class PasswordUtils {
+export class PasswordUtils {
   /**
-   * Hash password using PBKDF2 with SHA-512 (Web Crypto API only)
+   * Hash password using PBKDF2 with SHA-512 (Web Crypto API)
+   * Returns HEX-encoded hash to match server-side register-identity.ts
    */
   static async hashPassword(password: string, salt: string): Promise<string> {
     const iterations = 100000;
-    const keyLength = 64;
+    const keyLength = 64; // 64 bytes = 512 bits for SHA-512
 
     try {
-      // Use Web Crypto API for browser-only serverless architecture
       const subtle = CryptoUtils.getSubtleCrypto();
       const encoder = new TextEncoder();
+
+      // Password: UTF-8 encoded (same as Node.js default behavior)
       const passwordBuffer = encoder.encode(password);
+
+      // Salt: UTF-8 encoded representation of the Base64 salt string
+      // This matches Node.js crypto.pbkdf2 which treats string salt as UTF-8
       const saltBuffer = encoder.encode(salt);
 
       const keyMaterial = await subtle.importKey(
@@ -218,7 +248,8 @@ class PasswordUtils {
         keyLength * 8
       );
 
-      return CryptoUtils.arrayBufferToBase64(derivedBits);
+      // Return HEX-encoded hash to match server-side format
+      return CryptoUtils.arrayBufferToHex(derivedBits);
     } catch (error) {
       console.error("Password hashing failed:", error);
       throw new Error("Password hashing failed");
@@ -226,7 +257,8 @@ class PasswordUtils {
   }
 
   /**
-   * Verify password using timing-safe comparison (Web Crypto API only)
+   * Verify password using timing-safe comparison (Web Crypto API)
+   * Supports both HEX (current) and Base64 (legacy) stored hash formats
    */
   static async verifyPassword(
     password: string,
@@ -234,11 +266,26 @@ class PasswordUtils {
     salt: string
   ): Promise<boolean> {
     try {
-      const computedHash = await this.hashPassword(password, salt);
+      const computedHashHex = await this.hashPassword(password, salt);
 
-      // Browser-only timing-safe comparison using constant-time algorithm
-      const storedBuffer = CryptoUtils.base64ToUint8Array(storedHash);
-      const computedBuffer = CryptoUtils.base64ToUint8Array(computedHash);
+      // Determine stored format and compare appropriately
+      // HEX format: 128 characters (64 bytes * 2)
+      // Base64 format: ~88 characters (64 bytes base64 encoded)
+      const isHexFormat = /^[a-f0-9]{128}$/i.test(storedHash);
+
+      let storedBuffer: Uint8Array;
+      let computedBuffer: Uint8Array;
+
+      if (isHexFormat) {
+        // HEX comparison (current standard)
+        storedBuffer = CryptoUtils.hexToUint8Array(storedHash);
+        computedBuffer = CryptoUtils.hexToUint8Array(computedHashHex);
+      } else {
+        // Base64 comparison (legacy fallback)
+        storedBuffer = CryptoUtils.base64ToUint8Array(storedHash);
+        // Convert computed hex to bytes for comparison
+        computedBuffer = CryptoUtils.hexToUint8Array(computedHashHex);
+      }
 
       if (storedBuffer.length !== computedBuffer.length) {
         return false;
