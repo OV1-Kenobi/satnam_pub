@@ -1236,7 +1236,7 @@ export class NFCAuthService {
             throw new Error("Invalid compressed P-256 public key hex");
           }
 
-          const { p256 } = await import("@noble/curves/p256");
+          const { p256 } = await import("@noble/curves/nist");
           const point = p256.ProjectivePoint.fromHex(compressedBytes);
           const uncompressedBytes = point.toRawBytes(false); // false = uncompressed
           pubKeyHex = this.bytesToHex(uncompressedBytes);
