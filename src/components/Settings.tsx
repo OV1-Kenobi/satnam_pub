@@ -14,6 +14,7 @@ import IrohNodeManager from "./iroh/IrohNodeManager";
 import { UnifiedNFCSetupFlow } from "./nfc";
 import AttestationsTab from "./Settings/AttestationsTab";
 import NostrConnectPairing from "./Settings/NostrConnectPairing";
+import PasswordChangeModal from "./Settings/PasswordChangeModal";
 import TapsignerStatusDisplay from "./TapsignerStatusDisplay";
 
 
@@ -71,6 +72,9 @@ const Settings: React.FC = () => {
 
   // Unified NFC Setup Flow modal state
   const [showUnifiedNfcSetup, setShowUnifiedNfcSetup] = useState(false);
+
+  // Password Change Modal state
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
 
   useEffect(() => {
     const checkAmber = async () => {
@@ -315,10 +319,7 @@ const Settings: React.FC = () => {
                 Recover/Rotate Nostr Keys
               </button>
               <button
-                onClick={() => {
-                  // Placeholder: navigate to password change flow if available
-                  alert("Password change flow coming soon.");
-                }}
+                onClick={() => setShowPasswordChangeModal(true)}
                 className="w-full bg-gray-700 hover:bg-gray-800 text-white font-medium py-2 px-4 rounded-lg transition-colors"
               >
                 Change Password
@@ -480,6 +481,16 @@ const Settings: React.FC = () => {
             showToast.success(`${result.cardType === 'boltcard' ? 'Boltcard' : 'Tapsigner'} setup complete!`, { duration: 3000 });
           }}
         />
+
+        {/* Password Change Modal */}
+        {auth.sessionToken && (
+          <PasswordChangeModal
+            isOpen={showPasswordChangeModal}
+            onClose={() => setShowPasswordChangeModal(false)}
+            nip05={(auth.user as any)?.nip05 || ''}
+            sessionToken={auth.sessionToken}
+          />
+        )}
       </div>
     </ProfileVisibilityProvider>
   );

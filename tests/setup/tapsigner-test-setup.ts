@@ -32,13 +32,15 @@ export function setupNDEFReaderMock() {
 }
 
 /**
- * Create test card data
+ * Create test card data matching ScanForCardResult interface
  */
 export function createTestCardData() {
   return {
-    cardId: "a1b2c3d4e5f6a7b8",
-    publicKey: "a".repeat(64),
-    timestamp: Date.now(),
+    cardData: {
+      cardId: "a1b2c3d4e5f6a7b8",
+      publicKey: "a".repeat(64),
+      timestamp: Date.now(),
+    },
   };
 }
 
@@ -80,7 +82,7 @@ export function createTestChallenge() {
  * Create test PIN hash
  */
 export async function createTestPINHash(
-  pin: string = "123456"
+  pin: string = "123456",
 ): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(pin);
@@ -100,7 +102,7 @@ export function createTestJWT(userId: string = "test-user-123"): string {
       sub: userId,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 3600,
-    })
+    }),
   );
   const signature = "test-signature";
   return `${header}.${payload}.${signature}`;
@@ -142,7 +144,7 @@ export function setupFetchMock() {
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   });
 

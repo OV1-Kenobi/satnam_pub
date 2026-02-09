@@ -1,42 +1,30 @@
 // src/utils/nfc-writer.ts
 // Web NFC helper to write an NDEF Text record containing a NIP-05 identifier.
 // Client-side only. Use on Android (Chrome/Edge). Gracefully no-op on unsupported platforms.
+// Phase 11 Task 11.2.4: Updated to use batch writer with retry logic
+
+import { writeSingleTextRecord } from "../lib/nfc/batch-ndef-writer";
 
 export async function writeNdefTextRecord(
-  nip05: string
+  nip05: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (typeof window === "undefined") {
       return { success: false, error: "Not a browser environment" };
     }
-    // Web NFC API support check
-    const NDEFReaderCtor: any = (window as any).NDEFReader;
-    if (typeof NDEFReaderCtor === "undefined") {
-      return {
-        success: false,
-        error: "Web NFC not supported on this device/browser",
-      };
-    }
 
-    const ndef = new NDEFReaderCtor();
     // Informational log; avoid logging sensitive data
-    // If you intend to indicate that Android is writing the tag so iOS can read it:
     console.debug(
-      "[NFC] Writing NDEF Text record (readable by iOS devices)..."
+      "[NFC] Writing NDEF Text record (readable by iOS devices)...",
     );
 
-    // Or, if you simply want to remove any iOS reference:
-    // console.debug('[NFC] Writing NDEF Text record...');
+    // Use optimized batch writer with retry logic
+    const result = await writeSingleTextRecord(nip05, "en", 3);
 
-    await ndef.write({
-      records: [
-        {
-          recordType: "text",
-          lang: "en",
-          data: nip05,
-        },
-      ],
-    });
+    if (!result.success) {
+      console.warn("[NFC] NDEF Text write failed:", result.error);
+      return { success: false, error: result.error };
+    }
 
     return { success: true };
   } catch (e: any) {

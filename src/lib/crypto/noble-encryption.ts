@@ -51,7 +51,7 @@ export class NobleEncryption {
    */
   static async encrypt(
     plaintext: string,
-    password: string
+    password: string,
   ): Promise<NobleEncryptionResult> {
     try {
       // Generate cryptographic parameters
@@ -79,7 +79,7 @@ export class NobleEncryption {
       throw new Error(
         `Noble V2 encryption failed: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -92,7 +92,7 @@ export class NobleEncryption {
    */
   static async decrypt(
     encryptionResult: NobleEncryptionResult,
-    password: string
+    password: string,
   ): Promise<string> {
     try {
       // Decode parameters
@@ -115,7 +115,7 @@ export class NobleEncryption {
       throw new Error(
         `Noble V2 decryption failed: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -142,7 +142,7 @@ export class NobleEncryption {
       throw new Error(
         `Nsec encryption failed: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -155,14 +155,14 @@ export class NobleEncryption {
    */
   static async decryptNsec(
     encryptedNsec: string,
-    userSalt: string
-  ): Promise<string> {
+    userSalt: string,
+  ): Promise<Uint8Array> {
     try {
       // Parse compact format: version.salt.iv.encrypted
       const parts = encryptedNsec.split(".");
       if (parts.length !== 4 || parts[0] !== "noble-v2") {
         throw new Error(
-          "Invalid encrypted nsec format - expected noble-v2.salt.iv.encrypted"
+          "Invalid encrypted nsec format - expected noble-v2.salt.iv.encrypted",
         );
       }
 
@@ -186,16 +186,24 @@ export class NobleEncryption {
       const cipher = gcm(key, ivBytes);
       const decrypted = cipher.decrypt(ctBytes);
 
-      const plain = new TextDecoder().decode(decrypted);
-      if (!plain.startsWith("nsec1")) {
-        throw new Error("Decrypted data is not a valid nsec");
+      // Validate that decrypted bytes start with ASCII "nsec1" without
+      // converting the full secret into a JS string (bytes-only invariant).
+      const prefix = [0x6e, 0x73, 0x65, 0x63, 0x31]; // "nsec1"
+      if (decrypted.length < prefix.length) {
+        throw new Error("Decrypted data is too short to be a valid nsec");
       }
-      return plain;
+      for (let i = 0; i < prefix.length; i++) {
+        if (decrypted[i] !== prefix[i]) {
+          throw new Error("Decrypted data is not a valid nsec");
+        }
+      }
+
+      return decrypted;
     } catch (error) {
       throw new Error(
         `Nsec decryption failed: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -251,7 +259,7 @@ export class NobleEncryption {
     return new Uint8Array(
       atob(base64)
         .split("")
-        .map((c) => c.charCodeAt(0))
+        .map((c) => c.charCodeAt(0)),
     );
   }
 

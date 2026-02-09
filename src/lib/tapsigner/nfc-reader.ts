@@ -1,13 +1,23 @@
 /**
  * NFC Reader Library for Tapsigner
  * Phase 3 Task 3.2: Web NFC API Integration
+ * Phase 11 Task 11.2.4: Performance Optimization (UID caching, retry logic)
  *
  * Provides utilities for reading NFC cards using the Web NFC API
  * Handles card detection, NDEF message parsing, and error handling
+ *
+ * Performance Optimizations:
+ * - 30-second UID cache to reduce redundant scans
+ * - Exponential backoff retry logic for failed operations
+ * - Batch NDEF record processing
  */
 
 import { getEnvVar } from "../../config/env.client";
 import CryptoJS from "crypto-js";
+
+// ============================================================================
+// Type Definitions
+// ============================================================================
 
 /**
  * Card data extracted from NFC tag
@@ -16,6 +26,141 @@ export interface CardData {
   cardId: string;
   publicKey: string;
   timestamp: number;
+}
+
+/**
+ * Cached card data with expiration
+ */
+interface CachedCardData {
+  cardData: CardData;
+  expiresAt: number;
+}
+
+// ============================================================================
+// Module-Level Cache (30-second TTL)
+// ============================================================================
+
+const CARD_UID_CACHE = new Map<string, CachedCardData>();
+const CACHE_TTL_MS = 30000; // 30 seconds
+
+/**
+ * Get cached card data if available and not expired
+ */
+function getCachedCardData(cardId: string): CardData | null {
+  const cached = CARD_UID_CACHE.get(cardId);
+  if (!cached) return null;
+
+  const now = Date.now();
+  if (now > cached.expiresAt) {
+    CARD_UID_CACHE.delete(cardId);
+    return null;
+  }
+
+  const debugEnabled = getEnvVar("VITE_TAPSIGNER_DEBUG") === "true";
+  if (debugEnabled) {
+    console.log(`[NFC Reader] Cache hit for card ${cardId.substring(0, 8)}...`);
+  }
+
+  return cached.cardData;
+}
+
+/**
+ * Cache card data with TTL
+ */
+function cacheCardData(cardData: CardData): void {
+  const expiresAt = Date.now() + CACHE_TTL_MS;
+  CARD_UID_CACHE.set(cardData.cardId, { cardData, expiresAt });
+
+  const debugEnabled = getEnvVar("VITE_TAPSIGNER_DEBUG") === "true";
+  if (debugEnabled) {
+    console.log(
+      `[NFC Reader] Cached card ${cardData.cardId.substring(0, 8)}... (expires in ${CACHE_TTL_MS}ms)`,
+    );
+  }
+}
+
+/**
+ * Clear expired cache entries
+ */
+function clearExpiredCache(): void {
+  const now = Date.now();
+  for (const [cardId, cached] of CARD_UID_CACHE.entries()) {
+    if (now > cached.expiresAt) {
+      CARD_UID_CACHE.delete(cardId);
+    }
+  }
+}
+
+// Periodically clear expired cache entries (every 60 seconds)
+if (typeof window !== "undefined") {
+  setInterval(clearExpiredCache, 60000);
+}
+
+// ============================================================================
+// Retry Logic with Exponential Backoff
+// ============================================================================
+
+/**
+ * Retry an NFC operation with exponential backoff
+ * @param operation - Async operation to retry
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @param operationName - Name of operation for logging
+ * @returns Result of the operation
+ */
+export async function retryNFCOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  operationName: string = "NFC operation",
+): Promise<T> {
+  const debugEnabled = getEnvVar("VITE_TAPSIGNER_DEBUG") === "true";
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (debugEnabled && attempt > 0) {
+        console.log(
+          `[NFC Reader] Retry attempt ${attempt}/${maxRetries} for ${operationName}`,
+        );
+      }
+
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Don't retry on certain errors
+      const message = lastError.message.toLowerCase();
+      if (
+        message.includes("permission") ||
+        message.includes("not supported") ||
+        message.includes("abort")
+      ) {
+        throw lastError;
+      }
+
+      // Calculate exponential backoff delay: 500ms, 1000ms, 2000ms
+      if (attempt < maxRetries) {
+        const delayMs = 500 * Math.pow(2, attempt);
+        if (debugEnabled) {
+          console.log(
+            `[NFC Reader] ${operationName} failed, retrying in ${delayMs}ms...`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  // All retries exhausted
+  if (debugEnabled) {
+    console.error(
+      `[NFC Reader] ${operationName} failed after ${maxRetries} retries:`,
+      lastError,
+    );
+  }
+  throw (
+    lastError ||
+    new Error(`${operationName} failed after ${maxRetries} retries`)
+  );
 }
 
 /**
@@ -71,7 +216,7 @@ function getMasterKey(): string {
   }
 
   console.warn(
-    "[TapSigner NFC Reader] Using development NTAG424 master key. Configure VITE_NTAG424_MASTER_KEY for production."
+    "[TapSigner NFC Reader] Using development NTAG424 master key. Configure VITE_NTAG424_MASTER_KEY for production.",
   );
   return "dev-ntag424-master-key-32-chars";
 }
@@ -110,7 +255,7 @@ function decryptCardConfig(encryptedConfig: string): CardConfig {
 }
 
 export async function fetchCardPublicKey(
-  cardId: string
+  cardId: string,
 ): Promise<string | null> {
   if (!cardId || cardId.length === 0) {
     throw new Error("Card ID is required to fetch public key");
@@ -127,7 +272,7 @@ export async function fetchCardPublicKey(
   if (error) {
     console.error(
       "[TapSigner NFC Reader] Supabase error fetching card public key:",
-      error.message
+      error.message,
     );
     throw new Error("Failed to fetch card public key from backend");
   }
@@ -136,7 +281,7 @@ export async function fetchCardPublicKey(
     if (getEnvVar("VITE_TAPSIGNER_DEBUG") === "true") {
       console.warn(
         "[TapSigner NFC Reader] No registration found for cardId:",
-        cardId.substring(0, 8) + "..."
+        cardId.substring(0, 8) + "...",
       );
     }
     return null;
@@ -182,89 +327,152 @@ export async function initializeNFCReader(): Promise<boolean> {
 }
 
 /**
- * Scan for NFC card with timeout
+ * Scan for NFC card with timeout and optional cache bypass
  * @param timeoutMs - Timeout in milliseconds (default: 10000)
  * @param includeRawMessage - When true, also return the raw NDEF message
+ * @param forceRefresh - When true, bypass cache and force new scan (default: false)
  * @returns Promise resolving to card data, optionally with raw message
  */
-export async function scanForCard(timeoutMs?: number): Promise<CardData>;
+export async function scanForCard(
+  timeoutMs?: number,
+  forceRefresh?: boolean,
+): Promise<CardData>;
 export async function scanForCard(
   timeoutMs: number | undefined,
-  includeRawMessage: true
+  includeRawMessage: true,
+  forceRefresh?: boolean,
 ): Promise<ScanForCardResult>;
 export async function scanForCard(
   timeoutMs: number = 10000,
-  includeRawMessage: boolean = false
+  includeRawMessageOrForceRefresh: boolean = false,
+  forceRefresh: boolean = false,
 ): Promise<CardData | ScanForCardResult> {
-  try {
-    if (!isNFCSupported()) {
-      throw new Error("Web NFC API not supported on this device");
-    }
+  // Handle overloaded parameters
+  const includeRawMessage =
+    typeof includeRawMessageOrForceRefresh === "boolean" &&
+    forceRefresh !== undefined
+      ? includeRawMessageOrForceRefresh
+      : false;
+  const shouldForceRefresh =
+    forceRefresh !== undefined
+      ? forceRefresh
+      : typeof includeRawMessageOrForceRefresh === "boolean" &&
+          forceRefresh === undefined
+        ? includeRawMessageOrForceRefresh
+        : false;
 
-    const reader = new (window as any).NDEFReader();
-    const debugEnabled = getEnvVar("VITE_TAPSIGNER_DEBUG") === "true";
+  const debugEnabled = getEnvVar("VITE_TAPSIGNER_DEBUG") === "true";
 
-    if (debugEnabled) {
-      console.log("[NFC Reader] Starting card scan with timeout:", timeoutMs);
-    }
+  // Wrap the actual scan operation in retry logic
+  return await retryNFCOperation(
+    async () => {
+      try {
+        if (!isNFCSupported()) {
+          throw new Error("Web NFC API not supported on this device");
+        }
 
-    // Create timeout promise
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reader.abort?.();
-        reject(new Error("Card detection timeout - please try again"));
-      }, timeoutMs);
-    });
+        const reader = new (window as any).NDEFReader();
 
-    // Create card detection promise
-    const cardDetectionPromise = new Promise<CardData | ScanForCardResult>(
-      (resolve, reject) => {
-        reader.onreading = (event: any) => {
-          try {
-            if (debugEnabled) {
-              console.log("[NFC Reader] Card detected, parsing NDEF message");
-            }
+        if (debugEnabled) {
+          console.log(
+            "[NFC Reader] Starting card scan with timeout:",
+            timeoutMs,
+          );
+        }
 
-            const message = event.message;
-            if (!message || !message.records || message.records.length === 0) {
-              throw new Error("Invalid NDEF message format");
-            }
+        // Create timeout promise
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reader.abort?.();
+            reject(new Error("Card detection timeout - please try again"));
+          }, timeoutMs);
+        });
 
-            const cardData = extractCardData(message);
-            if (debugEnabled) {
-              console.log("[NFC Reader] Card data extracted successfully");
-            }
+        // Create card detection promise
+        const cardDetectionPromise = new Promise<CardData | ScanForCardResult>(
+          (resolve, reject) => {
+            reader.onreading = (event: any) => {
+              try {
+                if (debugEnabled) {
+                  console.log(
+                    "[NFC Reader] Card detected, parsing NDEF message",
+                  );
+                }
 
-            if (includeRawMessage) {
-              resolve({ cardData, rawMessage: message });
-            } else {
-              resolve(cardData);
-            }
-          } catch (err) {
-            const errorMsg =
-              err instanceof Error ? err.message : "Failed to parse card data";
-            if (debugEnabled) {
-              console.error("[NFC Reader] Card parsing error:", errorMsg);
-            }
-            reject(err);
-          }
-        };
+                const message = event.message;
+                if (
+                  !message ||
+                  !message.records ||
+                  message.records.length === 0
+                ) {
+                  throw new Error("Invalid NDEF message format");
+                }
 
-        reader.onerror = () => {
-          reject(new Error("NFC read error - please try again"));
-        };
+                const cardData = extractCardData(message);
 
-        reader.scan().catch(reject);
+                // Check cache first (unless forceRefresh is true)
+                if (!shouldForceRefresh) {
+                  const cachedData = getCachedCardData(cardData.cardId);
+                  if (cachedData) {
+                    if (debugEnabled) {
+                      console.log(
+                        "[NFC Reader] Using cached card data for",
+                        cardData.cardId.substring(0, 8) + "...",
+                      );
+                    }
+                    if (includeRawMessage) {
+                      resolve({ cardData: cachedData, rawMessage: message });
+                    } else {
+                      resolve(cachedData);
+                    }
+                    return;
+                  }
+                }
+
+                // Cache the new card data
+                cacheCardData(cardData);
+
+                if (debugEnabled) {
+                  console.log("[NFC Reader] Card data extracted successfully");
+                }
+
+                if (includeRawMessage) {
+                  resolve({ cardData, rawMessage: message });
+                } else {
+                  resolve(cardData);
+                }
+              } catch (err) {
+                const errorMsg =
+                  err instanceof Error
+                    ? err.message
+                    : "Failed to parse card data";
+                if (debugEnabled) {
+                  console.error("[NFC Reader] Card parsing error:", errorMsg);
+                }
+                reject(err);
+              }
+            };
+
+            reader.onerror = () => {
+              reject(new Error("NFC read error - please try again"));
+            };
+
+            reader.scan().catch(reject);
+          },
+        );
+
+        // Race between card detection and timeout
+        return await Promise.race([cardDetectionPromise, timeoutPromise]);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Card scan failed";
+        console.error("[NFC Reader] Scan error:", message);
+        throw error;
       }
-    );
-
-    // Race between card detection and timeout
-    return await Promise.race([cardDetectionPromise, timeoutPromise]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Card scan failed";
-    console.error("[NFC Reader] Scan error:", message);
-    throw error;
-  }
+    },
+    3,
+    "Card scan",
+  );
 }
 
 /**
@@ -345,7 +553,7 @@ export function extractCardData(message: any): CardData {
 
     if (isPlaceholder && getEnvVar("VITE_TAPSIGNER_DEBUG") === "true") {
       console.warn(
-        "[TapSigner NFC Reader] Placeholder public key is still being used. Backend lookup required for production."
+        "[TapSigner NFC Reader] Placeholder public key is still being used. Backend lookup required for production.",
       );
     }
 

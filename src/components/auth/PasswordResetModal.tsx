@@ -2,13 +2,19 @@
  * Password Reset Modal Component
  *
  * Provides secure password recovery for users who forgot their password.
- * Requires proof of Nostr identity ownership via:
+ *
+ * Two Recovery Paths:
+ * 1. Password Recovery (PRK): Recover original password using nsec or Keet seed
+ * 2. Password Reset: Set a new password by proving identity ownership
+ *
+ * Proof methods:
  * - NIP-07 browser extension signature
  * - Nsec manual entry (for those without extension)
+ * - Keet seed phrase (24 words)
  */
 
-import { AlertTriangle, Eye, EyeOff, Key, RefreshCw, Shield, X } from 'lucide-react';
-import React, { useState } from 'react';
+import { AlertTriangle, Clock, Copy, Check, Eye, EyeOff, Key, RefreshCw, Shield, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface PasswordResetModalProps {
   isOpen: boolean;
@@ -16,8 +22,10 @@ interface PasswordResetModalProps {
   onSuccess?: (sessionToken: string) => void;
 }
 
+type RecoveryMode = 'choose' | 'recover' | 'reset';
+type RecoveryMethod = 'nsec' | 'keet';
 type ProofMethod = 'nip07' | 'nsec';
-type ResetStep = 'nip05' | 'proof' | 'password' | 'processing' | 'success';
+type ResetStep = 'nip05' | 'mode' | 'recover-method' | 'recover-input' | 'recover-display' | 'proof' | 'password' | 'processing' | 'success';
 
 export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
   isOpen,
@@ -25,22 +33,85 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
   onSuccess,
 }) => {
   const [step, setStep] = useState<ResetStep>('nip05');
+  const [mode, setMode] = useState<RecoveryMode>('choose');
   const [nip05, setNip05] = useState('');
   const [proofMethod, setProofMethod] = useState<ProofMethod | null>(null);
+  const [recoveryMethod, setRecoveryMethod] = useState<RecoveryMethod | null>(null);
   const [nsec, setNsec] = useState('');
   const [showNsec, setShowNsec] = useState(false);
+  const [keetSeed, setKeetSeed] = useState('');
+  const [showKeetSeed, setShowKeetSeed] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [signedEvent, setSignedEvent] = useState<any>(null);
+  const [signedEvent, setSignedEvent] = useState<unknown>(null);
   const [hasNip07, setHasNip07] = useState(false);
 
-  React.useEffect(() => {
+  // Password recovery state
+  const [recoveredPassword, setRecoveredPassword] = useState('');
+  const [displayTimeRemaining, setDisplayTimeRemaining] = useState(60);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+
+  useEffect(() => {
     // Check for NIP-07 extension
-    setHasNip07(typeof window !== 'undefined' && !!(window as any).nostr);
+    setHasNip07(typeof window !== 'undefined' && !!(window as unknown as { nostr?: unknown }).nostr);
   }, []);
+
+  const handleClose = useCallback(() => {
+    // Clear all sensitive data
+    setNsec('');
+    setKeetSeed('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setRecoveredPassword('');
+    setSignedEvent(null);
+    // Reset to initial state
+    setStep('nip05');
+    setMode('choose');
+    setRecoveryMethod(null);
+    setProofMethod(null);
+    setDisplayTimeRemaining(60);
+    setPasswordCopied(false);
+    setError('');
+    onClose();
+  }, [onClose]);
+
+  // Timer for recovered password display (60 seconds)
+  useEffect(() => {
+    if (step === 'recover-display' && displayTimeRemaining > 0) {
+      const timer = setInterval(() => {
+        setDisplayTimeRemaining((prev) => {
+          if (prev <= 1) {
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [step, displayTimeRemaining]);
+
+  // Handle expiration outside the state updater
+  useEffect(() => {
+    if (step === 'recover-display' && displayTimeRemaining === 0) {
+      setRecoveredPassword('');
+      handleClose();
+    }
+  }, [step, displayTimeRemaining, handleClose]);
+
+  // Copy password to clipboard
+  const handleCopyPassword = useCallback(async () => {
+    if (!recoveredPassword) return;
+    try {
+      await navigator.clipboard.writeText(recoveredPassword);
+      setPasswordCopied(true);
+      setTimeout(() => setPasswordCopied(false), 2000);
+    } catch {
+      setError('Failed to copy to clipboard');
+    }
+  }, [recoveredPassword]);
 
   if (!isOpen) return null;
 
@@ -51,7 +122,67 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
       return;
     }
     setError('');
-    setStep('proof');
+    setStep('mode'); // Go to mode selection (recover vs reset)
+  };
+
+  const handleModeSelect = (selectedMode: RecoveryMode) => {
+    setMode(selectedMode);
+    if (selectedMode === 'recover') {
+      setStep('recover-method');
+    } else {
+      setStep('proof');
+    }
+  };
+
+  const handleRecoveryMethodSelect = (method: RecoveryMethod) => {
+    setRecoveryMethod(method);
+    setStep('recover-input');
+  };
+
+  const handlePasswordRecovery = async () => {
+    setIsProcessing(true);
+    setError('');
+
+    try {
+      const recoveryData = recoveryMethod === 'nsec' ? nsec.trim() : keetSeed.trim();
+
+      if (!recoveryData) {
+        setError(recoveryMethod === 'nsec' ? 'Please enter your nsec' : 'Please enter your Keet seed phrase');
+        setIsProcessing(false);
+        return;
+      }
+
+      const response = await fetch('/api/auth/recover-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nip05: nip05.trim().toLowerCase(),
+          recoveryMethod,
+          recoveryData,
+        }),
+      });
+
+      const result = await response.json();
+
+      // Clear sensitive input data immediately
+      setNsec('');
+      setKeetSeed('');
+
+      if (!response.ok || !result.success) {
+        setError(result.error || 'Password recovery failed');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Success - display recovered password
+      setRecoveredPassword(result.data.recoveredPassword);
+      setDisplayTimeRemaining(result.data.expiresIn || 60);
+      setStep('recover-display');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Password recovery failed');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleNip07Proof = async () => {
@@ -160,15 +291,7 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
     }
   };
 
-  const handleClose = () => {
-    setNsec('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setSignedEvent(null);
-    setStep('nip05');
-    setError('');
-    onClose();
-  };
+
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -219,7 +342,204 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
             </div>
           )}
 
-          {/* Step 2: Prove Identity */}
+          {/* Step 2: Choose Mode (Recover vs Reset) */}
+          {step === 'mode' && (
+            <div className="space-y-4">
+              <p className="text-gray-600 text-sm">
+                Choose how you want to access your account for <strong>{nip05}</strong>
+              </p>
+
+              <button
+                onClick={() => handleModeSelect('recover')}
+                className="w-full p-4 border-2 border-green-200 rounded-lg hover:bg-green-50 text-left"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Key className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-green-800">Recover Original Password</p>
+                    <p className="text-sm text-gray-500">Use your nsec or Keet seed to recover your password</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleModeSelect('reset')}
+                className="w-full p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50 text-left"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-100 rounded-full">
+                    <RefreshCw className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-blue-800">Set New Password</p>
+                    <p className="text-sm text-gray-500">Prove identity and create a new password</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setStep('nip05')}
+                className="w-full text-gray-600 py-2 hover:text-gray-800"
+              >
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {/* Step 2a: Recovery Method Selection */}
+          {step === 'recover-method' && (
+            <div className="space-y-4">
+              <p className="text-gray-600 text-sm">
+                Choose your recovery method for <strong>{nip05}</strong>
+              </p>
+
+              <button
+                onClick={() => handleRecoveryMethodSelect('nsec')}
+                className="w-full p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50 text-left"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-purple-100 rounded-full">
+                    <Key className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Nostr Private Key (nsec)</p>
+                    <p className="text-sm text-gray-500">Enter your nsec1... private key</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleRecoveryMethodSelect('keet')}
+                className="w-full p-4 border-2 border-orange-200 rounded-lg hover:bg-orange-50 text-left"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-orange-100 rounded-full">
+                    <Shield className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Keet Seed Phrase</p>
+                    <p className="text-sm text-gray-500">Enter your 24-word seed phrase</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setStep('mode')}
+                className="w-full text-gray-600 py-2 hover:text-gray-800"
+              >
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {/* Step 2b: Recovery Input */}
+          {step === 'recover-input' && (
+            <div className="space-y-4">
+              <p className="text-gray-600 text-sm">
+                {recoveryMethod === 'nsec'
+                  ? 'Enter your Nostr private key to recover your password'
+                  : 'Enter your 24-word Keet seed phrase to recover your password'}
+              </p>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                <p className="text-xs text-amber-700">
+                  ⚠️ Your secret is transmitted securely over HTTPS to recover your password. It is not stored on servers.
+                </p>
+              </div>
+
+              {recoveryMethod === 'nsec' ? (
+                <div className="relative">
+                  <input
+                    type={showNsec ? 'text' : 'password'}
+                    value={nsec}
+                    onChange={(e) => setNsec(e.target.value)}
+                    placeholder="nsec1..."
+                    className="w-full px-3 py-2 pr-10 border rounded-md font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNsec(!showNsec)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500"
+                  >
+                    {showNsec ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <textarea
+                    value={keetSeed}
+                    onChange={(e) => setKeetSeed(e.target.value)}
+                    placeholder="Enter your 24 words separated by spaces..."
+                    className="w-full px-3 py-2 border rounded-md font-mono text-sm h-24 resize-none"
+                  />
+                </div>
+              )}
+
+              <button
+                onClick={handlePasswordRecovery}
+                disabled={isProcessing || (recoveryMethod === 'nsec' ? !nsec.trim() : !keetSeed.trim())}
+                className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50"
+              >
+                {isProcessing ? 'Recovering...' : 'Recover Password'}
+              </button>
+
+              <button
+                onClick={() => setStep('recover-method')}
+                className="w-full text-gray-600 py-2 hover:text-gray-800"
+              >
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {/* Step 2c: Recovered Password Display */}
+          {step === 'recover-display' && recoveredPassword && (
+            <div className="space-y-4">
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-sm text-green-700 font-medium">✓ Password recovered successfully!</p>
+              </div>
+
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-700">Your Password</span>
+                  <div className="flex items-center space-x-2 text-sm text-amber-600">
+                    <Clock className="h-4 w-4" />
+                    <span>{displayTimeRemaining}s</span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <code className="flex-1 p-2 bg-white border rounded font-mono text-sm break-all">
+                    {recoveredPassword}
+                  </code>
+                  <button
+                    onClick={handleCopyPassword}
+                    className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    title="Copy to clipboard"
+                  >
+                    {passwordCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                <p className="text-xs text-amber-700">
+                  ⚠️ This password will be hidden in {displayTimeRemaining} seconds.
+                  Write it down or copy it now!
+                </p>
+              </div>
+
+              <button
+                onClick={handleClose}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+              >
+                Done - Sign In Now
+              </button>
+            </div>
+          )}
+
+          {/* Step 3: Prove Identity (for Reset flow) */}
           {step === 'proof' && (
             <div className="space-y-4">
               <p className="text-gray-600 text-sm">

@@ -27,12 +27,16 @@ CREATE TABLE IF NOT EXISTS public.attestations (
     verification_id UUID NOT NULL REFERENCES public.multi_method_verification_results(id) ON DELETE CASCADE,
 
     -- Event metadata (CRITICAL FIX: stores actual event type, not hardcoded)
+    -- Updated to include onboarding event types (Phase 10)
     event_type TEXT NOT NULL CHECK (event_type IN (
         'account_creation',
         'key_rotation',
         'nfc_registration',
         'family_federation',
-        'guardian_role_change'
+        'guardian_role_change',
+        'physical_peer_onboarding',
+        'coordinator_attestation',
+        'batch_onboarding_session'
     )),
     metadata JSONB,
 

@@ -57,7 +57,7 @@ export function parseSignatureFromNDEF(message: any): {
     const sigRecord = message.records.find(
       (record: any) =>
         record.recordType === "application/vnd.coinkite.signature" ||
-        record.recordType === "application/vnd.satnam.signature"
+        record.recordType === "application/vnd.satnam.signature",
     );
 
     if (!sigRecord || !sigRecord.data) {
@@ -78,15 +78,15 @@ export function parseSignatureFromNDEF(message: any): {
       typeof payload.signature === "string"
         ? payload.signature
         : typeof payload.sig === "string"
-        ? payload.sig
-        : "";
+          ? payload.sig
+          : "";
 
     const publicKey: string =
       typeof payload.publicKey === "string"
         ? payload.publicKey
         : typeof payload.pubkey === "string"
-        ? payload.pubkey
-        : "";
+          ? payload.pubkey
+          : "";
 
     if (!/^[a-fA-F0-9]{128}$/.test(signature)) {
       throw new Error("Invalid signature format in NDEF record");
@@ -121,16 +121,16 @@ function hexToBytes(hex: string): Uint8Array {
 async function verifyEventSignature(
   eventHash: string,
   signature: string,
-  publicKey: string
+  publicKey: string,
 ): Promise<boolean> {
-  const { secp256k1 } = await import("@noble/curves/secp256k1");
+  const { schnorr } = await import("@noble/curves/secp256k1");
 
   const messageBytes = hexToBytes(eventHash);
   const signatureBytes = hexToBytes(signature);
   const publicKeyBytes = hexToBytes(publicKey);
 
   // Tapsigner uses Schnorr signatures on secp256k1
-  return secp256k1.schnorr.verify(signatureBytes, messageBytes, publicKeyBytes);
+  return schnorr.verify(signatureBytes, messageBytes, publicKeyBytes);
 }
 
 /**
@@ -251,7 +251,7 @@ export async function verifyPIN(
   pin: string,
   storedHash: string,
   attempts: number = 0,
-  maxAttempts: number = 3
+  maxAttempts: number = 3,
 ): Promise<PINVerificationResult> {
   try {
     // Check if locked
@@ -312,7 +312,7 @@ export async function verifyPIN(
  */
 export async function generateSignature(
   eventHash: string,
-  cardId: string
+  cardId: string,
 ): Promise<SignatureResult> {
   try {
     if (!eventHash || eventHash.length === 0) {
@@ -333,7 +333,7 @@ export async function generateSignature(
     if (debugEnabled) {
       console.log(
         "[Card Protocol] Generating signature for event:",
-        eventHash.substring(0, 16) + "..."
+        eventHash.substring(0, 16) + "...",
       );
     }
 
@@ -347,7 +347,7 @@ export async function generateSignature(
       try {
         const result: CardData | ScanForCardResult = await scanForCard(
           10000,
-          true
+          true,
         );
 
         const { cardData, rawMessage: message } =
@@ -377,7 +377,7 @@ export async function generateSignature(
       }
     } else if (debugEnabled) {
       console.warn(
-        "[Card Protocol] Web NFC not available in this environment; skipping card scan"
+        "[Card Protocol] Web NFC not available in this environment; skipping card scan",
       );
     }
 
@@ -390,7 +390,7 @@ export async function generateSignature(
 
         if (debugEnabled) {
           console.log(
-            "[Card Protocol] Parsed hardware signature from NDEF message"
+            "[Card Protocol] Parsed hardware signature from NDEF message",
           );
         }
       } catch (parseError) {
@@ -400,10 +400,10 @@ export async function generateSignature(
             : "Failed to parse hardware signature";
         console.error(
           "[Card Protocol] Hardware signature parsing error:",
-          message
+          message,
         );
         throw new Error(
-          "Failed to parse hardware signature from Tapsigner response"
+          "Failed to parse hardware signature from Tapsigner response",
         );
       }
     }
@@ -420,7 +420,7 @@ export async function generateSignature(
               "[Card Protocol] Resolved public key from backend for card:",
               {
                 cardId: cardId.substring(0, 8) + "...",
-              }
+              },
             );
           }
         }
@@ -431,7 +431,7 @@ export async function generateSignature(
             : "Public key lookup failed";
         console.error(
           "[Card Protocol] Backend public key lookup error:",
-          message
+          message,
         );
         // Continue with placeholder if lookup fails; callers must treat this
         // as non-production-safe.
@@ -441,7 +441,7 @@ export async function generateSignature(
     // At this point we expect a hardware-provided signature from the card.
     if (!signature) {
       throw new Error(
-        "Tapsigner card did not return a signature in the NFC response"
+        "Tapsigner card did not return a signature in the NFC response",
       );
     }
 
@@ -452,15 +452,15 @@ export async function generateSignature(
       const isValid = await verifyEventSignature(
         eventHash,
         signature,
-        publicKey
+        publicKey,
       );
 
       if (!isValid) {
         console.error(
-          "[Card Protocol] Tapsigner signature verification failed - signature invalid"
+          "[Card Protocol] Tapsigner signature verification failed - signature invalid",
         );
         throw new Error(
-          "Tapsigner signature verification failed - signature invalid"
+          "Tapsigner signature verification failed - signature invalid",
         );
       }
     }

@@ -104,7 +104,13 @@ interface CardConfig {
   lastUsed: number;
   // Application-layer P-256 keypair for NTAG424 operation signing (encrypted at rest in encrypted_config)
   p256PrivateKey?: string; // 64-char hex (32 bytes), used for spend + non-Nostr sign operations
-  p256PublicKey?: string; // 130-char hex (uncompressed) or 66-char (compressed), for integrity verification
+  /**
+   * P-256 public key for integrity verification.
+   * Supports:
+   * - 130-char uncompressed hex with 0x04 prefix (04 + x[32B] + y[32B])
+   * - 66-char compressed hex with 0x02/0x03 prefix (02/03 + x[32B])
+   */
+  p256PublicKey?: string;
 }
 
 interface StewardPolicy {
@@ -257,11 +263,11 @@ export class NFCAuthService {
 
       // Add event listeners
       this.reader.addEventListener("reading", (event: Event) =>
-        this.handleNFCTag(event as NFCReadingEvent)
+        this.handleNFCTag(event as NFCReadingEvent),
       );
       this.reader.addEventListener(
         "readingerror",
-        this.handleNFCError.bind(this)
+        this.handleNFCError.bind(this),
       );
     } catch (error) {
       console.error("❌ Failed to start NFC listening:", error);
@@ -322,12 +328,12 @@ export class NFCAuthService {
    * Parse NTAG424 DNA data from NDEF message
    */
   private async parseNTAG424DNA(
-    message: NFCNDEFMessage
+    message: NFCNDEFMessage,
   ): Promise<NTAG424DNAAuth | null> {
     try {
       // Look for NTAG424 DNA record
       const ntagRecord = message.records.find(
-        (record) => record.recordType === "application/vnd.ntag424.dna"
+        (record) => record.recordType === "application/vnd.ntag424.dna",
       );
 
       if (!ntagRecord || !ntagRecord.data) {
@@ -362,7 +368,7 @@ export class NFCAuthService {
       // Extract timestamp (8 bytes)
       const timestamp = new DataView(data.slice(49, 57).buffer).getBigUint64(
         0,
-        false
+        false,
       );
 
       // Extract nonce (16 bytes)
@@ -424,7 +430,7 @@ export class NFCAuthService {
    */
   private async processNTAG424DNAAuth(
     auth: NTAG424DNAAuth,
-    _serialNumber?: string
+    _serialNumber?: string,
   ): Promise<void> {
     try {
       // Verify signature using Web Crypto API
@@ -454,7 +460,7 @@ export class NFCAuthService {
    * SECURITY: Uses secure hex parsing, input validation, and constant-time comparison
    */
   private async verifyNTAG424DNASignature(
-    auth: NTAG424DNAAuth
+    auth: NTAG424DNAAuth,
   ): Promise<boolean> {
     // Input validation with early returns for security
     if (!auth || !auth.signature || !auth.uid || !auth.keyId) {
@@ -516,7 +522,7 @@ export class NFCAuthService {
           },
           publicKey,
           signatureBuffer,
-          messageBuffer
+          messageBuffer,
         );
 
         // Use constant-time logging to prevent timing attacks
@@ -529,7 +535,7 @@ export class NFCAuthService {
       } catch (cryptoError) {
         console.error(
           "Cryptographic NTAG424 DNA signature verification failed:",
-          cryptoError
+          cryptoError,
         );
         return false;
       }
@@ -610,7 +616,7 @@ export class NFCAuthService {
    */
   private async privacyDelay(): Promise<void> {
     await new Promise((resolve) =>
-      setTimeout(resolve, this.config.privacyDelayMs)
+      setTimeout(resolve, this.config.privacyDelayMs),
     );
   }
 
@@ -619,7 +625,7 @@ export class NFCAuthService {
    */
   registerAuthCallback(
     uid: string,
-    callback: (auth: NTAG424DNAAuth) => void
+    callback: (auth: NTAG424DNAAuth) => void,
   ): void {
     this.authCallbacks.set(uid, callback);
   }
@@ -664,7 +670,7 @@ export class NFCAuthService {
       } catch (err) {
         console.error(
           "❌ Tap-to-Spend: failed to fetch steward policy",
-          err instanceof Error ? err.message : "Unknown error"
+          err instanceof Error ? err.message : "Unknown error",
         );
         // Abort cleanly without attempting NFC operation when policy cannot be determined
         return false;
@@ -715,7 +721,7 @@ export class NFCAuthService {
 
         const operationHash =
           await getNTAG424Manager().getOperationHashForClient(
-            unsignedOperation
+            unsignedOperation,
           );
 
         // Best-effort publish of steward approval requests; failures are logged but do not leak sensitive data
@@ -749,7 +755,7 @@ export class NFCAuthService {
             timeoutMs: STEWARD_APPROVAL_TIMEOUT_MS,
             federationDuid: policy.federationDuid || undefined,
             eligibleApproverPubkeys: policy.eligibleApproverPubkeys,
-          }
+          },
         );
 
         if (approvalResult.status !== "approved") {
@@ -810,7 +816,7 @@ export class NFCAuthService {
       } catch (err) {
         console.error(
           "❌ Tap-to-Sign: failed to fetch steward policy",
-          err instanceof Error ? err.message : "Unknown error"
+          err instanceof Error ? err.message : "Unknown error",
         );
         return null;
       }
@@ -856,7 +862,7 @@ export class NFCAuthService {
 
         const operationHash =
           await getNTAG424Manager().getOperationHashForClient(
-            unsignedOperation
+            unsignedOperation,
           );
 
         try {
@@ -889,7 +895,7 @@ export class NFCAuthService {
             timeoutMs: STEWARD_APPROVAL_TIMEOUT_MS,
             federationDuid: policy.federationDuid || undefined,
             eligibleApproverPubkeys: policy.eligibleApproverPubkeys,
-          }
+          },
         );
 
         if (approvalResult.status !== "approved") {
@@ -925,7 +931,7 @@ export class NFCAuthService {
    */
   private async executeSpendOperation(
     request: TapToSpendRequest,
-    auth: NTAG424DNAAuth
+    auth: NTAG424DNAAuth,
   ): Promise<boolean> {
     try {
       // This would integrate with the payment system
@@ -952,7 +958,7 @@ export class NFCAuthService {
    */
   async createSignedSpendOperation(
     request: TapToSpendRequest,
-    auth: NTAG424DNAAuth
+    auth: NTAG424DNAAuth,
   ): Promise<NTAG424SpendOperation> {
     const truncatedUid = auth.uid.substring(0, 8) + "...";
 
@@ -978,7 +984,7 @@ export class NFCAuthService {
     // Sign with per-card P-256 key for hardware-backed spend operations
     const { publicKeyHex, signatureHex } = await this.signOperationHashWithP256(
       operationHashHex,
-      auth
+      auth,
     );
 
     operation.signature = JSON.stringify({
@@ -1003,7 +1009,7 @@ export class NFCAuthService {
    */
   async createSignedSignOperation(
     request: TapToSignRequest,
-    auth: NTAG424DNAAuth
+    auth: NTAG424DNAAuth,
   ): Promise<NTAG424SignOperation> {
     const truncatedUid = auth.uid.substring(0, 8) + "...";
 
@@ -1028,7 +1034,7 @@ export class NFCAuthService {
       curve = "secp256k1";
       const result = await this.signOperationHashWithSecp256k1(
         operationHashHex,
-        request.signingSessionId
+        request.signingSessionId,
       );
       publicKeyHex = result.publicKeyHex;
       signatureHex = result.signatureHex;
@@ -1036,7 +1042,7 @@ export class NFCAuthService {
       curve = "P-256";
       const result = await this.signOperationHashWithP256(
         operationHashHex,
-        auth
+        auth,
       );
       publicKeyHex = result.publicKeyHex;
       signatureHex = result.signatureHex;
@@ -1067,7 +1073,7 @@ export class NFCAuthService {
    */
   private async generateSignature(
     message: string,
-    auth: NTAG424DNAAuth
+    auth: NTAG424DNAAuth,
   ): Promise<string> {
     try {
       console.log("✍️ Generating signature with NFC key:", {
@@ -1079,7 +1085,7 @@ export class NFCAuthService {
       const cardConfig = await this.getCardConfig(auth.uid);
       if (!cardConfig || !cardConfig.signingPublicKey) {
         throw new Error(
-          "Card not registered for signing - no public key found"
+          "Card not registered for signing - no public key found",
         );
       }
 
@@ -1087,7 +1093,7 @@ export class NFCAuthService {
       const messageBytes = new TextEncoder().encode(message);
       const messageHashBuffer = await crypto.subtle.digest(
         "SHA-256",
-        messageBytes
+        messageBytes,
       );
       const messageHash = new Uint8Array(messageHashBuffer);
       const messageHashHex = Array.from(messageHash)
@@ -1097,13 +1103,13 @@ export class NFCAuthService {
       // 3. Request signature from NFC card
       const signatureHex = await this.requestCardSignature(
         auth.uid,
-        messageHashHex
+        messageHashHex,
       );
 
       // 4. Validate signature format (must be 128 hex characters = 64 bytes)
       if (!/^[a-fA-F0-9]{128}$/.test(signatureHex)) {
         throw new Error(
-          `Invalid signature format - expected 128 hex characters, got ${signatureHex.length}`
+          `Invalid signature format - expected 128 hex characters, got ${signatureHex.length}`,
         );
       }
 
@@ -1112,7 +1118,7 @@ export class NFCAuthService {
 
       // Convert signature hex to bytes (64 bytes)
       const signatureBytes = new Uint8Array(
-        signatureHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+        signatureHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)),
       );
 
       // Convert public key hex to bytes (32 bytes for x-only pubkey)
@@ -1121,22 +1127,22 @@ export class NFCAuthService {
         throw new Error("Invalid signing public key format in card config");
       }
       const publicKeyBytes = new Uint8Array(
-        publicKeyHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+        publicKeyHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)),
       );
 
       // Verify signature
       const isValid = secp256k1.verify(
         signatureBytes,
         messageHash,
-        publicKeyBytes
+        publicKeyBytes,
       );
 
       if (!isValid) {
         console.error(
-          "❌ NFC signature verification failed - signature invalid"
+          "❌ NFC signature verification failed - signature invalid",
         );
         throw new Error(
-          "Card signature verification failed - signature invalid"
+          "Card signature verification failed - signature invalid",
         );
       }
 
@@ -1151,7 +1157,7 @@ export class NFCAuthService {
     } catch (error) {
       console.error(
         "❌ Signature generation failed:",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
       throw error;
     }
@@ -1163,7 +1169,7 @@ export class NFCAuthService {
    */
   private async signOperationHashWithP256(
     operationHashHex: string,
-    auth: NTAG424DNAAuth
+    auth: NTAG424DNAAuth,
   ): Promise<{
     publicKeyHex: string;
     signatureHex: string;
@@ -1182,10 +1188,10 @@ export class NFCAuthService {
     if (!cardConfig || !cardConfig.p256PrivateKey) {
       console.error(
         "❌ P-256 signing key not found in card config",
-        auth.uid.substring(0, 8) + "..."
+        auth.uid.substring(0, 8) + "...",
       );
       throw new Error(
-        "Card configuration missing required P-256 signing key; please re-provision this card."
+        "Card configuration missing required P-256 signing key; please re-provision this card.",
       );
     }
 
@@ -1193,7 +1199,7 @@ export class NFCAuthService {
     if (!/^[0-9a-fA-F]{64}$/.test(privHex)) {
       console.error(
         "❌ Invalid P-256 private key format in card config",
-        auth.uid.substring(0, 8) + "..."
+        auth.uid.substring(0, 8) + "...",
       );
       throw new Error("Invalid P-256 signing key format in card configuration");
     }
@@ -1201,7 +1207,7 @@ export class NFCAuthService {
     const privBytes = this.secureHexToBytes(privHex);
     if (!privBytes) {
       throw new Error(
-        "Failed to parse P-256 private key from card configuration"
+        "Failed to parse P-256 private key from card configuration",
       );
     }
 
@@ -1210,25 +1216,51 @@ export class NFCAuthService {
       if (!cardConfig.p256PublicKey) {
         console.error(
           "❌ P-256 public key missing in card config for operation envelope",
-          auth.uid.substring(0, 8) + "..."
+          auth.uid.substring(0, 8) + "...",
         );
         throw new Error(
-          "Card configuration missing P-256 public key required for operation envelope."
+          "Card configuration missing P-256 public key required for operation envelope.",
         );
       }
 
-      const pubKeyHex = cardConfig.p256PublicKey;
+      let pubKeyHex = cardConfig.p256PublicKey;
+
+      // Support compressed P-256 keys: 0x02/0x03 prefix + 32-byte X coordinate (66 hex chars)
+      if (
+        pubKeyHex.length === 66 &&
+        (pubKeyHex.startsWith("02") || pubKeyHex.startsWith("03"))
+      ) {
+        try {
+          const compressedBytes = this.secureHexToBytes(pubKeyHex);
+          if (!compressedBytes) {
+            throw new Error("Invalid compressed P-256 public key hex");
+          }
+
+          const { p256 } = await import("@noble/curves/p256");
+          const point = p256.ProjectivePoint.fromHex(compressedBytes);
+          const uncompressedBytes = point.toRawBytes(false); // false = uncompressed
+          pubKeyHex = this.bytesToHex(uncompressedBytes);
+        } catch (e) {
+          console.error(
+            "❌ Failed to decompress compressed P-256 public key from card config",
+            e instanceof Error ? e.message : "Unknown error",
+          );
+          throw new Error(
+            "Invalid compressed P-256 public key in card configuration",
+          );
+        }
+      }
 
       // Validate uncompressed format: 0x04 prefix (1 byte) + x (32 bytes) + y (32 bytes) = 130 hex chars
       if (pubKeyHex.length !== 130) {
         throw new Error(
-          `Invalid p256PublicKey: must be 130 hex characters (uncompressed format with 0x04 prefix), got ${pubKeyHex.length}`
+          `Invalid p256PublicKey: must be 130 hex characters (uncompressed format with 0x04 prefix), got ${pubKeyHex.length}`,
         );
       }
 
       if (!pubKeyHex.startsWith("04")) {
         throw new Error(
-          "Invalid p256PublicKey: must start with 0x04 prefix for uncompressed format"
+          "Invalid p256PublicKey: must start with 0x04 prefix for uncompressed format",
         );
       }
 
@@ -1242,7 +1274,7 @@ export class NFCAuthService {
 
       if (!xBytes || !yBytes || xBytes.length !== 32 || yBytes.length !== 32) {
         throw new Error(
-          "Failed to parse P-256 public key coordinates from card configuration"
+          "Failed to parse P-256 public key coordinates from card configuration",
         );
       }
 
@@ -1261,13 +1293,13 @@ export class NFCAuthService {
         jwk,
         { name: "ECDSA", namedCurve: "P-256" },
         false,
-        ["sign"]
+        ["sign"],
       );
 
       const signatureBuffer = await crypto.subtle.sign(
         { name: "ECDSA", hash: { name: "SHA-256" } },
         privateKey,
-        new Uint8Array(messageBytes)
+        new Uint8Array(messageBytes),
       );
 
       const signatureHex = this.bytesToHex(new Uint8Array(signatureBuffer));
@@ -1285,14 +1317,14 @@ export class NFCAuthService {
    */
   private async signOperationHashWithSecp256k1(
     operationHashHex: string,
-    signingSessionId?: string
+    signingSessionId?: string,
   ): Promise<{
     publicKeyHex: string;
     signatureHex: string;
   }> {
     if (!signingSessionId) {
       throw new Error(
-        "Nostr signing session required. Please authenticate with your Nostr account before using tap-to-sign for Nostr operations."
+        "Nostr signing session required. Please authenticate with your Nostr account before using tap-to-sign for Nostr operations.",
       );
     }
 
@@ -1310,7 +1342,7 @@ export class NFCAuthService {
         // signing we expect a 64-char hex private key.
         if (!/^[0-9a-fA-F]{64}$/.test(nsecHex)) {
           throw new Error(
-            "Unsupported Nostr key format for NTAG424 secp256k1 signing"
+            "Unsupported Nostr key format for NTAG424 secp256k1 signing",
           );
         }
 
@@ -1331,7 +1363,7 @@ export class NFCAuthService {
           // Best-effort cleanup of raw private key material
           privBytes.fill(0);
         }
-      }
+      },
     );
 
     return result;
@@ -1370,7 +1402,7 @@ export class NFCAuthService {
 
     // Development fallback - matches NTAG424ProductionManager
     console.warn(
-      "⚠️ Using development NTAG424 master key. Use Supabase Vault in production."
+      "⚠️ Using development NTAG424 master key. Use Supabase Vault in production.",
     );
     return "dev-ntag424-master-key-32-chars";
   }
@@ -1388,7 +1420,7 @@ export class NFCAuthService {
 
       if (!decryptedString) {
         throw new Error(
-          "Decryption produced empty result - invalid key or corrupted data"
+          "Decryption produced empty result - invalid key or corrupted data",
         );
       }
 
@@ -1397,7 +1429,7 @@ export class NFCAuthService {
       // Validate required fields
       if (!config.uid || !config.pinHash) {
         throw new Error(
-          "Decrypted config missing required fields (uid, pinHash)"
+          "Decrypted config missing required fields (uid, pinHash)",
         );
       }
 
@@ -1411,7 +1443,7 @@ export class NFCAuthService {
       // Log security event without exposing sensitive data
       console.error(
         "❌ Card config decryption failed:",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
       throw new Error("Configuration decryption failed - check master key");
     }
@@ -1458,7 +1490,7 @@ export class NFCAuthService {
     } catch (error) {
       console.error(
         "❌ Failed to fetch card config:",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
       throw error; // Re-throw to signal failure to caller
     }
@@ -1474,7 +1506,7 @@ export class NFCAuthService {
    */
   private async requestCardSignature(
     uid: string,
-    _messageHash: string
+    _messageHash: string,
   ): Promise<string> {
     // Check if NFC is supported
     if (!("NDEFReader" in window)) {
@@ -1489,7 +1521,7 @@ export class NFCAuthService {
       reader = new (window as any).NDEFReader();
       console.log(
         "📡 Starting NFC signature scan for card:",
-        uid.substring(0, 8) + "..."
+        uid.substring(0, 8) + "...",
       );
 
       // Create promise for NFC reading
@@ -1498,7 +1530,7 @@ export class NFCAuthService {
           try {
             // Look for NTAG424 DNA record
             const ntagRecord = event.message.records.find(
-              (record) => record.recordType === "application/vnd.ntag424.dna"
+              (record) => record.recordType === "application/vnd.ntag424.dna",
             );
 
             if (!ntagRecord || !ntagRecord.data) {
@@ -1526,8 +1558,8 @@ export class NFCAuthService {
             if (signatureBytes.length !== 64) {
               reject(
                 new Error(
-                  `Invalid signature length on card: expected 64 bytes, got ${signatureBytes.length}`
-                )
+                  `Invalid signature length on card: expected 64 bytes, got ${signatureBytes.length}`,
+                ),
               );
               return;
             }
@@ -1548,8 +1580,8 @@ export class NFCAuthService {
               new Error(
                 `Failed to parse signature: ${
                   error instanceof Error ? error.message : "Unknown error"
-                }`
-              )
+                }`,
+              ),
             );
           }
         };
@@ -1592,7 +1624,7 @@ export class NFCAuthService {
 
       console.error(
         "❌ NFC signature request failed:",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
       throw error;
     }
@@ -1602,7 +1634,7 @@ export class NFCAuthService {
    * Request guardian approval for NFC operations
    */
   private async requestGuardianApproval(
-    request: GuardianApprovalRequest
+    request: GuardianApprovalRequest,
   ): Promise<boolean> {
     try {
       console.log("🛡️ Requesting guardian approval:", request);
@@ -1630,7 +1662,7 @@ export class NFCAuthService {
    * federation IDs, or pubkeys; only high-level error messages.
    */
   private async fetchStewardPolicy(
-    operationType: "spend" | "sign"
+    operationType: "spend" | "sign",
   ): Promise<StewardPolicy> {
     const url = `${API_BASE}/steward-policy`;
     try {
@@ -1664,13 +1696,13 @@ export class NFCAuthService {
         if (res.status === 409) {
           throw new Error(
             payload?.error ||
-              "Steward policy misconfigured. Please contact support before using steward-gated NFC flows."
+              "Steward policy misconfigured. Please contact support before using steward-gated NFC flows.",
           );
         }
         if (res.status >= 500) {
           throw new Error(
             payload?.error ||
-              "Steward policy service is temporarily unavailable. Please try again later."
+              "Steward policy service is temporarily unavailable. Please try again later.",
           );
         }
 
@@ -1696,7 +1728,7 @@ export class NFCAuthService {
    */
   registerGuardianApprovalCallback(
     requestId: string,
-    callback: (response: GuardianApprovalResponse) => void
+    callback: (response: GuardianApprovalResponse) => void,
   ): void {
     this.guardianApprovalCallbacks.set(requestId, callback);
   }
@@ -1720,40 +1752,52 @@ export class NFCAuthService {
 
   /**
    * Register and program an NTAG424 tag in-app using Web NFC API
+   * Phase 11 Task 11.2.4: Updated to use batch writer with retry logic
    * @param pin User-chosen PIN (string)
    * @param nsec Encrypted nsec or other protected data (string)
    * @returns { tagUID, aesKey, pinHash }
    */
   async registerAndProgramTag(
     pin: string,
-    nsec: string
+    nsec: string,
   ): Promise<{ tagUID: string | null; aesKey: string; pinHash: string }> {
-    if (!("NDEFWriter" in window)) {
+    // Import batch writer for optimized write operations
+    const { batchWriteNDEFRecords, isNFCWriteSupported } =
+      await import("./nfc/batch-ndef-writer");
+
+    if (!isNFCWriteSupported()) {
       throw new Error("NFC writing not supported in this browser");
     }
+
     // 1. Generate AES-256 key
     const aesKey = await window.crypto.subtle.generateKey(
       { name: "AES-GCM", length: 256 },
       true,
-      ["encrypt", "decrypt"]
+      ["encrypt", "decrypt"],
     );
     const rawKey = await window.crypto.subtle.exportKey("raw", aesKey);
     const aesKeyB64 = btoa(String.fromCharCode(...new Uint8Array(rawKey)));
+
     // 2. Hash PIN
     const pinHashBuffer = await window.crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(pin)
+      new TextEncoder().encode(pin),
     );
     const pinHash = btoa(String.fromCharCode(...new Uint8Array(pinHashBuffer)));
-    // 3. Prompt user to tap tag and write data
-    if (!window.NDEFWriter) {
-      throw new Error("NDEFWriter not available");
-    }
-    const writer = new window.NDEFWriter();
+
+    // 3. Prompt user to tap tag and write data using batch writer with retry logic
     const protectedData = JSON.stringify({ nsec, pinHash });
-    await writer.write({
-      records: [{ recordType: "text", data: protectedData }],
-    });
+    const writeResult = await batchWriteNDEFRecords(
+      [{ recordType: "text", data: protectedData }],
+      3, // 3 retries with exponential backoff
+    );
+
+    if (!writeResult.success) {
+      throw new Error(
+        `Failed to write to NFC tag: ${writeResult.error || "Unknown error"}`,
+      );
+    }
+
     // 4. Try to read tag UID (not always available)
     let tagUID: string | null = null;
     if (window.NDEFReader) {
@@ -1794,7 +1838,7 @@ export class NFCHardwareSecurityManager {
    */
   registerNFCDevice(
     deviceId: string,
-    config?: Partial<NTAG424DNAConfig>
+    config?: Partial<NTAG424DNAConfig>,
   ): NFCAuthService {
     const service = new NFCAuthService(config);
     this.nfcServices.set(deviceId, service);
@@ -1826,16 +1870,16 @@ export class NFCHardwareSecurityManager {
    */
   async initializeAllDevices(): Promise<void> {
     const promises = Array.from(this.nfcServices.values()).map((service) =>
-      service.initializeNFC()
+      service.initializeNFC(),
     );
 
     const results = await Promise.allSettled(promises);
     const successCount = results.filter(
-      (r) => r.status === "fulfilled" && r.value
+      (r) => r.status === "fulfilled" && r.value,
     ).length;
 
     console.log(
-      `🔐 ${successCount}/${this.nfcServices.size} NFC devices initialized`
+      `🔐 ${successCount}/${this.nfcServices.size} NFC devices initialized`,
     );
   }
 
@@ -1866,7 +1910,7 @@ export class NFCHardwareSecurityManager {
    */
   async cleanup(): Promise<void> {
     const promises = Array.from(this.nfcServices.values()).map((service) =>
-      service.cleanup()
+      service.cleanup(),
     );
 
     await Promise.allSettled(promises);

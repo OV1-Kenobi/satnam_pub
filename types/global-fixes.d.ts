@@ -3,6 +3,20 @@
  * CRITICAL: Fix ALL remaining TypeScript errors
  */
 
+// Fix Vitest + Testing Library DOM matchers
+import type { TestingLibraryMatchers } from "@testing-library/jest-dom/matchers";
+
+declare module "vitest" {
+  interface Assertion<T = any> extends TestingLibraryMatchers<
+    typeof expect.stringContaining,
+    T
+  > {}
+  interface AsymmetricMatchersContaining extends TestingLibraryMatchers<
+    any,
+    any
+  > {}
+}
+
 // Fix global variables
 declare global {
   const supabase: any;
@@ -162,7 +176,7 @@ export interface LightningClientInterface {
     invoice: string,
     toWallet: string,
     amount: number,
-    memo?: string
+    memo?: string,
   ): Promise<any>;
   generateInvoice(amount: number, memo?: string): Promise<string>;
   getBalance(): Promise<number>;
@@ -180,7 +194,7 @@ export type GuardianRole =
   | "family_member";
 
 export function mapFederationRoleToGuardianRole(
-  role: GuardianRole
+  role: GuardianRole,
 ): "private" | "offspring" | "adult" | "steward" | "guardian" {
   if (role === "family_member") return "offspring";
   return role as "private" | "offspring" | "adult" | "steward" | "guardian";

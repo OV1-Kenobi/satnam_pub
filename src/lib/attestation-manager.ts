@@ -14,7 +14,10 @@ export type AttestationEventType =
   | "key_rotation"
   | "nfc_registration"
   | "family_federation"
-  | "guardian_role_change";
+  | "guardian_role_change"
+  | "physical_peer_onboarding"
+  | "coordinator_attestation"
+  | "batch_onboarding_session";
 
 export interface Attestation {
   id: string;
@@ -76,17 +79,17 @@ function normalizeMetadataToString(metadata: unknown): string | undefined {
  * and optional Iroh verification.
  */
 export async function createAttestation(
-  request: AttestationRequest
+  request: AttestationRequest,
 ): Promise<Attestation> {
   // FIX: Provide more helpful error message for missing/invalid verificationId
   if (!request.verificationId) {
     throw new Error(
-      "Missing verificationId - verification record was not created during registration. You can create verification records later from your profile settings."
+      "Missing verificationId - verification record was not created during registration. You can create verification records later from your profile settings.",
     );
   }
   if (!isValidUuid(request.verificationId)) {
     throw new Error(
-      `Invalid verificationId format: "${request.verificationId}" is not a valid UUID. Expected format from verification results.`
+      `Invalid verificationId format: "${request.verificationId}" is not a valid UUID. Expected format from verification results.`,
     );
   }
 
@@ -111,7 +114,7 @@ export async function createAttestation(
           }),
           // FIX-4: Add 30-second timeout to prevent indefinite waiting
           signal: AbortSignal.timeout(30000),
-        }
+        },
       );
 
       if (response.ok) {
@@ -185,7 +188,7 @@ export async function createAttestation(
     // Both methods were requested but both failed
     status = "failed";
     throw new Error(
-      `All attestation methods failed: SimpleProof: ${simpleproofError}, Iroh: ${irohError}`
+      `All attestation methods failed: SimpleProof: ${simpleproofError}, Iroh: ${irohError}`,
     );
   }
 
@@ -216,7 +219,7 @@ export async function createAttestation(
               ? { simpleproof_error: simpleproofError, iroh_error: irohError }
               : null,
         }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -237,7 +240,7 @@ export async function createAttestation(
     if (!json.success || !json.attestation) {
       console.error("Backend attestation response missing data:", json);
       throw new Error(
-        json.error || "Attestation server returned an unexpected response"
+        json.error || "Attestation server returned an unexpected response",
       );
     }
 
@@ -258,10 +261,10 @@ export async function createAttestation(
         | "partial",
       errorDetails: attestationData.error_details || undefined,
       createdAt: Math.floor(
-        new Date(attestationData.created_at).getTime() / 1000
+        new Date(attestationData.created_at).getTime() / 1000,
       ),
       updatedAt: Math.floor(
-        new Date(attestationData.updated_at).getTime() / 1000
+        new Date(attestationData.updated_at).getTime() / 1000,
       ),
     };
 
@@ -276,11 +279,11 @@ export async function createAttestation(
  * Retrieve all attestations for a verification attempt
  */
 export async function getAttestations(
-  verificationId: string
+  verificationId: string,
 ): Promise<Attestation[]> {
   if (!isValidUuid(verificationId)) {
     throw new Error(
-      "Invalid verificationId format (must be valid UUID from verification results)"
+      "Invalid verificationId format (must be valid UUID from verification results)",
     );
   }
 
@@ -297,7 +300,7 @@ export async function getAttestations(
           action: "get_attestations",
           verification_id: verificationId,
         }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -318,7 +321,7 @@ export async function getAttestations(
     if (!json.success || !Array.isArray(json.attestations)) {
       console.error("Backend attestation list response missing data:", json);
       throw new Error(
-        json.error || "Attestation server returned an unexpected response"
+        json.error || "Attestation server returned an unexpected response",
       );
     }
 
@@ -372,11 +375,11 @@ export async function getAttestations(
  * Get a single attestation by ID
  */
 export async function getAttestation(
-  attestationId: string
+  attestationId: string,
 ): Promise<Attestation | null> {
   if (!isValidUuid(attestationId)) {
     throw new Error(
-      "Invalid attestationId format (must be valid UUID from attestations table)"
+      "Invalid attestationId format (must be valid UUID from attestations table)",
     );
   }
 
@@ -393,7 +396,7 @@ export async function getAttestation(
           action: "get_attestation",
           attestation_id: attestationId,
         }),
-      }
+      },
     );
 
     if (response.status === 404) {
@@ -418,7 +421,7 @@ export async function getAttestation(
     if (!json.success || !json.attestation) {
       console.error("Backend attestation response missing data:", json);
       throw new Error(
-        json.error || "Attestation server returned an unexpected response"
+        json.error || "Attestation server returned an unexpected response",
       );
     }
 
@@ -489,6 +492,9 @@ export function formatAttestation(attestation: Attestation): {
     nfc_registration: "NFC Card Registered",
     family_federation: "Family Federation Created",
     guardian_role_change: "Guardian Role Changed",
+    physical_peer_onboarding: "Physical Peer Onboarded",
+    coordinator_attestation: "Coordinator Attestation",
+    batch_onboarding_session: "Batch Onboarding Session",
   };
 
   return {
@@ -497,4 +503,245 @@ export function formatAttestation(attestation: Attestation): {
     timestamp: date.toLocaleString(),
     methods,
   };
+}
+
+// ============================================================================
+// ONBOARDING-SPECIFIC TYPES AND FUNCTIONS
+// ============================================================================
+
+/**
+ * Parameters for creating a coordinator attestation
+ * Used during physical peer onboarding to vouch for participant identity
+ */
+export interface CoordinatorAttestationParams {
+  /** Coordinator's Nostr public key (npub format) */
+  coordinatorNpub: string;
+  /** Participant's Nostr public key (npub format) */
+  participantNpub: string;
+  /** Participant's NIP-05 identifier */
+  participantNip05: string;
+  /** Family federation ID linking coordinator and participant */
+  federationId: string;
+  /** Onboarding session ID */
+  sessionId: string;
+  /** NIP-03 attestation event ID for the participant */
+  nip03EventId: string;
+  /** Verification ID for the attestation record */
+  verificationId: string;
+  /** Optional metadata (onboarding method, timestamp, campaign ID, etc.) */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Result of a batch attestation operation
+ * Includes success/failure status for each attestation
+ */
+export interface BatchAttestationResult {
+  /** Index of the request in the original batch */
+  index: number;
+  /** Whether the attestation was created successfully */
+  success: boolean;
+  /** The created attestation (if successful) */
+  attestation?: Attestation;
+  /** Error details (if failed) */
+  error?: string;
+  /** Original request that was processed */
+  request: AttestationRequest;
+}
+
+/**
+ * Options for batch attestation processing
+ */
+export interface BatchAttestationOptions {
+  /** Maximum number of concurrent attestation requests (default: 5) */
+  concurrency?: number;
+  /** Progress callback invoked after each attestation completes */
+  onProgress?: (completed: number, total: number) => void;
+  /** Whether to stop processing on first error (default: false - continue on errors) */
+  stopOnError?: boolean;
+}
+
+/**
+ * Create a coordinator attestation vouching for a participant's identity
+ * Used during physical peer onboarding workflows
+ *
+ * @param params - Coordinator attestation parameters
+ * @returns Promise resolving to the created attestation
+ * @throws Error if attestation creation fails
+ *
+ * @example
+ * ```typescript
+ * const attestation = await createCoordinatorAttestation({
+ *   coordinatorNpub: 'npub1...',
+ *   participantNpub: 'npub1...',
+ *   participantNip05: 'user@domain.com',
+ *   federationId: 'fed_123',
+ *   sessionId: 'session_456',
+ *   nip03EventId: 'nip03_789',
+ *   verificationId: 'uuid-...',
+ *   metadata: { onboarding_method: 'kiosk', campaign_id: 'campaign_001' }
+ * });
+ * ```
+ */
+export async function createCoordinatorAttestation(
+  params: CoordinatorAttestationParams,
+): Promise<Attestation> {
+  // Validate required parameters
+  if (
+    !params.coordinatorNpub ||
+    !params.participantNpub ||
+    !params.participantNip05
+  ) {
+    throw new Error("Missing required coordinator attestation parameters");
+  }
+
+  if (!params.federationId || !params.sessionId || !params.nip03EventId) {
+    throw new Error("Missing required onboarding context parameters");
+  }
+
+  if (!params.verificationId) {
+    throw new Error("Missing verificationId for coordinator attestation");
+  }
+
+  // Build metadata object with coordinator attestation details
+  const metadata = {
+    type: "coordinator_attestation",
+    coordinator_npub: params.coordinatorNpub,
+    participant_npub: params.participantNpub,
+    participant_nip05: params.participantNip05,
+    federation_id: params.federationId,
+    session_id: params.sessionId,
+    nip03_event_id: params.nip03EventId,
+    timestamp: Math.floor(Date.now() / 1000),
+    ...params.metadata,
+  };
+
+  // Create attestation using existing createAttestation function
+  // Coordinator attestations typically include SimpleProof timestamping
+  const request: AttestationRequest = {
+    verificationId: params.verificationId,
+    eventType: "coordinator_attestation",
+    metadata: JSON.stringify(metadata),
+    includeSimpleproof: true,
+    includeIroh: false, // Iroh not needed for coordinator attestations
+  };
+
+  return await createAttestation(request);
+}
+
+/**
+ * Create multiple attestations in parallel with configurable concurrency
+ * Allows partial success - some attestations can succeed even if others fail
+ *
+ * @param requests - Array of attestation requests to process
+ * @param options - Batch processing options (concurrency, progress callback, error handling)
+ * @returns Promise resolving to array of results (success/failure for each request)
+ *
+ * @example
+ * ```typescript
+ * const results = await createBatchAttestations(
+ *   [
+ *     { verificationId: 'uuid-1', eventType: 'physical_peer_onboarding', ... },
+ *     { verificationId: 'uuid-2', eventType: 'physical_peer_onboarding', ... },
+ *     { verificationId: 'uuid-3', eventType: 'physical_peer_onboarding', ... },
+ *   ],
+ *   {
+ *     concurrency: 5,
+ *     onProgress: (completed, total) => console.log(`${completed}/${total} complete`),
+ *     stopOnError: false
+ *   }
+ * );
+ *
+ * // Check results
+ * const successful = results.filter(r => r.success);
+ * const failed = results.filter(r => !r.success);
+ * console.log(`${successful.length} succeeded, ${failed.length} failed`);
+ * ```
+ */
+export async function createBatchAttestations(
+  requests: AttestationRequest[],
+  options: BatchAttestationOptions = {},
+): Promise<BatchAttestationResult[]> {
+  const { concurrency = 5, onProgress, stopOnError = false } = options;
+
+  if (!Array.isArray(requests) || requests.length === 0) {
+    throw new Error("Batch attestation requests must be a non-empty array");
+  }
+
+  if (concurrency < 1) {
+    throw new Error("Concurrency must be at least 1");
+  }
+
+  const results: BatchAttestationResult[] = [];
+  let completed = 0;
+  let shouldStop = false;
+
+  // Process requests in batches with concurrency limit
+  for (let i = 0; i < requests.length; i += concurrency) {
+    if (shouldStop) {
+      // If stopOnError is true and we encountered an error, mark remaining as failed
+      for (let j = i; j < requests.length; j++) {
+        results.push({
+          index: j,
+          success: false,
+          error: "Batch processing stopped due to previous error",
+          request: requests[j],
+        });
+      }
+      break;
+    }
+
+    // Get the next batch of requests
+    const batch = requests.slice(i, i + concurrency);
+    const batchStartIndex = i;
+
+    // Process batch in parallel
+    const batchPromises = batch.map(async (request, batchIndex) => {
+      const index = batchStartIndex + batchIndex;
+
+      try {
+        const attestation = await createAttestation(request);
+
+        const result: BatchAttestationResult = {
+          index,
+          success: true,
+          attestation,
+          request,
+        };
+
+        return result;
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+
+        const result: BatchAttestationResult = {
+          index,
+          success: false,
+          error: errorMessage,
+          request,
+        };
+
+        // If stopOnError is true, set flag to stop processing
+        if (stopOnError) {
+          shouldStop = true;
+        }
+
+        return result;
+      }
+    });
+
+    // Wait for batch to complete
+    const batchResults = await Promise.all(batchPromises);
+
+    // Add results to overall results array
+    results.push(...batchResults);
+
+    // Update progress
+    completed += batchResults.length;
+    if (onProgress) {
+      onProgress(completed, requests.length);
+    }
+  }
+
+  return results;
 }

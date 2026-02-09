@@ -1,38 +1,47 @@
 {
   "folders": [
     {
-      "path": "."
-    }
+      "path": ".",
+    },
   ],
   "settings": {
     "tailwindCSS.includeLanguages": {
       "typescript": "typescript",
       "javascript": "javascript",
       "typescriptreact": "typescriptreact",
-      "javascriptreact": "javascriptreact"
+      "javascriptreact": "javascriptreact",
     },
     "files.associations": {
-      "*.css": "tailwindcss"
+      "*.css": "tailwindcss",
     },
     "terminal.integrated.profiles.windows": {
       "PowerShell": {
         "source": "PowerShell",
-        "icon": "terminal-powershell"
-      }
+        "icon": "terminal-powershell",
+      },
     },
     "terminal.integrated.defaultProfile.windows": "PowerShell",
     "augment.nextEdit.showDiffInHover": true,
     "[typescriptreact]": {
       "editor.defaultFormatter": "vscode.typescript-language-features",
       "editor.codeActionsOnSave": {
-        "source.organizeImports": "never"
-      }
+        "source.organizeImports": "never",
+      },
     },
     "[typescript]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode",
       "editor.codeActionsOnSave": {
-        "source.organizeImports": "never"
-      }
-    }
-  }
+        "source.organizeImports": "never",
+      },
+    },
+    "[markdown]": {
+      "editor.unicodeHighlight.ambiguousCharacters": false,
+      "editor.unicodeHighlight.invisibleCharacters": false,
+      "diffEditor.ignoreTrimWhitespace": false,
+      "editor.wordWrap": "on",
+      "editor.codeActionsOnSave": {
+        "source.organizeImports": "never",
+      },
+    },
+  },
 }

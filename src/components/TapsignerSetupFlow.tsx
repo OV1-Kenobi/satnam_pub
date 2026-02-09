@@ -1,6 +1,7 @@
 /**
  * Tapsigner Setup Flow Component
  * Phase 3: Multi-step wizard for Tapsigner card registration and LNbits linking
+ * Phase 11 Task 11.2.4: Optimized to use scanForCard() with caching and retry logic
  *
  * Steps:
  * 1. Card Detection (Web NFC API)
@@ -14,6 +15,7 @@ import React, { useCallback, useState } from "react";
 import { getEnvVar } from "../config/env.client";
 import { useTapsigner } from "../hooks/useTapsigner";
 import { useTapsignerLnbits } from "../hooks/useTapsignerLnbits";
+import { scanForCard, isNFCSupported, handleNFCError } from "../lib/tapsigner/nfc-reader";
 
 interface TapsignerSetupFlowProps {
   onComplete?: (cardId: string) => void;
@@ -34,6 +36,10 @@ export const TapsignerSetupFlow: React.FC<TapsignerSetupFlowProps> = ({
   onSkip,
   onError,
 }) => {
+  // Hooks must be called unconditionally before any early returns (Rules of Hooks)
+  const { registerCard } = useTapsigner();
+  const { linkWallet, setSpendLimit: updateSpendLimit } = useTapsignerLnbits();
+
   // Feature flag checks
   const TAPSIGNER_ENABLED =
     (getEnvVar("VITE_TAPSIGNER_ENABLED") || "true").toLowerCase() === "true";
@@ -49,9 +55,6 @@ export const TapsignerSetupFlow: React.FC<TapsignerSetupFlowProps> = ({
   if (!TAPSIGNER_ENABLED) {
     return null;
   }
-
-  const { registerCard } = useTapsigner();
-  const { linkWallet, setSpendLimit: updateSpendLimit } = useTapsignerLnbits();
 
   const [currentStep, setCurrentStep] = useState<SetupStep>("detect");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -73,6 +76,7 @@ export const TapsignerSetupFlow: React.FC<TapsignerSetupFlowProps> = ({
 
   /**
    * Handle card detection with Web NFC API
+   * Phase 11 Task 11.2.4: Uses optimized scanForCard() with caching and retry logic
    */
   const handleDetectCard = useCallback(async () => {
     setIsProcessing(true);
@@ -81,68 +85,38 @@ export const TapsignerSetupFlow: React.FC<TapsignerSetupFlowProps> = ({
 
     try {
       // Check if Web NFC API is available
-      if (!("NDEFReader" in window)) {
+      if (!isNFCSupported()) {
         throw new Error(
-          "Web NFC API not supported on this device. Please use Chrome/Edge on Android or iOS."
+          "Web NFC API not supported on this device. Please use Chrome or Edge on Android."
         );
       }
 
       debugLog("Web NFC API available, initiating scan...");
 
-      // Create NFC reader and scan for cards
-      const reader = new (window as any).NDEFReader();
+      // Use optimized scanForCard() with caching and retry logic
+      const cardData = await scanForCard(10000, true); // Include raw message for NDEF parsing
 
-      // Set up timeout for card detection (10 seconds)
-      const detectionTimeout = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reader.abort?.();
-          reject(new Error("Card detection timeout - please try again"));
-        }, 10000);
-      });
+      const { cardData: card, rawMessage } =
+        "cardData" in cardData ? cardData : { cardData, rawMessage: undefined };
 
-      // Set up card reading handler
-      const cardDetectionPromise = new Promise<void>((resolve, reject) => {
-        reader.onreading = (event: any) => {
-          try {
-            debugLog("Card detected, reading NDEF message...");
+      if (!card.publicKey) {
+        throw new Error("Card public key not found. Please ensure the card is properly initialized.");
+      }
 
-            // Parse NDEF message to extract card data
-            const message = event.message;
-            if (message && message.records && message.records.length > 0) {
-              // Extract card ID from NDEF records
-              const cardIdRecord = message.records[0];
-              const newCardId = new TextDecoder().decode(cardIdRecord.data);
+      setCardId(card.cardId);
+      setPublicKey(card.publicKey);
+      setCurrentStep("register");
 
-              setCardId(newCardId);
-              setPublicKey("0".repeat(64)); // Will be read from card in full implementation
-              setCurrentStep("register");
-
-              debugLog("Card detected successfully", { cardId: newCardId });
-              resolve();
-            }
-          } catch (err) {
-            reject(err);
-          }
-        };
-
-        reader.onerror = () => {
-          reject(new Error("Failed to read card - please try again"));
-        };
-
-        // Start scanning
-        reader.scan().catch(reject);
-      });
-
-      // Race between detection and timeout
-      await Promise.race([cardDetectionPromise, detectionTimeout]);
+      debugLog("Card detected successfully", { cardId: card.cardId });
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Card detection failed";
+      const errorMsg = handleNFCError(err);
       setError(errorMsg);
       debugLog("Card detection error", errorMsg);
+      onError?.(errorMsg);
     } finally {
       setIsProcessing(false);
     }
-  }, [debugLog]);
+  }, [debugLog, onError]);
 
   /**
    * Handle card registration
