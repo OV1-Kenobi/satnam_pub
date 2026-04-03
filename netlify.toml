@@ -882,6 +882,5 @@ timeout = 26          # Down from 45s to meet timeout limit
 # Purpose: Poll pending OTS proofs and update status when Bitcoin block is confirmed
 # Schedule: Every 10 minutes
 # Aligned with: docs/planning/OTS-AGENT-PROOF-GENERATION-IMPLEMENTATION-PLAN.md Phase 1
-[[functions]]
-  name = "ots-proof-confirmation-poller"
+[functions."ots-proof-confirmation-poller"]
   schedule = "*/10 * * * *"  # Every 10 minutes (cron syntax)
