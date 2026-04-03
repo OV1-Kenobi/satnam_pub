@@ -37,7 +37,7 @@ export const handler = async (event) => {
         endpoint: 'check-giftwrap-support',
         method: event.httpMethod,
       });
-      return createRateLimitErrorResponse(rateLimitResult, requestId, requestOrigin);
+      return createRateLimitErrorResponse(requestId, requestOrigin, rateLimitResult);
     }
 
     const headers = getSecurityHeaders({ origin: requestOrigin });

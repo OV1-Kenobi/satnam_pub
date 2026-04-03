@@ -19,6 +19,14 @@ const SENSITIVE_KEYS = new Set([
   "password",
   "authHash",
   "salt",
+  // Phase 2.5 - Step 9.1: Session-specific sensitive fields
+  "session_id",
+  "agent_id",
+  "conversation_context",
+  "state_snapshots",
+  "tool_parameters",
+  "tool_result",
+  "event_data",
 ]);
 
 // Safe metadata keys permitted in logs by default (whitelist)
@@ -30,6 +38,18 @@ const SAFE_KEYS = new Set([
   "code",
   "operation",
   "context",
+  // Phase 2.5 - Step 9.1: Session logging safe keys
+  "component",
+  "session_type",
+  "channel",
+  "event_type",
+  "duration",
+  "success",
+  "from_status",
+  "to_status",
+  "error_type",
+  "tokens_used",
+  "sats_cost",
 ]);
 
 let devMode = false;
@@ -55,14 +75,16 @@ devMode = detectDevMode();
 function maskSensitiveInString(s) {
   if (!s || typeof s !== "string") return s;
   // Mask common patterns (best-effort)
-  return s
-    // Nostr bech32 keys
-    .replace(/npub1[a-z0-9]+/gi, "npub1[REDACTED]")
-    .replace(/nsec1[a-z0-9]+/gi, "nsec1[REDACTED]")
-    // Long hex sequences (signatures, keys)
-    .replace(/[a-f0-9]{64,}/gi, (m) => m.slice(0, 8) + "[REDACTED]")
-    // Email-like (nip05)
-    .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[REDACTED_EMAIL]");
+  return (
+    s
+      // Nostr bech32 keys
+      .replace(/npub1[a-z0-9]+/gi, "npub1[REDACTED]")
+      .replace(/nsec1[a-z0-9]+/gi, "nsec1[REDACTED]")
+      // Long hex sequences (signatures, keys)
+      .replace(/[a-f0-9]{64,}/gi, (m) => m.slice(0, 8) + "[REDACTED]")
+      // Email-like (nip05)
+      .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[REDACTED_EMAIL]")
+  );
 }
 
 /**
@@ -183,4 +205,3 @@ export const error = (...args) => redactLogger.error(...args);
  * // Errors are reduced to name/message automatically
  * try { throw new Error('Example'); } catch (e) { error('Failed', { error: e, timestamp: new Date().toISOString() }); }
  */
-

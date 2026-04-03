@@ -1,5 +1,8 @@
 # Satnam.pub - Sovereign Bitcoin Family Banking & Identity Forge
 
+> **Dependency Note:** `@cashu/cashu-ts` is currently pinned to `^1.2.1` in `package.json`. Upgrading to the 3.x line requires substantial API refactoring and security review, so the package remains on v1 for compatibility until that work is completed.
+
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)]()
 [![Bitcoin Only](https://img.shields.io/badge/Bitcoin-Only-f2a900.svg)]()

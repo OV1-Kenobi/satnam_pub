@@ -1,0 +1,101 @@
+openapi: 3.1.0
+info:
+  title: Satnam Agent Wallet API
+  version: 1.0.0
+  description: Minimal Minibits/Ippon-style wallet API for authenticated Satnam agents.
+servers:
+  - url: https://satnam.pub
+security:
+  - bearerAuth: []
+paths:
+  /v1/agent-wallet:
+    get:
+      summary: Get combined Lightning + Cashu balance
+      responses:
+        '200':
+          description: Wallet balance
+  /v1/agent-wallet/pay:
+    post:
+      summary: Pay a Lightning invoice or import a Cashu token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayRequest'
+      responses:
+        '200':
+          description: Payment result
+  /v1/agent-wallet/send:
+    post:
+      summary: Send value with auto-selected rail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendRequest'
+      responses:
+        '200':
+          description: Send result
+  /v1/agent-wallet/receive:
+    post:
+      summary: Generate a Lightning invoice or Cashu funding quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveRequest'
+      responses:
+        '200':
+          description: Receive artifact
+  /v1/agent-wallet/history:
+    get:
+      summary: List wallet transaction history
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Transaction history
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    PayRequest:
+      type: object
+      properties:
+        invoice: { type: string }
+        payment_uri: { type: string, description: BIP-321 payment URI }
+        cashu_token: { type: string }
+        rail: { $ref: '#/components/schemas/Rail' }
+        memo: { type: string }
+        credit_envelope_id: { type: string, format: uuid }
+        outcome_scope: { type: string }
+    SendRequest:
+      allOf:
+        - $ref: '#/components/schemas/PayRequest'
+        - type: object
+          properties:
+            amount_sats: { type: integer, minimum: 1 }
+            privacy_preference:
+              type: string
+              enum: [high, balanced, fast]
+    ReceiveRequest:
+      type: object
+      required: [amount_sats]
+      properties:
+        amount_sats: { type: integer, minimum: 1 }
+        rail: { $ref: '#/components/schemas/Rail' }
+        memo: { type: string }
+    Rail:
+      type: string
+      enum: [auto, lightning, cashu]

@@ -1,0 +1,1 @@
+export { handler } from "../../functions/agents/task-challenge-resolve.ts";

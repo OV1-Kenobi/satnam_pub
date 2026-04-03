@@ -4,6 +4,7 @@
  * This file exports all type definitions for use throughout the application.
  */
 
+export * from "./agent-sessions";
 export * from "./family";
 export * from "./frost";
 export * from "./tapsigner";

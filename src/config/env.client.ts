@@ -5,10 +5,10 @@
  */
 
 import type {
+  NoiseSecurityTier,
+  PnsFsSecretStorageMode,
   PnsNoiseConfig,
   PnsSecurityMode,
-  PnsFsSecretStorageMode,
-  NoiseSecurityTier,
 } from "../lib/noise/types";
 
 /**
@@ -71,6 +71,9 @@ export type ClientConfig = {
     adminAuditLogEnabled: boolean; // Phase 1 Enterprise: Admin audit logging
     webauthnEnabled: boolean; // Phase 2 Enterprise: FIDO2/WebAuthn hardware security key support
     webauthnPlatformAuthenticatorEnabled: boolean; // Phase 2 Enterprise: Platform authenticators (Windows Hello, Touch ID, Face ID) with biometric risk warning
+    // Phase 5: Adult agent LLM cost tracking + observability
+    agentLlmProxyEnabled: boolean; // Enable agent LLM proxy endpoint usage (default: false, fail-closed)
+    agentBtcPricingEnabled: boolean; // Enable BTC/USD pricing calls for USD cents derivation (default: false, fail-closed)
     nip85TrustProviderEnabled: boolean; // Phase 1: NIP-85 Trust Provider - Master toggle for all NIP-85 functionality
     nip85PublishingEnabled: boolean; // Phase 1: NIP-85 Publishing - Enable publishing assertions to Nostr
     nip85QueryEnabled: boolean; // Phase 1: NIP-85 Query - Enable querying assertions from relays
@@ -138,6 +141,18 @@ const LNBITS_INTEGRATION_ENABLED =
 // Payment Integration: NWC (Nostr Wallet Connect) integration (primary payment backend); default: true
 const NWC_ENABLED =
   (getEnvVar("VITE_NWC_ENABLED") || "true").toString().toLowerCase() === "true";
+
+// Phase 5: Adult agent LLM proxy feature flag; default: false (fail-closed)
+const AGENT_LLM_PROXY_ENABLED =
+  (getEnvVar("VITE_AGENT_LLM_PROXY_ENABLED") || "false")
+    .toString()
+    .toLowerCase() === "true";
+
+// Phase 5: BTC/USD pricing calls for agent LLM proxy; default: false (fail-closed)
+const AGENT_BTC_PRICING_ENABLED =
+  (getEnvVar("VITE_AGENT_BTC_PRICING_ENABLED") || "false")
+    .toString()
+    .toLowerCase() === "true";
 
 // Amber Android signer integration (NIP-46/NIP-55) feature flag; default: false (opt-in)
 const AMBER_SIGNING_ENABLED =
@@ -386,7 +401,7 @@ const GEOCHAT_LIVE_ENABLED =
  */
 const GEOCHAT_DEFAULT_RELAY_COUNT = parseInt(
   getEnvVar("VITE_GEOCHAT_DEFAULT_RELAY_COUNT") || "3",
-  10
+  10,
 );
 
 /**
@@ -405,7 +420,7 @@ export const GEOCHAT_CONTACTS_ENABLED =
  * Higher values increase the trust impact of in-person geographic encounters.
  */
 export const GEOCHAT_TRUST_WEIGHT = parseFloat(
-  getEnvVar("VITE_GEOCHAT_TRUST_WEIGHT") ?? "1.5"
+  getEnvVar("VITE_GEOCHAT_TRUST_WEIGHT") ?? "1.5",
 );
 
 /**
@@ -414,7 +429,7 @@ export const GEOCHAT_TRUST_WEIGHT = parseFloat(
  * Significantly higher than standard geo weight to reflect in-person identity verification.
  */
 export const GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT = parseFloat(
-  getEnvVar("VITE_GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT") ?? "3.0"
+  getEnvVar("VITE_GEOCHAT_PHYSICAL_MFA_TRUST_WEIGHT") ?? "3.0",
 );
 
 /**
@@ -444,7 +459,7 @@ export const NOISE_EXPERIMENTAL_ENABLED =
  */
 export const NOISE_REKEY_MESSAGES = parseInt(
   getEnvVar("VITE_NOISE_REKEY_MESSAGES") ?? "100",
-  10
+  10,
 );
 
 /**
@@ -454,7 +469,7 @@ export const NOISE_REKEY_MESSAGES = parseInt(
  */
 export const NOISE_REKEY_SECONDS = parseInt(
   getEnvVar("VITE_NOISE_REKEY_SECONDS") ?? "3600",
-  10
+  10,
 );
 
 // =============================================================================
@@ -485,7 +500,7 @@ export const PNS_DEFAULT_SECURITY_MODE = (() => {
     return value;
   }
   console.warn(
-    `Invalid VITE_PNS_DEFAULT_SECURITY_MODE: "${value}", using "none"`
+    `Invalid VITE_PNS_DEFAULT_SECURITY_MODE: "${value}", using "none"`,
   );
   return "none" as const;
 })();
@@ -505,7 +520,7 @@ export const PNS_DEFAULT_SECURITY_TIER = (() => {
     return value as "ephemeral-standard" | "everlasting-standard" | "hardened";
   }
   console.warn(
-    `Invalid VITE_PNS_DEFAULT_SECURITY_TIER: "${value}", using "everlasting-standard"`
+    `Invalid VITE_PNS_DEFAULT_SECURITY_TIER: "${value}", using "everlasting-standard"`,
   );
   return "everlasting-standard" as const;
 })();
@@ -522,7 +537,7 @@ export const PNS_FS_SECRET_STORAGE_MODE = (() => {
     return value;
   }
   console.warn(
-    `Invalid VITE_PNS_FS_SECRET_STORAGE_MODE: "${value}", using "local-only"`
+    `Invalid VITE_PNS_FS_SECRET_STORAGE_MODE: "${value}", using "local-only"`,
   );
   return "local-only" as const;
 })();
@@ -534,7 +549,7 @@ export const PNS_FS_SECRET_STORAGE_MODE = (() => {
  */
 export const PNS_EPHEMERAL_DEFAULT_TTL = parseInt(
   getEnvVar("VITE_PNS_EPHEMERAL_DEFAULT_TTL") ?? "604800",
-  10
+  10,
 );
 
 /**
@@ -587,7 +602,7 @@ export const clientConfig: ClientConfig = {
     timeoutMs: parseInt(getEnvVar("VITE_BLOSSOM_TIMEOUT_MS") || "30000", 10),
     retryAttempts: parseInt(
       getEnvVar("VITE_BLOSSOM_RETRY_ATTEMPTS") || "2",
-      10
+      10,
     ),
     // Legacy support (Phase 4B compatibility)
     serverUrl:
@@ -625,6 +640,9 @@ export const clientConfig: ClientConfig = {
     webauthnEnabled: WEBAUTHN_ENABLED,
     webauthnPlatformAuthenticatorEnabled:
       WEBAUTHN_PLATFORM_AUTHENTICATOR_ENABLED,
+    // Phase 5: Adult agent LLM cost tracking + observability
+    agentLlmProxyEnabled: AGENT_LLM_PROXY_ENABLED,
+    agentBtcPricingEnabled: AGENT_BTC_PRICING_ENABLED,
     nip85TrustProviderEnabled: NIP85_TRUST_PROVIDER_ENABLED,
     nip85PublishingEnabled: NIP85_PUBLISHING_ENABLED,
     nip85QueryEnabled: NIP85_QUERY_ENABLED,
@@ -697,7 +715,7 @@ if (
   !clientConfig.lnbits.baseUrl
 ) {
   throw new Error(
-    "Missing required public environment variable: VITE_LNBITS_BASE_URL (required when VITE_LNBITS_INTEGRATION_ENABLED=true)"
+    "Missing required public environment variable: VITE_LNBITS_BASE_URL (required when VITE_LNBITS_INTEGRATION_ENABLED=true)",
   );
 }
 

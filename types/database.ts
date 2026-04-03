@@ -37,6 +37,7 @@ export interface UserIdentity {
   spending_limits: any; // JSONB
   privacy_settings: any; // JSONB
   family_federation_id?: string;
+  is_agent?: boolean;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -48,6 +49,7 @@ export interface FamilyFederation {
   domain?: string;
   relay_url?: string;
   federation_duid: string; // Global salted federation identifier
+  created_by?: string;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -118,6 +120,7 @@ export interface CreateUserIdentityInput {
   spending_limits?: any;
   privacy_settings?: any;
   family_federation_id?: string;
+  is_agent?: boolean;
 }
 
 export interface CreateFamilyFederationInput {
@@ -177,6 +180,7 @@ export interface UpdateUserIdentityInput {
   spending_limits?: any;
   privacy_settings?: any;
   family_federation_id?: string;
+  is_agent?: boolean;
 }
 
 export interface UpdateFamilyFederationInput {
@@ -232,6 +236,159 @@ export interface CreateCourseCreditInput {
   invite_token?: string;
 }
 
+// ============================================================================
+// NIP-SKL: Agent Skill Registry
+// ============================================================================
+
+export interface SkillManifest {
+  id: string; // UUID
+  skill_scope_id: string; // "33400:<pubkey>:<d-tag>:<version>"
+  manifest_event_id: string; // Nostr event id (version pin)
+  version: string; // semver
+  name: string;
+  description?: string;
+  input_schema: Record<string, unknown>; // JSONB
+  output_schema: Record<string, unknown>; // JSONB
+  runtime_constraints: string[]; // TEXT[]
+  publisher_pubkey: string;
+  attestation_status: "unverified" | "pending" | "verified" | "revoked";
+  attestation_event_ids: string[]; // kind 1985 event ids
+  revoked_at?: Date;
+  relay_hint?: string;
+  raw_event?: Record<string, unknown>; // JSONB - full Nostr event
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type CreateSkillManifestInput = Omit<
+  SkillManifest,
+  "id" | "created_at" | "updated_at"
+>;
+
+export type UpdateSkillManifestInput = Partial<CreateSkillManifestInput>;
+
+// ============================================================================
+// NIP-SA: Sovereign Agents — Agent Wallet Policy
+// ============================================================================
+
+export interface AgentProfile {
+  id: string; // UUID
+  user_identity_id: string; // FK to user_identities
+  is_agent: boolean;
+  agent_username?: string;
+  unified_address?: string; // e.g. agent-name@ai.satnam.pub
+  created_by_user_id?: string;
+  lnbits_creator_split_id?: string;
+
+  // Monetization tracking
+  total_platform_fees_paid_sats: number; // BIGINT
+  free_tier_claimed: boolean;
+  free_tier_allocation_number?: number;
+
+  // Blind token balance
+  event_tokens_balance: number;
+  task_tokens_balance: number;
+  contact_tokens_balance: number;
+  dm_tokens_balance: number;
+
+  // Reputation & scoring
+  reputation_score: number;
+  credit_limit_sats: number; // BIGINT
+  total_settled_sats: number; // BIGINT
+  settlement_success_count: number;
+  settlement_default_count: number;
+
+  // Performance bonds
+  total_bonds_staked_sats: number; // BIGINT
+  total_bonds_released_sats: number; // BIGINT
+  total_bonds_slashed_sats: number; // BIGINT
+  bond_slash_count: number;
+  current_bonded_sats: number; // BIGINT
+
+  // Work history metrics
+  total_tasks_completed: number;
+  total_tasks_failed: number;
+  tier1_validations: number;
+  tier2_validations: number;
+  tier3_validations: number;
+
+  // Communication preferences
+  accepts_encrypted_dms: boolean;
+  public_portfolio_enabled: boolean;
+  coordination_relay_urls?: string[];
+
+  // Wallet custody
+  wallet_custody_type?: "self_custodial" | "lnbits_proxy" | "lightning_faucet";
+  lightning_faucet_agent_key_encrypted?: string;
+
+  // NIP-SA: Wallet Policy (added 2026-03-21)
+  nip_sa_profile_event_id?: string; // kind 39200 event id
+  max_single_spend_sats: number; // BIGINT, default 1000
+  daily_limit_sats: number; // BIGINT, default 100000
+  requires_approval_above_sats: number; // BIGINT, default 10000
+  preferred_spend_rail: "lightning" | "cashu" | "fedimint"; // default 'lightning'
+  allowed_mints: string[]; // Cashu mint URLs
+  sweep_threshold_sats: number; // BIGINT, default 50000
+  sweep_destination?: string; // Lightning address or on-chain address
+  sweep_rail: "lightning" | "cashu" | "fedimint"; // default 'lightning'
+  well_known_published_at?: Date;
+  enabled_skill_scope_ids: string[]; // skill_scope_ids from NIP-SKL
+
+  // OTS/SimpleProof Integration (added 2026-03-22)
+  ots_proofs_storage_url?: string; // URL/path where agent's .ots proof files are stored
+  simpleproof_api_key_encrypted?: string; // Encrypted SimpleProof API key
+  simpleproof_enabled: boolean; // Feature flag for SimpleProof integration
+  ots_attestation_count: number; // Total OTS proofs generated
+  last_ots_attestation_at?: Date; // Most recent OTS proof timestamp
+
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type CreateAgentProfileInput = Omit<
+  AgentProfile,
+  "id" | "created_at" | "updated_at"
+>;
+
+export type UpdateAgentProfileInput = Partial<CreateAgentProfileInput>;
+
+// ============================================================================
+// OTS/SimpleProof Integration — Proof Records
+// ============================================================================
+
+export interface OTSProofRecord {
+  id: string; // UUID
+  proof_hash: string; // SHA-256 hash of attested data
+  ots_proof_file_url: string; // URL to .ots proof file
+  bitcoin_block_height?: number; // Bitcoin block height where proof is anchored
+  attestation_timestamp: Date;
+  agent_pubkey: string; // Agent who created this proof
+  nostr_event_id?: string; // NIP-03 kind 1040 event id (if published)
+  simpleproof_proof_id?: string; // SimpleProof platform proof ID (future)
+
+  // Link to attested Nostr event (if applicable)
+  attested_event_kind?: number; // e.g. 1985, 39201, 39244
+  attested_event_id?: string; // Nostr event id being timestamped
+
+  // Proof status
+  proof_status: "pending" | "confirmed" | "failed";
+  confirmed_at?: Date; // When Bitcoin block confirmation occurred
+
+  // Storage metadata
+  storage_backend: "supabase" | "ipfs" | "agent_endpoint" | "simpleproof";
+  storage_metadata: Record<string, unknown>; // JSONB
+
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type CreateOTSProofRecordInput = Omit<
+  OTSProofRecord,
+  "id" | "created_at" | "updated_at"
+>;
+
+export type UpdateOTSProofRecordInput = Partial<CreateOTSProofRecordInput>;
+
 // Supabase Database Schema Type
 export interface Database {
   public: {
@@ -270,6 +427,21 @@ export interface Database {
         Row: CourseCredit;
         Insert: CreateCourseCreditInput;
         Update: Partial<CreateCourseCreditInput>;
+      };
+      skill_manifests: {
+        Row: SkillManifest;
+        Insert: CreateSkillManifestInput;
+        Update: UpdateSkillManifestInput;
+      };
+      agent_profiles: {
+        Row: AgentProfile;
+        Insert: CreateAgentProfileInput;
+        Update: UpdateAgentProfileInput;
+      };
+      ots_proof_records: {
+        Row: OTSProofRecord;
+        Insert: CreateOTSProofRecordInput;
+        Update: UpdateOTSProofRecordInput;
       };
     };
     Views: {

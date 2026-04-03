@@ -95,7 +95,7 @@ export function createErrorResponse(
   status: number,
   message?: string,
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse {
   const errorMessage = message || getGenericErrorMessage(status);
   const reqId = requestId || generateRequestId();
@@ -133,7 +133,7 @@ export function createErrorResponse(
 export function createValidationErrorResponse(
   message: string = "Invalid request",
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse {
   return createErrorResponse(400, message, requestId, origin);
 }
@@ -150,7 +150,7 @@ export function createValidationErrorResponse(
 export function createAuthErrorResponse(
   message: string = "Unauthorized",
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse {
   return createErrorResponse(401, message, requestId, origin);
 }
@@ -167,7 +167,7 @@ export function createAuthErrorResponse(
 export function createAuthzErrorResponse(
   message: string = "Forbidden",
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse {
   return createErrorResponse(403, message, requestId, origin);
 }
@@ -184,7 +184,7 @@ export function createAuthzErrorResponse(
 export function createNotFoundErrorResponse(
   message: string = "Not found",
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse {
   return createErrorResponse(404, message, requestId, origin);
 }
@@ -199,9 +199,14 @@ export function createNotFoundErrorResponse(
  */
 export function createRateLimitErrorResponse(
   requestId?: string,
-  origin?: string
+  origin?: string,
+  rateLimitStatus?: { allowed: boolean; remaining?: number; resetAt?: Date },
 ): ErrorResponse {
-  return createErrorResponse(429, "Too many requests", requestId, origin);
+  const message =
+    rateLimitStatus && !rateLimitStatus.allowed
+      ? `Rate limit exceeded. Try again after ${rateLimitStatus.resetAt?.toISOString() || "some time"}`
+      : "Too many requests";
+  return createErrorResponse(429, message, requestId, origin);
 }
 
 /**
@@ -214,7 +219,7 @@ export function createRateLimitErrorResponse(
  */
 export function createServerErrorResponse(
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse {
   return createErrorResponse(500, "Server error", requestId, origin);
 }
@@ -250,7 +255,7 @@ export function logError(error: unknown, context: ErrorContext = {}): void {
       method: context.method,
       error: errorMessage,
       // Note: Do NOT include stack trace, sensitive data, or full error object
-    })
+    }),
   );
 }
 
@@ -263,7 +268,7 @@ export function logError(error: unknown, context: ErrorContext = {}): void {
  */
 export async function captureError(
   error: unknown,
-  context: ErrorContext = {}
+  context: ErrorContext = {},
 ): Promise<void> {
   try {
     // Check if Sentry is configured
@@ -312,7 +317,7 @@ export async function handleError(
   error: unknown,
   status: number = 500,
   context: ErrorContext = {},
-  origin?: string
+  origin?: string,
 ): Promise<ErrorResponse> {
   // Log error
   logError(error, { ...context, severity: ErrorSeverity.HIGH });
@@ -325,7 +330,7 @@ export async function handleError(
     status,
     getGenericErrorMessage(status),
     context.requestId,
-    origin
+    origin,
   );
 }
 
@@ -343,14 +348,14 @@ export function validateRequiredFields(
   data: Record<string, unknown>,
   requiredFields: string[],
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse | null {
   for (const field of requiredFields) {
     if (!(field in data) || data[field] === undefined || data[field] === null) {
       return createValidationErrorResponse(
         `Missing required field: ${field}`,
         requestId,
-        origin
+        origin,
       );
     }
   }
@@ -374,7 +379,7 @@ export function validateFieldType(
   field: string,
   expectedType: string,
   requestId?: string,
-  origin?: string
+  origin?: string,
 ): ErrorResponse | null {
   const value = data[field];
   const actualType = typeof value;
@@ -383,7 +388,7 @@ export function validateFieldType(
     return createValidationErrorResponse(
       `Invalid type for field ${field}: expected ${expectedType}, got ${actualType}`,
       requestId,
-      origin
+      origin,
     );
   }
 

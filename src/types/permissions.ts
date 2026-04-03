@@ -6,6 +6,15 @@
  * - Privacy-first permission checking
  * - Zero-knowledge audit trail
  *
+ * TYPE AUTHORITY: This file is the canonical source for:
+ *   - FederationRole union type
+ *   - ROLE_HIERARCHY numeric level map (imported by role-manager.ts)
+ *   - All permission interface shapes
+ *
+ * @see docs/HIERARCHICAL_RBAC_SYSTEM.md — architecture overview and document map
+ * @see docs/dev/permissions-architecture.md — service signatures, DB schema, API endpoints
+ * @see src/lib/family/role-manager.ts — behavioral authority (spending limits, promotion rules)
+ *
  * These types align with the database schema in:
  * supabase/migrations/20251217_event_signing_permissions.sql
  */

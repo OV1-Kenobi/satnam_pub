@@ -86,3 +86,54 @@ npm run build
 ```
 
 Netlify automatically handles the correct MIME types in production.
+
+---
+
+## Adult Agent LLM Cost Tracking (Phase 3–5)
+
+### Deployed Netlify Functions directory
+
+Production Netlify Functions are deployed from:
+
+- `netlify/functions_active/` (see `netlify.toml` `[functions].directory`)
+
+Some implementations live under `netlify/functions/` (source), and are exposed in production via small wrappers in `netlify/functions_active/`.
+
+### API endpoints
+
+- `POST /api/agents/llm-proxy`
+  - Netlify function: `agents-llm-proxy`
+  - Implementation: `netlify/functions/agent-llm-proxy.ts`
+- `GET /api/agents/performance-report`
+  - Netlify function: `agents-performance-report`
+  - Implementation: `netlify/functions/agents/performance-report.ts`
+
+### Feature flags (fail-closed)
+
+- `VITE_AGENT_LLM_PROXY_ENABLED`
+  - When not set to `"true"`, the LLM proxy returns **403** and does not call providers.
+- `VITE_AGENT_BTC_PRICING_ENABLED`
+  - When not set to `"true"`, BTC/USD pricing is skipped and `costUsdCents` is forced to `0`.
+  - Event log metadata sets `pricing_disabled: true` (distinct from `pricing_unavailable`).
+
+### BTC/USD pricing behavior
+
+- BTC/USD spot pricing is fetched **server-side only** via `netlify/functions/utils/btc-usd-pricing.ts`.
+- The pricing utility caches for **60 seconds**.
+- If pricing is enabled but the spot fetch fails, USD cents are recorded as `0` and event metadata sets `pricing_unavailable: true`.
+
+### Rate limiting knobs
+
+Rate limiting is centralized in `netlify/functions_active/utils/enhanced-rate-limiter.ts`.
+
+- Proxy endpoint (env-overridable):
+  - `LLM_PROXY_RATE_LIMIT` (default `1000`)
+  - `LLM_PROXY_RATE_WINDOW_MS` (default `3600000`)
+
+- Credential management (configuration present; endpoint is Phase 2 in the plan):
+  - `LLM_CREDENTIAL_RATE_LIMIT` (default `30`)
+  - `LLM_CREDENTIAL_RATE_WINDOW_MS` (default `3600000`)
+
+### Phase 2 note: `agent-llm-credential`
+
+The project plan references an `agent-llm-credential` function for create/update/revoke of encrypted LLM credentials. That endpoint is **not implemented** in the current repo state; Phase 5 adds rate-limit configuration only.

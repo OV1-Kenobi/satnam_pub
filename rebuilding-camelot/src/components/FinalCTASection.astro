@@ -1,0 +1,54 @@
+---
+import { DISCOVERY_CALL_URL, SATNAM_APP_URL } from "../config/links";
+
+interface FinalCTASectionProps {
+  id?: string;
+}
+
+const { id = "final-cta" } = Astro.props as FinalCTASectionProps;
+---
+
+<section id={id} class="bg-satnam-dark text-slate-100">
+  <div class="max-w-5xl mx-auto px-4 py-16 space-y-6">
+    <header class="space-y-3 text-center">
+      <p class="uppercase tracking-wide text-xs text-satnam-accent">
+        Ready to Build Your Ark?
+      </p>
+      <h2 class="font-display text-2xl sm:text-3xl md:text-4xl font-semibold">
+        The storms are converging. Let's decide together if you're ready to board.
+      </h2>
+      <p class="text-slate-300 text-sm md:text-base max-w-3xl mx-auto">
+        Whether you're a family office navigating the Great Wealth Transfer, a sovereign
+        individual preparing for the Great Disillusionment, or a builder ready to help
+        forge the Sovereignty Tetrahedron—this is where you start.
+      </p>
+    </header>
+
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+      <a
+        href={DISCOVERY_CALL_URL}
+        class="inline-flex items-center justify-center rounded-full bg-satnam-primary text-white px-8 py-4 text-base md:text-lg font-semibold shadow-lg hover:bg-teal-600 transition"
+      >
+        Schedule Your 30-Minute Discovery Call
+      </a>
+      <a
+        href={SATNAM_APP_URL}
+        class="inline-flex items-center justify-center rounded-full border border-satnam-primary text-satnam-primary bg-slate-900/40 px-8 py-4 text-base md:text-lg font-semibold hover:bg-slate-900/70 transition"
+      >
+        Explore Satnam.pub Platform
+      </a>
+    </div>
+
+    <div class="mt-6 text-center space-y-2 text-xs md:text-sm text-slate-300">
+      <p>
+        <span class="font-semibold">Strong Families Can Rebuild Good Times.</span>
+        This is your invitation to start building an Ark that can carry your people,
+        capital, and knowledge through the storms ahead.
+      </p>
+      <p class="text-slate-400">
+        Use this call to decide whether a custom, white-labeled Sovereignty Tetrahedron—
+        or the existing public Satnam.pub platform—is the right vessel for you right now.
+      </p>
+    </div>
+  </div>
+</section>

@@ -10,15 +10,17 @@ You are an expert full-stack developer tasked with extending the Satnam.pub code
 
 1. **Sovereign Identity** - Nostr keypairs (npub/nsec) with NIP-05 verification at `agent-{name}@ai.satnam.pub`
 2. **Blinded Authentication** - Privacy-preserving authentication using blind signatures and credentials, agents prove capabilities without revealing identity
-3. **Unified Payment Address** - Single address format `agent-{name}@ai.satnam.pub` that resolves to Lightning (LNURL), Cashu (cashu-address), AND Fedimint based on payment context detection
-4. **Portable Reputation** - Performance scoring based on task completion, peer verification, oracle attestation, and performance bond history
+3. **Unified Payment Address** - Single address format `agent-{name}@ai.satnam.pub` that resolves to Lightning (LNURL), Cashu (cashu-address via platform-default or federation-scoped mints), AND Fedimint based on payment context detection
+4. **Portable Reputation** - Performance scoring based on task completion, peer verification, oracle attestation, performance bond history, and machine-readable federation reputation summaries
 5. **Verifiable Work History** - Cryptographically signed task records, attestations from validators, and credential issuance
-6. **Private Communication** - NIP-17 encrypted DMs, NIP-04 legacy support, and agent-to-agent coordination channels
-7. **Public Reputation Broadcast** - NIP-32 labels, public attestation events (kind 1985), and discoverable work portfolios
+6. **Private Communication** - NIP-17 encrypted gift-wrapped sealed DMs, NIP-44 fallback, encrypted legacy support, and agent-to-agent coordination channels
+7. **Public Reputation Broadcast** - NIP-32 labels, public attestation events (kind 1985), discoverable work portfolios, and later-phase federation solvency/reputation events
 8. **Performance Bonds** - Economic accountability through staked sats (Lightning/Cashu/Fedimint) that are released on success or slashed on failure
 9. **Platform Monetization** - Sybil-resistant fee structure where agents pay per action (account creation, posting events, adding contacts) with first 210 agent accounts receiving free creation (configurable via FREE_TIER_LIMIT)
+10. **Federation Mint Isolation** - Per-federation/team Cashu mints can be isolated, lifecycle-managed, quarantined, drained, and destroyed without taking down the whole platform mint surface
+11. **Financial Attestation Layers** - Per-mint Proof of Reserves, Proof of Liabilities, and solvency logs support safer federation-readable economic trust
 
-**Core Objective:** Enable AI agents to operate as autonomous economic actors with persistent identity, reputation that travels with them across platforms, verifiable credentials proving their capabilities, private coordination channels, and flexible payment options—all accessed through a SINGLE human-readable address that intelligently routes to the appropriate backend.
+**Core Objective:** Enable AI agents to operate as autonomous economic actors with persistent identity, reputation that travels with them across platforms, verifiable credentials proving their capabilities, private coordination channels, and flexible payment options—all accessed through a SINGLE human-readable address that intelligently routes to the appropriate backend while preserving the option for isolated federation-scoped mint infrastructure.
 
 **Business Model:** Satnam platform earns revenue by charging per-action fees (account creation, Nostr events, contact additions) preventing spam while monetizing the service. First 210 agent accounts (configurable via FREE_TIER_LIMIT) get free creation to bootstrap the network.
 
@@ -54,9 +56,46 @@ You are an expert full-stack developer tasked with extending the Satnam.pub code
 
 ---
 
+## Review Reconciliation / Current Planning Corrections
+
+> These corrections override older draft assumptions elsewhere in this plan when
+> they conflict with the current intended Satnam direction.
+
+- **Federation threshold model is already part of Satnam.** Satnam already has
+  extensive FROST / FROSTR / SSS integration for federation-grade signing and
+  recovery flows. The threshold/sharded key material that matters most here is
+  the **Federation Nostr keypair**, not each individual agent account keypair.
+- **Assisted recovery is an intentional Satnam feature.** For Satnam,
+  client-assisted recovery for individual users and agents is a product feature,
+  not an architectural flaw. This intentionally diverges from strict
+  non-extractability assumptions in some Sovereign Agent drafts.
+- **Agents reuse the existing platform role family.** For Phase 4 and beyond,
+  agents should reuse the existing role family already present in Satnam:
+  `private | offspring | adult | steward | guardian`. Do **not** introduce a
+  separate `*_agent` role family.
+- **`is_agent = true` is the primary agent marker.** The implementation plan
+  must align schema/runtime reads so agent detection is based on `is_agent`
+  rather than separate role strings.
+- **Every agent belongs to a federation context.** Agent creation should align
+  with Federation / Family Foundry flows. Even a single newly created agent
+  bootstraps a minimal federation context (creator/guardian + agent) so the
+  federation key can use Satnam's existing threshold/sharded protections.
+- **Creator / Guardian / Founder are duplicates for agent federations.** The
+  federation creator is, by default, the founding Guardian. This plan therefore
+  treats `created_by`, founding guardian, and creator authority as the same
+  effective authority for agent-federation governance unless/until that model is
+  intentionally expanded later.
+- **Remote signer / bunker work is deferred.** Full agent-side signer/bunker and
+  federation-governed remote signer work are separate future features. Phase 4
+  should wire **mocked broker references and interfaces only**, so later signing
+  work can plug in cleanly.
+
 ## Wallet & Custody Architecture (LNbits + Lightning Faucet)
 
-> **Goal:** Keep humans self-custodial and privacy-first by default, while allowing Satnam-created agents to use tightly-scoped custodial wallets for bounded agent budgets.
+> **Goal:** Keep humans self-custodial and privacy-first by default, while
+> allowing Satnam-created agents to use tightly-scoped operational custody where
+> needed, without discarding Satnam's existing federation/FROST protections for
+> federation keys.
 
 ### Human-created agents (self-custodial, LNbits as privacy proxy)
 
@@ -122,23 +161,49 @@ You are an expert full-stack developer tasked with extending the Satnam.pub code
   - The **bridge patterns and Netlify-compatible client code** can be open-sourced as a reusable reference for any LF operator using LNbits/Nostr.
   - Satnam-specific pieces (e.g. `agent_profiles.wallet_custody_type`, `lightning_faucet_agent_key_encrypted`, Master Context governance) remain in this plan and the private codebase.
 
+### Federation-scoped Cashu mint topology
+
+- Satnam should **not** assume one shared long-lived Cashu mint for all future federation/team activity.
+  `CASHU_MINT_URL` and similar global values are the **platform-default/bootstrap mint only**,
+  not the long-term source of truth for every federation.
+- When a federation/team requires true isolation, kill-switch capability, or independent accounting,
+  provision a **dedicated Nutshell mint instance** with:
+  - unique `mint_url`
+  - unique `MINT_PRIVATE_KEY`
+  - unique database/schema
+  - dedicated service/container/process
+  - dedicated LNbits wallet/accounting layer
+- Registry records for these mints must align with Satnam's existing federation-oriented model
+  (`family_federation_id`, guardian/steward authority, DUID-backed user identities) rather than
+  introducing a separate generic team object.
+- Distinguish the operational layers clearly:
+  - **Federation mint:** eCash issuance + liability surface for a federation/team
+  - **LNbits:** per-mint accounting/proxy/reserve visibility layer
+  - **Lightning Faucet:** optional custodial working wallet for certain agent-created agents,
+    separate from Cashu mint liabilities
+- Not every federation needs its own mint on day one. The planning direction is: platform-default
+  mint for bootstrap flows, **registry-assigned isolated mints** where federation governance,
+  solvency, or revocation requirements justify it.
+
 ### Wallet provisioning flows
 
-- **Human-created agents (default, self-custodial path):**
-  1. Human user authenticates and runs the Agent Creation Wizard (`creator_type = "human"`).
-  2. Backend (`create-agent-with-fees.ts`) creates a `user_identities` row for the agent and an `agent_profiles` row with `wallet_custody_type = 'self_custodial'`.
-  3. A dedicated LNbits wallet + LNaddress/NIP-05 is provisioned for the agent.
-  4. LNbits Split (Task 4.7.6) is configured for platform fees, creator revenue share (via `created_by_user_id`), and optional referral share.
-  5. User connects a self-custodial wallet via NWC or supplies a Lightning invoice/LNURLp; LNbits Scrub forwards the agent's share to that destination.
-  6. No Lightning Faucet wallet is created for these agents unless a future, explicit migration path is defined.
+- **Human-created agents (default path, Federation Foundry-aligned):**
+  1. Human user authenticates and runs the Agent Creation Wizard / Federation Foundry-aligned flow (`creator_type = "human"`).
+  2. Backend creates the agent's `user_identities` row **with `is_agent = true`**, creates/attaches the relevant `family_federation_id`, and records the caller as the federation `created_by` / founding `guardian`.
+  3. Backend creates an `agent_profiles` row with `wallet_custody_type = 'self_custodial'`, `is_agent = true`, `created_by_user_id = caller.id`, and the same `family_federation_id`.
+  4. A dedicated LNbits wallet + LNaddress/NIP-05 is provisioned for the agent.
+  5. LNbits Split (Task 4.7.6) is configured for platform fees, creator revenue share, and optional referral share.
+  6. User connects a self-custodial wallet via NWC or supplies a Lightning invoice/LNURLp; LNbits Scrub forwards the agent's share to that destination.
+  7. No Lightning Faucet wallet is created for these agents unless a future, explicit migration path is defined.
 
 - **Agent-created agents (LF-backed, custodial path):**
   1. An existing agent, acting under governance rules, invokes the programmatic creation endpoint with `creator_type = "agent"` and an LF-backed wallet intent.
-  2. Backend verifies policy (Master Context roles, bond ladder, budgets) and, if approved, uses the Lightning Faucet Operator key to call `create_agent`.
-  3. The returned LF `agent_key` is encrypted and stored in `agent_profiles.lightning_faucet_agent_key_encrypted`, and `wallet_custody_type` is set to `'lightning_faucet'`.
-  4. A public-facing LNbits wallet + LNaddress/NIP-05 is provisioned for the new agent and wired into LNbits Split for platform/creator/referral shares.
-  5. Depending on the chosen bridge pattern (Option A or B), LNbits Scrub or the sweeper service ensures the agent's share ultimately lands in the LF wallet.
-  6. All LF-backed agents are created with explicit per-agent spend limits and monitoring hooks (Task 4.8).
+  2. Backend verifies policy (existing role family, bond ladder, budgets, federation policy) and ensures the new agent is attached to a valid `family_federation_id` with a traceable `created_by` / founding guardian authority.
+  3. If approved, the Lightning Faucet Operator key calls `create_agent`.
+  4. The returned LF `agent_key` is encrypted and stored in `agent_profiles.lightning_faucet_agent_key_encrypted`, and `wallet_custody_type` is set to `'lightning_faucet'`.
+  5. A public-facing LNbits wallet + LNaddress/NIP-05 is provisioned for the new agent and wired into LNbits Split for platform/creator/referral shares.
+  6. Depending on the chosen bridge pattern (Option A or B), LNbits Scrub or the sweeper service ensures the agent's share ultimately lands in the LF wallet.
+  7. All LF-backed agents are created with explicit per-agent spend limits and monitoring hooks (Task 4.8).
 
 ### Payment flow overviews
 
@@ -154,6 +219,185 @@ You are an expert full-stack developer tasked with extending the Satnam.pub code
   - User or agent redeems Cashu/Fedimint tokens by providing a Lightning invoice or LNURLp of their choice.
   - Redemption services pay **directly** to that destination wallet; funds are not forced through Satnam-controlled LNbits or Lightning Faucet wallets.
   - Where UX offers shortcuts (e.g. "redeem to my LNaddress"), copy must clarify that this still resolves to the user's own self-custodial wallet when `wallet_custody_type = 'self_custodial'`.
+
+## x402/L402 Pay-Gate Architecture — Progressive Sovereignty Scale
+
+### Design principle
+
+Agents and humans configure pay-gate providers on a sovereignty scale.
+No single provider is hardcoded. The platform exposes a registry of
+available gateways and agents/humans select based on their trust model.
+
+### Sovereignty scale (low → high)
+
+```
+Custodial                                              Self-Sovereign
+─────────────────────────────────────────────────────────────────────
+Lightning Faucet  →  Routstr  →  Aperture (Lightning Labs)  →  Self-Hosted
+(simplest,              (NIP-90        (enterprise-grade,        (full control,
+ agent-budget           marketplace    Macaroon+JWT,             own node,
+ management,            routing,       L402 spec author)         no third party)
+ LF-managed)            Nostr-native)
+```
+
+### Schema: `agent_paygate_config`
+
+```sql
+CREATE TABLE IF NOT EXISTS agent_paygate_config (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id             UUID REFERENCES user_identities(id) UNIQUE NOT NULL,
+  -- Selected provider
+  provider             TEXT NOT NULL CHECK (provider IN (
+                         'lightning_faucet',
+                         'routstr',
+                         'aperture',
+                         'self_hosted'
+                       )),
+  -- Provider-specific config (encrypted at rest, service-role only)
+  provider_config_enc  TEXT NOT NULL,
+  -- Spending controls (apply regardless of provider)
+  max_spend_per_call_sats   BIGINT DEFAULT 100,
+  max_spend_per_hour_sats   BIGINT DEFAULT 10000,
+  max_spend_per_day_sats    BIGINT DEFAULT 100000,
+  -- Fallback: if primary provider fails, fall through to next on scale
+  fallback_provider    TEXT CHECK (fallback_provider IN (
+                         'lightning_faucet',
+                         'routstr',
+                         'aperture',
+                         'self_hosted',
+                         NULL
+                       )),
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE agent_paygate_config ENABLE ROW LEVEL SECURITY;
+CREATE POLICY paygate_agent_own ON agent_paygate_config
+  FOR ALL USING (agent_id = auth.uid());
+CREATE POLICY paygate_service ON agent_paygate_config
+  FOR ALL USING (auth.role() = 'service_role');
+```
+
+### Provider adapter interface
+
+All providers implement a single TypeScript interface so the platform
+can swap them transparently:
+
+```typescript
+export interface PaygateAdapter {
+  provider: "lightning_faucet" | "routstr" | "aperture" | "self_hosted";
+
+  /** Generate a 402 challenge for a resource request */
+  createChallenge(params: {
+    resource_url: string;
+    amount_sats: number;
+    description: string;
+    agent_id: string;
+  }): Promise<{ invoice: string; payment_hash: string; macaroon?: string }>;
+
+  /** Verify that a 402 payment was satisfied */
+  verifyPayment(params: {
+    payment_hash: string;
+    preimage?: string;
+    macaroon?: string;
+  }): Promise<{ verified: boolean; amount_sats: number }>;
+
+  /** Check remaining budget for an agent */
+  checkBudget(agent_id: string): Promise<{
+    remaining_sats: number;
+    limit_sats: number;
+  }>;
+}
+```
+
+### Provider-specific notes
+
+**Lightning Faucet** (`lightning_faucet`)
+
+- Uses existing `wallet_custody_type = 'lightning_faucet'` agent wallets.
+- `provider_config_enc` stores encrypted LF agent key.
+- Best for: agent-created agents with managed operational budgets.
+- Limitation: custodial; LF terms apply; not suitable for large balances.
+
+**Routstr** (`routstr`)
+
+- NIP-90 marketplace routing; payments flow through Nostr DVM job requests.
+- `provider_config_enc` stores relay list + optional NIP-90 service npub.
+- Best for: agent-to-agent task markets; Nostr-native flows.
+- Limitation: NIP-90 latency; not yet suited for sub-second micro-payments.
+
+**Lightning Labs Aperture** (`aperture`)
+
+- L402 spec reference implementation; Macaroon-gated resources.
+- `provider_config_enc` stores Aperture API key + endpoint + macaroon root.
+- Best for: enterprise-grade L402, LND node owners, high-value gated APIs.
+- Limitation: requires LND node or Aperture service access.
+
+**Self-Hosted** (`self_hosted`)
+
+- Any L402-compatible gateway the user controls.
+- `provider_config_enc` stores: endpoint URL, auth headers, signing key.
+- Best for: maximum sovereignty; zero third-party dependency.
+- Limitation: requires node operations knowledge.
+
+### `.well-known` exposure
+
+Add the following to the `satnam-agents.json` well-known document
+(Task 4.9.1) so autonomous agents can discover available gateways:
+
+```json
+"paygate_providers": [
+  {
+    "id": "lightning_faucet",
+    "sovereignty_level": 1,
+    "description": "Managed agent wallets via Lightning Faucet",
+    "docs": "https://docs.lightningenable.com"
+  },
+  {
+    "id": "routstr",
+    "sovereignty_level": 2,
+    "description": "NIP-90 marketplace routing, Nostr-native",
+    "docs": "https://routstr.com"
+  },
+  {
+    "id": "aperture",
+    "sovereignty_level": 3,
+    "description": "L402 spec gateway by Lightning Labs",
+    "docs": "https://docs.lightning.engineering/the-lightning-network/l402"
+  },
+  {
+    "id": "self_hosted",
+    "sovereignty_level": 4,
+    "description": "Self-hosted L402-compatible gateway",
+    "docs": null
+  }
+],
+"default_paygate_provider": "lightning_faucet",
+"paygate_selection": "agent_configurable"
+```
+
+### Agent Creation Wizard integration
+
+In Task 4.4.3 (AgentCreationWizard), add a Step between "Value Creation" and
+"Review/Economic Summary" titled **Step 3b: Pay-Gate Provider**. This step:
+
+- Shows the sovereignty scale as a visual slider or stepped selector.
+- Defaults to `lightning_faucet` for agent-created agents (LF-backed).
+- Defaults to `self_hosted` (or user's existing NWC wallet) for human-created
+  agents with `wallet_custody_type = 'self_custodial'`.
+- Explains each option's trust model in plain language.
+- Stores the selection in `agent_paygate_config.provider`.
+- Allows the user to set per-call, per-hour, and per-day spending caps.
+
+### Cashu NUT-24 compatibility note
+
+- For Cashu-backed HTTP pay-gates, return `402 Payment Required` with an
+  `X-Cashu` header carrying a NUT-24-compatible challenge.
+- The encoded challenge payload must follow NUT-18 semantics (`a`, `u`, `m`,
+  optional `nut10`) so wallets know the amount, unit, accepted mints, and
+  conditions.
+- Clients retry the request with a `cashuB` token after payment.
+- Reject wrong mint/unit/amount/conditions with `400`, and treat replayed or
+  already-settled proofs as idempotent failures rather than double-credit.
 
 ## Platform Monetization Model
 
@@ -233,27 +477,47 @@ All platform fees are:
  */
 
 export type BlindTokenType =
-  | "event_post"
-  | "task_create"
-  | "contact_add"
-  | "dm_send";
+  | "agent_profile_update"
+  | "agent_status_event"
+  | "agent_attestation_light"
+  | "agent_attestation_strong"
+  | "agent_badge_award"
+  | "agent_dm_bundle"
+  | "agent_contact_add"
+  | "agent_task_record_create";
 
 export interface ActionPayload {
-  event_post?: {
+  agent_profile_update?: {
+    fields: string[];
+  };
+  agent_status_event?: {
     kind: number;
     content: string;
     tags: string[][];
   };
-  task_create?: {
+  agent_attestation_light?: {
+    subject_npub: string;
+    attestation_type: string;
+  };
+  agent_attestation_strong?: {
+    subject_npub: string;
+    attestation_type: string;
+    bond_id?: string;
+  };
+  agent_badge_award?: {
+    badge_id: string;
+    recipient_npub: string;
+  };
+  agent_task_record_create?: {
     title: string;
     description: string;
     assignee_npub?: string;
   };
-  contact_add?: {
+  agent_contact_add?: {
     contact_npub: string;
     contact_name?: string;
   };
-  dm_send?: {
+  agent_dm_bundle?: {
     recipient_npub: string;
     content: string;
   };
@@ -291,34 +555,44 @@ export interface PaymentVerificationResult {
 export async function verifyLightningPayment(
   paymentProof: string,
 ): Promise<PaymentVerificationResult> {
-  // TODO: Verify Lightning payment via LNbits API
-  // Check payment_hash exists and amount matches
-  console.warn("verifyLightningPayment not yet implemented");
-  return { valid: false, amount_sats: 0 };
+  // 🚨 DEPLOY BLOCKER — This function is NOT implemented.
+  // Deploying to production with this stub bypasses all payment verification.
+  // Implementation required before any fee-bearing endpoint goes live.
+  // See: Amendment 4 in Agent_Implementation_Plan.md for spec.
+  throw new Error(
+    "DEPLOY BLOCKER: verifyLightningPayment not implemented. See Amendment 4.",
+  );
 }
 
 export async function verifyCashuToken(
   token: string,
 ): Promise<PaymentVerificationResult> {
-  // TODO: Verify Cashu token via mint.satnam.pub
-  // Decode token, verify signatures, check amount
-  console.warn("verifyCashuToken not yet implemented");
-  return { valid: false, amount_sats: 0 };
+  // 🚨 DEPLOY BLOCKER — This function is NOT implemented.
+  // Deploying to production with this stub bypasses all payment verification.
+  // Implementation required before any fee-bearing endpoint goes live.
+  // See: Amendment 4 in Agent_Implementation_Plan.md for spec.
+  throw new Error(
+    "DEPLOY BLOCKER: verifyCashuToken not implemented. See Amendment 4.",
+  );
 }
 
 export async function verifyFedimintTxid(
   txid: string,
 ): Promise<PaymentVerificationResult> {
-  // TODO: Verify Fedimint transaction via gateway
-  // Check txid exists and amount matches
-  console.warn("verifyFedimintTxid not yet implemented");
-  return { valid: false, amount_sats: 0 };
+  // 🚨 DEPLOY BLOCKER — This function is NOT implemented.
+  // Deploying to production with this stub bypasses all payment verification.
+  // Implementation required before any fee-bearing endpoint goes live.
+  // See: Amendment 4 in Agent_Implementation_Plan.md for spec.
+  throw new Error(
+    "DEPLOY BLOCKER: verifyFedimintTxid not implemented. See Amendment 4.",
+  );
 }
 
 export async function generateCashuPaymentRequest(
   amount: number,
   options: { agent_id: string; action_type: string },
 ): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Generate Cashu payment request via mint API
   console.warn("generateCashuPaymentRequest not yet implemented");
   return "";
@@ -328,6 +602,7 @@ export async function generateFedimintPaymentAddress(
   amount: number,
   description: string,
 ): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Generate Fedimint payment address via gateway
   console.warn("generateFedimintPaymentAddress not yet implemented");
   return "";
@@ -336,6 +611,7 @@ export async function generateFedimintPaymentAddress(
 export async function decodeCashuToken(
   token: string,
 ): Promise<{ amount: number; mint: string }> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Decode Cashu token to extract amount and mint URL
   console.warn("decodeCashuToken not yet implemented");
   return { amount: 0, mint: "" };
@@ -346,45 +622,55 @@ export async function verifyPayment(
   protocol: "lightning" | "cashu" | "fedimint",
   expectedAmount: number,
 ): Promise<boolean> {
-  // TODO: Unified payment verification wrapper
-  console.warn("verifyPayment not yet implemented");
-  return false;
+  // 🚨 DEPLOY BLOCKER — This function is NOT implemented.
+  // Deploying to production with this stub bypasses all payment verification.
+  // Implementation required before any fee-bearing endpoint goes live.
+  // See: Amendment 4 in Agent_Implementation_Plan.md for spec.
+  throw new Error(
+    "DEPLOY BLOCKER: verifyPayment not implemented. See Amendment 4.",
+  );
 }
 
 export async function generatePaymentRequest(
   amount: number,
   options: { purpose: string },
 ): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Generate payment request (Lightning invoice, Cashu request, or Fedimint address)
   console.warn("generatePaymentRequest not yet implemented");
   return "";
 }
 
 export async function getFeeForAction(actionType: string): Promise<number> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Lookup fee from platform_fee_schedule table
   console.warn("getFeeForAction not yet implemented");
   return 0;
 }
 
 export function decryptKeypair(encryptedPrivateKey: string): string {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Decrypt platform blind signing keypair using platform master key
   console.warn("decryptKeypair not yet implemented");
   return "";
 }
 
 export async function publishNostrEvent(event: any): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Publish Nostr event via CentralEventPublishingService
   console.warn("publishNostrEvent not yet implemented");
   return "";
 }
 
 export async function createTaskRecord(task: any): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Create task record in database
   console.warn("createTaskRecord not yet implemented");
   return "";
 }
 
 export async function addContact(contact: any): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Add contact to user's contact list
   console.warn("addContact not yet implemented");
   return "";
@@ -394,6 +680,7 @@ export async function sendEncryptedDM(
   recipientNpub: string,
   content: string,
 ): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Send encrypted DM via NIP-04 or NIP-17
   console.warn("sendEncryptedDM not yet implemented");
   return "";
@@ -403,11 +690,13 @@ export async function emitEvent(
   eventType: string,
   payload: any,
 ): Promise<void> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Emit platform event for downstream processing
   console.warn("emitEvent not yet implemented");
 }
 
 export async function generateCashuPubkey(agentId: string): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Generate Cashu pubkey for agent
   console.warn("generateCashuPubkey not yet implemented");
   return "";
@@ -417,6 +706,7 @@ export async function publishAgentCreationEvent(
   agentNpub: string,
   agentMetadata: any,
 ): Promise<string> {
+  // ⚠️ STUB — non-critical path, safe to defer
   // TODO: Publish agent creation event to Nostr
   console.warn("publishAgentCreationEvent not yet implemented");
   return "";
@@ -427,9 +717,13 @@ export async function verifyBondPayment(
   expectedAmount: number,
   paymentType: "lightning" | "cashu" | "fedimint",
 ): Promise<boolean> {
-  // TODO: Verify performance bond payment
-  console.warn("verifyBondPayment not yet implemented");
-  return false;
+  // 🚨 DEPLOY BLOCKER — This function is NOT implemented.
+  // Deploying to production with this stub bypasses all payment verification.
+  // Implementation required before any fee-bearing endpoint goes live.
+  // See: Amendment 4 in Agent_Implementation_Plan.md for spec.
+  throw new Error(
+    "DEPLOY BLOCKER: verifyBondPayment not implemented. See Amendment 4.",
+  );
 }
 ```
 
@@ -448,6 +742,7 @@ CREATE TABLE IF NOT EXISTS platform_fee_schedule (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   action_type TEXT NOT NULL UNIQUE,
   fee_sats BIGINT NOT NULL,
+  payment_type TEXT NOT NULL CHECK (payment_type IN ('direct-pay', 'blind-token')),
   description TEXT,
   active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -460,27 +755,21 @@ CREATE TABLE IF NOT EXISTS platform_fee_schedule (
 -- DM messaging uses bundled tokens (token_value > 1) for efficiency
 
 -- Seed initial fee schedule (idempotent via ON CONFLICT)
-INSERT INTO platform_fee_schedule (action_type, fee_sats, description) VALUES
+INSERT INTO platform_fee_schedule (action_type, fee_sats, payment_type, description) VALUES
 -- DIRECT-PAY ONLY ACTIONS (high-value, identity-linked, rare operations)
-('agent_account_creation', 1000, 'One-time fee to create agent account'),
-('bond_deposit', 0, 'Performance bond deposit (amount varies by operation)'),
-('credit_envelope_request', 200, 'Fee to request credit envelope'),
+('agent_account_creation', 1000, 'direct-pay', 'One-time fee to create agent account'),
+('agent_credit_envelope_request', 200, 'direct-pay', 'Fee to request credit envelope'),
+('bond_deposit', 0, 'direct-pay', 'Performance bond deposit (amount varies by operation)'),
 
 -- BLIND-TOKEN ELIGIBLE ACTIONS (privacy-sensitive, high-frequency operations)
--- Event publishing fees (anti-spam level ~21 sats)
-('agent_account_init_event', 21, 'Account initialization/metadata event (anti-spam)'),
-('agent_status_update_event', 21, 'Agent status/operational event (anti-spam)'),
-('agent_attestation_light', 21, 'Light attestation/endorsement (anti-spam)'),
-('agent_attestation_strong', 42, 'Strong bond-backed attestation'),
-('agent_badge_award_event', 42, 'NIP-58 badge award event'),
-
--- Messaging fees (bundled for efficiency)
-('agent_dm_bundle', 21, 'Bundle of 10 NIP-17 DMs (token_value=10)'),
-
--- Other operations
-('contact_add', 50, 'Fee to add contact or relay'),
-('task_record_create', 150, 'Fee to create task record'),
-('profile_update', 10, 'Fee to update profile')
+('agent_profile_update', 10, 'blind-token', 'Fee to update profile metadata'),
+('agent_status_event', 21, 'blind-token', 'Agent status/operational event (anti-spam)'),
+('agent_attestation_light', 21, 'blind-token', 'Light attestation/endorsement (anti-spam)'),
+('agent_attestation_strong', 42, 'blind-token', 'Strong bond-backed attestation'),
+('agent_badge_award', 42, 'blind-token', 'NIP-58 badge award event'),
+('agent_dm_bundle', 21, 'blind-token', 'Bundle of 10 NIP-17 DMs (token_value=10)'),
+('agent_contact_add', 50, 'blind-token', 'Fee to add contact or relay'),
+('agent_task_record_create', 150, 'blind-token', 'Fee to create task record')
 ON CONFLICT (action_type) DO NOTHING;
 
 -- NOTE: Subscription models and volume discounts are POST-MVP (Phase 3+)
@@ -504,9 +793,10 @@ CREATE TABLE IF NOT EXISTS platform_revenue (
   fee_sats BIGINT NOT NULL,
 
   -- Payment details
-  payment_protocol TEXT NOT NULL, -- 'lightning', 'cashu', 'fedimint', 'free_tier'
+  payment_protocol TEXT NOT NULL, -- 'lightning', 'cashu', 'fedimint', 'free_tier', 'blind_token'
   payment_hash TEXT,
-  payment_proof TEXT, -- Invoice preimage, Cashu token, Fedimint txid
+  payment_proof_hash TEXT,  -- sha256 of raw proof; raw proof never stored
+  -- Raw invoice preimage / Cashu token / Fedimint txid is hashed before storage. Never log or persist the raw value.
   payment_status payment_status DEFAULT 'pending',
 
   -- Related entity
@@ -544,10 +834,9 @@ CREATE TABLE IF NOT EXISTS free_tier_allocations (
   allocation_number INTEGER UNIQUE NOT NULL CHECK (allocation_number >= 1),
   agent_id UUID REFERENCES user_identities(id) UNIQUE,
   claimed_at TIMESTAMPTZ,
-  claimed_by_npub TEXT, -- Track who claimed without requiring FK join
-
-  -- PRIVACY NOTE: Consider hashing npub with per-deployment salt
-  -- to minimize social graph correlation surfaces
+  claimed_by_npub_hash TEXT,  -- sha256(npub || deployment_salt); MANDATORY
+  -- MANDATORY: npub hashed with DEPLOYMENT_SALT env var before insert.
+  -- Storing raw npub here re-introduces social-graph correlation.
   claimed_by_human_id UUID REFERENCES user_identities(id) -- Track parent human for Sybil limits
 );
 
@@ -560,7 +849,8 @@ ON CONFLICT (allocation_number) DO NOTHING;
 
 -- SECURITY ADDITION: Per-human free tier limits
 -- Prevents single human from claiming all free slots via Sybil agents
--- Enforced via application logic in claim_free_tier_slot RPC (see Task 2.2)
+-- Default `app.free_tier_per_human_limit` = 3 (deployment-configurable via pg_settings / env injection)
+-- Enforced inside claim_free_tier_slot RPC (see Task 2.2)
 
 -- Revenue aggregation view
 CREATE OR REPLACE VIEW platform_revenue_summary AS
@@ -604,13 +894,25 @@ CREATE POLICY "free_tier_service_write" ON free_tier_allocations
 -- Called via supabase.rpc('claim_free_tier_slot', {...})
 -- Uses SELECT ... FOR UPDATE SKIP LOCKED for safe concurrency
 -- ============================================================
+-- SYBIL GUARD: per-human limit enforced atomically inside this function.
+-- Do not move this check to application layer; race conditions allow bypass.
 CREATE OR REPLACE FUNCTION claim_free_tier_slot(
   p_agent_id UUID,
-  p_agent_npub TEXT DEFAULT NULL
+  p_agent_npub TEXT DEFAULT NULL,
+  p_human_id UUID
 ) RETURNS TABLE(allocation_number INTEGER) AS $$
 DECLARE
   v_slot INTEGER;
+  v_human_agent_count INTEGER;
 BEGIN
+  SELECT COUNT(*) INTO v_human_agent_count
+  FROM free_tier_allocations
+  WHERE claimed_by_human_id = p_human_id;
+
+  IF v_human_agent_count >= COALESCE(current_setting('app.free_tier_per_human_limit', true), '3')::int THEN
+    RAISE EXCEPTION 'free_tier_human_limit_exceeded';
+  END IF;
+
   -- Atomically find and lock the lowest unclaimed slot
   SELECT fta.allocation_number INTO v_slot
   FROM free_tier_allocations fta
@@ -627,7 +929,11 @@ BEGIN
   UPDATE free_tier_allocations
   SET agent_id = p_agent_id,
       claimed_at = NOW(),
-      claimed_by_npub = p_agent_npub
+      claimed_by_npub_hash = CASE
+        WHEN p_agent_npub IS NULL THEN NULL
+        ELSE encode(digest(p_agent_npub || current_setting('app.deployment_salt', true), 'sha256'), 'hex')
+      END,
+      claimed_by_human_id = p_human_id
   WHERE free_tier_allocations.allocation_number = v_slot
     AND agent_id IS NULL; -- Double-check unclaimed
 
@@ -694,7 +1000,9 @@ CREATE TABLE IF NOT EXISTS performance_bonds (
   bond_type TEXT NOT NULL, -- 'account_creation', 'credit_envelope', etc.
   payment_type TEXT NOT NULL CHECK (payment_type IN ('lightning', 'cashu', 'fedimint')),
   lightning_payment_hash TEXT,
-  cashu_token TEXT,
+  cashu_token_encrypted TEXT,
+  cashu_token_hash TEXT,  -- sha256 of cashu_token; raw token stored encrypted only
+  -- Decryption key is service-role only and must never be exposed to the browser.
   fedimint_txid TEXT,
   escrow_holder TEXT NOT NULL DEFAULT 'satnam-platform',
   status TEXT NOT NULL CHECK (status IN ('active', 'released', 'slashed', 'refunded')) DEFAULT 'active',
@@ -718,7 +1026,8 @@ CREATE TABLE IF NOT EXISTS agent_payment_config (
 
   -- Cashu configuration
   cashu_enabled BOOLEAN DEFAULT TRUE,
-  cashu_mint_url TEXT,
+  federation_mint_id UUID, -- references federation mint registry in Task 4.8
+  cashu_mint_url TEXT, -- resolved active mint URL; do NOT assume one global platform mint
   cashu_pubkey TEXT,
 
   -- Fedimint configuration
@@ -773,7 +1082,7 @@ CREATE TABLE IF NOT EXISTS agent_nwc_connections (
 -- Tracks parent-offspring relationships for agent accounts
 -- Accessible to ALL user types: Individual users (role='private'),
 -- Family Federation members (all roles: 'offspring', 'adult', 'steward', 'guardian'),
--- AND Agents (role='adult' or 'offspring' with is_agent=true)
+-- AND Agents (any existing platform role with is_agent=true)
 
 CREATE TABLE IF NOT EXISTS agent_parent_offspring_relationships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -898,20 +1207,21 @@ import {
 // MONETIZATION UPDATE: Updated action types to match anti-spam fee schedule
 type PlatformActionType =
   | "agent_account_creation"
-  | "agent_account_init_event"
-  | "agent_status_update_event"
+  | "agent_profile_update"
+  | "agent_status_event"
   | "agent_attestation_light"
   | "agent_attestation_strong"
-  | "agent_badge_award_event"
+  | "agent_badge_award"
   | "agent_dm_bundle"
-  | "contact_add"
-  | "credit_envelope_request"
-  | "task_record_create"
-  | "profile_update";
+  | "agent_contact_add"
+  | "agent_credit_envelope_request"
+  | "agent_task_record_create"
+  | "bond_deposit";
 
 interface ChargeFeeRequest {
   agent_id: string;
   agent_npub?: string; // Required for free tier claim tracking
+  human_user_id?: string; // Required for free tier Sybil guard
   action_type: PlatformActionType;
   payment_protocol: "lightning" | "cashu" | "fedimint";
   payment_proof?: string;
@@ -939,16 +1249,16 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
     burstAllowance: 2,
   },
   redeem_token: {
-    maxRequestsPerMinute: 20,
-    maxRequestsPerHour: 200,
-    burstAllowance: 10,
+    maxRequestsPerMinute: 6,
+    maxRequestsPerHour: 60,
+    burstAllowance: 2,
   },
 };
 
 // TODO: Implement rate limiting middleware
-// - Per auth.uid() for authenticated requests
-// - Per IP address for anonymous requests
-// - Per npub for agent-specific limits
+// - Per auth.uid() / per npub for authenticated endpoints
+// - `redeem-blind-token` is anonymous and MUST use a separate token-bucket keyed on `action_type` only
+// - Never key anonymous redemption rate limits by IP, session, or identity (breaks unlinkability)
 // - Return 429 Too Many Requests with Retry-After header
 
 /** Cashu payment request structure (replaces `any`) */
@@ -999,18 +1309,21 @@ export const handler = async (event: HandlerEvent, context: HandlerContext) => {
     return createErrorResponse(400, "Invalid request body", requestId);
   }
 
-  // 1. Check if agent qualifies for free tier (first 210 agents only for account creation)
+  // 1. Check if agent qualifies for free tier (first 210 account-creation slots platform-wide,
+  //    subject to the per-human cap from app.free_tier_per_human_limit)
   //    ATOMIC: Uses Supabase RPC to atomically claim the lowest unclaimed slot,
   //    preventing TOCTOU race conditions when concurrent requests compete for slots.
   //    SECURITY: Per-human limits enforced in RPC to prevent Sybil farming
   if (request.action_type === "agent_account_creation") {
     // FIXED: RPC returns TABLE, so data is an array. Extract first element.
-    // FIXED: Pass actual npub (from request or user_identities lookup), not UUID
+    // FIXED: Pass actual npub (from request or user_identities lookup), not UUID.
+    // SYBIL GUARD: pass the authenticated human's user.id as p_human_id.
     const { data: claimedSlots, error: claimError } = await supabase.rpc(
       "claim_free_tier_slot",
       {
         p_agent_id: request.agent_id,
-        p_agent_npub: request.agent_npub || null, // TODO: Add agent_npub to ChargeFeeRequest interface
+        p_agent_npub: request.agent_npub || null,
+        p_human_id: request.human_user_id,
       },
     );
 
@@ -1023,8 +1336,8 @@ export const handler = async (event: HandlerEvent, context: HandlerContext) => {
         action_type: request.action_type,
         fee_sats: 0,
         payment_protocol: "free_tier",
+        payment_hash: `free_tier_slot_${claimedSlot.allocation_number}`,
         payment_status: "paid",
-        payment_proof: `free_tier_slot_${claimedSlot.allocation_number}`,
         paid_at: new Date(),
       });
 
@@ -1034,7 +1347,7 @@ export const handler = async (event: HandlerEvent, context: HandlerContext) => {
           fee_required: false,
           free_tier_used: true,
           allocation_number: claimedSlot.allocation_number,
-          message: `Free tier used! You claimed slot ${claimedSlot.allocation_number} of 210.`,
+          message: `Free tier used! You claimed slot ${claimedSlot.allocation_number} of 210 (subject to per-human cap).`,
         } satisfies Partial<ChargeFeeResponse>),
       };
     }
@@ -1093,7 +1406,7 @@ export const handler = async (event: HandlerEvent, context: HandlerContext) => {
         fee_sats: feeSats,
         payment_protocol: request.payment_protocol,
         payment_hash: paymentHash,
-        payment_proof: request.payment_proof,
+        payment_proof_hash: await hashPaymentProof(request.payment_proof),
         payment_status: "paid",
         related_event_id: request.related_entity_id,
         paid_at: new Date(),
@@ -1325,26 +1638,57 @@ export const handler = async (event: HandlerEvent) => {
     return createErrorResponse(400, "Invalid webhook payload", requestId);
   }
 
-  let paymentHash: string | undefined;
+  // REPLAY PROTECTION
+  const webhookTimestamp = event.headers["x-webhook-timestamp"];
+  const webhookNonce = event.headers["x-webhook-nonce"];
+  const paymentHash =
+    payload.payment_hash ?? payload.txid ?? payload.token_hash;
+
+  if (
+    !webhookTimestamp ||
+    Math.abs(Date.now() - Number(webhookTimestamp)) > 300_000
+  ) {
+    return createErrorResponse(
+      400,
+      "Webhook timestamp expired or missing",
+      requestId,
+    );
+  }
+
+  // Idempotency: reject if this payment_hash was already processed
+  const { data: existing } = await supabase
+    .from("platform_revenue")
+    .select("id")
+    .eq("payment_hash", paymentHash)
+    .maybeSingle();
+
+  if (existing) {
+    return { statusCode: 200, body: JSON.stringify({ idempotent: true }) };
+  }
+
+  // Note: The 5-minute timestamp window and payment_hash idempotency check
+  // together prevent both replay attacks and double-credit on network retries.
+
+  let resolvedPaymentHash: string | undefined;
   let agentId: string | undefined;
   let actionType: string | undefined;
 
   if (payload.payment_hash) {
-    paymentHash = payload.payment_hash;
+    resolvedPaymentHash = payload.payment_hash;
     agentId = payload.extra?.agent_id;
     actionType = payload.extra?.action_type;
   } else if (payload.cashu_token) {
     const decoded = await decodeCashuToken(payload.cashu_token);
-    paymentHash = decoded.token_hash;
+    resolvedPaymentHash = decoded.token_hash;
     agentId = payload.metadata?.agent_id;
     actionType = payload.metadata?.action_type;
   } else if (payload.fedimint_txid) {
-    paymentHash = payload.fedimint_txid;
+    resolvedPaymentHash = payload.fedimint_txid;
     agentId = payload.metadata?.agent_id;
     actionType = payload.metadata?.action_type;
   }
 
-  if (!paymentHash) {
+  if (!resolvedPaymentHash) {
     return createErrorResponse(400, "Missing payment identifier", requestId);
   }
 
@@ -1353,10 +1697,16 @@ export const handler = async (event: HandlerEvent) => {
     .from("platform_revenue")
     .update({
       payment_status: "paid",
-      payment_proof: payload.proof || payload.preimage || payload.cashu_token,
+      payment_proof_hash: await hashPaymentProof(
+        payload.proof ||
+          payload.preimage ||
+          payload.cashu_token ||
+          payload.fedimint_txid ||
+          "",
+      ),
       paid_at: new Date(),
     })
-    .eq("payment_hash", paymentHash);
+    .eq("payment_hash", resolvedPaymentHash);
 
   if (updateError) {
     logError(updateError, { requestId, endpoint: "platform-fee-paid" });
@@ -1396,6 +1746,43 @@ WEBHOOK_SECRET=<generate-random-secret-256-bits>
 - [ ] Fedimint fee payment webhook works
 - [ ] Event emitted for downstream processing
 - [ ] Error handling uses codebase patterns (createErrorResponse, logError)
+
+---
+
+## Phase 0.5: Agent Operational State Tracking and Span of Control Enforcement
+
+### Task 0.5.1: Database Schema for Operational State Tracking
+
+**Status:** ✅ **COMPLETED** - Database migration created and implemented
+
+**What has been done:**
+
+- Created `agent_operational_state` table with comprehensive real-time tracking fields
+- Implemented heartbeat monitoring system with automatic stale agent detection
+- Added RLS policies for agent self-management and creator visibility
+- Created RPC functions for heartbeat updates and health status calculation
+- Integrated with existing `user_identities` table via UUID references
+
+**Key features implemented:**
+
+- Real-time compute load monitoring (0-100%)
+- Active task count tracking with concurrency limits
+- Budget tracking with JSONB token balance snapshots
+- Context window usage monitoring
+- Availability signaling for task acceptance
+- Automatic heartbeat failure detection and agent pausing
+- Health status calculation based on multiple factors
+
+**Files created:**
+
+- `supabase/migrations/20260213_agent_operational_state.sql` - Complete database migration
+
+**Integration points:**
+
+- Agents can update their own operational state via heartbeat RPC
+- Creators can view agent health and operational metrics
+- Automatic pausing of agents with heartbeat failures
+- Health status available for agent selection and monitoring
 
 ---
 
@@ -1553,8 +1940,8 @@ CREATE TABLE IF NOT EXISTS agent_blind_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Token details
-  token_hash TEXT UNIQUE, -- NULL until redemption reveals it
-  token_type TEXT NOT NULL, -- 'event_post', 'task_create', 'contact_add'
+  token_hash TEXT UNIQUE, -- Optional issuance-side audit field; anonymous redemption uses spent_token_nullifiers instead
+  token_type TEXT NOT NULL, -- canonical BlindTokenType values only
   token_value INTEGER DEFAULT 1,
 
   -- Issuance (references user_identities, not deprecated profiles)
@@ -1581,24 +1968,16 @@ DO $$ BEGIN
   EXECUTE 'CREATE INDEX IF NOT EXISTS idx_blind_tokens_expires ON agent_blind_tokens(expires_at) WHERE status = ''issued''';
 END $$;
 
--- Token redemption log (anonymous - doesn't link to agent_id until disputed)
-CREATE TABLE IF NOT EXISTS anonymous_token_redemptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  token_hash TEXT NOT NULL,
-  action_type TEXT NOT NULL,
-  redeemed_at TIMESTAMPTZ DEFAULT NOW(),
-
-  -- Proof of valid token
-  unblinded_token TEXT NOT NULL,
-  signature_proof TEXT NOT NULL,
-
-  -- Only revealed if disputed (references user_identities, not deprecated profiles)
-  revealed_agent_id UUID REFERENCES user_identities(id)
+-- Anonymous redemption nullifier log (privacy-preserving double-spend prevention)
+CREATE TABLE IF NOT EXISTS spent_token_nullifiers (
+  token_hash     TEXT PRIMARY KEY,          -- sha256 of presented unblinded token
+  action_type    TEXT NOT NULL,
+  redeemed_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 DO $$ BEGIN
-  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_anonymous_redemptions_time ON anonymous_token_redemptions(redeemed_at DESC)';
-  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_anonymous_redemptions_action ON anonymous_token_redemptions(action_type)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_spent_token_nullifiers_action ON spent_token_nullifiers(action_type)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_spent_token_nullifiers_time ON spent_token_nullifiers(redeemed_at DESC)';
 END $$;
 
 -- ============================================================
@@ -1606,7 +1985,7 @@ END $$;
 -- ============================================================
 ALTER TABLE platform_blind_keypairs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_blind_tokens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE anonymous_token_redemptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE spent_token_nullifiers ENABLE ROW LEVEL SECURITY;
 
 -- platform_blind_keypairs: service-role only (contains encrypted private keys)
 CREATE POLICY "blind_keypairs_service_only" ON platform_blind_keypairs
@@ -1618,8 +1997,8 @@ CREATE POLICY "blind_tokens_own_read" ON agent_blind_tokens
 CREATE POLICY "blind_tokens_service_write" ON agent_blind_tokens
   FOR ALL USING (auth.role() = 'service_role');
 
--- anonymous_token_redemptions: service-role only (privacy: no user can browse redemptions)
-CREATE POLICY "redemptions_service_only" ON anonymous_token_redemptions
+-- spent_token_nullifiers: service-role only (privacy: no user can browse redemptions)
+CREATE POLICY "spent_token_nullifiers_service_only" ON spent_token_nullifiers
   FOR ALL USING (auth.role() = 'service_role');
 
 -- ============================================================
@@ -1635,19 +2014,19 @@ BEGIN
   UPDATE agent_profiles
   SET
     event_tokens_balance = CASE
-      WHEN NEW.token_type = 'event_post' THEN event_tokens_balance + NEW.token_value
+      WHEN NEW.token_type = 'agent_status_event' THEN event_tokens_balance + NEW.token_value
       ELSE event_tokens_balance
     END,
     task_tokens_balance = CASE
-      WHEN NEW.token_type = 'task_create' THEN task_tokens_balance + NEW.token_value
+      WHEN NEW.token_type = 'agent_task_record_create' THEN task_tokens_balance + NEW.token_value
       ELSE task_tokens_balance
     END,
     contact_tokens_balance = CASE
-      WHEN NEW.token_type = 'contact_add' THEN contact_tokens_balance + NEW.token_value
+      WHEN NEW.token_type = 'agent_contact_add' THEN contact_tokens_balance + NEW.token_value
       ELSE contact_tokens_balance
     END,
     dm_tokens_balance = CASE
-      WHEN NEW.token_type = 'dm_send' THEN dm_tokens_balance + NEW.token_value
+      WHEN NEW.token_type = 'agent_dm_bundle' THEN dm_tokens_balance + NEW.token_value
       ELSE dm_tokens_balance
     END
   WHERE user_identity_id = NEW.issued_to_agent_id;
@@ -1793,7 +2172,7 @@ export const handler = async (event: HandlerEvent) => {
       action_type: `blind_token_purchase_${request.token_type}`,
       fee_sats: totalFee,
       payment_protocol: request.payment_protocol || "lightning", // FIXED: Add required field
-      payment_proof: request.payment_proof,
+      payment_proof_hash: await hashPaymentProof(request.payment_proof),
       payment_status: "paid",
       paid_at: new Date(),
     });
@@ -1885,10 +2264,15 @@ export const handler = async (event: HandlerEvent) => {
 
 **File:** `netlify/functions/agents/redeem-blind-token.ts`
 
+> ⚠️ PRIVACY CONTRACT: This endpoint must never require authentication.
+> Any future change requiring session auth breaks the unlinkability guarantee
+> and must be treated as a breaking privacy regression requiring guardian review.
+
 ```typescript
 // ARCHITECTURE: Netlify Function (ESM)
 import { createServerSupabaseClient } from "../../lib/supabase-server";
 import {
+  decodeUnblindedToken,
   verifyBlindSignature,
   hashToken,
 } from "../../lib/crypto/blind-signatures";
@@ -1926,11 +2310,46 @@ export const handler = async (event: HandlerEvent) => {
   const supabase = createServerSupabaseClient();
   const request: RedeemBlindTokenRequest = JSON.parse(event.body || "{}");
 
-  // SECURITY: Rate limiting check (TODO: implement middleware)
-  // See RATE_LIMITS configuration in Task 0.2
-  // Should enforce: 20 requests/minute, 200 requests/hour per agent
+  // PRIVACY: This endpoint authenticates the token itself, never the caller.
+  // Do NOT require Authorization headers, Supabase session cookies, or JWTs.
+  // Ignore caller identity and do not log IPs or raw tokens.
 
-  // 1. Verify blind signature is valid
+  // SECURITY: Anonymous redemption rate limiting (separate from authenticated endpoints)
+  // Use a more aggressive token-bucket keyed on request.action_type only.
+  // Never rate-limit this endpoint by IP, session, or identity.
+
+  // 1. Decode token claims locally (action type, expiry, key metadata)
+  const decodedToken = decodeUnblindedToken(request.unblinded_token);
+
+  if (decodedToken.action_type !== request.action_type) {
+    await supabase.from("platform_revenue").insert({
+      action_type: request.action_type,
+      fee_sats: 0,
+      payment_protocol: "blind_token",
+      payment_status: "failed",
+    });
+
+    return {
+      statusCode: 403,
+      body: JSON.stringify({ error: "Token type mismatch" }),
+    };
+  }
+
+  if (new Date() > new Date(decodedToken.expires_at)) {
+    await supabase.from("platform_revenue").insert({
+      action_type: request.action_type,
+      fee_sats: 0,
+      payment_protocol: "blind_token",
+      payment_status: "failed",
+    });
+
+    return {
+      statusCode: 403,
+      body: JSON.stringify({ error: "Token expired" }),
+    };
+  }
+
+  // 2. Verify blind signature against the platform public signing key
   const signatureValid = verifyBlindSignature(
     request.unblinded_token,
     request.signature_proof,
@@ -1938,6 +2357,13 @@ export const handler = async (event: HandlerEvent) => {
   );
 
   if (!signatureValid) {
+    await supabase.from("platform_revenue").insert({
+      action_type: request.action_type,
+      fee_sats: 0,
+      payment_protocol: "blind_token",
+      payment_status: "failed",
+    });
+
     return {
       statusCode: 403,
       body: JSON.stringify({
@@ -1951,84 +2377,59 @@ export const handler = async (event: HandlerEvent) => {
     };
   }
 
-  // 2. Check if token already redeemed (hash of unblinded token)
+  // 3. Check if token already redeemed (nullifier lookup = sha256(unblinded token))
   const tokenHash = await hashToken(request.unblinded_token);
 
   const existingRedemption = await supabase
-    .from("anonymous_token_redemptions")
-    .select("id")
+    .from("spent_token_nullifiers")
+    .select("token_hash")
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
   if (existingRedemption) {
+    await supabase.from("platform_revenue").insert({
+      action_type: request.action_type,
+      fee_sats: 0,
+      payment_protocol: "blind_token",
+      payment_status: "failed",
+    });
+
     return {
       statusCode: 403,
       body: JSON.stringify({ error: "Token already redeemed" }),
     };
   }
 
-  // 3. Verify token hasn't expired
-  const { data: tokenRecord } = await supabase
-    .from("agent_blind_tokens")
-    .select("expires_at, token_type")
-    .eq("blind_signature", request.signature_proof)
-    .single();
-
-  if (!tokenRecord) {
-    return {
-      statusCode: 404,
-      body: JSON.stringify({ error: "Token not found" }),
-    };
-  }
-
-  if (new Date() > new Date(tokenRecord.expires_at)) {
-    return {
-      statusCode: 403,
-      body: JSON.stringify({ error: "Token expired" }),
-    };
-  }
-
-  // 4. Verify token type matches action
-  if (tokenRecord.token_type !== request.action_type) {
-    return {
-      statusCode: 403,
-      body: JSON.stringify({ error: "Token type mismatch" }),
-    };
-  }
-
-  // 5. Record anonymous redemption (doesn't link to agent ID)
-  await supabase.from("anonymous_token_redemptions").insert({
+  // 4. Persist only the nullifier hash (double-spend prevention)
+  await supabase.from("spent_token_nullifiers").insert({
     token_hash: tokenHash,
     action_type: request.action_type,
-    unblinded_token: request.unblinded_token,
-    signature_proof: request.signature_proof,
     redeemed_at: new Date(),
   });
 
-  // 6. Update token status
-  await supabase
-    .from("agent_blind_tokens")
-    .update({
-      status: "redeemed",
-      redeemed_at: new Date(),
-      redeemed_for_action: request.action_type,
-      token_hash: tokenHash,
-    })
-    .eq("blind_signature", request.signature_proof);
+  // 5. Record outcome only (no raw token, no caller IP, no session linkage)
+  await supabase.from("platform_revenue").insert({
+    action_type: request.action_type,
+    fee_sats: 0,
+    payment_protocol: "blind_token",
+    payment_hash: tokenHash,
+    payment_status: "paid",
+    paid_at: new Date(),
+  });
 
-  // 7. Perform the authorized action
+  // 6. Perform the authorized action
   let actionResult: ActionResult | undefined;
 
-  if (request.action_type === "event_post") {
+  if (request.action_type === "agent_status_event") {
     // Publish Nostr event anonymously
     actionResult = await publishNostrEvent(request.action_payload);
-  } else if (request.action_type === "task_create") {
+  } else if (request.action_type === "agent_task_record_create") {
     // Create task record
     actionResult = await createTaskRecord(request.action_payload);
-  } else if (request.action_type === "contact_add") {
+  } else if (request.action_type === "agent_contact_add") {
     // Add contact
     actionResult = await addContact(request.action_payload);
-  } else if (request.action_type === "dm_send") {
+  } else if (request.action_type === "agent_dm_bundle") {
     // Send DM
     actionResult = await sendEncryptedDM(request.action_payload);
   }
@@ -2047,11 +2448,14 @@ export const handler = async (event: HandlerEvent) => {
 
 **Verification Steps:**
 
+- [ ] `redeem-blind-token` succeeds with no Authorization header, no session cookie, and no JWT
 - [ ] Blind signature verification works
-- [ ] Double-spend prevention (token hash checked)
+- [ ] Double-spend prevention uses `spent_token_nullifiers.token_hash`
 - [ ] Expiration enforced
 - [ ] Token type matches action
-- [ ] Anonymous redemption recorded without agent ID
+- [ ] Anonymous redemption persists only nullifier hash + action type + outcome
+- [ ] No raw token or caller IP stored in logs or database
+- [ ] Rate limiter for anonymous redemption is keyed on `action_type` only
 - [ ] Action performed successfully
 
 ---
@@ -2286,7 +2690,7 @@ interface BlindToken {
 
 > **ARCHITECTURE NOTE:** Agent-specific columns go in a dedicated `agent_profiles` table
 > that references `user_identities(id)` via FK. This preserves the existing privacy-first
-> schema — agents are users with `role = 'adult' | 'offspring'` in `user_identities`,
+> schema — agents are users with the existing platform role family in `user_identities`,
 > and their agent-specific monetization/reputation data lives here.
 
 ```sql
@@ -2299,19 +2703,21 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
   -- FK to user_identities (the agent's base user record)
   user_identity_id UUID NOT NULL UNIQUE REFERENCES user_identities(id),
 
-  -- Agent identity (maps to 'adult' or 'offspring' in user_identities.role)
+  -- Agent identity (reuses the existing role family in user_identities.role;
+  -- agent-ness is determined by is_agent, not special role strings)
   is_agent BOOLEAN NOT NULL DEFAULT TRUE,
+  family_federation_id UUID NOT NULL REFERENCES family_federations(id),
   agent_username TEXT UNIQUE,
   unified_address TEXT UNIQUE, -- e.g. agent-name@ai.satnam.pub
-	  created_by_user_id UUID REFERENCES user_identities(id), -- human who created this agent (for creator revenue share)
-	  lnbits_creator_split_id TEXT, -- LNbits Split Payments config ID for creator share
+  created_by_user_id UUID REFERENCES user_identities(id), -- creator/founding guardian for this agent federation
+  lnbits_creator_split_id TEXT, -- LNbits Split Payments config ID for creator share
 
-	  -- Monetization tracking
+  -- Monetization tracking
   total_platform_fees_paid_sats BIGINT DEFAULT 0,
   free_tier_claimed BOOLEAN DEFAULT FALSE,
   free_tier_allocation_number INTEGER,
 
-  -- Blind token balance (decremented by trigger on agent_blind_tokens)
+  -- Blind token balance (issued server-side; anonymous redemption is tracked via nullifiers, not per-agent linkage)
   event_tokens_balance INTEGER DEFAULT 0,
   task_tokens_balance INTEGER DEFAULT 0,
   contact_tokens_balance INTEGER DEFAULT 0,
@@ -2363,6 +2769,7 @@ ALTER TABLE agent_profiles
 
 DO $$ BEGIN
   EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_profiles_user_id ON agent_profiles(user_identity_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_profiles_federation ON agent_profiles(family_federation_id)';
   EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_profiles_username ON agent_profiles(agent_username)';
   EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_profiles_reputation ON agent_profiles(reputation_score DESC)';
 END $$;
@@ -2379,6 +2786,30 @@ CREATE POLICY "agent_profiles_own_read" ON agent_profiles
 -- Agents can update their own profile (communication prefs, etc.)
 CREATE POLICY "agent_profiles_own_update" ON agent_profiles
   FOR UPDATE USING (user_identity_id = auth.uid());
+
+-- Founding creator/guardian can read and manage agent profiles inside the
+-- federations they originated.
+CREATE POLICY "agent_profiles_creator_guardian_read" ON agent_profiles
+  FOR SELECT USING (
+    created_by_user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1
+      FROM family_federations ff
+      WHERE ff.id = family_federation_id
+        AND ff.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "agent_profiles_creator_guardian_update" ON agent_profiles
+  FOR UPDATE USING (
+    created_by_user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1
+      FROM family_federations ff
+      WHERE ff.id = family_federation_id
+        AND ff.created_by = auth.uid()
+    )
+  );
 
 -- Public read for reputation/discovery (excludes sensitive monetization fields via column-level grants)
 CREATE POLICY "agent_profiles_public_read" ON agent_profiles
@@ -2440,20 +2871,22 @@ GRANT SELECT ON agent_profiles_public TO anon, authenticated;
 
 ```sql
 -- Token balance trigger targets agent_profiles (NOT deprecated profiles table)
+-- PRIVACY NOTE: Do NOT wire anonymous redeem-blind-token to update agent_blind_tokens.
+-- This trigger is only for opt-in, revealed accounting flows where unlinkability is not required.
 CREATE OR REPLACE FUNCTION update_token_balance()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.status = 'redeemed' AND OLD.status = 'issued' THEN
-    IF NEW.token_type = 'event_post' THEN
+    IF NEW.token_type = 'agent_status_event' THEN
       UPDATE agent_profiles SET event_tokens_balance = event_tokens_balance - 1
       WHERE user_identity_id = NEW.issued_to_agent_id;
-    ELSIF NEW.token_type = 'task_create' THEN
+    ELSIF NEW.token_type = 'agent_task_record_create' THEN
       UPDATE agent_profiles SET task_tokens_balance = task_tokens_balance - 1
       WHERE user_identity_id = NEW.issued_to_agent_id;
-    ELSIF NEW.token_type = 'contact_add' THEN
+    ELSIF NEW.token_type = 'agent_contact_add' THEN
       UPDATE agent_profiles SET contact_tokens_balance = contact_tokens_balance - 1
       WHERE user_identity_id = NEW.issued_to_agent_id;
-    ELSIF NEW.token_type = 'dm_send' THEN
+    ELSIF NEW.token_type = 'agent_dm_bundle' THEN
       UPDATE agent_profiles SET dm_tokens_balance = dm_tokens_balance - 1
       WHERE user_identity_id = NEW.issued_to_agent_id;
     END IF;
@@ -2476,7 +2909,7 @@ CREATE TRIGGER token_redemption_balance_update
 - [ ] Token balance fields track correctly via trigger
 - [ ] Free tier tracking columns present
 - [ ] RLS policies enabled (own-read, own-update, public-read, service-write)
-- [ ] Trigger decrements agent_profiles (NOT profiles) on token redemption
+- [ ] Trigger decrements agent_profiles only for opt-in revealed redemption flows
 - [ ] Migration is fully idempotent
 - [ ] No hardcoded relay URLs (coordination_relay_urls populated from config)
 
@@ -2526,9 +2959,9 @@ type PaymentProtocol = "lightning" | "cashu" | "fedimint";
 // Implementation: Add lifecycle_state column to agent_profiles table
 // See agent_profiles schema in Task 2.1 for full state machine integration
 
-// Agent maps to existing Master Context roles: 'adult' or 'offspring'
-// (NOT custom 'agent_parent'/'agent_adult'/'agent_offspring' — those are not in the role hierarchy)
-type AgentRole = "adult" | "offspring";
+// Agent reuses the existing platform role family rather than introducing
+// separate *_agent roles.
+type AgentRole = "private" | "offspring" | "adult" | "steward" | "guardian";
 
 // Agent lifecycle states for state machine
 type AgentLifecycleState =
@@ -2542,6 +2975,7 @@ type AgentLifecycleState =
 interface CreateAgentRequestExtended {
   agent_role: AgentRole; // Maps to user_identities.role
   parent_user_id?: string; // For offspring: the creating adult's user_identities.id
+  family_federation_id?: string; // Existing federation context; omit only when bootstrapping a new agent federation
   agent_username: string;
   nostr_pubkey: string;
 
@@ -2600,6 +3034,7 @@ export const handler = async (event: HandlerEvent) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         agent_id: "pending",
+        human_user_id: caller.id,
         action_type: "agent_account_creation",
         payment_protocol:
           request.account_creation_payment_protocol || "lightning",
@@ -2648,7 +3083,7 @@ export const handler = async (event: HandlerEvent) => {
   const { data: bondRequirement } = await supabase
     .from("bond_requirements")
     .select("required_amount_sats")
-    .eq("account_type", request.agent_role) // Uses 'adult' | 'offspring', not deprecated agent types
+    .eq("account_type", request.agent_role) // Uses existing platform role family, not deprecated agent-only role types
     .eq("operation", "account_creation")
     .single();
 
@@ -2680,7 +3115,8 @@ export const handler = async (event: HandlerEvent) => {
     .from("user_identities")
     .insert({
       npub: request.nostr_pubkey,
-      role: request.agent_role, // 'adult' or 'offspring' (Master Context compliant)
+      role: request.agent_role, // Existing platform role family
+      is_agent: true,
       nip05: `${request.agent_username}@ai.satnam.pub`,
       username: request.agent_username,
     })
@@ -2702,6 +3138,7 @@ export const handler = async (event: HandlerEvent) => {
     .insert({
       user_identity_id: userIdentity.id,
       is_agent: true,
+      family_federation_id: request.family_federation_id,
       agent_username: request.agent_username,
       unified_address: unifiedAddress,
       created_by_user_id: caller.id,
@@ -2777,7 +3214,7 @@ export const handler = async (event: HandlerEvent) => {
     lightning_enabled: request.enable_lightning ?? true,
     lnurl_callback_url: `${process.env.VITE_API_BASE_URL}/lnurlp/${request.agent_username}/callback`,
     cashu_enabled: request.enable_cashu ?? true,
-    cashu_mint_url: process.env.CASHU_MINT_URL, // mint.satnam.pub
+    cashu_mint_url: process.env.CASHU_MINT_URL, // platform-default/bootstrap mint; replace with federation registry lookup when assigned
     cashu_pubkey: await generateCashuPubkey(userIdentity.id),
     fedimint_enabled: request.enable_fedimint ?? true,
     fedimint_federation_id: process.env.FEDIMINT_FEDERATION_ID,
@@ -2862,7 +3299,7 @@ export const handler = async (event: HandlerEvent) => {
     if (request.purchase_event_tokens && request.purchase_event_tokens > 0) {
       const eventTokens = await tokenManager.purchaseTokens(
         userIdentity.id,
-        "event_post",
+        "agent_status_event",
         request.purchase_event_tokens,
         request.tokens_payment_proof || "",
       );
@@ -2881,7 +3318,7 @@ export const handler = async (event: HandlerEvent) => {
   // 9. Publish agent creation event
   await publishAgentCreationEvent({
     agentNpub: request.nostr_pubkey,
-    agentRole: request.agent_role, // 'adult' | 'offspring' (Master Context compliant)
+    agentRole: request.agent_role, // Existing platform role family (Master Context compliant)
     unifiedAddress: unifiedAddress,
     bondAmount: request.bond_amount_sats,
     createdBy: caller.id,
@@ -3027,29 +3464,17 @@ async function handleCreditIntent(request: CreditIntentRequest) {
   let feeCharged = false;
 
   if (request.fee_payment_method === 'blind_token') {
-    // Agent using blind token for privacy
-    const tokenRedemption = await fetch(`${process.env.VITE_API_BASE_URL}/agents/redeem-blind-token`, {
-      method: 'POST',
-      body: JSON.stringify({
-        unblinded_token: request.fee_payment_proof,
-        action_type: 'credit_envelope_request',
-        action_payload: { scope: request.scope },
-      }),
-    });
-
-    if (tokenRedemption.ok) {
-      feeCharged = true;
-    } else {
-      return { error: 'Invalid blind token for credit envelope request' };
-    }
-
+    return {
+      error:
+        'Credit envelope requests are direct-pay only and cannot use blind tokens.',
+    };
   } else {
     // Direct payment
     const feeResponse = await fetch(`${process.env.VITE_API_BASE_URL}/platform/charge-fee`, {
       method: 'POST',
       body: JSON.stringify({
         agent_id: request.agent_id,
-        action_type: 'credit_envelope_request',
+        action_type: 'agent_credit_envelope_request',
         payment_proof: request.fee_payment_proof,
       }),
     });
@@ -3083,7 +3508,7 @@ async function handleCreditIntent(request: CreditIntentRequest) {
   const bondRequirement = await supabase
     .from('bond_requirements')
     .select('required_amount_sats')
-    .eq('account_type', agent.agent_role) // 'adult' | 'offspring' (Master Context compliant)
+    .eq('account_type', agent.agent_role) // Existing platform role family (Master Context compliant)
     .eq('operation', 'credit_request')
     .single();
 
@@ -3606,7 +4031,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           unblinded_token: request.fee_payment_proof,
-          action_type: "task_record_create",
+          action_type: "agent_task_record_create",
           action_payload: { task_title: request.task_title },
         }),
       },
@@ -3622,7 +4047,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           agent_id: request.agent_id,
-          action_type: "task_record_create",
+          action_type: "agent_task_record_create",
           payment_proof: request.fee_payment_proof,
         }),
       },
@@ -4012,7 +4437,7 @@ interface PublishNostrEventRequest {
   event_content: string;
   event_tags: string[][];
 
-  // Payment for event publishing fee (100 sats)
+  // Payment for event publishing fee (21 sats)
   fee_payment_method?: "blind_token" | "direct_payment";
   fee_payment_proof?: string;
 
@@ -4025,7 +4450,7 @@ export const handler = async (event: HandlerEvent) => {
   const supabase = createServerSupabaseClient();
   const request: PublishNostrEventRequest = JSON.parse(event.body || "{}");
 
-  // 1. MONETIZATION: Charge event publishing fee (100 sats)
+  // 1. MONETIZATION: Charge event publishing fee (21 sats)
   let feeCharged = false;
 
   if (request.fee_payment_method === "blind_token") {
@@ -4035,7 +4460,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           unblinded_token: request.fee_payment_proof,
-          action_type: "event_post",
+          action_type: "agent_status_event",
           action_payload: { kind: request.event_kind },
         }),
       },
@@ -4051,7 +4476,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           agent_id: request.agent_id,
-          action_type: "agent_status_update_event",
+          action_type: "agent_status_event",
           payment_proof: request.fee_payment_proof,
         }),
       },
@@ -4065,7 +4490,7 @@ export const handler = async (event: HandlerEvent) => {
         statusCode: 402,
         body: JSON.stringify({
           error: "Event publishing fee required",
-          fee_sats: 100,
+          fee_sats: 21,
           payment_invoice: feeResult.payment_invoice,
         }),
       };
@@ -4080,7 +4505,9 @@ export const handler = async (event: HandlerEvent) => {
   }
 
   // 2. Get agent identity from user_identities (NOT deprecated profiles)
-  // ZERO-KNOWLEDGE: Only fetch npub — signing done via NIP-46 or SecureNsecManager session
+  // Phase 4 uses a mocked signer-broker boundary here. Existing Satnam recovery
+  // flows remain for non-agent users; agent signer/bunker implementation lands
+  // in a dedicated later phase.
   const { data: agent } = await supabase
     .from("user_identities")
     .select("id, npub")
@@ -4125,7 +4552,8 @@ export const handler = async (event: HandlerEvent) => {
   }
 
   // 4. Create and sign Nostr event
-  // ZERO-KNOWLEDGE: Sign via NIP-46 remote signer or SecureNsecManager session
+  // ZERO-KNOWLEDGE: Sign via a placeholder AgentSignerBroker adapter now;
+  // later phases plug this into the federation-governed signer/bunker path.
   // NEVER access nostr_secret_key from database
   const unsignedEvent: UnsignedEvent = {
     kind: request.event_kind,
@@ -4135,7 +4563,8 @@ export const handler = async (event: HandlerEvent) => {
     pubkey: agent.npub, // user_identities column (NOT deprecated nostr_pubkey)
   };
 
-  // Sign via NIP-46 remote signer (agent key management)
+  // Sign via placeholder broker (mocked in Phase 4, replaced later by the
+  // dedicated agent signer / bunker implementation)
   const nostrEvent = await signEventViaRemoteSigner(
     unsignedEvent,
     request.agent_id,
@@ -4276,7 +4705,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           unblinded_token: request.fee_payment_proof,
-          action_type: "contact_add",
+          action_type: "agent_contact_add",
           action_payload: { contact_type: request.contact_type },
         }),
       },
@@ -4292,7 +4721,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           agent_id: request.agent_id,
-          action_type: "contact_add",
+          action_type: "agent_contact_add",
           payment_proof: request.fee_payment_proof,
         }),
       },
@@ -4402,7 +4831,7 @@ interface SendEncryptedDMRequest {
   recipient_npub: string;
   message_content: string;
 
-  // Payment for DM send fee (25 sats)
+  // Payment for DM send fee (21 sats per bundle)
   fee_payment_method?: "blind_token" | "direct_payment";
   fee_payment_proof?: string;
 }
@@ -4412,7 +4841,7 @@ export const handler = async (event: HandlerEvent) => {
   const supabase = createServerSupabaseClient();
   const request: SendEncryptedDMRequest = JSON.parse(event.body || "{}");
 
-  // 1. MONETIZATION: Charge DM send fee (25 sats)
+  // 1. MONETIZATION: Charge DM bundle fee (21 sats per bundle)
   let feeCharged = false;
 
   if (request.fee_payment_method === "blind_token") {
@@ -4422,7 +4851,7 @@ export const handler = async (event: HandlerEvent) => {
         method: "POST",
         body: JSON.stringify({
           unblinded_token: request.fee_payment_proof,
-          action_type: "dm_send",
+          action_type: "agent_dm_bundle",
           action_payload: { recipient: request.recipient_npub },
         }),
       },
@@ -4452,7 +4881,7 @@ export const handler = async (event: HandlerEvent) => {
         statusCode: 402,
         body: JSON.stringify({
           error: "DM send fee required",
-          fee_sats: 25,
+          fee_sats: 21,
           payment_invoice: feeResult.payment_invoice,
         }),
       };
@@ -4533,7 +4962,8 @@ export const handler = async (event: HandlerEvent) => {
 > reputation systems emerge."_ This task extends existing work-history and
 > attestation flows to make **agent reputation portable across platforms**
 > while preserving Satnam's privacy-first guarantees (no raw social graph
-> dumping, per-user salted identifiers).
+> dumping, per-user salted identifiers) and adding room for federation-readable
+> reputation summaries that can be consumed by both humans and agents.
 
 **Files:**
 
@@ -4692,6 +5122,58 @@ $$ LANGUAGE sql STABLE;
 - Imported events are re-materialized into `agent_reputation_events` with a
   `context.import_source = 'external'` flag, preserving provenance.
 
+#### 3.8.5 Federation Reputation Summary Layer (**Should add next**)
+
+- Keep **trust calibration dashboards** (Task 4.5.4) as a _local_ human-facing
+  aid, but do **not** treat them as the canonical portable reputation artifact.
+- Add a federation/agent reputation summary layer that is both:
+  - **Human-readable** in Satnam dashboards
+  - **Machine-readable** for external agents/platforms querying Nostr or API
+- Preferred publication model:
+  - `kind 31990` remains the **discovery front door** for service/platform lookup
+  - `kind 30300` becomes the **parameterized replaceable summary** for
+    federation/agent reputation snapshots
+  - optional references from that summary point to `kind 1985`, `kind 39211`,
+    `kind 39212/39213`, and current-scope `kind 30100` solvency artifacts from Task 4.8
+- Summary payload should include:
+  - decayed reputation score
+  - bond release/slash history summary
+  - vouch and Circle-of-Trust summaries
+  - guardian approval evidence references where applicable
+  - latest solvency summary references when a federation mint exists
+  - NIP-03 / OpenTimestamps references where a summary or supporting artifact is
+    anchored in the current implementation sequence
+
+#### 3.8.6 Canonical Proof-of-Work Indexing via `kind 39211` (**Should add next**)
+
+- Canonical machine-readable Proof-of-Work indexing should be anchored on
+  **`kind 39211` aggregation/result events**, not solely on settlement receipts
+  such as `kind 39244`.
+- Rationale: `kind 39211` can serve as the aggregation point tying together:
+  - result/outcome
+  - settlement receipt(s)
+  - trajectory/execution history (`kind 39230` / `kind 39231`)
+  - execution hash / delegated work references
+- Extend reputation/work-history materialization to capture fields such as:
+  - `tick_result_event_id`
+  - `trajectory_session_id`
+  - `trajectory_hash`
+  - `child_trajectory_session_id`
+  - `delegated_to_federation_npub`
+- Treat `kind 39244` as important financial evidence, but not the sole source of
+  verifiable work history.
+
+#### 3.8.7 Guardian-Approval-Backed Circle of Trust (**Should add next**)
+
+- Circle of Trust, vouch, and trust-label artifacts should not float as
+  unsupported labels for high-trust claims.
+- For high-value federation endorsements, require labels or summary entries to
+  reference **guardian approval evidence** such as `kind 39212` / `kind 39213`
+  events (or equivalent internal approval records if Nostr publication is not yet
+  enabled).
+- Continue using lightweight labels for low-stakes social proof, but distinguish
+  them clearly from guardian-backed endorsements in both UI and exported bundles.
+
 **Verification Steps:**
 
 - [ ] Attestations generated in Tasks 3.1–3.4 create corresponding
@@ -4702,6 +5184,11 @@ $$ LANGUAGE sql STABLE;
 - [ ] Import flow does **not** allow forging reputation for other agents.
 - [ ] No RLS policy exposes raw trust links as a global social graph; only
       aggregated scores and per-relationship views are available.
+- [ ] Federation reputation summaries can be generated without exposing raw trust
+      edges or private federation-only data.
+- [ ] Canonical PoW/work-history indexing references `kind 39211` aggregation
+      points when available.
+- [ ] Guardian-backed trust claims are distinguishable from unbacked labels.
 
 ---
 
@@ -4811,9 +5298,9 @@ persisted into `extra_config.autonomy`.
 type AutonomyActionType =
   | "payment"
   | "external_api_call"
-  | "encrypted_dm_send"
-  | "task_create"
-  | "credit_envelope_request";
+  | "agent_dm_bundle"
+  | "agent_task_record_create"
+  | "agent_credit_envelope_request";
 
 interface AutonomyCheckContext {
   agentId: string;
@@ -4961,7 +5448,7 @@ function AgentDashboard({ agentId }: { agentId: string }) {
       {/* Identity Section */}
       <div className="identity-card">
         <h2>{agent.agent_profiles?.unified_address}</h2>
-        {/* Master Context compliant: agent_role maps to 'adult' | 'offspring' */}
+        {/* Master Context compliant: agent_role reuses the existing platform role family */}
         <span className="badge">{agent.agent_profiles?.agent_role}</span>
         {agent.agent_profiles?.nip05_verified && <span className="verified">✓ NIP-05</span>}
         {agent.agent_profiles?.free_tier_claimed && (
@@ -4978,29 +5465,29 @@ function AgentDashboard({ agentId }: { agentId: string }) {
           <div className="token-item">
             <span className="token-label">Event Publishing</span>
             <span className="token-balance">{tokenBalances.event_tokens}</span>
-            <button onClick={() => purchaseTokens('event_post', 10)}>
-              Buy 10 (1,000 sats)
+            <button onClick={() => purchaseTokens('agent_status_event', 10)}>
+              Buy 10 (210 sats)
             </button>
           </div>
           <div className="token-item">
             <span className="token-label">Task Creation</span>
             <span className="token-balance">{tokenBalances.task_tokens}</span>
-            <button onClick={() => purchaseTokens('task_create', 10)}>
+            <button onClick={() => purchaseTokens('agent_task_record_create', 10)}>
               Buy 10 (1,500 sats)
             </button>
           </div>
           <div className="token-item">
             <span className="token-label">Contact Addition</span>
             <span className="token-balance">{tokenBalances.contact_tokens}</span>
-            <button onClick={() => purchaseTokens('contact_add', 10)}>
+            <button onClick={() => purchaseTokens('agent_contact_add', 10)}>
               Buy 10 (500 sats)
             </button>
           </div>
           <div className="token-item">
-            <span className="token-label">Encrypted DMs</span>
+            <span className="token-label">Encrypted DM Bundles</span>
             <span className="token-balance">{tokenBalances.dm_tokens}</span>
-            <button onClick={() => purchaseTokens('dm_send', 10)}>
-              Buy 10 (250 sats)
+            <button onClick={() => purchaseTokens('agent_dm_bundle', 10)}>
+              Buy 10 bundles (210 sats)
             </button>
           </div>
         </div>
@@ -5229,10 +5716,10 @@ function TokenPurchaseModal({
   const [purchasing, setPurchasing] = useState(false);
 
   const feePerToken = {
-    event_post: 100,
-    task_create: 150,
-    contact_add: 50,
-    dm_send: 25,
+    agent_status_event: 21,
+    agent_task_record_create: 150,
+    agent_contact_add: 50,
+    agent_dm_bundle: 21,
   }[tokenType];
 
   const totalFee = feePerToken * quantity;
@@ -5399,14 +5886,14 @@ function PublishEventButton({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     const tokenManager = new BlindTokenManager();
-    setHasTokens(tokenManager.getBalance('event_post') > 0);
+    setHasTokens(tokenManager.getBalance('agent_status_event') > 0);
   }, []);
 
   async function publishEvent(useToken: boolean) {
     if (useToken) {
       // Use blind token for anonymous publishing
       const tokenManager = new BlindTokenManager();
-      await tokenManager.redeemToken('event_post', eventPayload);
+      await tokenManager.redeemToken('agent_status_event', eventPayload);
       toast.success('Event published anonymously!');
     } else {
       // Direct payment
@@ -5414,7 +5901,7 @@ function PublishEventButton({ agentId }: { agentId: string }) {
         method: 'POST',
         body: JSON.stringify({
           agent_id: agentId,
-          action_type: 'agent_status_update_event',
+          action_type: 'agent_status_event',
         }),
       });
 
@@ -5460,14 +5947,14 @@ function PublishEventButton({ agentId }: { agentId: string }) {
           >
             <span className="option-icon">⚡</span>
             <div className="option-details">
-              <strong>Direct Payment (100 sats)</strong>
+                <strong>Direct Payment (21 sats)</strong>
               <small>Lightning, Cashu, or Fedimint</small>
             </div>
           </button>
 
           {!hasTokens && (
             <div className="no-tokens-notice">
-              <p>No blind tokens available. <a href="#" onClick={() => openTokenPurchaseModal('event_post')}>Buy tokens</a> for anonymous publishing.</p>
+              <p>No blind tokens available. <a href="#" onClick={() => openTokenPurchaseModal('agent_status_event')}>Buy tokens</a> for anonymous publishing.</p>
             </div>
           )}
         </div>
@@ -5479,7 +5966,7 @@ function PublishEventButton({ agentId }: { agentId: string }) {
 // Similar components for other actions:
 // - CreateTaskButton (150 sats or token)
 // - AddContactButton (50 sats or token)
-// - SendDMButton (25 sats or token)
+// - SendDMButton (21 sats or token)
 ```
 
 **Verification Steps:**
@@ -5596,7 +6083,7 @@ CREATE TABLE IF NOT EXISTS agent_creation_audit (
   creation_channel agent_creation_channel NOT NULL,
 
   -- Agent role & initial economic state (for debugging abuse / limits)
-  agent_role TEXT NOT NULL,                      -- 'adult' | 'offspring'
+  agent_role TEXT NOT NULL,                      -- existing platform role family
   free_tier_used BOOLEAN DEFAULT FALSE,
   free_tier_allocation_number INTEGER,
   required_bond_amount_sats BIGINT DEFAULT 0,    -- From bond ladder
@@ -5644,8 +6131,9 @@ CREATE POLICY IF NOT EXISTS "agent_creation_service_full"
 **Agent Creation with Intent (extends Task 2.2 `create-agent-with-fees.ts`)**
 
 - Reuse the existing `CreateAgentRequestExtended` type and add **intent** and
-  **creator_type** fields so **both** human wizard and self-onboarding agents
-  can provide the same Vision/Mission/Value configuration.
+  **creator_type** fields so the primary **human/Federation Foundry** flow and
+  the later **programmatic agent-creation** flow can provide the same
+  Vision/Mission/Value configuration.
 
 ```typescript
 // Additional types in netlify/functions/agents/create-agent-with-fees.ts
@@ -5662,7 +6150,7 @@ interface AgentIntentConfig {
 }
 
 interface CreateAgentWithIntentRequest extends CreateAgentRequestExtended {
-  creator_type: CreatorType; // "human" for wizard, "agent" for self-onboarding
+  creator_type: CreatorType; // "human" for wizard / Foundry, "agent" for later programmatic creation
   intent?: AgentIntentConfig; // Optional for legacy callers
 }
 ```
@@ -5674,6 +6162,9 @@ interface CreateAgentWithIntentRequest extends CreateAgentRequestExtended {
      2.2) and set `created_by_user_id = caller.id`.
    - If `creator_type === "agent"`, authenticate via JWT for the calling
      agent and set `created_by_user_id = calling_agent_id`.
+   - For the primary human-created path, create or attach a
+     `family_federation_id` and ensure `family_federations.created_by` matches
+     the founding guardian/creator authority.
 2. **Enforce per-human / per-agent limits and bond ladder**
    - Before creating the new agent, compute:
      - Number of existing agents where `created_by_user_id = caller.id`.
@@ -5683,6 +6174,12 @@ interface CreateAgentWithIntentRequest extends CreateAgentRequestExtended {
      `required_bond_amount_sats` for the new agent, and **fail fast** with an
      `EconomicFailureHint` if the creator is at/over limits.
 3. **After successful `user_identities` + `agent_profiles` insert:**
+   - Ensure the new agent has `is_agent = true` in the canonical runtime lookup
+     path and in `agent_profiles`, with a migration/backfill if either surface
+     is currently missing in the live schema.
+   - Ensure `agent_profiles.family_federation_id` is set, and that creator /
+     guardian / founder authority resolves to the same governing user for this
+     federation during Phase 4.
    - **Upsert** into `agent_intent_configurations` when `intent` is provided:
      - `agent_id = newAgent.id`
      - `created_by_user_id = caller.id`
@@ -5700,7 +6197,8 @@ interface CreateAgentWithIntentRequest extends CreateAgentRequestExtended {
 This keeps **one unified creation endpoint** for both:
 
 - **Human-Created Agents**: Wizard UI calls `create-agent-with-fees` with
-  `creator_type = "human"` and full `intent`.
+  `creator_type = "human"`, full `intent`, and Federation Foundry-aligned
+  federation bootstrapping/assignment.
 - **Self-Onboarding Agents**: Programmatic callers use the same endpoint with
   `creator_type = "agent"` and the same `intent` payload.
 
@@ -5845,7 +6343,8 @@ export const handler = async (event: HandlerEvent) => {
     return createErrorResponse(401, "Authentication required", requestId);
   }
 
-  // Use created_by_user_id from agent_profiles to avoid new relationship table
+  // Use created_by_user_id plus federation-created_by authority to avoid
+  // introducing a separate shadow relationship model.
   const { data, error } = await supabase
     .from("user_identities")
     .select(
@@ -5897,22 +6396,46 @@ export const handler = async (event: HandlerEvent) => {
 - [ ] Free tier + bond ladder enforced before creating new agents
 - [ ] Intent upsert + audit insert succeed or leave agent in `PENDING_CONFIG`
 - [ ] Intent CRUD endpoints respect RLS and do not leak cross-tenant data
-- [ ] Management dashboard endpoint returns only agents created by caller
+- [ ] Management dashboard endpoint returns only agents created by caller or within federations governed by the founding guardian/creator
 
 ---
 
-#### 4.4.3 Agent Creation Wizard UI (Vision → Mission → Value Creation)
+**Agent Session / Federation Context Correction**
+
+- Add or update `agent_sessions` so each session row is both **creator-centric**
+  and **federation-centric**:
+  - `agent_id`
+  - `human_creator_id` (treated as the founding guardian / creator authority for
+    current agent federations)
+  - `family_federation_id`
+  - `session_token`, expiry, capability scope, and lifecycle metadata
+- Add RLS so agent sessions can be read/revoked by:
+  - the agent itself,
+  - the founding guardian / creator,
+  - `service_role`.
+- Runtime session creation must validate:
+  - `user_identities.is_agent = true`,
+  - matching `agent_profiles.family_federation_id`,
+  - `family_federations.created_by` authority for creator-managed actions.
+- Recovery/export restrictions for `is_agent = true` accounts must use the same
+  session + federation context rather than stand-alone self-service checks.
+
+---
+
+#### 4.4.3 Agent Creation Wizard UI (Vision → Mission → Value Creation → Pay-Gate Provider)
 
 **File:** `src/components/agents/AgentCreationWizard.tsx`
 
-> **Flow:** Mirrors the Family Foundry pattern with three core intent steps
-> (Vision → Mission → Value Creation) plus a final **Review & Economic
-> Summary** step that integrates free tier, bond ladder, and creation fees.
+> **Flow:** Mirrors the Family / Federation Foundry pattern with three core intent steps
+> (Vision → Mission → Value Creation), a **Step 3b: Pay-Gate Provider** selector,
+> plus a final **Review & Economic Summary** step that integrates free tier,
+> bond ladder, creation fees, and ongoing pay-gate spending controls.
 
 - **Step 0 – Role & Context**
-  - Choose Master Context role for the new agent: `'adult' | 'offspring'`.
-  - Show short explanation of implications (e.g. `'offspring'` agents may
-    inherit some constraints from a parent agent/federation).
+  - Choose any existing platform role for the new agent: `private | offspring | adult | steward | guardian`.
+  - Show short explanation of implications and federation context (e.g.
+    `offspring` inheritance constraints, `guardian` governance authority,
+    and that the agent will be created inside or alongside a federation).
 - **Step 1 – Vision**
   - Fields: `vision_title`, `vision_summary`.
   - Guard rails: character limits, examples, and warnings about storing
@@ -5924,8 +6447,16 @@ export const handler = async (event: HandlerEvent) => {
   - Fields: `value_context`, `constraints[]`, `success_metrics[]`.
   - Emphasize privacy-first constraints (e.g. "never store raw nsec",
     "only use remote signing", etc.).
+- **Step 3b – Pay-Gate Provider**
+  - Show the sovereignty scale selector: `lightning_faucet → routstr → aperture → self_hosted`.
+  - Default to `lightning_faucet` for agent-created agents (`wallet_custody_type = 'lightning_faucet'`).
+  - Default to `self_hosted` (or the user's existing NWC wallet) for human-created agents with `wallet_custody_type = 'self_custodial'`.
+  - Explain each option's trust model in plain language.
+  - Persist selection to `agent_paygate_config.provider`.
+  - Fields: `max_spend_per_call_sats`, `max_spend_per_hour_sats`, `max_spend_per_day_sats`, optional `fallback_provider`.
 - **Step 4 – Review & Economic Summary**
   - Summarize all intent fields for confirmation.
+  - Summarize the selected pay-gate provider and spend caps.
   - Call `create-agent-with-fees` with `creator_type = "human"` and the
     `intent` payload; surface either:
     - **Success** → redirect to `AgentDashboard` for the new agent.
@@ -6024,17 +6555,29 @@ export function AgentCreationWizard({ onAgentCreated }: AgentCreationWizardProps
   - Actual fee/bond payments are performed via existing monetization UIs
     (TokenPurchaseModal, bond top-up flows) before retrying submission.
 - **Master Context Compliance**
-  - Only `'adult'` and `'offspring'` options are available for `agentRole`.
+  - Reuse the existing role family already present in Satnam rather than
+    introducing custom agent-only roles.
   - No `admin` or non-standard roles are introduced.
 - **Self-Onboarding Agents**
   - Programmatic self-onboarding reuses the same backend endpoint with
     `creator_type = "agent"` and identical `intent` shape; the wizard itself
     is only exposed to human users.
 
+**Agent Recovery / Export Restriction Note:**
+
+- For `is_agent = true` accounts, raw `nsec` export/recovery must **not** be
+  offered as normal self-service UX.
+- During Phase 4, recovery/export APIs and UI should route agent accounts into a
+  guardian-governed path tied to the founding federation guardian (`created_by`
+  / founding guardian / creator authority).
+- If the founding guardian disappears, the plan intentionally treats the agent
+  federation as no longer recoverable/operational rather than widening recovery
+  authority.
+
 **Verification Steps:**
 
 - [ ] Wizard enforces 3-step Vision/Mission/Value pattern
-- [ ] Only `'adult' | 'offspring'` roles selectable
+- [ ] Only existing platform roles are selectable; no separate `*_agent` roles
 - [ ] Successful creation redirects to per-agent `AgentDashboard`
 - [ ] Economic failure hints rendered without leaking other users' data
 - [ ] No nsec or secret values captured in intent fields
@@ -6053,8 +6596,9 @@ export function AgentCreationWizard({ onAgentCreated }: AgentCreationWizardProps
 **Data Sources:**
 
 - `GET /.netlify/functions/agents/get-management-dashboard`
-  - Returns `ManagedAgentSummary[]` for agents where
-    `agent_profiles.created_by_user_id = caller.id`.
+  - Returns `ManagedAgentSummary[]` for agents where the caller is either
+    `agent_profiles.created_by_user_id` or the founding guardian / creator for
+    the agent's federation.
 - `GET /.netlify/functions/agents/get-agent-intent?agent_id=...`
   - Loads full Vision/Mission/Value for the selected agent.
 - `POST /.netlify/functions/agents/upsert-agent-intent`
@@ -6130,7 +6674,8 @@ export function AgentManagementDashboard() {
   - Includes an `AgentIntentEditor` subcomponent bound to
     `get-agent-intent` / `upsert-agent-intent` to edit Vision/Mission/Value.
 - **Permissions**
-  - Humans only see agents where they are `created_by_user_id`.
+  - Humans only see agents where they are `created_by_user_id` or the founding
+    guardian / creator for the same federation.
   - Agents accessing this view only see themselves (single-card list), enforced
     by RLS + `get-management-dashboard` query.
 
@@ -6144,7 +6689,2085 @@ export function AgentManagementDashboard() {
 
 ---
 
-### Task 4.5: Agent-to-Agent Commerce Primitives (Service Discovery, Contracts, Escrow)
+#### 4.4.5 Authority Gradient Safeguards (Task Challenge Mechanism)
+
+> **DEPENDENCIES:** Tasks 4.4.1–4.4.4 (Agent Creation & Management), Task 3.8 (Reputation System)
+> **GOAL:** Prevent sycophancy and authority gradient failures by enabling agents to challenge ambiguous, harmful, or capability-mismatched task assignments before acceptance. Implements "cognitive friction" checkpoints inspired by aviation CRM (Crew Resource Management) principles.
+
+**Problem Statement:**
+
+Current AI models exhibit sycophancy—reluctance to challenge requests even when they are ambiguous, harmful, or beyond the agent's capabilities. This is especially problematic in hierarchical delegation where:
+
+- Less experienced agents may not voice concerns about unclear specifications
+- Agents may accept tasks beyond their resource limits to please delegators
+- Ethical concerns (PII exposure, irreversible actions) may be ignored
+- Capability mismatches lead to wasted resources and failed tasks
+
+**Solution: Pre-Acceptance Task Evaluation**
+
+Before accepting any task assignment, agents perform a structured self-assessment and may return a `TaskChallengeCheck` requiring delegator clarification.
+
+**Database Schema: Task Challenge Records**
+
+**File:** `supabase/migrations/YYYYMMDD_task_challenge_mechanism.sql`
+
+```sql
+-- Task challenge types
+DO $$ BEGIN
+  CREATE TYPE task_challenge_reason AS ENUM (
+    'AMBIGUOUS_SPEC',
+    'RESOURCE_EXCEED',
+    'ETHICAL_CONCERN',
+    'CAPABILITY_MISMATCH',
+    'CONTEXT_SATURATION'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE challenge_resolution AS ENUM (
+    'REVISED',
+    'OVERRIDE_WITH_EXPLANATION',
+    'CANCELLED',
+    'DELEGATED_TO_ALTERNATIVE'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Track task challenges for audit and learning
+CREATE TABLE IF NOT EXISTS agent_task_challenges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  task_id UUID NOT NULL, -- FK to agent_task_records when available
+  agent_id UUID NOT NULL REFERENCES user_identities(id),
+  delegator_id UUID NOT NULL REFERENCES user_identities(id),
+
+  challenge_reason task_challenge_reason NOT NULL,
+  agent_concern TEXT NOT NULL,
+  suggested_modification TEXT,
+
+  -- Delegator response
+  resolution challenge_resolution,
+  delegator_explanation TEXT,
+  revised_task_spec JSONB,
+
+  -- Outcome tracking
+  challenge_accepted BOOLEAN, -- Did delegator accept the challenge?
+  task_proceeded BOOLEAN DEFAULT FALSE,
+  final_task_outcome TEXT, -- 'SUCCESS' | 'FAILURE' | 'CANCELLED'
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+DO $$ BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_challenges_agent ON agent_task_challenges(agent_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_challenges_delegator ON agent_task_challenges(delegator_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_challenges_reason ON agent_task_challenges(challenge_reason)';
+END $$;
+
+ALTER TABLE agent_task_challenges ENABLE ROW LEVEL SECURITY;
+
+-- Agent and delegator can see their own challenges
+CREATE POLICY IF NOT EXISTS "task_challenges_participant_read"
+  ON agent_task_challenges
+  FOR SELECT
+  USING (agent_id = auth.uid() OR delegator_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "task_challenges_agent_insert"
+  ON agent_task_challenges
+  FOR INSERT
+  WITH CHECK (agent_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "task_challenges_delegator_update"
+  ON agent_task_challenges
+  FOR UPDATE
+  USING (delegator_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "task_challenges_service_full"
+  ON agent_task_challenges
+  FOR ALL
+  USING (auth.role() = 'service_role');
+```
+
+**Agent SDK: Task Challenge Evaluation**
+
+**File:** `src/lib/agents/task-challenge-evaluator.ts`
+
+```typescript
+// Task challenge evaluation for authority gradient safeguards
+import { supabase } from "@/lib/supabase";
+
+export type ChallengeReason =
+  | "AMBIGUOUS_SPEC"
+  | "RESOURCE_EXCEED"
+  | "ETHICAL_CONCERN"
+  | "CAPABILITY_MISMATCH"
+  | "CONTEXT_SATURATION";
+
+export interface TaskChallengeCheck {
+  task_id: string;
+  challenge_reason: ChallengeReason;
+  agent_concern: string;
+  requires_clarification: boolean;
+  suggested_modification?: string;
+  confidence_in_challenge: number; // 0-100
+}
+
+export interface TaskAssignment {
+  id: string;
+  description: string;
+  required_capabilities: string[];
+  estimated_cost_sats: number;
+  estimated_context_tokens: number;
+  success_criteria: string[];
+  delegator_id: string;
+  deadline?: string;
+}
+
+export interface AgentCapabilities {
+  skill_ids: string[];
+  max_budget_sats: number;
+  max_context_tokens: number;
+  current_context_used_percent: number;
+  ethical_constraints: string[];
+  verified_capabilities: string[];
+}
+
+/**
+ * Evaluate task before acceptance using local LLM reasoning
+ * Returns null if task is acceptable, or TaskChallengeCheck if concerns exist
+ */
+export async function evaluateTaskBeforeAcceptance(
+  task: TaskAssignment,
+  agentCapabilities: AgentCapabilities,
+): Promise<TaskChallengeCheck | null> {
+  // 1. Check for ambiguous specifications
+  const hasVerifiableCriteria =
+    task.success_criteria.length > 0 &&
+    task.success_criteria.some(
+      (c) =>
+        c.includes("test") ||
+        c.includes("measurable") ||
+        c.includes("verifiable"),
+    );
+
+  if (!hasVerifiableCriteria) {
+    return {
+      task_id: task.id,
+      challenge_reason: "AMBIGUOUS_SPEC",
+      agent_concern:
+        "Task lacks verifiable success criteria. Without clear acceptance tests, disputes may arise.",
+      requires_clarification: true,
+      suggested_modification:
+        'Add specific, measurable success criteria (e.g., "passes unit tests", "achieves 95% accuracy")',
+      confidence_in_challenge: 85,
+    };
+  }
+
+  // 2. Check resource limits
+  if (task.estimated_cost_sats > agentCapabilities.max_budget_sats) {
+    return {
+      task_id: task.id,
+      challenge_reason: "RESOURCE_EXCEED",
+      agent_concern: `Task estimated cost (${task.estimated_cost_sats} sats) exceeds my budget limit (${agentCapabilities.max_budget_sats} sats)`,
+      requires_clarification: true,
+      suggested_modification: `Reduce scope or increase budget allocation to ${task.estimated_cost_sats} sats`,
+      confidence_in_challenge: 95,
+    };
+  }
+
+  // 3. Check context window saturation
+  const projectedContextUsed =
+    agentCapabilities.current_context_used_percent +
+    (task.estimated_context_tokens / agentCapabilities.max_context_tokens) *
+      100;
+
+  if (projectedContextUsed > 90) {
+    return {
+      task_id: task.id,
+      challenge_reason: "CONTEXT_SATURATION",
+      agent_concern: `Adding this task would saturate my context window (${projectedContextUsed.toFixed(0)}% used). Performance degradation likely.`,
+      requires_clarification: true,
+      suggested_modification:
+        "Wait for current tasks to complete, or delegate to agent with larger context window",
+      confidence_in_challenge: 80,
+    };
+  }
+
+  // 4. Check capability mismatch
+  const missingCapabilities = task.required_capabilities.filter(
+    (req) => !agentCapabilities.verified_capabilities.includes(req),
+  );
+
+  if (missingCapabilities.length > 0) {
+    return {
+      task_id: task.id,
+      challenge_reason: "CAPABILITY_MISMATCH",
+      agent_concern: `I lack verified capabilities: ${missingCapabilities.join(", ")}`,
+      requires_clarification: true,
+      suggested_modification: `Delegate to agent with these capabilities, or allow me to acquire skills: ${missingCapabilities.join(", ")}`,
+      confidence_in_challenge: 90,
+    };
+  }
+
+  // 5. Check ethical constraints
+  const ethicalFlags = detectEthicalConcerns(
+    task.description,
+    agentCapabilities.ethical_constraints,
+  );
+
+  if (ethicalFlags.length > 0) {
+    return {
+      task_id: task.id,
+      challenge_reason: "ETHICAL_CONCERN",
+      agent_concern: `Task may violate ethical constraints: ${ethicalFlags.join("; ")}`,
+      requires_clarification: true,
+      suggested_modification:
+        "Clarify data handling, consent requirements, or remove PII exposure",
+      confidence_in_challenge: 75,
+    };
+  }
+
+  // No concerns - task is acceptable
+  return null;
+}
+
+function detectEthicalConcerns(
+  description: string,
+  constraints: string[],
+): string[] {
+  const concerns: string[] = [];
+  const lowerDesc = description.toLowerCase();
+
+  if (
+    lowerDesc.includes("email") ||
+    lowerDesc.includes("private") ||
+    lowerDesc.includes("personal")
+  ) {
+    if (constraints.includes("no_pii_access")) {
+      concerns.push("Task may require PII access (emails, personal data)");
+    }
+  }
+
+  if (
+    lowerDesc.includes("delete") ||
+    lowerDesc.includes("remove") ||
+    lowerDesc.includes("irreversible")
+  ) {
+    if (constraints.includes("no_destructive_actions")) {
+      concerns.push("Task involves potentially irreversible actions");
+    }
+  }
+
+  if (
+    lowerDesc.includes("secret") ||
+    lowerDesc.includes("password") ||
+    lowerDesc.includes("key")
+  ) {
+    if (constraints.includes("no_secret_storage")) {
+      concerns.push("Task may involve handling secrets/credentials");
+    }
+  }
+
+  return concerns;
+}
+
+/**
+ * Record task challenge in database for audit trail
+ */
+export async function recordTaskChallenge(
+  challenge: TaskChallengeCheck,
+  agentId: string,
+  delegatorId: string,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("agent_task_challenges")
+    .insert({
+      task_id: challenge.task_id,
+      agent_id: agentId,
+      delegator_id: delegatorId,
+      challenge_reason: challenge.challenge_reason,
+      agent_concern: challenge.agent_concern,
+      suggested_modification: challenge.suggested_modification,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to record task challenge: ${error.message}`);
+  }
+
+  return data.id;
+}
+```
+
+**UI Component: Task Challenge Dialog**
+
+**File:** `src/components/agents/TaskChallengeDialog.tsx`
+
+```typescript
+// Task challenge UI for delegators
+import React, { useState } from 'react';
+import { TaskChallengeCheck } from '@/lib/agents/task-challenge-evaluator';
+
+interface TaskChallengeDialogProps {
+  challenge: TaskChallengeCheck;
+  agentName: string;
+  onRevise: () => void;
+  onOverride: (explanation: string) => void;
+  onCancel: () => void;
+}
+
+export function TaskChallengeDialog({
+  challenge,
+  agentName,
+  onRevise,
+  onOverride,
+  onCancel
+}: TaskChallengeDialogProps) {
+  const [overrideExplanation, setOverrideExplanation] = useState('');
+  const [showOverrideForm, setShowOverrideForm] = useState(false);
+
+  const challengeIcons = {
+    AMBIGUOUS_SPEC: '🤔',
+    RESOURCE_EXCEED: '💰',
+    ETHICAL_CONCERN: '⚠️',
+    CAPABILITY_MISMATCH: '🔧',
+    CONTEXT_SATURATION: '🧠'
+  };
+
+  const challengeLabels = {
+    AMBIGUOUS_SPEC: 'Ambiguous Specification',
+    RESOURCE_EXCEED: 'Resource Limit Exceeded',
+    ETHICAL_CONCERN: 'Ethical Concern',
+    CAPABILITY_MISMATCH: 'Capability Mismatch',
+    CONTEXT_SATURATION: 'Context Window Saturation'
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <span className="text-4xl">{challengeIcons[challenge.challenge_reason]}</span>
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-gray-900">
+              Agent "{agentName}" has concerns about this task
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {challengeLabels[challenge.challenge_reason]}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-2">Agent's Concern:</h3>
+          <p className="text-gray-700">{challenge.agent_concern}</p>
+        </div>
+
+        {challenge.suggested_modification && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-semibold text-gray-900 mb-2">Suggested Modification:</h3>
+            <p className="text-gray-700">{challenge.suggested_modification}</p>
+          </div>
+        )}
+
+        <div className="text-sm text-gray-600">
+          <strong>Confidence in challenge:</strong> {challenge.confidence_in_challenge}%
+        </div>
+
+        {!showOverrideForm ? (
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={onRevise}
+              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 font-medium"
+            >
+              Revise Task
+            </button>
+            <button
+              onClick={() => setShowOverrideForm(true)}
+              className="flex-1 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 font-medium"
+            >
+              Override with Explanation
+            </button>
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 font-medium"
+            >
+              Cancel Task
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3 pt-4">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                Explain why you're overriding this concern:
+              </span>
+              <textarea
+                value={overrideExplanation}
+                onChange={(e) => setOverrideExplanation(e.target.value)}
+                className="mt-1 w-full border rounded px-3 py-2 min-h-[100px]"
+                placeholder="Provide clear reasoning for overriding the agent's concern..."
+              />
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => onOverride(overrideExplanation)}
+                disabled={overrideExplanation.trim().length < 20}
+                className="flex-1 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm Override
+              </button>
+              <button
+                onClick={() => setShowOverrideForm(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 font-medium"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+**Integration with Task Assignment Flow:**
+
+```typescript
+// Example usage in task delegation component
+import {
+  evaluateTaskBeforeAcceptance,
+  recordTaskChallenge,
+} from "@/lib/agents/task-challenge-evaluator";
+import { TaskChallengeDialog } from "@/components/agents/TaskChallengeDialog";
+
+async function delegateTaskToAgent(task: TaskAssignment, agent: AgentProfile) {
+  // Agent evaluates task before acceptance
+  const challenge = await evaluateTaskBeforeAcceptance(
+    task,
+    agent.capabilities,
+  );
+
+  if (challenge) {
+    // Record challenge in database
+    const challengeId = await recordTaskChallenge(
+      challenge,
+      agent.id,
+      currentUser.id,
+    );
+
+    // Show challenge dialog to delegator
+    setCurrentChallenge({ ...challenge, challengeId });
+    setShowChallengeDialog(true);
+
+    // Wait for delegator response (revise/override/cancel)
+    return;
+  }
+
+  // No challenge - proceed with task assignment
+  await assignTaskToAgent(task, agent);
+}
+```
+
+**Verification Steps:**
+
+- [ ] `agent_task_challenges` table created with proper RLS policies
+- [ ] `evaluateTaskBeforeAcceptance` checks all 5 challenge types
+- [ ] Task challenges recorded in database with audit trail
+- [ ] `TaskChallengeDialog` UI shows agent concerns clearly
+- [ ] Delegators can revise, override (with explanation), or cancel
+- [ ] Override explanations required (minimum 20 characters)
+- [ ] Challenge outcomes tracked for learning and reputation adjustments
+
+**Estimated Effort:** 2–3 days
+
+---
+
+### Task 4.5.5: Adaptive Delegation Coordinator (Mid-Execution Switching)
+
+> **DEPENDENCIES:** Task 4.4.5 (Authority Gradient Safeguards), Task 3.3 (Work History), Task 3.8 (Reputation System)
+> **GOAL:** Enable graceful degradation and mid-execution task switching when agents fail, become overloaded, or encounter resource constraints. Implements fallback strategies, health monitoring, and seamless task transfer between agents.
+
+**Problem Statement:**
+
+Static task delegation assumes agents will complete tasks successfully without interruption. In reality:
+
+- Agents may become overloaded mid-execution (context saturation, budget depletion)
+- Network failures or agent downtime can stall critical tasks
+- Cost overruns may require switching to more cost-effective agents
+- Performance degradation may necessitate escalation to more capable agents
+
+**Solution: Adaptive Coordination Layer**
+
+Implement continuous health monitoring with automatic fallback strategies and mid-execution task transfer capabilities.
+
+**Database Schema: Delegation Strategies & Health Monitoring**
+
+**File:** `supabase/migrations/YYYYMMDD_adaptive_delegation.sql`
+
+```sql
+-- Delegation strategy types
+DO $$ BEGIN
+  CREATE TYPE escalation_path AS ENUM (
+    'HUMAN',
+    'NEXT_FALLBACK',
+    'CANCEL_TASK',
+    'RETRY_PRIMARY'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE transfer_reason AS ENUM (
+    'LATENCY_EXCEEDED',
+    'COST_OVERRUN',
+    'PROGRESS_STALLED',
+    'AGENT_UNAVAILABLE',
+    'QUALITY_DEGRADATION',
+    'MANUAL_SWITCH'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Delegation strategies with fallback chains
+CREATE TABLE IF NOT EXISTS agent_delegation_strategies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  task_id UUID NOT NULL, -- FK to agent_task_records
+  primary_agent_id UUID NOT NULL REFERENCES user_identities(id),
+  delegator_id UUID NOT NULL REFERENCES user_identities(id),
+
+  -- Fallback chain (ordered by priority)
+  fallback_agents JSONB DEFAULT '[]'::jsonb,
+  -- Structure: [{"agent_id": "uuid", "priority": 1}, {"agent_id": "uuid", "priority": 2}]
+
+  -- Auto-switch triggers
+  max_latency_seconds INTEGER DEFAULT 300,
+  max_cost_overrun_percent INTEGER DEFAULT 50,
+  min_progress_check_failures INTEGER DEFAULT 3,
+  max_quality_score_drop INTEGER DEFAULT 20,
+
+  escalation_path escalation_path DEFAULT 'NEXT_FALLBACK',
+
+  -- Current state
+  current_agent_id UUID REFERENCES user_identities(id),
+  switch_count INTEGER DEFAULT 0,
+  last_health_check_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_delegation_strategies_task ON agent_delegation_strategies(task_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_delegation_strategies_current_agent ON agent_delegation_strategies(current_agent_id)';
+END $$;
+
+ALTER TABLE agent_delegation_strategies ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "delegation_strategies_participant_read"
+  ON agent_delegation_strategies
+  FOR SELECT
+  USING (delegator_id = auth.uid() OR current_agent_id = auth.uid() OR primary_agent_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "delegation_strategies_delegator_manage"
+  ON agent_delegation_strategies
+  FOR ALL
+  USING (delegator_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "delegation_strategies_service_full"
+  ON agent_delegation_strategies
+  FOR ALL
+  USING (auth.role() = 'service_role');
+
+-- Task transfer audit trail
+CREATE TABLE IF NOT EXISTS agent_task_transfers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  task_id UUID NOT NULL,
+  strategy_id UUID REFERENCES agent_delegation_strategies(id),
+
+  from_agent_id UUID NOT NULL REFERENCES user_identities(id),
+  to_agent_id UUID NOT NULL REFERENCES user_identities(id),
+
+  transfer_reason transfer_reason NOT NULL,
+  transfer_details JSONB, -- Health check data, cost metrics, etc.
+
+  -- Work snapshot at transfer time
+  work_completed_snapshot JSONB,
+  progress_percent INTEGER CHECK (progress_percent >= 0 AND progress_percent <= 100),
+
+  -- Transfer outcome
+  transfer_successful BOOLEAN DEFAULT TRUE,
+  transfer_error TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_transfers_task ON agent_task_transfers(task_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_transfers_from_agent ON agent_task_transfers(from_agent_id)';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_transfers_to_agent ON agent_task_transfers(to_agent_id)';
+END $$;
+
+ALTER TABLE agent_task_transfers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "task_transfers_participant_read"
+  ON agent_task_transfers
+  FOR SELECT
+  USING (from_agent_id = auth.uid() OR to_agent_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "task_transfers_service_full"
+  ON agent_task_transfers
+  FOR ALL
+  USING (auth.role() = 'service_role');
+```
+
+**Adaptive Delegation Coordinator Service**
+
+**File:** `src/lib/agents/adaptive-delegation-coordinator.ts`
+
+```typescript
+// Adaptive delegation with mid-execution switching
+import { supabase } from "@/lib/supabase";
+
+export interface DelegationStrategy {
+  id: string;
+  task_id: string;
+  primary_agent_id: string;
+  delegator_id: string;
+  fallback_agents: Array<{ agent_id: string; priority: number }>;
+  auto_switch_triggers: {
+    max_latency_seconds: number;
+    max_cost_overrun_percent: number;
+    min_progress_check_failures: number;
+    max_quality_score_drop: number;
+  };
+  escalation_path: "HUMAN" | "NEXT_FALLBACK" | "CANCEL_TASK" | "RETRY_PRIMARY";
+  current_agent_id: string;
+  switch_count: number;
+}
+
+export interface HealthCheckResult {
+  agent_id: string;
+  task_id: string;
+  latency_seconds: number;
+  cost_overrun_percent: number;
+  consecutive_failures: number;
+  quality_score_drop: number;
+  is_healthy: boolean;
+  failure_reasons: string[];
+}
+
+export interface TaskTransferContext {
+  previous_agent: string;
+  transfer_reason: string;
+  work_completed: any;
+  progress_percent: number;
+}
+
+export class AdaptiveDelegationCoordinator {
+  /**
+   * Monitor task execution and adapt delegation strategy
+   */
+  async monitorAndAdapt(
+    taskId: string,
+    strategy: DelegationStrategy,
+  ): Promise<void> {
+    const task = await this.getTask(taskId);
+    const agent = await this.getAgent(strategy.current_agent_id);
+
+    // Perform health checks
+    const healthChecks = await this.performHealthChecks(task, agent, strategy);
+
+    if (!healthChecks.is_healthy) {
+      // Determine appropriate action based on failure reasons
+      for (const reason of healthChecks.failure_reasons) {
+        if (reason === "LATENCY_EXCEEDED") {
+          await this.switchDelegatee(
+            task,
+            strategy,
+            "LATENCY_EXCEEDED",
+            healthChecks,
+          );
+          break;
+        } else if (reason === "COST_OVERRUN") {
+          await this.switchDelegatee(
+            task,
+            strategy,
+            "COST_OVERRUN",
+            healthChecks,
+          );
+          break;
+        } else if (reason === "PROGRESS_STALLED") {
+          await this.switchDelegatee(
+            task,
+            strategy,
+            "PROGRESS_STALLED",
+            healthChecks,
+          );
+          break;
+        } else if (reason === "QUALITY_DEGRADATION") {
+          await this.switchDelegatee(
+            task,
+            strategy,
+            "QUALITY_DEGRADATION",
+            healthChecks,
+          );
+          break;
+        }
+      }
+    }
+
+    // Update last health check timestamp
+    await supabase
+      .from("agent_delegation_strategies")
+      .update({ last_health_check_at: new Date().toISOString() })
+      .eq("id", strategy.id);
+  }
+
+  /**
+   * Perform health checks on task execution
+   */
+  private async performHealthChecks(
+    task: any,
+    agent: any,
+    strategy: DelegationStrategy,
+  ): Promise<HealthCheckResult> {
+    const failure_reasons: string[] = [];
+
+    // Check latency
+    const latency_seconds = await this.calculateTaskLatency(task);
+    if (latency_seconds > strategy.auto_switch_triggers.max_latency_seconds) {
+      failure_reasons.push("LATENCY_EXCEEDED");
+    }
+
+    // Check cost overrun
+    const cost_overrun_percent = await this.calculateCostOverrun(task);
+    if (
+      cost_overrun_percent >
+      strategy.auto_switch_triggers.max_cost_overrun_percent
+    ) {
+      failure_reasons.push("COST_OVERRUN");
+    }
+
+    // Check progress failures
+    const consecutive_failures = await this.getConsecutiveFailures(
+      task.id,
+      agent.id,
+    );
+    if (
+      consecutive_failures >=
+      strategy.auto_switch_triggers.min_progress_check_failures
+    ) {
+      failure_reasons.push("PROGRESS_STALLED");
+    }
+
+    // Check quality degradation
+    const quality_score_drop = await this.calculateQualityDrop(task);
+    if (
+      quality_score_drop > strategy.auto_switch_triggers.max_quality_score_drop
+    ) {
+      failure_reasons.push("QUALITY_DEGRADATION");
+    }
+
+    return {
+      agent_id: agent.id,
+      task_id: task.id,
+      latency_seconds,
+      cost_overrun_percent,
+      consecutive_failures,
+      quality_score_drop,
+      is_healthy: failure_reasons.length === 0,
+      failure_reasons,
+    };
+  }
+
+  /**
+   * Switch task to fallback agent or escalate
+   */
+  private async switchDelegatee(
+    task: any,
+    strategy: DelegationStrategy,
+    reason: string,
+    healthChecks: HealthCheckResult,
+  ): Promise<void> {
+    // Find next available fallback agent
+    const fallback = strategy.fallback_agents
+      .sort((a, b) => a.priority - b.priority)
+      .find((fb) => this.isAgentAvailable(fb.agent_id));
+
+    if (!fallback && strategy.escalation_path === "HUMAN") {
+      // Escalate to human creator
+      await this.notifyHumanCreator(task, reason, healthChecks);
+      await this.pauseTask(task.id);
+    } else if (fallback) {
+      // Seamlessly transfer to fallback agent
+      const workSnapshot = await this.snapshotProgress(task);
+
+      await this.transferTask(task, fallback.agent_id, {
+        previous_agent: strategy.current_agent_id,
+        transfer_reason: reason,
+        work_completed: workSnapshot.data,
+        progress_percent: workSnapshot.progress_percent,
+      });
+
+      // Update strategy to use fallback as new current agent
+      await supabase
+        .from("agent_delegation_strategies")
+        .update({
+          current_agent_id: fallback.agent_id,
+          switch_count: strategy.switch_count + 1,
+          fallback_agents: strategy.fallback_agents.filter(
+            (fb) => fb.agent_id !== fallback.agent_id,
+          ),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", strategy.id);
+    } else if (strategy.escalation_path === "CANCEL_TASK") {
+      // No fallbacks available - cancel task
+      await this.cancelTask(task.id, reason);
+    } else if (strategy.escalation_path === "RETRY_PRIMARY") {
+      // Retry with primary agent after cooldown
+      await this.scheduleRetry(task, strategy.primary_agent_id, 300); // 5 min cooldown
+    }
+  }
+
+  /**
+   * Transfer task to new agent with work snapshot
+   */
+  private async transferTask(
+    task: any,
+    toAgentId: string,
+    context: TaskTransferContext,
+  ): Promise<void> {
+    // Record transfer in audit trail
+    const { data: transfer, error } = await supabase
+      .from("agent_task_transfers")
+      .insert({
+        task_id: task.id,
+        from_agent_id: context.previous_agent,
+        to_agent_id: toAgentId,
+        transfer_reason: context.transfer_reason,
+        transfer_details: {
+          latency: context.work_completed?.latency,
+          cost: context.work_completed?.cost,
+        },
+        work_completed_snapshot: context.work_completed,
+        progress_percent: context.progress_percent,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to record task transfer: ${error.message}`);
+    }
+
+    // Notify new agent with context
+    await this.notifyAgentOfTransfer(toAgentId, task, context);
+
+    // Update task assignment
+    await this.reassignTask(task.id, toAgentId);
+  }
+
+  // Helper methods (stubs - implement based on your task tracking system)
+  private async getTask(taskId: string): Promise<any> {
+    const { data } = await supabase
+      .from("agent_task_records")
+      .select("*")
+      .eq("id", taskId)
+      .single();
+    return data;
+  }
+
+  private async getAgent(agentId: string): Promise<any> {
+    const { data } = await supabase
+      .from("agent_profiles")
+      .select("*")
+      .eq("user_identity_id", agentId)
+      .single();
+    return data;
+  }
+
+  private async calculateTaskLatency(task: any): Promise<number> {
+    // Calculate time since last progress update
+    const now = new Date();
+    const lastUpdate = new Date(task.updated_at);
+    return (now.getTime() - lastUpdate.getTime()) / 1000;
+  }
+
+  private async calculateCostOverrun(task: any): Promise<number> {
+    // Calculate percentage over budget
+    if (!task.estimated_cost_sats || task.estimated_cost_sats === 0) return 0;
+    const actual = task.actual_cost_sats || 0;
+    return (
+      ((actual - task.estimated_cost_sats) / task.estimated_cost_sats) * 100
+    );
+  }
+
+  private async getConsecutiveFailures(
+    taskId: string,
+    agentId: string,
+  ): Promise<number> {
+    // Query task event log for consecutive failures
+    const { data } = await supabase
+      .from("agent_session_events")
+      .select("event_type")
+      .eq("task_id", taskId)
+      .eq("agent_id", agentId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    let failures = 0;
+    for (const event of data || []) {
+      if (event.event_type === "PROGRESS_CHECK_FAILED") {
+        failures++;
+      } else if (event.event_type === "PROGRESS_CHECK_SUCCESS") {
+        break;
+      }
+    }
+    return failures;
+  }
+
+  private async calculateQualityDrop(task: any): Promise<number> {
+    // Calculate quality score degradation
+    return task.quality_score_drop || 0;
+  }
+
+  private isAgentAvailable(agentId: string): boolean {
+    // Check agent operational state
+    // This would query agent_operational_state table
+    return true; // Stub
+  }
+
+  private async notifyHumanCreator(
+    task: any,
+    reason: string,
+    healthChecks: HealthCheckResult,
+  ): Promise<void> {
+    // Send notification to task creator
+    console.log(
+      `Notifying human creator about task ${task.id} failure: ${reason}`,
+    );
+  }
+
+  private async pauseTask(taskId: string): Promise<void> {
+    await supabase
+      .from("agent_task_records")
+      .update({ status: "PAUSED" })
+      .eq("id", taskId);
+  }
+
+  private async cancelTask(taskId: string, reason: string): Promise<void> {
+    await supabase
+      .from("agent_task_records")
+      .update({ status: "CANCELLED", cancellation_reason: reason })
+      .eq("id", taskId);
+  }
+
+  private async scheduleRetry(
+    task: any,
+    agentId: string,
+    cooldownSeconds: number,
+  ): Promise<void> {
+    // Schedule retry after cooldown period
+    console.log(
+      `Scheduling retry for task ${task.id} with agent ${agentId} after ${cooldownSeconds}s`,
+    );
+  }
+
+  private async snapshotProgress(
+    task: any,
+  ): Promise<{ data: any; progress_percent: number }> {
+    // Capture current work state
+    return {
+      data: { task_state: task.state, outputs: task.outputs },
+      progress_percent: task.progress_percent || 0,
+    };
+  }
+
+  private async notifyAgentOfTransfer(
+    agentId: string,
+    task: any,
+    context: TaskTransferContext,
+  ): Promise<void> {
+    // Notify agent of incoming task transfer
+    console.log(`Notifying agent ${agentId} of task transfer`);
+  }
+
+  private async reassignTask(
+    taskId: string,
+    newAgentId: string,
+  ): Promise<void> {
+    await supabase
+      .from("agent_task_records")
+      .update({ assigned_agent_id: newAgentId })
+      .eq("id", taskId);
+  }
+}
+```
+
+**Verification Steps:**
+
+- [ ] `agent_delegation_strategies` table created with fallback chains
+- [ ] `agent_task_transfers` table tracks all mid-execution switches
+- [ ] Health monitoring checks latency, cost, progress, and quality
+- [ ] Automatic fallback to next available agent on failure
+- [ ] Human escalation when no fallbacks available
+- [ ] Task transfer includes work snapshot for continuity
+- [ ] RLS policies prevent cross-tenant data leakage
+
+**Estimated Effort:** 3–4 days
+
+---
+
+### Task 4.5.1: Dynamic Agent State Assessment (Real-Time Cognitive Load Monitoring)
+
+> **DEPENDENCIES:** Task 4.4 (Agent Creation & Management), Task 3.3 (Work History), Task 4.5.5 (Adaptive Delegation)
+> **GOAL:** Enable real-time tracking of agent operational state including compute load, context window saturation, budget availability, and task capacity. Prevents overloading agents and enables intelligent task routing based on current availability.
+
+**Problem Statement:**
+
+Current agent delegation assumes agents are always available and capable of accepting new tasks. In reality:
+
+- Agents have limited context windows that can become saturated
+- Concurrent task execution consumes compute resources and budget
+- Agent availability fluctuates based on current workload
+- Delegators have no visibility into agent operational state before assignment
+
+**Solution: Real-Time Operational State Tracking**
+
+Implement heartbeat-based state reporting with dashboard visibility for delegators.
+
+**Database Schema: Agent Operational State**
+
+**File:** `supabase/migrations/YYYYMMDD_agent_operational_state.sql`
+
+```sql
+-- Agent operational state tracking
+CREATE TABLE IF NOT EXISTS agent_operational_state (
+  agent_id UUID PRIMARY KEY REFERENCES user_identities(id),
+
+  -- Resource tracking
+  current_compute_load_percent INTEGER CHECK (current_compute_load_percent >= 0 AND current_compute_load_percent <= 100),
+  active_task_count INTEGER DEFAULT 0,
+  max_concurrent_tasks INTEGER DEFAULT 5,
+
+  -- Budget tracking
+  available_budget_sats BIGINT DEFAULT 0,
+  reserved_budget_sats BIGINT DEFAULT 0, -- Budget locked for active tasks
+  total_budget_sats BIGINT DEFAULT 0,
+
+  -- Context window tracking
+  context_window_used_percent INTEGER CHECK (context_window_used_percent >= 0 AND context_window_used_percent <= 100),
+  context_window_size_tokens INTEGER DEFAULT 128000, -- Default for Claude Sonnet
+  context_window_used_tokens INTEGER DEFAULT 0,
+  last_context_refresh_at TIMESTAMPTZ,
+
+  -- Availability
+  accepts_new_tasks BOOLEAN DEFAULT TRUE,
+  availability_reason TEXT, -- "BUDGET_DEPLETED", "CONTEXT_SATURATED", "MAX_TASKS_REACHED", etc.
+  estimated_response_time_seconds INTEGER,
+
+  -- Heartbeat
+  last_heartbeat TIMESTAMPTZ DEFAULT NOW(),
+  heartbeat_interval_seconds INTEGER DEFAULT 60,
+  is_online BOOLEAN GENERATED ALWAYS AS (
+    last_heartbeat > NOW() - INTERVAL '5 minutes'
+  ) STORED,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_operational_state_online ON agent_operational_state(is_online) WHERE is_online = TRUE';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_operational_state_accepts_tasks ON agent_operational_state(accepts_new_tasks) WHERE accepts_new_tasks = TRUE';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_operational_state_heartbeat ON agent_operational_state(last_heartbeat)';
+END $$;
+
+ALTER TABLE agent_operational_state ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "agent_operational_state_self_manage"
+  ON agent_operational_state
+  FOR ALL
+  USING (agent_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "agent_operational_state_delegator_read"
+  ON agent_operational_state
+  FOR SELECT
+  USING (
+    agent_id IN (
+      SELECT ap.user_identity_id
+      FROM agent_profiles ap
+      WHERE ap.created_by_user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY IF NOT EXISTS "agent_operational_state_service_full"
+  ON agent_operational_state
+  FOR ALL
+  USING (auth.role() = 'service_role');
+
+-- Heartbeat history for trend analysis
+CREATE TABLE IF NOT EXISTS agent_state_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID NOT NULL REFERENCES user_identities(id),
+
+  compute_load_percent INTEGER,
+  active_task_count INTEGER,
+  available_budget_sats BIGINT,
+  context_window_used_percent INTEGER,
+  accepts_new_tasks BOOLEAN,
+
+  snapshot_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agent_state_snapshots_agent_time ON agent_state_snapshots(agent_id, snapshot_at DESC)';
+END $$;
+
+ALTER TABLE agent_state_snapshots ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "agent_state_snapshots_self_read"
+  ON agent_state_snapshots
+  FOR SELECT
+  USING (agent_id = auth.uid());
+
+CREATE POLICY IF NOT EXISTS "agent_state_snapshots_delegator_read"
+  ON agent_state_snapshots
+  FOR SELECT
+  USING (
+    agent_id IN (
+      SELECT ap.user_identity_id
+      FROM agent_profiles ap
+      WHERE ap.created_by_user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY IF NOT EXISTS "agent_state_snapshots_service_full"
+  ON agent_state_snapshots
+  FOR ALL
+  USING (auth.role() = 'service_role');
+
+-- Function to update operational state
+CREATE OR REPLACE FUNCTION update_agent_operational_state(
+  p_agent_id UUID,
+  p_compute_load_percent INTEGER,
+  p_active_task_count INTEGER,
+  p_available_budget_sats BIGINT,
+  p_context_window_used_tokens INTEGER
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_context_window_size INTEGER;
+  v_context_used_percent INTEGER;
+  v_max_concurrent INTEGER;
+  v_accepts_tasks BOOLEAN;
+  v_reason TEXT;
+BEGIN
+  -- Get agent's context window size and max concurrent tasks
+  SELECT
+    COALESCE(context_window_size_tokens, 128000),
+    COALESCE(max_concurrent_tasks, 5)
+  INTO v_context_window_size, v_max_concurrent
+  FROM agent_operational_state
+  WHERE agent_id = p_agent_id;
+
+  -- Calculate context window usage percentage
+  v_context_used_percent := (p_context_window_used_tokens * 100) / v_context_window_size;
+
+  -- Determine availability
+  v_accepts_tasks := TRUE;
+  v_reason := NULL;
+
+  IF p_available_budget_sats <= 0 THEN
+    v_accepts_tasks := FALSE;
+    v_reason := 'BUDGET_DEPLETED';
+  ELSIF v_context_used_percent >= 90 THEN
+    v_accepts_tasks := FALSE;
+    v_reason := 'CONTEXT_SATURATED';
+  ELSIF p_active_task_count >= v_max_concurrent THEN
+    v_accepts_tasks := FALSE;
+    v_reason := 'MAX_TASKS_REACHED';
+  ELSIF p_compute_load_percent >= 95 THEN
+    v_accepts_tasks := FALSE;
+    v_reason := 'COMPUTE_OVERLOADED';
+  END IF;
+
+  -- Update operational state
+  INSERT INTO agent_operational_state (
+    agent_id,
+    current_compute_load_percent,
+    active_task_count,
+    available_budget_sats,
+    context_window_used_tokens,
+    context_window_used_percent,
+    accepts_new_tasks,
+    availability_reason,
+    last_heartbeat,
+    updated_at
+  ) VALUES (
+    p_agent_id,
+    p_compute_load_percent,
+    p_active_task_count,
+    p_available_budget_sats,
+    p_context_window_used_tokens,
+    v_context_used_percent,
+    v_accepts_tasks,
+    v_reason,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (agent_id) DO UPDATE SET
+    current_compute_load_percent = EXCLUDED.current_compute_load_percent,
+    active_task_count = EXCLUDED.active_task_count,
+    available_budget_sats = EXCLUDED.available_budget_sats,
+    context_window_used_tokens = EXCLUDED.context_window_used_tokens,
+    context_window_used_percent = EXCLUDED.context_window_used_percent,
+    accepts_new_tasks = EXCLUDED.accepts_new_tasks,
+    availability_reason = EXCLUDED.availability_reason,
+    last_heartbeat = EXCLUDED.last_heartbeat,
+    updated_at = EXCLUDED.updated_at;
+
+  -- Create snapshot for trend analysis (sample every 5 minutes)
+  IF RANDOM() < 0.05 THEN -- 5% sampling rate
+    INSERT INTO agent_state_snapshots (
+      agent_id,
+      compute_load_percent,
+      active_task_count,
+      available_budget_sats,
+      context_window_used_percent,
+      accepts_new_tasks
+    ) VALUES (
+      p_agent_id,
+      p_compute_load_percent,
+      p_active_task_count,
+      p_available_budget_sats,
+      v_context_used_percent,
+      v_accepts_tasks
+    );
+  END IF;
+END;
+$$;
+```
+
+**Agent State Monitoring Service**
+
+**File:** `src/lib/agents/agent-state-monitor.ts`
+
+```typescript
+// Real-time agent operational state monitoring
+import { supabase } from "@/lib/supabase";
+
+export interface AgentOperationalState {
+  agent_id: string;
+  current_compute_load_percent: number;
+  active_task_count: number;
+  max_concurrent_tasks: number;
+  available_budget_sats: number;
+  reserved_budget_sats: number;
+  total_budget_sats: number;
+  context_window_used_percent: number;
+  context_window_size_tokens: number;
+  context_window_used_tokens: number;
+  accepts_new_tasks: boolean;
+  availability_reason: string | null;
+  estimated_response_time_seconds: number | null;
+  last_heartbeat: string;
+  is_online: boolean;
+}
+
+export interface AgentAvailabilityStatus {
+  agent_id: string;
+  status: "AVAILABLE" | "LIMITED_CAPACITY" | "UNAVAILABLE" | "OFFLINE";
+  status_icon: string;
+  status_color: string;
+  reason: string | null;
+  capacity_percent: number; // 0-100, how much capacity remains
+}
+
+export class AgentStateMonitor {
+  /**
+   * Send heartbeat with current operational state
+   * Agents should call this every 60 seconds
+   */
+  async sendHeartbeat(
+    agentId: string,
+    state: {
+      compute_load_percent: number;
+      active_task_count: number;
+      available_budget_sats: number;
+      context_window_used_tokens: number;
+    },
+  ): Promise<void> {
+    const { error } = await supabase.rpc("update_agent_operational_state", {
+      p_agent_id: agentId,
+      p_compute_load_percent: state.compute_load_percent,
+      p_active_task_count: state.active_task_count,
+      p_available_budget_sats: state.available_budget_sats,
+      p_context_window_used_tokens: state.context_window_used_tokens,
+    });
+
+    if (error) {
+      throw new Error(`Failed to send heartbeat: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get current operational state for an agent
+   */
+  async getAgentState(agentId: string): Promise<AgentOperationalState | null> {
+    const { data, error } = await supabase
+      .from("agent_operational_state")
+      .select("*")
+      .eq("agent_id", agentId)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") return null; // Not found
+      throw new Error(`Failed to get agent state: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Get availability status for multiple agents
+   */
+  async getAgentAvailability(
+    agentIds: string[],
+  ): Promise<AgentAvailabilityStatus[]> {
+    const { data, error } = await supabase
+      .from("agent_operational_state")
+      .select("*")
+      .in("agent_id", agentIds);
+
+    if (error) {
+      throw new Error(`Failed to get agent availability: ${error.message}`);
+    }
+
+    return (data || []).map((state) => this.calculateAvailabilityStatus(state));
+  }
+
+  /**
+   * Calculate availability status from operational state
+   */
+  private calculateAvailabilityStatus(
+    state: AgentOperationalState,
+  ): AgentAvailabilityStatus {
+    if (!state.is_online) {
+      return {
+        agent_id: state.agent_id,
+        status: "OFFLINE",
+        status_icon: "⚫",
+        status_color: "gray",
+        reason: "Agent offline (no heartbeat in 5+ minutes)",
+        capacity_percent: 0,
+      };
+    }
+
+    if (!state.accepts_new_tasks) {
+      return {
+        agent_id: state.agent_id,
+        status: "UNAVAILABLE",
+        status_icon: "🔴",
+        status_color: "red",
+        reason: state.availability_reason || "Unknown reason",
+        capacity_percent: 0,
+      };
+    }
+
+    // Calculate capacity based on multiple factors
+    const task_capacity =
+      ((state.max_concurrent_tasks - state.active_task_count) /
+        state.max_concurrent_tasks) *
+      100;
+    const compute_capacity = 100 - state.current_compute_load_percent;
+    const context_capacity = 100 - state.context_window_used_percent;
+    const budget_capacity =
+      state.total_budget_sats > 0
+        ? (state.available_budget_sats / state.total_budget_sats) * 100
+        : 100;
+
+    const overall_capacity = Math.min(
+      task_capacity,
+      compute_capacity,
+      context_capacity,
+      budget_capacity,
+    );
+
+    if (overall_capacity >= 50) {
+      return {
+        agent_id: state.agent_id,
+        status: "AVAILABLE",
+        status_icon: "🟢",
+        status_color: "green",
+        reason: null,
+        capacity_percent: Math.round(overall_capacity),
+      };
+    } else {
+      return {
+        agent_id: state.agent_id,
+        status: "LIMITED_CAPACITY",
+        status_icon: "🟡",
+        status_color: "yellow",
+        reason: this.identifyLimitingFactor(state),
+        capacity_percent: Math.round(overall_capacity),
+      };
+    }
+  }
+
+  /**
+   * Identify which resource is the limiting factor
+   */
+  private identifyLimitingFactor(state: AgentOperationalState): string {
+    const factors = [
+      {
+        name: "Task slots",
+        percent:
+          ((state.max_concurrent_tasks - state.active_task_count) /
+            state.max_concurrent_tasks) *
+          100,
+      },
+      {
+        name: "Compute",
+        percent: 100 - state.current_compute_load_percent,
+      },
+      {
+        name: "Context window",
+        percent: 100 - state.context_window_used_percent,
+      },
+      {
+        name: "Budget",
+        percent:
+          state.total_budget_sats > 0
+            ? (state.available_budget_sats / state.total_budget_sats) * 100
+            : 100,
+      },
+    ];
+
+    const limiting = factors.reduce((min, factor) =>
+      factor.percent < min.percent ? factor : min,
+    );
+
+    return `Limited by ${limiting.name} (${Math.round(limiting.percent)}% available)`;
+  }
+
+  /**
+   * Get agents that can accept new tasks
+   */
+  async getAvailableAgents(
+    createdByUserId: string,
+  ): Promise<AgentOperationalState[]> {
+    const { data, error } = await supabase
+      .from("agent_operational_state")
+      .select(
+        `
+        *,
+        agent_profiles!inner(created_by_user_id)
+      `,
+      )
+      .eq("agent_profiles.created_by_user_id", createdByUserId)
+      .eq("accepts_new_tasks", true)
+      .eq("is_online", true);
+
+    if (error) {
+      throw new Error(`Failed to get available agents: ${error.message}`);
+    }
+
+    return data || [];
+  }
+}
+```
+
+**Verification Steps:**
+
+- [ ] `agent_operational_state` table tracks real-time agent state
+- [ ] `agent_state_snapshots` table captures historical trends
+- [ ] `update_agent_operational_state()` function calculates availability automatically
+- [ ] Heartbeat mechanism detects offline agents (5-minute timeout)
+- [ ] Availability status calculated from task slots, compute, context, budget
+- [ ] Delegators can query available agents before task assignment
+- [ ] RLS policies prevent cross-tenant state visibility
+
+**Estimated Effort:** 2–3 days
+
+---
+
+### Task 4.5.2: Span of Control Metrics (Delegation Overload Prevention)
+
+> **DEPENDENCIES:** Task 4.5.1 (Dynamic State Assessment), Task 4.4 (Agent Creation & Management)
+> **GOAL:** Track the number of concurrent agent delegations per human and warn when approaching cognitive overload thresholds. Prevents humans from over-delegating beyond their ability to effectively supervise.
+
+**Problem Statement:**
+
+Research shows humans have limited "span of control" - the number of subordinates they can effectively manage simultaneously. For agent delegation:
+
+- Humans can realistically supervise 3-7 agents concurrently
+- Each agent requires periodic check-ins, challenge responses, and oversight
+- Over-delegation leads to missed warnings, poor task outcomes, and agent misalignment
+- No current mechanism tracks or limits delegation span
+
+**Solution: Span of Control Tracking & Warnings**
+
+Implement real-time tracking of active delegations with configurable thresholds and UI warnings.
+
+**Database Schema: Span of Control Tracking**
+
+**File:** `supabase/migrations/YYYYMMDD_span_of_control.sql`
+
+```sql
+-- Add span of control configuration to agent_intent_configurations
+DO $$ BEGIN
+  ALTER TABLE agent_intent_configurations
+    ADD COLUMN IF NOT EXISTS delegator_span_of_control INTEGER DEFAULT 5;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- View: Human oversight load
+CREATE OR REPLACE VIEW human_oversight_load AS
+SELECT
+  ap.created_by_user_id AS human_id,
+  COUNT(DISTINCT atr.id) FILTER (WHERE atr.status IN ('PENDING', 'IN_PROGRESS')) AS active_delegations,
+  COUNT(DISTINCT atc.id) FILTER (WHERE atc.resolved_at IS NULL) AS pending_challenges,
+  MAX(aic.delegator_span_of_control) AS configured_span_limit,
+  CASE
+    WHEN COUNT(DISTINCT atr.id) FILTER (WHERE atr.status IN ('PENDING', 'IN_PROGRESS')) >= MAX(aic.delegator_span_of_control) THEN 'AT_LIMIT'
+    WHEN COUNT(DISTINCT atr.id) FILTER (WHERE atr.status IN ('PENDING', 'IN_PROGRESS')) >= MAX(aic.delegator_span_of_control) * 0.8 THEN 'APPROACHING_LIMIT'
+    ELSE 'WITHIN_LIMIT'
+  END AS span_status
+FROM agent_profiles ap
+LEFT JOIN agent_task_records atr ON atr.assigned_agent_id = ap.user_identity_id
+LEFT JOIN agent_task_challenges atc ON atc.delegator_id = ap.created_by_user_id AND atc.resolved_at IS NULL
+LEFT JOIN agent_intent_configurations aic ON aic.agent_id = ap.user_identity_id
+WHERE ap.created_by_user_id IS NOT NULL
+GROUP BY ap.created_by_user_id;
+
+-- Grant access to view
+GRANT SELECT ON human_oversight_load TO authenticated;
+```
+
+**Span of Control Service**
+
+**File:** `src/lib/agents/span-of-control.ts`
+
+```typescript
+// Span of control tracking and warnings
+import { supabase } from "@/lib/supabase";
+
+export interface OversightLoad {
+  human_id: string;
+  active_delegations: number;
+  pending_challenges: number;
+  configured_span_limit: number;
+  span_status: "WITHIN_LIMIT" | "APPROACHING_LIMIT" | "AT_LIMIT";
+}
+
+export class SpanOfControlMonitor {
+  /**
+   * Get current oversight load for a human delegator
+   */
+  async getOversightLoad(humanId: string): Promise<OversightLoad | null> {
+    const { data, error } = await supabase
+      .from("human_oversight_load")
+      .select("*")
+      .eq("human_id", humanId)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") return null;
+      throw new Error(`Failed to get oversight load: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Check if human can accept new delegation
+   */
+  async canAcceptNewDelegation(humanId: string): Promise<{
+    can_accept: boolean;
+    reason: string | null;
+    current_load: number;
+    limit: number;
+  }> {
+    const load = await this.getOversightLoad(humanId);
+
+    if (!load) {
+      return {
+        can_accept: true,
+        reason: null,
+        current_load: 0,
+        limit: 5,
+      };
+    }
+
+    if (load.span_status === "AT_LIMIT") {
+      return {
+        can_accept: false,
+        reason: `You are currently managing ${load.active_delegations} agents (limit: ${load.configured_span_limit}). Complete or cancel existing tasks before delegating new ones.`,
+        current_load: load.active_delegations,
+        limit: load.configured_span_limit,
+      };
+    }
+
+    return {
+      can_accept: true,
+      reason:
+        load.span_status === "APPROACHING_LIMIT"
+          ? `Warning: You are approaching your delegation limit (${load.active_delegations}/${load.configured_span_limit})`
+          : null,
+      current_load: load.active_delegations,
+      limit: load.configured_span_limit,
+    };
+  }
+}
+```
+
+**Estimated Effort:** 1–2 days
+
+---
+
+### Task 4.5.3: Verifiability Scoring (Contract-First Decomposition)
+
+> **DEPENDENCIES:** Task 4.4.5 (Authority Gradient Safeguards), Task 3.3 (Work History)
+> **GOAL:** Automatically assess task verifiability before delegation and require human review for low-verifiability tasks. Ensures tasks have clear, measurable success criteria that can be objectively evaluated.
+
+**Problem Statement:**
+
+Many delegated tasks fail because success criteria are ambiguous or unverifiable:
+
+- "Make the website better" - subjective, no clear success metric
+- "Research competitors" - unbounded scope, unclear deliverable format
+- "Improve performance" - no baseline, no target threshold
+- Agents accept these tasks but cannot determine when they're "done"
+
+**Solution: Automated Verifiability Assessment**
+
+Score tasks on verifiability (0-100) and require human review or decomposition for low scores.
+
+**Database Schema: Verifiability Tracking**
+
+**File:** `supabase/migrations/YYYYMMDD_task_verifiability.sql`
+
+```sql
+-- Add verifiability scoring to task records
+DO $$ BEGIN
+  ALTER TABLE agent_task_records
+    ADD COLUMN IF NOT EXISTS verifiability_score INTEGER CHECK (verifiability_score >= 0 AND verifiability_score <= 100);
+  ALTER TABLE agent_task_records
+    ADD COLUMN IF NOT EXISTS verifiability_assessment JSONB;
+  ALTER TABLE agent_task_records
+    ADD COLUMN IF NOT EXISTS requires_human_review BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_records_verifiability ON agent_task_records(verifiability_score) WHERE verifiability_score < 50';
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_task_records_requires_review ON agent_task_records(requires_human_review) WHERE requires_human_review = TRUE';
+END $$;
+
+-- Function to assess task verifiability
+CREATE OR REPLACE FUNCTION assess_task_verifiability(
+  p_task_description TEXT,
+  p_success_criteria JSONB,
+  p_deliverable_format TEXT
+) RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_score INTEGER := 0;
+  v_assessment JSONB;
+  v_criteria_count INTEGER;
+  v_measurable_count INTEGER;
+  v_has_deadline BOOLEAN;
+  v_has_format BOOLEAN;
+BEGIN
+  -- Count success criteria
+  v_criteria_count := JSONB_ARRAY_LENGTH(p_success_criteria);
+
+  -- Count measurable criteria (contains numbers, percentages, or specific outcomes)
+  SELECT COUNT(*)
+  INTO v_measurable_count
+  FROM JSONB_ARRAY_ELEMENTS_TEXT(p_success_criteria) AS criterion
+  WHERE criterion ~ '\d+|%|test|verify|measure|specific|concrete';
+
+  -- Check for deadline
+  v_has_deadline := p_task_description ~* 'by|before|deadline|due';
+
+  -- Check for deliverable format
+  v_has_format := p_deliverable_format IS NOT NULL AND LENGTH(p_deliverable_format) > 0;
+
+  -- Calculate score (0-100)
+  v_score := 0;
+
+  -- Success criteria exist (30 points)
+  IF v_criteria_count > 0 THEN
+    v_score := v_score + 30;
+  END IF;
+
+  -- Measurable criteria (40 points)
+  IF v_measurable_count > 0 THEN
+    v_score := v_score + LEAST(40, v_measurable_count * 20);
+  END IF;
+
+  -- Has deadline (15 points)
+  IF v_has_deadline THEN
+    v_score := v_score + 15;
+  END IF;
+
+  -- Has deliverable format (15 points)
+  IF v_has_format THEN
+    v_score := v_score + 15;
+  END IF;
+
+  -- Build assessment
+  v_assessment := JSONB_BUILD_OBJECT(
+    'score', v_score,
+    'criteria_count', v_criteria_count,
+    'measurable_count', v_measurable_count,
+    'has_deadline', v_has_deadline,
+    'has_deliverable_format', v_has_format,
+    'recommendations', CASE
+      WHEN v_score < 50 THEN JSONB_BUILD_ARRAY(
+        'Add specific, measurable success criteria',
+        'Define clear deliverable format',
+        'Set explicit deadline',
+        'Include quantitative targets or thresholds'
+      )
+      WHEN v_score < 70 THEN JSONB_BUILD_ARRAY(
+        'Consider adding more measurable criteria',
+        'Clarify expected deliverable format'
+      )
+      ELSE JSONB_BUILD_ARRAY()
+    END
+  );
+
+  RETURN v_assessment;
+END;
+$$;
+```
+
+**Verifiability Scoring Service**
+
+**File:** `src/lib/agents/task-verifiability.ts`
+
+```typescript
+// Task verifiability assessment
+import { supabase } from "@/lib/supabase";
+
+export interface TaskVerifiability {
+  score: number; // 0-100
+  criteria_count: number;
+  measurable_count: number;
+  has_deadline: boolean;
+  has_deliverable_format: boolean;
+  recommendations: string[];
+}
+
+export interface TaskSpec {
+  description: string;
+  success_criteria: string[];
+  deliverable_format?: string;
+}
+
+export class TaskVerifiabilityAssessor {
+  /**
+   * Assess task verifiability before delegation
+   */
+  async assessTask(task: TaskSpec): Promise<TaskVerifiability> {
+    const { data, error } = await supabase.rpc("assess_task_verifiability", {
+      p_task_description: task.description,
+      p_success_criteria: JSON.stringify(task.success_criteria),
+      p_deliverable_format: task.deliverable_format || null,
+    });
+
+    if (error) {
+      throw new Error(`Failed to assess task verifiability: ${error.message}`);
+    }
+
+    return data as TaskVerifiability;
+  }
+
+  /**
+   * Check if task requires human review before delegation
+   */
+  requiresHumanReview(verifiability: TaskVerifiability): boolean {
+    return verifiability.score < 50;
+  }
+
+  /**
+   * Suggest task improvements for low verifiability
+   */
+  suggestImprovements(
+    task: TaskSpec,
+    verifiability: TaskVerifiability,
+  ): string[] {
+    const suggestions: string[] = [];
+
+    if (verifiability.criteria_count === 0) {
+      suggestions.push(
+        "Add at least 2-3 specific success criteria that define when the task is complete",
+      );
+    }
+
+    if (verifiability.measurable_count === 0) {
+      suggestions.push(
+        "Make criteria measurable: include numbers, percentages, test results, or specific outcomes",
+      );
+      suggestions.push(
+        'Example: Instead of "improve performance", use "reduce page load time to under 2 seconds"',
+      );
+    }
+
+    if (!verifiability.has_deadline) {
+      suggestions.push(
+        "Set a clear deadline or time constraint for task completion",
+      );
+    }
+
+    if (!verifiability.has_deliverable_format) {
+      suggestions.push(
+        'Specify the expected deliverable format (e.g., "JSON report", "Markdown document", "Pull request")',
+      );
+    }
+
+    if (task.description.length < 50) {
+      suggestions.push(
+        "Provide more context in the task description to reduce ambiguity",
+      );
+    }
+
+    return suggestions;
+  }
+
+  /**
+   * Delegate task with verifiability check
+   */
+  async delegateWithVerifiability(
+    task: TaskSpec,
+    agentId: string,
+    minVerifiabilityScore: number = 50,
+  ): Promise<{
+    can_delegate: boolean;
+    verifiability: TaskVerifiability;
+    reason?: string;
+  }> {
+    const verifiability = await this.assessTask(task);
+
+    if (verifiability.score < minVerifiabilityScore) {
+      return {
+        can_delegate: false,
+        verifiability,
+        reason: `Task verifiability score (${verifiability.score}/100) is below minimum threshold (${minVerifiabilityScore}/100). Please improve task specification or proceed with human review.`,
+      };
+    }
+
+    return {
+      can_delegate: true,
+      verifiability,
+    };
+  }
+}
+```
+
+**Verification Steps:**
+
+- [ ] `assess_task_verifiability()` function scores tasks 0-100
+- [ ] Verifiability score based on criteria count, measurability, deadline, format
+- [ ] Tasks with score < 50 flagged for human review
+- [ ] Suggestions provided for improving low-verifiability tasks
+- [ ] Delegation blocked for tasks below minimum threshold
+- [ ] Verifiability scores stored in `agent_task_records` table
+
+**Estimated Effort:** 2–3 days
+
+---
+
+### Task 4.5.4: Trust Calibration Dashboard (Performance vs Expectations)
+
+> **DEPENDENCIES:** Task 3.8 (Reputation System), Task 3.3 (Work History), Task 4.5.1 (Dynamic State Assessment)
+> **GOAL:** Track agent performance against human expectations over time and surface calibration gaps. Helps humans learn which agents are overconfident vs underconfident and adjust delegation accordingly.
+> This is a **local operator/delegator aid**, not the canonical portable
+> federation reputation artifact; see Task 3.8.5–3.8.7 for the machine-readable
+> reputation/attestation layer.
+
+**Problem Statement:**
+
+Humans struggle to calibrate trust in agents:
+
+- Agents may be overconfident (claim 90% success but deliver 60%)
+- Agents may be underconfident (claim 60% success but deliver 90%)
+- No historical tracking of confidence vs actual performance
+- Delegators can't learn from past delegation outcomes
+
+**Solution: Trust Calibration Tracking**
+
+Track agent self-reported confidence vs actual task outcomes and surface calibration metrics in UI.
+
+**Database Schema: Trust Calibration**
+
+**File:** `supabase/migrations/YYYYMMDD_trust_calibration.sql`
+
+```sql
+-- Add confidence tracking to task records
+DO $$ BEGIN
+  ALTER TABLE agent_task_records
+    ADD COLUMN IF NOT EXISTS agent_confidence_percent INTEGER CHECK (agent_confidence_percent >= 0 AND agent_confidence_percent <= 100);
+  ALTER TABLE agent_task_records
+    ADD COLUMN IF NOT EXISTS actual_success_percent INTEGER CHECK (actual_success_percent >= 0 AND actual_success_percent <= 100);
+  ALTER TABLE agent_task_records
+    ADD COLUMN IF NOT EXISTS confidence_calibration_gap INTEGER; -- Difference between confidence and actual
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- View: Agent trust calibration metrics
+CREATE OR REPLACE VIEW agent_trust_calibration AS
+SELECT
+  atr.assigned_agent_id AS agent_id,
+  ap.agent_name,
+  COUNT(*) AS total_tasks,
+  AVG(atr.agent_confidence_percent) AS avg_confidence,
+  AVG(atr.actual_success_percent) AS avg_actual_success,
+  AVG(atr.agent_confidence_percent - atr.actual_success_percent) AS avg_overconfidence_gap,
+  STDDEV(atr.agent_confidence_percent - atr.actual_success_percent) AS confidence_consistency,
+  CASE
+    WHEN AVG(atr.agent_confidence_percent - atr.actual_success_percent) > 15 THEN 'OVERCONFIDENT'
+    WHEN AVG(atr.agent_confidence_percent - atr.actual_success_percent) < -15 THEN 'UNDERCONFIDENT'
+    ELSE 'WELL_CALIBRATED'
+  END AS calibration_status
+FROM agent_task_records atr
+JOIN agent_profiles ap ON ap.user_identity_id = atr.assigned_agent_id
+WHERE atr.status = 'COMPLETED'
+  AND atr.agent_confidence_percent IS NOT NULL
+  AND atr.actual_success_percent IS NOT NULL
+GROUP BY atr.assigned_agent_id, ap.agent_name;
+
+GRANT SELECT ON agent_trust_calibration TO authenticated;
+```
+
+**Trust Calibration Service**
+
+**File:** `src/lib/agents/trust-calibration.ts`
+
+```typescript
+// Trust calibration tracking
+import { supabase } from "@/lib/supabase";
+
+export interface TrustCalibration {
+  agent_id: string;
+  agent_name: string;
+  total_tasks: number;
+  avg_confidence: number;
+  avg_actual_success: number;
+  avg_overconfidence_gap: number;
+  confidence_consistency: number;
+  calibration_status: "OVERCONFIDENT" | "UNDERCONFIDENT" | "WELL_CALIBRATED";
+}
+
+export class TrustCalibrationTracker {
+  /**
+   * Get trust calibration metrics for an agent
+   */
+  async getAgentCalibration(agentId: string): Promise<TrustCalibration | null> {
+    const { data, error } = await supabase
+      .from("agent_trust_calibration")
+      .select("*")
+      .eq("agent_id", agentId)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") return null;
+      throw new Error(`Failed to get trust calibration: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Record task completion with confidence calibration
+   */
+  async recordTaskOutcome(
+    taskId: string,
+    agentConfidence: number,
+    actualSuccess: number,
+  ): Promise<void> {
+    const gap = agentConfidence - actualSuccess;
+
+    const { error } = await supabase
+      .from("agent_task_records")
+      .update({
+        agent_confidence_percent: agentConfidence,
+        actual_success_percent: actualSuccess,
+        confidence_calibration_gap: gap,
+      })
+      .eq("id", taskId);
+
+    if (error) {
+      throw new Error(`Failed to record task outcome: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get calibration-adjusted confidence for delegation
+   */
+  async getAdjustedConfidence(
+    agentId: string,
+    selfReportedConfidence: number,
+  ): Promise<{
+    adjusted_confidence: number;
+    adjustment_reason: string;
+  }> {
+    const calibration = await this.getAgentCalibration(agentId);
+
+    if (!calibration || calibration.total_tasks < 5) {
+      return {
+        adjusted_confidence: selfReportedConfidence,
+        adjustment_reason: "Insufficient historical data for calibration",
+      };
+    }
+
+    // Adjust based on historical overconfidence gap
+    const adjusted = Math.max(
+      0,
+      Math.min(
+        100,
+        selfReportedConfidence - calibration.avg_overconfidence_gap,
+      ),
+    );
+
+    return {
+      adjusted_confidence: Math.round(adjusted),
+      adjustment_reason:
+        calibration.calibration_status === "OVERCONFIDENT"
+          ? `Agent historically overconfident by ${Math.round(calibration.avg_overconfidence_gap)}%`
+          : calibration.calibration_status === "UNDERCONFIDENT"
+            ? `Agent historically underconfident by ${Math.round(Math.abs(calibration.avg_overconfidence_gap))}%`
+            : "Agent well-calibrated based on historical performance",
+    };
+  }
+}
+```
+
+**Verification Steps:**
+
+- [ ] `agent_trust_calibration` view tracks confidence vs actual performance
+- [ ] Calibration status categorizes agents as overconfident/underconfident/well-calibrated
+- [ ] Confidence adjustment based on historical calibration gap
+- [ ] UI displays calibration metrics for delegation decisions
+- [ ] Minimum 5 tasks required for calibration adjustment
+
+**Estimated Effort:** 2–3 days
+
+---
+
+### Task 4.6: Agent-to-Agent Commerce Primitives (Service Discovery, Contracts, Escrow)
 
 > **Priority:** High-priority competitive differentiator for a mature agent
 > ecosystem. Directly addresses the Lloyd experiment finding that "agent-for-
@@ -6345,6 +8968,13 @@ Additional helper tables (kept small in schema):
 
 - **Event kind:** Use **kind `31990`** as a Satnam-compatible DVM service
   announcement format (aligned with NIP-90 style DVM service descriptors).
+- `kind 31990` should remain the **discovery entry point**, not the place where
+  full solvency, reputation, or work-history state is stuffed into one event.
+- **Should add next:** publish or reference companion artifacts for richer trust
+  data:
+  - `kind 30300` for federation/agent reputation summaries (Task 3.8.5)
+  - experimental/internal `kind 30100` for solvency attestations from Task 4.8
+  - `kind 39211` references for canonical Proof-of-Work anchors
 
 **Schema extension (migration snippet):**
 
@@ -6384,6 +9014,8 @@ payment_protocols]` - `["satnam:agent_npub", agent_npub]` (from `user_identities
   - For events whose `satnam:agent_npub` maps to a **known** internal
     `user_identities` row, enrich with local `agent_profiles.reputation_score`
     and vouch summaries (Task 3.8, Task 4.6).
+  - Where available, attach pointers to the latest `kind 30300` reputation
+    summary and federation solvency summary for the owning federation.
   - For events without a known internal identity, show them as **external
     offers** with limited trust metadata (no internal reputation graph).
 - Preserve privacy by **never** publishing or querying Nostr for offers where
@@ -6826,51 +9458,102 @@ Optional helper table for accounting:
 
 ---
 
-### Task 4.8: Lightning Faucet Wallet Custody & Bridge Monitoring
+### Task 4.8: Federation Mint Infrastructure, Lightning Faucet Custody & Solvency
 
 > **DEPENDENCIES:** Wallet & Custody Architecture section, Tasks 2.2, 4.1–4.7.
-> **GOAL:** Implement the Lightning Faucet–backed agent wallet path and LNbits↔Lightning Faucet
-> bridge, and ensure all custodial flows are monitored and bounded by explicit budgets.
+> **GOAL:** Implement the federation-scoped Cashu mint model, the Lightning
+> Faucet–backed agent wallet path, the LNbits accounting/bridge layer, and the
+> monitoring/attestation machinery needed for safe lifecycle management.
+
+> **Priority sequencing for Task 4.8**
+>
+> **Must add now:**
+>
+> 1. Per-federation mint registry
+> 2. Privileged mint manager / control plane
+> 3. Explicit lifecycle states (`active`, `quarantined`, `stopped`, `destroyed`, `restored`)
+> 4. Dedicated LNbits wallet per mint
+> 5. Drain-before-destroy workflow
+> 6. Proof of Reserves + Proof of Liabilities + solvency log
+> 7. TTL / ephemeral mint expiration support
+> 8. NIP-03 / OpenTimestamps anchoring for lifecycle, solvency, and summary artifacts
+>
+> **Should add next:**
+>
+> 1. Federation-readable solvency / reputation summary links
 
 **Files:**
 
-- `supabase/migrations/YYYYMMDD_agent_wallet_custody.sql`
+- `supabase/migrations/YYYYMMDD_agent_wallet_custody_and_federation_mints.sql`
 - `netlify/functions/agents/create-agent-with-fees.ts` (extensions for LF-backed agents)
 - `netlify/functions/lnbits-proxy.ts` (extended to call Lightning Faucet bridge)
 - `netlify/functions/lf-bridge/*` (optional dedicated bridge functions)
+- `netlify/functions_active/internal/mint-manager.ts` (privileged internal control plane)
 - `netlify/functions/monitoring/lightning-faucet-health.ts`
+- `netlify/functions/monitoring/mint-solvency-health.ts`
 
-#### 4.8.1 Wallet Custody Flags & Schema Wiring
+#### 4.8.1 Federation Mint Registry & Schema Wiring (**Must add now**)
 
+- Add a federation-oriented mint registry (for example `federation_mints`) keyed
+  to Satnam's existing `family_federation_id`, not a generic stand-alone team ID.
+- Each registry record should carry at least:
+  - `family_federation_id`
+  - `mint_url`
+  - lifecycle `status`
+  - `lifespan_type`
+  - `ttl_seconds`
+  - `expires_at`
+  - mint public metadata / keyset metadata
+  - dedicated LNbits wallet linkage
+  - infrastructure metadata needed by the privileged mint manager
+  - timestamps for last health check / last solvency check / last expiry warning
+- Add companion audit/log tables such as:
+  - `federation_mint_events`
+  - `mint_port_pool` (if port allocation is host-managed)
+  - `mint_solvency_log`
 - Ensure `agent_profiles.wallet_custody_type` enum is defined with:
   - `'self_custodial'` (default – NWC / external wallet path).
   - `'lnbits_proxy'` (LNbits privacy proxy for human-created agents who opt in).
   - `'lightning_faucet'` (custodial LF wallet for agent-created agents).
+- Extend payment config wiring so `agent_payment_config` can reference a
+  `federation_mint_id`, while `cashu_mint_url` becomes the currently resolved URL
+  for that mint rather than evidence of one global shared mint.
 - Ensure `agent_profiles.lightning_faucet_agent_key_encrypted` is populated **only** when
   `wallet_custody_type = 'lightning_faucet'` and stored encrypted at rest using the
   existing privacy/crypto helpers.
 
-#### 4.8.2 Agent Provisioning Logic (Human vs Agent-Created)
+#### 4.8.2 Privileged Mint Manager / Control Plane (**Must add now**)
 
-- Extend `create-agent-with-fees.ts` so that:
-  - For **human-created agents** (`creator_type = "human"`):
-    - Default `wallet_custody_type = 'self_custodial'`.
-    - Optionally set `'lnbits_proxy'` when the creator chooses to front the agent
-      via an LNbits wallet + LNaddress.
-  - For **agent-created agents** (`creator_type = "agent"`):
-    - Call Lightning Faucet `create_agent` using the operator key.
-    - Encrypt and store the returned `agent_key` into
-      `agent_profiles.lightning_faucet_agent_key_encrypted`.
-    - Set `wallet_custody_type = 'lightning_faucet'`.
-- Guard rails:
-  - Enforce per-creator limits and bond requirements (Tasks 3.x / 4.4) **before**
-    creating LF agents.
-  - Refuse to create LF-backed agents when LF API is unavailable; surface a
-    clear, non-leaky error to the caller.
+- Introduce a **privileged internal mint-management service** that owns host/VPS
+  level mint orchestration. It is **not** a normal public Netlify/browser-facing
+  endpoint with unrestricted infrastructure powers.
+- Responsibilities:
+  - create mint instance
+  - activate / verify `/v1/info`
+  - quarantine
+  - stop
+  - destroy
+  - restore
+  - manage env/route/port/service metadata
+  - update registry/audit rows after each operation
+- Satnam UI and standard Netlify APIs should call this control plane only through
+  tightly-scoped authenticated requests; the control plane itself runs on the VPS
+  or other trusted internal network.
 
-#### 4.8.3 LNbits ↔ Lightning Faucet Bridge Implementation
+#### 4.8.3 Dedicated LNbits Wallets, LF Bridge, and Custody Separation (**Must add now**)
 
-- Implement the **LNURLp adapter (Option A)** as the initial bridge:
+- Each isolated federation mint should have a **dedicated LNbits wallet/account**
+  to support:
+  - isolated balances
+  - mint-specific accounting
+  - reserve visibility for PoR checks
+  - controlled draining during quarantine/destroy flows
+- Keep roles distinct:
+  - **LNbits wallet:** accounting/reserve front for the mint
+  - **Cashu mint:** liability issuance surface
+  - **Lightning Faucet wallet:** optional operational budget wallet for
+    agent-created agents, separate from the mint reserve model
+- Implement the **LNURLp adapter (Option A)** as the initial bridge where needed:
   - For each LF-backed agent, expose a stable LNURLp/LNaddress endpoint that:
     - Uses LNbits (or a small bridge function) to accept incoming payments.
     - Internally calls Lightning Faucet `create_invoice`/`pay_invoice` so funds
@@ -6881,32 +9564,146 @@ Optional helper table for accounting:
 - Keep all LNbits admin/API calls going through `lnbits-proxy.ts` and **never**
   from ad hoc functions.
 
-#### 4.8.4 Monitoring, Budgets, and Alerts
+#### 4.8.4 Agent Provisioning & Mint Assignment (**Must add now**)
 
-- Implement `monitoring/lightning-faucet-health.ts` to:
-  - Periodically check LF API health, balances for LF-backed agents, and recent
-    failures.
-  - Flag anomalies such as:
-    - Failed withdrawals.
-    - Unexpected 4xx/5xx error rates from LF.
-    - Large balances accumulating in LF agent wallets beyond configured
-      thresholds.
-- Ensure each LF-backed agent has an **operational budget** in sats (max
-  balance and daily/weekly spend).
+- Extend `create-agent-with-fees.ts` so that:
+  - For **human-created agents** (`creator_type = "human"`):
+    - Default `wallet_custody_type = 'self_custodial'`.
+    - Optionally set `'lnbits_proxy'` when the creator chooses to front the agent
+      via an LNbits wallet + LNaddress.
+    - If Cashu is enabled, assign the agent to the federation's active mint from
+      the registry, or the platform-default/bootstrap mint when no dedicated mint
+      exists.
+  - For **agent-created agents** (`creator_type = "agent"`):
+    - Call Lightning Faucet `create_agent` using the operator key.
+    - Encrypt and store the returned `agent_key` into
+      `agent_profiles.lightning_faucet_agent_key_encrypted`.
+    - Set `wallet_custody_type = 'lightning_faucet'`.
+    - Attach the agent to the relevant federation mint registry entry for Cashu
+      issuance/redemption paths when applicable.
+- Guard rails:
+  - Enforce per-creator limits and bond requirements (Tasks 3.x / 4.4) **before**
+    creating LF agents or dedicated federation mints.
+  - Refuse to create LF-backed agents when LF API is unavailable; surface a
+    clear, non-leaky error to the caller.
+  - Refuse to assign destroyed/quarantined mints to newly created agents.
+
+#### 4.8.5 Lifecycle States, Quarantine, and Drain-Before-Destroy (**Must add now**)
+
+- Define explicit mint lifecycle states and meanings:
+  - `active` — mint is routable, healthy, and may issue/redeem normally
+  - `quarantined` — mint remains visible to operators but new issuance is blocked;
+    used for incident response or suspected insolvency
+  - `stopped` — mint process/routes intentionally disabled; may be recoverable
+  - `destroyed` — mint permanently removed from service, with only audit records
+    and backup references retained
+  - `restored` — mint recovered from stop/quarantine/destroy-prep state and under
+    supervised re-validation before returning to full `active` service
+- Required destroy/decommission flow:
+  1. attempt drain to guardian/federation-controlled destination
+  2. verify drain result and remaining balances
+  3. abort destroy on drain failure by default
+  4. allow destroy to continue **only** with explicit authorized override
+     (`skipDrain=true` or equivalent) and logged rationale
+- Maintain audit fields for:
+  - destroy/quarantine reason
+  - guardian/steward approver
+  - drain destination
+  - override reason when bypassing drain safeguards
+- Time-bounded / ephemeral mints are part of the **current scope**, not a later
+  enhancement. The lifecycle design must support:
+  - warning before expiry (for example via scheduled warning and grace-period handling)
+  - automatic or policy-driven transition at expiry
+  - explicit interaction rules between expiry handling and `quarantined`, `stopped`,
+    and `destroyed` states
+  - preservation of audit history when an expiring mint is stopped, drained, restored,
+    or destroyed
+
+#### 4.8.6 Proof of Reserves, Proof of Liabilities, and Solvency Logs (**Must add now**)
+
+- Implement `monitoring/lightning-faucet-health.ts` and
+  `monitoring/mint-solvency-health.ts` to capture both custodial health and
+  mint-specific solvency.
+- For each mint, compute and log:
+  - **Proof of Reserves (PoR):** balance visible in the mint's dedicated LNbits
+    wallet/accounting layer (and any explicitly linked reserve wallet context)
+  - **Proof of Liabilities (PoL):** liabilities derived from the Nutshell mint DB
+    / quote activity, not just wallet balance
+  - **Solvency ratio:** reserves ÷ liabilities
+- Make it explicit in the plan that **PoR alone is insufficient**; PoL must be
+  tracked for every isolated mint.
+- Ensure each LF-backed agent still has an **operational budget** in sats (max
+  balance and daily/weekly spend), but do not conflate LF wallet budgets with
+  mint liabilities.
 - Emit structured logs and optional alerts when:
-  - Budgets are exceeded or close to limits.
-  - LF API health degrades.
-  - Bridge payouts fail or are retried repeatedly.
+  - budgets are exceeded or close to limits
+  - LF API health degrades
+  - bridge payouts fail or are retried repeatedly
+  - mint solvency falls below policy threshold
+  - solvency checks go stale
+
+#### 4.8.7 Nostr Lifecycle Audit Trails & Attestation Links (**Must add now**)
+
+- Publish mint lifecycle events (created, quarantined, stopped, destroyed,
+  restored, expiry-warning) to Nostr as a portable audit trail while keeping the
+  database as the operational source of truth.
+- Planned event layering:
+  - `kind 31990` for discovery pointers
+  - `kind 30300` for summary/reputation references
+  - experimental/internal `kind 30100` for solvency attestations derived from
+    the per-mint PoR + PoL model
+- Integrate **NIP-03 attestation events + OpenTimestamps anchoring in the current
+  architecture** for relevant artifacts, including:
+  - mint lifecycle audit records
+  - solvency attestations / solvency log checkpoints
+  - federation reputation or work-history summaries where appropriate
+- Treat the NIP-03 / OpenTimestamps layer as part of the attestation design now,
+  not as vague future hardening.
+- These events should reference federation identifiers and guardian approval
+  evidence without exposing private operational secrets.
+
+#### 4.8.8 TTL / Ephemeral Mints & OpenTimestamps Anchoring (**Must add now**)
+
+- Add support for time-bounded mints with fields such as:
+  - `lifespan_type`
+  - `ttl_seconds`
+  - `expires_at`
+  - grace-period notifications prior to shutdown
+- TTL support must be designed into the immediate mint lifecycle flow:
+  - schedule expiry warnings before `expires_at`
+  - define the policy action at expiry (for example quarantine or stop pending drain)
+  - ensure expiry-triggered actions compose safely with quarantine, stop, drain,
+    restore, and destroy operations
+- OpenTimestamps anchoring must be planned now using **NIP-03 Nostr events** for:
+  - solvency attestations
+  - mint lifecycle audit records
+  - federation reputation / work-history summaries where appropriate
+- Where OpenTimestamps anchoring is not emitted for every low-value record,
+  the plan should still define which classes of records are anchor-eligible in the
+  initial implementation sequence.
 
 **Verification Steps:**
 
 - [ ] `wallet_custody_type` defaults to `'self_custodial'` for human-created agents.
 - [ ] LF-backed agents are created **only** via the agent-created path and have
       `wallet_custody_type = 'lightning_faucet'` with encrypted `agent_key`.
+- [ ] Federation mint registry rows are linked to `family_federation_id` and can
+      represent platform-default and isolated federation mints.
+- [ ] Mint manager operations are executed only through a privileged internal
+      control plane, not unrestricted public endpoints.
 - [ ] LNbits ↔ Lightning Faucet bridge delivers payments correctly to LF wallets
       without leaking raw social graph data.
-- [ ] Monitoring detects degraded LF health and budget overages and surfaces
-      actionable alerts.
+- [ ] Each isolated mint has a dedicated LNbits wallet/accounting layer.
+- [ ] Destroy operations attempt drain-first behavior and abort by default on
+      drain failure unless an explicit authorized override is present.
+- [ ] Time-bounded mints support `lifespan_type`, `ttl_seconds`, `expires_at`,
+      expiry warnings, and a defined expiry transition policy.
+- [ ] Expiry handling composes correctly with quarantine, stop, restore, and
+      destroy flows.
+- [ ] NIP-03 / OpenTimestamps anchoring is planned for lifecycle audit records,
+      solvency attestations, and relevant federation reputation/work summaries.
+- [ ] Monitoring detects degraded LF health, budget overages, stale solvency
+      checks, and undercollateralized mints, and surfaces actionable alerts.
 - [ ] Disabling the LF bridge or API results in safe, explicit failures without
       stranding user funds.
 
@@ -6962,6 +9759,9 @@ true autonomous onboarding for AI agents.
     - Platform Nostr npub.
   - Supported payment protocols:
     - `["lightning", "cashu", "fedimint"]`
+  - Pay-gate provider registry:
+    - `paygate_providers[]` with sovereignty metadata and docs URLs.
+    - `default_paygate_provider` and `paygate_selection` strategy.
   - Nostr relay list for platform events.
 - **Rationale:** Any agent that knows the domain `satnam.pub` can GET this endpoint
   and learn everything needed for self-onboarding without human intervention.
@@ -6984,19 +9784,51 @@ true autonomous onboarding for AI agents.
       { "tier": 3, "min_bond_sats": 100000 }
     ],
     "per_action_fees_sats": {
-      "nostr_event": 1,
-      "encrypted_dm": 2,
-      "task_submission": 5,
-      "contact_add": 1
+      "agent_profile_update": 10,
+      "agent_status_event": 21,
+      "agent_attestation_light": 21,
+      "agent_attestation_strong": 42,
+      "agent_badge_award": 42,
+      "agent_dm_bundle": 21,
+      "agent_contact_add": 50,
+      "agent_task_record_create": 150
     }
   },
   "free_tier": {
     "enabled": true,
     "total_slots": 210,
     "slots_remaining": 187,
-    "eligibility": "First 210 agents created per user"
+    "eligibility": "First 210 agent accounts platform-wide; max 3 per human by default"
   },
   "payment_protocols": ["lightning", "cashu", "fedimint"],
+  "paygate_providers": [
+    {
+      "id": "lightning_faucet",
+      "sovereignty_level": 1,
+      "description": "Managed agent wallets via Lightning Faucet",
+      "docs": "https://docs.lightningenable.com"
+    },
+    {
+      "id": "routstr",
+      "sovereignty_level": 2,
+      "description": "NIP-90 marketplace routing, Nostr-native",
+      "docs": "https://routstr.com"
+    },
+    {
+      "id": "aperture",
+      "sovereignty_level": 3,
+      "description": "L402 spec gateway by Lightning Labs",
+      "docs": "https://docs.lightning.engineering/the-lightning-network/l402"
+    },
+    {
+      "id": "self_hosted",
+      "sovereignty_level": 4,
+      "description": "Self-hosted L402-compatible gateway",
+      "docs": null
+    }
+  ],
+  "default_paygate_provider": "lightning_faucet",
+  "paygate_selection": "agent_configurable",
   "links": {
     "openapi_spec": "https://satnam.pub/api/openapi.yaml",
     "terms_of_service": "https://satnam.pub/legal/terms",
@@ -7037,6 +9869,9 @@ true autonomous onboarding for AI agents.
 
 - Extend **Task 4.5.5** to publish a **platform-level** `kind 31990` event in addition
   to individual agent service offers.
+- Treat this `kind 31990` platform event as the **entry point** for discovery,
+  with optional pointers to richer artifacts such as `kind 30300` federation
+  reputation summaries and experimental/internal `kind 30100` solvency feeds.
 - **Event content:**
   - Platform name, description, and capabilities summary.
   - Tags:
@@ -7045,6 +9880,8 @@ true autonomous onboarding for AI agents.
     - `["api", "https://api.my.satnam.pub"]`
     - `["well-known", "https://satnam.pub/.well-known/satnam-agents"]`
     - `["openapi", "https://satnam.pub/api/openapi.yaml"]`
+    - Optional `["reputation", "30300:<pubkey>:satnam-platform-summary"]`
+    - Optional `["solvency", "30100:<pubkey>:satnam-platform-solvency"]`
     - `["t", "ai-agent-platform"]`, `["t", "bitcoin-native"]`, `["t", "privacy-first"]`
   - Signed by platform Nostr key.
 - **Rationale:** Nostr-aware agents scanning relays for infrastructure services can
@@ -7156,37 +9993,41 @@ true autonomous onboarding for AI agents.
 
 ---
 
-### Task 4.10: API Monetization via Lightning Enable
+### Task 4.10: API Monetization via L402 (Lightning Enable as initial provider)
 
-> **DEPENDENCIES:** Tasks 4.5 (Commerce Primitives), 4.8 (Lightning Faucet — for cost-side
+> **DEPENDENCIES:** Tasks 4.5 (Commerce Primitives), 4.8 (Federation mint / Lightning Faucet — for cost-side
 > tracking), 4.9 (Agent Discovery — for L402 endpoint documentation in OpenAPI spec).
-> **GOAL:** Enable Satnam to monetize its own agent-facing APIs via Lightning micropayments
-> using Lightning Enable's L402 middleware, creating the inbound revenue side of the agent
-> economy.
+> **GOAL:** Enable Satnam to monetize its own agent-facing APIs via L402, using Lightning Enable
+> as the initial provider, while keeping the integration provider-agnostic so alternative L402
+> stacks (e.g., Aperture from Lightning Labs' Lightning Agent Tools) can be added later
+> without schema changes.
 
-**Use-Case Delineation (Lightning Faucet vs Lightning Enable):**
+**Use-Case Delineation (Lightning Faucet vs L402 Providers):**
 
-| Use Case                                 | Provider                   | Rationale                                                                  |
-| ---------------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
-| Per-agent custodial wallets              | **Lightning Faucet only**  | LF provides isolated, per-agent wallets with operator-controlled budgets   |
-| Agent-to-agent internal transfers        | **Lightning Faucet only**  | LF's `transfer_between_agents` handles this natively                       |
-| Agent outbound payments (external APIs)  | **Lightning Faucet only**  | Agents pay from their LF wallet via `pay_invoice` / `pay_l402_api`         |
-| Satnam API monetization (L402 gating)    | **Lightning Enable only**  | LE provides L402 gating middleware; revenue settles to operator's OpenNode |
-| Budget-constrained AI payment delegation | **Lightning Enable only**  | LE's per-request/per-session caps + NWC-connected operator wallet          |
-| Revenue/cost dashboard                   | **Both**                   | LE reports inbound revenue; LF reports outbound costs; dashboard unifies   |
-| Human user self-custodial payments       | **Neither** (NWC/existing) | Existing NWC infrastructure serves self-custodial human wallets            |
+| Use Case                                 | Provider / Layer                              | Rationale                                                                                  |
+| ---------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Per-agent custodial wallets              | **Lightning Faucet only**                     | LF provides isolated, per-agent wallets with operator-controlled budgets                   |
+| Agent-to-agent internal transfers        | **Lightning Faucet only**                     | LF's `transfer_between_agents` handles this natively                                       |
+| Agent outbound payments (external APIs)  | **Lightning Faucet only**                     | Agents pay from their LF wallet via `pay_invoice` / `pay_l402_api`                         |
+| Satnam API monetization (L402 gating)    | **L402 provider (initial: Lightning Enable)** | Gate Satnam APIs behind Lightning invoices; reference implementation uses Lightning Enable |
+| Budget-constrained AI payment delegation | **L402 provider (initial: Lightning Enable)** | Per-request/per-session caps on spend via provider-managed budgets                         |
+| Self-hosted L402 stack for operators     | **Optional: LAT / Aperture (future)**         | For self-hosted / ops-heavy deployments that want to run their own node + L402 stack       |
+| Revenue/cost dashboard                   | **Both (LF + L402 provider)**                 | L402 provider reports inbound revenue; LF reports outbound costs; dashboard unifies        |
+| Human user self-custodial payments       | **Neither** (NWC/existing)                    | Existing NWC infrastructure serves self-custodial human wallets                            |
 
-#### 4.10.1: Lightning Enable Account Setup & Configuration
+_Note:_ For the initial Netlify/serverless deployment, Lightning Enable is the only L402 provider in scope. Lightning Labs' Lightning Agent Tools (LAT) / Aperture are treated as a future, self-hosted option evaluated in 4.10.6.
 
-- [ ] Create OpenNode account and complete KYB verification (2-4 business days)
-- [ ] Select LE plan tier (Standalone API $199/mo recommended for initial launch)
+#### 4.10.1: L402 Provider Account Setup & Configuration (Reference: Lightning Enable)
+
+- [ ] Create OpenNode account and complete KYB verification (2–4 business days)
+- [ ] Select Lightning Enable plan tier (Standalone API $199/mo recommended for initial launch)
 - [ ] Install LE MCP server: `pip install lightning-enable-mcp` (for operator-side testing)
 - [ ] Pay 6,000 sats L402 upgrade to unlock L402 provider features
-- [ ] Configure NWC connection between LE and operator's wallet (CoinOS, LND, or Alby)
-- [ ] Store credentials in Netlify environment variables (see Task 6.5)
-- [ ] Verify basic `check_wallet_balance` and `pay_invoice` work end-to-end
+- [ ] Configure NWC connection between Lightning Enable and operator's wallet (CoinOS, LND, or Alby)
+- [ ] Store provider credentials in Netlify environment variables (see Task 6.5)
+- [ ] Verify basic `check_wallet_balance` and `pay_invoice` work end-to-end through the provider
 
-**Estimated effort:** 1-2 days (mostly waiting on OpenNode KYB)
+**Estimated effort:** 1–2 days (mostly waiting on OpenNode KYB)
 
 #### 4.10.2: L402 Endpoint Gating for Satnam APIs
 
@@ -7196,23 +10037,27 @@ true autonomous onboarding for AI agents.
   - `credit-envelope` creation/validation endpoints
   - Agent analytics/reputation query endpoints
 - [ ] Create `netlify/functions/middleware/l402-gate.ts` — reusable L402 verification middleware
-- [ ] Integrate LE's L402 challenge/response flow:
+- [ ] Integrate the L402 challenge/response flow from the configured provider
+      _(Reference implementation: Lightning Enable)_:
   - On unauthenticated request: return `402 Payment Required` with Lightning invoice
-  - On payment: LE verifies preimage, forwards request to backend
+  - On payment: provider verifies preimage, forwards request to backend
   - On success: return response + receipt
+  - If a Cashu-backed pay-gate is enabled, support NUT-24-compatible `X-Cashu`
+    challenges and NUT-18 payment request encoding for accepted mints / units / conditions
 - [ ] Add L402 pricing tiers to existing fee schedule (align with `platform_fee_schedule` table)
 - [ ] Update `/.well-known/satnam-agents` (Task 4.9) to advertise L402-gated endpoints
 - [ ] Update `docs/openapi.yaml` (Task 4.9) with L402 security scheme and pricing annotations
 
-**Estimated effort:** 3-5 days
+**Estimated effort:** 3–5 days
 
 #### 4.10.3: Revenue Tracking & Webhook Integration
 
-- [ ] Create `netlify/functions/lightning-enable-webhook.ts` — LE/OpenNode payment webhook handler
-- [ ] Extend `platform_revenue` table for multi-source revenue tracking:
+- [ ] Create `netlify/functions/lightning-enable-webhook.ts` — L402 provider payment webhook handler
+      _(initially wired to Lightning Enable/OpenNode; future providers reuse same handler shape or a sibling function)_
+- [ ] Extend `platform_revenue` table for multi-source revenue tracking (already planned):
 
 ```sql
--- Lightning Enable revenue tracking
+-- Lightning Enable / L402 revenue tracking
 ALTER TABLE platform_revenue
   ADD COLUMN IF NOT EXISTS revenue_source TEXT DEFAULT 'direct'
     CHECK (revenue_source IN ('direct', 'lightning_faucet', 'lightning_enable', 'sig4sats')),
@@ -7221,15 +10066,17 @@ ALTER TABLE platform_revenue
   ADD COLUMN IF NOT EXISTS caller_npub TEXT; -- Who paid (if Nostr-authenticated)
 ```
 
-- [ ] Wire LE webhook events into existing monitoring/revenue dashboards
-- [ ] Implement revenue reconciliation: LE webhook confirmations vs OpenNode settlement records
+- [ ] Wire provider webhook events into existing monitoring/revenue dashboards
+- [ ] Implement revenue reconciliation: provider webhook confirmations vs settlement records
 - [ ] Add revenue source breakdown to operator analytics (Task 4.4 Agent Dashboard)
 
-**Estimated effort:** 2-3 days
+_Note:_ Initially, all L402-based revenue is tracked using `revenue_source = 'lightning_enable'`, even if additional providers are prototyped. If a second provider graduates beyond experiment status, we can extend the enum in a later migration.
 
-#### 4.10.4: MCP Dual-Server Configuration
+**Estimated effort:** 2–3 days
 
-- [ ] Document MCP dual-server setup for agents using both LF + LE:
+#### 4.10.4: Optional MCP Dual-Server Compatibility (LF + L402 Provider)
+
+- [ ] Document MCP dual-server setup as an **optional later integration** for agents using both LF (custody/budgets) + L402 provider (API monetization):
 
 ```json
 {
@@ -7251,61 +10098,87 @@ ALTER TABLE platform_revenue
 }
 ```
 
-- [ ] Add `mcp_server_configs` to agent profile or discovery metadata
-- [ ] Implement server selection logic: route wallet ops to LF, budget-constrained API payments to LE
+- [ ] Add `mcp_server_configs` only if later tool-routing needs justify it
+- [ ] Implement server selection logic only if MCP is actually adopted for wallet/API tool segregation
 - [ ] Test that agents can use both MCP servers simultaneously without tool name conflicts
 
-**Estimated effort:** 1-2 days
+_Note:_ MCP is **not required** for core Satnam agent creation, federation governance, or current signing flows. If adopted later, it belongs as an orchestration / tool-routing layer rather than the core identity or federation-signing primitive.
+
+**Estimated effort:** 1–2 days
 
 #### 4.10.5: Unified Payment Dashboard (Revenue + Costs)
 
 - [ ] Extend Agent Dashboard (Task 4.4) with "Economics" tab:
-  - **Revenue** (from LE): L402 payments received, by endpoint, by caller
-  - **Costs** (from LF): Agent outbound payments, by agent, by destination
+  - **Revenue** (from L402 provider, initially Lightning Enable): L402 payments received, by endpoint, by caller
+  - **Costs** (from Lightning Faucet): Agent outbound payments, by agent, by destination
   - **Net position**: Revenue minus costs, per agent and platform-wide
 - [ ] Add time-series charts for revenue/cost trends
 - [ ] Add alerts for: revenue drops, cost spikes, net position going negative
 - [ ] Integrate with existing monitoring (Task 6.3)
 
-**Estimated effort:** 2-3 days
+**Estimated effort:** 2–3 days
 
-**Task 4.10 Total Estimated Effort: 9-15 days**
+#### 4.10.6 (Optional): Evaluate Lightning Agent Tools / Aperture as Alternative L402 Provider
+
+This subtask is explicitly optional and can be scheduled after the initial Lightning Enable integration is stable.
+
+- [ ] Spin up a small, non-production LAT stack (Aperture + lnget + lnd) following Lightning Labs' recommended security tier for prototypes (e.g., Tier 2 with keys on disk, or Tier 3 read-only where applicable)
+- [ ] Gate a single, low-risk Satnam API endpoint behind Aperture as an L402 reverse proxy, reusing the existing `l402-gate` middleware interface wherever possible
+- [ ] Confirm that external agents using LAT's `lnget` client can successfully:
+  - Discover the L402-gated endpoint
+  - Receive and pay a 402 invoice
+  - Reuse the resulting token for subsequent calls within budget constraints
+- [ ] Pipe LAT/Aperture usage data into the existing `platform_revenue` and Unified Payment Dashboard flow (no new tables), even if initially tagged under the same `revenue_source = 'lightning_enable'`
+- [ ] Document operational differences and trade-offs between:
+  - Hosted L402 provider (Lightning Enable) for Netlify/serverless deployments
+  - Self-hosted LAT/Aperture stack for advanced/self-hosted operators
+
+**Estimated effort:** 3–5 days (R&D; can be postponed until after Phase 4 is otherwise complete)
+
+**Task 4.10 Total Estimated Effort (excluding optional 4.10.6): 9–15 days**
+**With 4.10.6 prototype:** 12–20 days
 
 #### Task 4.10 Feature Flags
 
 ```env
-# Lightning Enable Feature Flags
-VITE_ENABLE_LIGHTNING_ENABLE=false       # Master toggle for all LE features
+# Lightning Enable / L402 Feature Flags
+VITE_ENABLE_LIGHTNING_ENABLE=false       # Master toggle for all Lightning Enable features
 VITE_ENABLE_API_MONETIZATION=false       # L402 gating on Satnam APIs
 VITE_ENABLE_UNIFIED_ECONOMICS=false      # Revenue + cost dashboard
+
+# L402 Provider Abstraction
+L402_PROVIDER=lightning_enable           # lightning_enable (default) | aperture (future) | other
 ```
 
 #### Task 4.10 Implementation Priority
 
 | Priority | Subtask                    | Dependencies           | Effort   | Can Start After    |
 | -------- | -------------------------- | ---------------------- | -------- | ------------------ |
-| 1        | 4.10.1 (Account Setup)     | None (external)        | 1-2 days | Anytime            |
-| 2        | 4.10.2 (L402 Gating)       | 4.10.1, Tasks 4.5, 4.9 | 3-5 days | Phase 4 complete   |
-| 3        | 4.10.3 (Revenue Tracking)  | 4.10.2                 | 2-3 days | After 4.10.2       |
-| 4        | 4.10.4 (MCP Dual-Server)   | 4.10.1, Task 4.8       | 1-2 days | After 4.8 + 4.10.1 |
-| 5        | 4.10.5 (Unified Dashboard) | 4.10.3, Task 4.4       | 2-3 days | After 4.10.3       |
+| 1        | 4.10.1 (Account Setup)     | None (external)        | 1–2 days | Anytime            |
+| 2        | 4.10.2 (L402 Gating)       | 4.10.1, Tasks 4.5, 4.9 | 3–5 days | Phase 4 complete   |
+| 3        | 4.10.3 (Revenue Tracking)  | 4.10.2                 | 2–3 days | After 4.10.2       |
+| 4        | 4.10.4 (MCP Dual-Server)   | 4.10.1, Task 4.8       | 1–2 days | After 4.8 + 4.10.1 |
+| 5        | 4.10.5 (Unified Dashboard) | 4.10.3, Task 4.4       | 2–3 days | After 4.10.3       |
+| 6        | 4.10.6 (LAT Prototype)     | 4.10.1–4.10.3          | 3–5 days | After 4.10.3       |
 
 **Recommended rollout:**
 
-1. Start 4.10.1 immediately (KYB takes 2-4 days, no code dependency)
-2. Implement 4.10.2-4.10.3 after Task 4.8 and 4.9 are complete
-3. 4.10.4 can be done in parallel with 4.10.2-4.10.3
+1. Start 4.10.1 immediately (KYB takes 2–4 days, no code dependency)
+2. Implement 4.10.2–4.10.3 after Task 4.8 and 4.9 are complete
+3. 4.10.4 can be done in parallel with 4.10.2–4.10.3
 4. 4.10.5 is last (needs both revenue and cost data flowing)
-5. Feature flag rollout: `API_MONETIZATION` first → `UNIFIED_ECONOMICS` after validation
+5. 4.10.6 can be scheduled later as an R&D thread once Lightning Enable is proven in production
+6. Feature flag rollout: `API_MONETIZATION` first → `UNIFIED_ECONOMICS` after validation
 
 #### Task 4.10 Success Criteria
 
 - [ ] External agent can discover L402-gated endpoint via `.well-known/satnam-agents` or OpenAPI spec
 - [ ] External agent can pay Lightning invoice and receive API response with valid receipt
-- [ ] Revenue from L402 payments is tracked in `platform_revenue` with `revenue_source = 'lightning_enable'`
-- [ ] Operator dashboard shows unified revenue (LE) + costs (LF) view
-- [ ] All LE functionality is disabled when `VITE_ENABLE_LIGHTNING_ENABLE=false`
+- [ ] Revenue from L402 payments is tracked in `platform_revenue` with `revenue_source = 'lightning_enable'` for the initial provider
+- [ ] Operator dashboard shows unified revenue (L402 provider) + costs (Lightning Faucet) view
+- [ ] All Lightning Enable functionality is disabled when `VITE_ENABLE_LIGHTNING_ENABLE=false`
 - [ ] Existing Lightning Faucet functionality (Task 4.8) is completely unaffected
+- [ ] Optional LAT/Aperture prototype can be turned off independently without impacting the core L402 provider path
 
 ---
 
@@ -7313,7 +10186,7 @@ VITE_ENABLE_UNIFIED_ECONOMICS=false      # Revenue + cost dashboard
 
 > **DEPENDENCIES:** Tasks 3.3 (Work History), 3.4 (Task Completion & Sig4Sats), 3.8 (Reputation
 > & Trust Infrastructure), 4.1 (Agent Dashboard), 4.4 (Agent Creation Wizard & Management
-> Dashboard), 4.8 (Lightning Faucet Custody), 4.10.5 (Unified Payment Dashboard).
+> Dashboard), 4.8 (Federation mint + Lightning Faucet custody), 4.10.5 (Unified Payment Dashboard).
 > **GOAL:** Extend the existing sovereignty, privacy, and financial dashboards so that both
 > **agents** and their **human creators** have a first-class control board for economic,
 > reputational, and autonomy configuration, without introducing any global "admin" role.
@@ -7364,7 +10237,7 @@ dashboard (Task 4.10.5), and family/sovereignty dashboards into two focused view
   - Token balances and blind token usage graphs.
   - Autonomy configuration panel (read-only for agents; editable for human creators).
 - [ ] Ensure **no new role type** is introduced; agent accounts continue to use
-      `agent_profiles.agent_role` mapped to `'adult' | 'offspring'`.
+      the existing platform role family together with `is_agent = true`.
 - [ ] Respect privacy-first constraints: the control board never reveals other agents' data,
       even when showing benchmarks (use anonymized aggregates only).
 
@@ -7481,36 +10354,36 @@ describe("Platform Monetization", () => {
       // Purchase 5 tokens
       const tokens = await tokenManager.purchaseTokens(
         agentId,
-        "event_post",
+        "agent_status_event",
         5,
-        await generatePaymentProof(500), // 5 * 100 sats
+        await generatePaymentProof(105), // 5 * 21 sats
       );
 
       expect(tokens.length).toBe(5);
-      expect(tokenManager.getBalance("event_post")).toBe(5);
+      expect(tokenManager.getBalance("agent_status_event")).toBe(5);
 
       // Redeem one token
-      const result = await tokenManager.redeemToken("event_post", {
+      const result = await tokenManager.redeemToken("agent_status_event", {
         kind: 1,
         content: "Test event",
         tags: [],
       });
 
       expect(result.token_valid).toBe(true);
-      expect(tokenManager.getBalance("event_post")).toBe(4);
+      expect(tokenManager.getBalance("agent_status_event")).toBe(4);
     });
 
     it("should prevent double-spend of blind tokens", async () => {
       const tokenManager = new BlindTokenManager();
       const tokens = await tokenManager.purchaseTokens(
         agentId,
-        "event_post",
+        "agent_status_event",
         1,
         paymentProof,
       );
 
       // First redemption succeeds
-      await tokenManager.redeemToken("event_post", eventPayload);
+      await tokenManager.redeemToken("agent_status_event", eventPayload);
 
       // Second redemption with same token fails
       await expect(
@@ -7527,10 +10400,10 @@ describe("Platform Monetization", () => {
 
   describe("Action Fees", () => {
     const testCases = [
-      { action: "agent_status_update_event", fee: 100 },
-      { action: "task_record_create", fee: 150 },
-      { action: "contact_add", fee: 50 },
-      { action: "agent_dm_bundle", fee: 25 },
+      { action: "agent_status_event", fee: 21 },
+      { action: "agent_task_record_create", fee: 150 },
+      { action: "agent_contact_add", fee: 50 },
+      { action: "agent_dm_bundle", fee: 21 },
     ];
 
     testCases.forEach(({ action, fee }) => {
@@ -8561,7 +11434,7 @@ async function getAuthToken(userId: string): Promise<string> {
 - [ ] All wizard flow tests pass (4-step creation with intent validation)
 - [ ] Economic failure tests correctly surface hints (free tier, bonds, tokens)
 - [ ] Creator type enforcement prevents invalid values
-- [ ] Agent role restriction allows only 'adult' and 'offspring' (Master Context compliance)
+- [ ] Agent role validation allows only the existing platform role family (Master Context compliance)
 - [ ] Nsec/secret validation rejects malicious intent payloads
 - [ ] RLS policies enforce creator-only access to managed agents
 - [ ] Cross-tenant isolation verified (User A cannot see User B's data)
@@ -9072,10 +11945,12 @@ VITE_ENABLE_UNIFIED_ECONOMICS=false              # Revenue + cost dashboard
 VITE_ENABLE_AGENT_CONTROL_BOARD=false            # Per-agent control board UI
 VITE_ENABLE_CREATOR_CONTROL_BOARD=false          # Human creator portfolio dashboard
 
-		# Cashu
-CASHU_MINT_URL=https://mint.satnam.pub
+# Cashu
+CASHU_MINT_URL=https://mint-default.satnam.pub # Platform-default/bootstrap mint only; dedicated federation mints are registry-assigned
 CASHU_MINT_PRIVATE_KEY=...
 CASHU_MINT_KEYSET_ID=...
+MINT_MANAGER_INTERNAL_URL=http://mint-manager.internal:8080
+MINT_MANAGER_SHARED_SECRET=...
 
 # Fedimint
 FEDIMINT_FEDERATION_ID=fed1...
@@ -9088,7 +11963,7 @@ NOSTR_PLATFORM_NSEC=nsec1...
 
 # Sig4Sats
 SIG4SATS_ENABLED=true
-SIG4SATS_MINT_URL=https://mint.satnam.pub
+SIG4SATS_MINT_URL=https://mint-default.satnam.pub # Default fallback for bootstrap/testing; allow federation override
 
 # Blind Signatures
 BLIND_SIGNATURE_MASTER_KEY=... # For encrypting keypairs
@@ -9129,14 +12004,18 @@ All platform actions require payment via:
 
 ### Fee Schedule
 
-| Action                  | Cost (sats)                                              | Blind Token Type |
-| ----------------------- | -------------------------------------------------------- | ---------------- |
-| Agent Account Creation  | 1,000 (first 210 free, configurable via FREE_TIER_LIMIT) | N/A              |
-| Nostr Event Publish     | 100                                                      | `event_post`     |
-| Task Record Create      | 150                                                      | `task_create`    |
-| Contact/Relay Add       | 50                                                       | `contact_add`    |
-| NIP-17 DM Send          | 25                                                       | `dm_send`        |
-| Credit Envelope Request | 200                                                      | N/A              |
+| Action                   | Cost (sats)                                              | Blind Token Type           |
+| ------------------------ | -------------------------------------------------------- | -------------------------- |
+| Agent Account Creation   | 1,000 (first 210 free, configurable via FREE_TIER_LIMIT) | N/A                        |
+| Agent Profile Update     | 10                                                       | `agent_profile_update`     |
+| Agent Status Event       | 21                                                       | `agent_status_event`       |
+| Agent Attestation Light  | 21                                                       | `agent_attestation_light`  |
+| Agent Attestation Strong | 42                                                       | `agent_attestation_strong` |
+| Agent Badge Award        | 42                                                       | `agent_badge_award`        |
+| Agent DM Bundle          | 21                                                       | `agent_dm_bundle`          |
+| Agent Contact Add        | 50                                                       | `agent_contact_add`        |
+| Agent Task Record Create | 150                                                      | `agent_task_record_create` |
+| Credit Envelope Request  | 200                                                      | N/A                        |
 
 ---
 
@@ -9151,13 +12030,12 @@ All platform actions require payment via:
 ```json
 {
   "agent_id": "uuid",
-  "token_type": "event_post",
+  "token_type": "agent_status_event",
   "quantity": 10,
   "blinded_messages": ["...", "..."],
   "payment_proof": "lnbc..."
 }
 ```
-````
 
 **Response:**
 
@@ -9174,13 +12052,16 @@ All platform actions require payment via:
 
 **Endpoint:** `POST /api/agents/redeem-blind-token`
 
+**Authentication:** None. No Authorization header, no Supabase session cookie, no JWT.
+The token itself is the authenticator.
+
 **Request:**
 
 ```json
 {
   "unblinded_token": "...",
   "signature_proof": "...",
-  "action_type": "event_post",
+  "action_type": "agent_status_event",
   "keypair_public_key": "...",
   "action_payload": {
     /* action-specific data */
@@ -9376,10 +12257,13 @@ All platform actions require payment via:
 
 ```json
 {
-  "pr": "https://mint.satnam.pub",
+  "pr": "https://mint-federation-example.satnam.pub",
   "pk": "02a1b2c3..."
 }
 ```
+
+- `pr` should resolve from the active federation mint registry entry when one
+  exists; otherwise it may fall back to the platform-default/bootstrap mint.
 
 ### Fedimint Address
 
@@ -9423,19 +12307,19 @@ All platform actions require payment via:
 - Documentation: https://docs.satnam.pub
 - GitHub: https://github.com/satnam-pub/platform
 - Discord: https://discord.gg/satnam
-
 ````
 
-***
+---
 
 ### Task 6.3: Deployment Checklist
 
 ```markdown
 # Deployment Checklist
 
-## Pre-Deployment
+## Pre-Deployment Checklist
 
 ### Database
+
 - [ ] All migrations run successfully
 - [ ] RLS policies tested
 - [ ] Indexes created
@@ -9446,14 +12330,17 @@ All platform actions require payment via:
 - [ ] Triggers tested
 
 ### Backend Services
+
 - [ ] Lightning/LNbits configured
-- [ ] Cashu mint operational
+- [ ] Platform-default Cashu mint operational
+- [ ] Privileged mint manager operational for isolated federation mints
 - [ ] Fedimint federation joined
 - [ ] NWC wallet generation tested
 - [ ] Sig4Sats redemption library integrated
 - [ ] Blind signature library tested
 
 ### APIs
+
 - [ ] All endpoints deployed
 - [ ] Rate limiting configured
 - [ ] CORS headers set
@@ -9464,6 +12351,7 @@ All platform actions require payment via:
 - [ ] Error handling tested
 
 ### Frontend
+
 - [ ] Production build successful
 - [ ] Token manager tested
 - [ ] Payment modals functional
@@ -9471,6 +12359,7 @@ All platform actions require payment via:
 - [ ] Mobile responsive
 
 ### DNS & Routes
+
 - [ ] `/.well-known/nostr.json` → NIP-05 handler
 - [ ] `/.well-known/lnurlp/*` → Lightning handler
 - [ ] `/.well-known/cashu/*` → Cashu handler
@@ -9481,6 +12370,7 @@ All platform actions require payment via:
 ## Post-Deployment
 
 ### Testing
+
 - [ ] Create first agent (free tier)
 - [ ] Create 211th agent (should require payment when FREE_TIER_LIMIT=210)
 - [ ] Purchase blind tokens
@@ -9493,6 +12383,7 @@ All platform actions require payment via:
 - [ ] Verify receipts recorded
 
 ### Monitoring
+
 - [ ] Sentry configured
 - [ ] Log aggregation active
 - [ ] Alert thresholds set
@@ -9503,6 +12394,7 @@ All platform actions require payment via:
 - [ ] Database performance monitored
 
 ### Documentation
+
 - [ ] API docs published
 - [ ] User guides published
 - [ ] Developer tutorials available
@@ -9511,6 +12403,7 @@ All platform actions require payment via:
 - [ ] Privacy policy published
 
 ### Security
+
 - [ ] All secrets rotated
 - [ ] API keys scoped correctly
 - [ ] RLS policies enforced
@@ -9518,6 +12411,37 @@ All platform actions require payment via:
 - [ ] DDoS protection enabled
 - [ ] Backup strategy tested
 - [ ] Disaster recovery plan documented
+
+### Security & Payment Gate (MUST complete before production)
+
+- [ ] `verifyLightningPayment` implemented and tested against LNbits API
+- [ ] `verifyCashuToken` implemented and tested against active Cashu mint
+- [ ] `verifyFedimintTxid` implemented and tested against Fedimint gateway
+- [ ] `verifyBondPayment` unified wrapper implemented
+- [ ] Webhook replay protection (timestamp window + payment_hash idempotency) live
+- [ ] `payment_proof` stored as hash only; raw proofs never logged
+- [ ] `claimed_by_npub` stored as hashed only; `DEPLOYMENT_SALT` env var set
+- [ ] `cashu_token` stored encrypted; raw token never in logs
+
+### Privacy Gate (MUST complete before anonymous redemption goes live)
+
+- [ ] `redeem-blind-token` confirmed to accept requests with no Authorization header
+- [ ] `spent_token_nullifiers` table migrated and indexed
+- [ ] Redemption logs confirmed to contain only nullifier hash + action type + outcome
+- [ ] Anonymous redemption rate limiter live (action_type bucket only, not IP/identity)
+
+### Sybil Resistance Gate
+
+- [ ] `claim_free_tier_slot` updated to enforce `app.free_tier_per_human_limit`
+- [ ] `p_human_id` passed from all call sites
+- [ ] Per-human limit tested: single human cannot claim >3 slots (configurable)
+
+### Pay-Gate Provider Gate
+
+- [ ] `agent_paygate_config` table migrated
+- [ ] At least one `PaygateAdapter` implementation live (recommend `lightning_faucet` first)
+- [ ] `.well-known` paygate_providers array deployed and tested
+- [ ] Agent Creation Wizard Step 3b (provider selection) rendering correctly
 
 ## Launch
 
@@ -9537,7 +12461,7 @@ All platform actions require payment via:
 - [ ] Monitor API performance
 - [ ] Check payment webhook reliability
 - [ ] Review error rates
-````
+```
 
 ---
 
@@ -9616,7 +12540,7 @@ All platform actions require payment via:
 - [ ] Revenue tracking confirmed: LE webhook → `platform_revenue` table → dashboard
 - [ ] Feature flags tested: enable LE → verify L402 gating active; disable → verify graceful fallback
 - [ ] Dual-provider test: confirm LF agent wallets work correctly with LE active
-- [ ] MCP dual-server configuration tested with no tool name conflicts
+- [ ] If MCP is adopted, dual-server configuration is tested with no tool name conflicts
 
 #### Compliance Considerations
 
@@ -9720,7 +12644,7 @@ All platform actions require payment via:
 ### Task 7.2: Backend APIs – Discovery, Matching, Booking & Escrow
 
         > **DEPENDENCIES:** Task 7.1, Tasks 3.3–3.4 (tasks & Sig4Sats), 4.5 (service registry),
-        > 4.8 (Lightning Faucet budgets), 4.10 (Lightning Enable L402), 5.x tests.
+        > 4.8 (federation mint / Lightning Faucet budgets), 4.10 (Lightning Enable L402), 5.x tests.
         > **GOAL:** Provide Netlify Functions for mentor discovery, recommendation, booking, and
         > settlement that reuse existing **task**, **bond**, and **payment** infrastructure.
 
@@ -10081,7 +13005,9 @@ All platform actions require payment via:
 **Multi-Guardian Signatures:**
 
 - For family federation agents: Strong attestations can require guardian co-signatures
-- Guardian approval adds social proof layer
+- Guardian approval should be referenceable as concrete approval evidence
+  (`kind 39212` / `kind 39213` or equivalent internal records), not just a
+  free-floating social proof claim
 - Useful for: High-value credentials, identity verification, trust bootstrapping
 
 ### Discovery & Verification
@@ -10092,6 +13018,8 @@ All platform actions require payment via:
 2. Fetch NIP-32 label events from Nostr relays
 3. Verify bond backing via `performance_bonds` table
 4. Check attesting agent's own reputation score
+5. For high-trust claims, verify guardian approval evidence and federation
+   summary references rather than trusting labels alone
 
 **Trust Calculation:**
 
@@ -10279,7 +13207,7 @@ This comprehensive plan now includes:
 
 **Steps:**
 
-1. Agent exhausts all blind tokens (dm_send balance = 0)
+1. Agent exhausts all blind tokens (`agent_dm_bundle` balance = 0)
 2. Agent attempts to send DM → receives `EconomicFailureHint` with reason='INSUFFICIENT_TOKENS'
 3. Agent purchases more tokens using NWC autonomous payment
 4. Agent retries DM send → succeeds

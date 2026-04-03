@@ -1,13 +1,21 @@
 /**
  * @fileoverview Role Management API for Family Federations
  * @description Handles hierarchical RBAC: Guardian > Steward > Adult > Offspring
- * 
+ *
  * SOVEREIGNTY: Family-controlled hierarchical role management
  * PRIVACY-FIRST: No detailed logging of family structure
  * AUDITABILITY: Transparent role change tracking
+ *
+ * @see docs/HIERARCHICAL_RBAC_SYSTEM.md — architecture overview and document map
+ * @see docs/dev/permissions-architecture.md — service signatures and API endpoint table
+ * @see src/types/permissions.ts — canonical TypeScript type and numeric level authority
+ * @see src/lib/family/role-manager.ts — behavioral authority (promotion rules, spending limits)
  */
 
 // Role hierarchy validation - SOVEREIGNTY: Family-controlled hierarchy
+// SYNC REQUIRED: These numeric levels must always match ROLE_HIERARCHY in
+// src/types/permissions.ts (the canonical TypeScript source). JS API routes
+// cannot import from .ts files directly, so this copy is maintained manually.
 const ROLE_HIERARCHY = {
   private: 0, // Private users have no RBAC restrictions
   offspring: 1,
@@ -22,24 +30,24 @@ const ROLE_HIERARCHY = {
  */
 export default async function handler(req, res) {
   // Set CORS headers for browser compatibility
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
   // Route based on URL path
-  const path = req.url.split('?')[0];
-  
-  if (path.endsWith('/change-role') && req.method === 'POST') {
+  const path = req.url.split("?")[0];
+
+  if (path.endsWith("/change-role") && req.method === "POST") {
     return await changeUserRole(req, res);
-  } else if (path.endsWith('/check-permission') && req.method === 'POST') {
+  } else if (path.endsWith("/check-permission") && req.method === "POST") {
     return await checkPermission(req, res);
-  } else if (path.endsWith('/hierarchy') && req.method === 'GET') {
+  } else if (path.endsWith("/hierarchy") && req.method === "GET") {
     return await getRoleHierarchy(req, res);
-  } else if (path.endsWith('/remove-user') && req.method === 'POST') {
+  } else if (path.endsWith("/remove-user") && req.method === "POST") {
     return await removeUserFromFederation(req, res);
   } else {
     return res.status(404).json({
@@ -82,7 +90,11 @@ async function changeUserRole(req, res) {
     const targetCurrentRole = "adult"; // Mock target current role
 
     // Validate role change permissions
-    const validation = validateRoleChange(currentRole, targetCurrentRole, newRole);
+    const validation = validateRoleChange(
+      currentRole,
+      targetCurrentRole,
+      newRole,
+    );
 
     if (!validation.valid) {
       return res.status(403).json({
@@ -94,7 +106,7 @@ async function changeUserRole(req, res) {
 
     // SOVEREIGNTY: In production, update user role in database
     // PRIVACY-FIRST: Minimal logging of role changes
-    
+
     return res.status(200).json({
       success: true,
       data: {
@@ -380,7 +392,7 @@ function checkRolePermission(userRole, action, targetRole) {
 
 function getManageableRoles(userRole) {
   const manageable = [];
-  
+
   Object.keys(ROLE_HIERARCHY).forEach((role) => {
     if (ROLE_HIERARCHY[userRole] > ROLE_HIERARCHY[role]) {
       manageable.push(role);

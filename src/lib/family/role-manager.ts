@@ -1,14 +1,28 @@
 /**
  * @fileoverview Role Management Service for Family Federations
  * @description Implements hierarchical RBAC: Guardian > Steward > Adult > Offspring
+ *
+ * BEHAVIORAL AUTHORITY: This file owns the full RoleHierarchy objects —
+ *   spending limits, promotion/demotion matrices, and approval requirements.
+ *   Numeric role levels are imported from src/types/permissions.ts (ROLE_HIERARCHY),
+ *   which is the single source of truth for the level map.
+ *
+ * @see docs/HIERARCHICAL_RBAC_SYSTEM.md — architecture overview and document map
+ * @see docs/dev/permissions-architecture.md — service layer and DB schema
+ * @see src/types/permissions.ts — type authority (FederationRole, ROLE_HIERARCHY levels)
  */
 
-import { FederationRole, RolePermissions, RoleHierarchy } from '../../types/auth';
+import {
+  FederationRole,
+  RoleHierarchy,
+  RolePermissions,
+} from "../../types/auth";
+import { ROLE_HIERARCHY as ROLE_HIERARCHY_LEVELS } from "../../types/permissions";
 
 // Role hierarchy definitions
 export const ROLE_HIERARCHY: Record<FederationRole, RoleHierarchy> = {
   private: {
-    role: 'private',
+    role: "private",
     permissions: {
       can_view_own_balance: true,
       can_make_small_payments: true,
@@ -24,7 +38,7 @@ export const ROLE_HIERARCHY: Record<FederationRole, RoleHierarchy> = {
     requires_approval_for: [], // No approvals needed
   },
   offspring: {
-    role: 'offspring',
+    role: "offspring",
     permissions: {
       can_view_own_balance: true,
       can_make_small_payments: true,
@@ -34,10 +48,14 @@ export const ROLE_HIERARCHY: Record<FederationRole, RoleHierarchy> = {
     can_demote_from: [],
     can_remove: false,
     daily_spending_limit: 10000,
-    requires_approval_for: ['large_payments', 'role_changes', 'federation_settings'],
+    requires_approval_for: [
+      "large_payments",
+      "role_changes",
+      "federation_settings",
+    ],
   },
   adult: {
-    role: 'adult',
+    role: "adult",
     permissions: {
       can_view_family_balances: true,
       can_approve_offspring_payments: true,
@@ -45,14 +63,18 @@ export const ROLE_HIERARCHY: Record<FederationRole, RoleHierarchy> = {
       can_manage_offspring: true,
       can_view_family_events: true,
     },
-    can_promote_to: ['offspring'],
-    can_demote_from: ['offspring'],
+    can_promote_to: ["offspring"],
+    can_demote_from: ["offspring"],
     can_remove: false,
     daily_spending_limit: 100000,
-    requires_approval_for: ['large_payments', 'role_changes', 'federation_settings'],
+    requires_approval_for: [
+      "large_payments",
+      "role_changes",
+      "federation_settings",
+    ],
   },
   steward: {
-    role: 'steward',
+    role: "steward",
     permissions: {
       can_view_all_balances: true,
       can_approve_adult_payments: true,
@@ -62,14 +84,14 @@ export const ROLE_HIERARCHY: Record<FederationRole, RoleHierarchy> = {
       can_view_federation_settings: true,
       can_propose_changes: true,
     },
-    can_promote_to: ['offspring', 'adult'],
-    can_demote_from: ['offspring', 'adult'],
+    can_promote_to: ["offspring", "adult"],
+    can_demote_from: ["offspring", "adult"],
     can_remove: false,
     daily_spending_limit: 500000,
-    requires_approval_for: ['federation_settings', 'guardian_actions'],
+    requires_approval_for: ["federation_settings", "guardian_actions"],
   },
   guardian: {
-    role: 'guardian',
+    role: "guardian",
     permissions: {
       can_view_all_balances: true,
       can_approve_all_payments: true,
@@ -79,8 +101,8 @@ export const ROLE_HIERARCHY: Record<FederationRole, RoleHierarchy> = {
       can_manage_federation: true,
       can_emergency_override: true,
     },
-    can_promote_to: ['offspring', 'adult', 'steward'],
-    can_demote_from: ['offspring', 'adult', 'steward'],
+    can_promote_to: ["offspring", "adult", "steward"],
+    can_demote_from: ["offspring", "adult", "steward"],
     can_remove: true,
     daily_spending_limit: 1000000,
     requires_approval_for: [],
@@ -91,7 +113,10 @@ export class RoleManager {
   /**
    * Check if a role can promote another role
    */
-  static canPromoteRole(promoterRole: FederationRole, targetRole: FederationRole): boolean {
+  static canPromoteRole(
+    promoterRole: FederationRole,
+    targetRole: FederationRole,
+  ): boolean {
     const hierarchy = ROLE_HIERARCHY[promoterRole];
     return hierarchy.can_promote_to.includes(targetRole);
   }
@@ -99,7 +124,10 @@ export class RoleManager {
   /**
    * Check if a role can demote another role
    */
-  static canDemoteRole(demoterRole: FederationRole, targetRole: FederationRole): boolean {
+  static canDemoteRole(
+    demoterRole: FederationRole,
+    targetRole: FederationRole,
+  ): boolean {
     const hierarchy = ROLE_HIERARCHY[demoterRole];
     return hierarchy.can_demote_from.includes(targetRole);
   }
@@ -107,9 +135,12 @@ export class RoleManager {
   /**
    * Check if a role can remove another role
    */
-  static canRemoveRole(removerRole: FederationRole, targetRole: FederationRole): boolean {
-    if (removerRole !== 'guardian') return false;
-    return targetRole === 'steward';
+  static canRemoveRole(
+    removerRole: FederationRole,
+    targetRole: FederationRole,
+  ): boolean {
+    if (removerRole !== "guardian") return false;
+    return targetRole === "steward";
   }
 
   /**
@@ -122,7 +153,10 @@ export class RoleManager {
   /**
    * Check if a role has a specific permission
    */
-  static hasPermission(role: FederationRole, permission: keyof RolePermissions): boolean {
+  static hasPermission(
+    role: FederationRole,
+    permission: keyof RolePermissions,
+  ): boolean {
     const permissions = this.getRolePermissions(role);
     return permissions[permission] === true;
   }
@@ -147,26 +181,26 @@ export class RoleManager {
    * Private users have level 0 (no RBAC restrictions)
    */
   static getHierarchyLevel(role: FederationRole): number {
-    const levels: Record<FederationRole, number> = {
-      private: 0, // Private users have no RBAC restrictions
-      offspring: 1,
-      adult: 2,
-      steward: 3,
-      guardian: 4,
-    };
-    return levels[role];
+    // Source of truth for numeric levels: src/types/permissions.ts → ROLE_HIERARCHY
+    return ROLE_HIERARCHY_LEVELS[role];
   }
 
   /**
    * Check if one role has authority over another
    * Private users have no authority over others and no one has authority over them
    */
-  static hasAuthorityOver(controllerRole: FederationRole, targetRole: FederationRole): boolean {
+  static hasAuthorityOver(
+    controllerRole: FederationRole,
+    targetRole: FederationRole,
+  ): boolean {
     // Private users are outside the RBAC system
-    if (controllerRole === 'private' || targetRole === 'private') {
+    if (controllerRole === "private" || targetRole === "private") {
       return false;
     }
-    return this.getHierarchyLevel(controllerRole) > this.getHierarchyLevel(targetRole);
+    return (
+      this.getHierarchyLevel(controllerRole) >
+      this.getHierarchyLevel(targetRole)
+    );
   }
 
   /**
@@ -175,7 +209,7 @@ export class RoleManager {
   static validateRoleTransition(
     fromRole: FederationRole,
     toRole: FederationRole,
-    promoterRole: FederationRole
+    promoterRole: FederationRole,
   ): { valid: boolean; reason?: string } {
     // Check if promoter has authority to make this change
     if (!this.hasAuthorityOver(promoterRole, fromRole)) {
@@ -214,7 +248,7 @@ export class RoleManager {
    */
   static getManageableRoles(managerRole: FederationRole): FederationRole[] {
     const manageable: FederationRole[] = [];
-    
+
     Object.keys(ROLE_HIERARCHY).forEach((role) => {
       const roleKey = role as FederationRole;
       if (this.hasAuthorityOver(managerRole, roleKey)) {
@@ -235,16 +269,19 @@ export class RoleManager {
   /**
    * Check if a role can create another role
    */
-  static canCreateRole(creatorRole: FederationRole, targetRole: FederationRole): boolean {
+  static canCreateRole(
+    creatorRole: FederationRole,
+    targetRole: FederationRole,
+  ): boolean {
     const permissions = this.getRolePermissions(creatorRole);
-    
+
     switch (targetRole) {
-      case 'offspring':
+      case "offspring":
         return permissions.can_create_offspring === true;
-      case 'adult':
+      case "adult":
         return permissions.can_create_adults === true;
-      case 'steward':
-      case 'guardian':
+      case "steward":
+      case "guardian":
         return permissions.can_create_any_role === true;
       default:
         return false;
@@ -256,12 +293,12 @@ export class RoleManager {
    */
   static getMinimumApprovalRole(action: string): FederationRole {
     const actionRequirements: Record<string, FederationRole> = {
-      'large_payments': 'adult',
-      'role_changes': 'steward',
-      'federation_settings': 'guardian',
-      'guardian_actions': 'guardian',
+      large_payments: "adult",
+      role_changes: "steward",
+      federation_settings: "guardian",
+      guardian_actions: "guardian",
     };
 
-    return actionRequirements[action] || 'guardian';
+    return actionRequirements[action] || "guardian";
   }
-} 
+}

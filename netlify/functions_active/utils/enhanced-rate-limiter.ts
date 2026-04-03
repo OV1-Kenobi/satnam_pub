@@ -23,6 +23,36 @@
 import { createClient } from "@supabase/supabase-js";
 import { getEnvVar } from "./env.js";
 
+function parsePositiveIntEnv(
+  value: string | undefined,
+  defaultValue: number,
+): number {
+  if (!value) return defaultValue;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
+const LLM_PROXY_RATE_LIMIT = parsePositiveIntEnv(
+  getEnvVar("LLM_PROXY_RATE_LIMIT"),
+  1000,
+);
+const LLM_PROXY_RATE_WINDOW_MS = parsePositiveIntEnv(
+  getEnvVar("LLM_PROXY_RATE_WINDOW_MS"),
+  60 * 60 * 1000,
+);
+
+// Agent LLM credential management (configurable via env):
+// - LLM_CREDENTIAL_RATE_LIMIT (default 30)
+// - LLM_CREDENTIAL_RATE_WINDOW_MS (default 3600000)
+const LLM_CREDENTIAL_RATE_LIMIT = parsePositiveIntEnv(
+  getEnvVar("LLM_CREDENTIAL_RATE_LIMIT"),
+  30,
+);
+const LLM_CREDENTIAL_RATE_WINDOW_MS = parsePositiveIntEnv(
+  getEnvVar("LLM_CREDENTIAL_RATE_WINDOW_MS"),
+  60 * 60 * 1000,
+);
+
 /**
  * Rate limit configuration for different endpoint types
  */
@@ -31,6 +61,22 @@ export const RATE_LIMITS = {
   AUTH_REGISTER: { limit: 3, windowMs: 24 * 60 * 60 * 1000 }, // 3 req/24hr
   AUTH_REFRESH: { limit: 60, windowMs: 60 * 60 * 1000 }, // 60 req/hr
   AUTH_SESSION: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 req/hr
+  // Agent LLM proxy (configurable via env):
+  // - LLM_PROXY_RATE_LIMIT (default 1000)
+  // - LLM_PROXY_RATE_WINDOW_MS (default 3600000)
+  LLM_PROXY: {
+    limit: LLM_PROXY_RATE_LIMIT,
+    windowMs: LLM_PROXY_RATE_WINDOW_MS,
+  },
+
+  // Agent LLM credential management (create/update/revoke)
+  LLM_CREDENTIAL: {
+    limit: LLM_CREDENTIAL_RATE_LIMIT,
+    windowMs: LLM_CREDENTIAL_RATE_WINDOW_MS,
+  },
+  SESSION_CREATE: { limit: 10, windowMs: 60 * 1000 }, // 10 req/min
+  SESSION_MANAGE: { limit: 20, windowMs: 60 * 1000 }, // 20 req/min
+  SESSION_QUERY: { limit: 30, windowMs: 60 * 1000 }, // 30 req/min
   PAYMENT_CREATE: { limit: 10, windowMs: 60 * 60 * 1000 }, // 10 req/hr
   PAYMENT_VERIFY: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 req/hr
   PAYMENT_HISTORY: { limit: 50, windowMs: 60 * 60 * 1000 }, // 50 req/hr
@@ -63,7 +109,7 @@ export interface RateLimitConfig {
  * @returns Client IP address
  */
 export function getClientIP(
-  headers: Record<string, string | string[]>
+  headers: Record<string, string | string[]>,
 ): string {
   // Check headers in order of preference
   // x-forwarded-for: comma-separated list of IPs (first is client)
@@ -105,7 +151,7 @@ export async function checkRateLimit(
   identifier: string,
   config: RateLimitConfig,
   supabaseUrl?: string,
-  supabaseKey?: string
+  supabaseKey?: string,
 ): Promise<boolean> {
   try {
     // Get Supabase credentials
@@ -120,7 +166,7 @@ export async function checkRateLimit(
 
     if (!url || !key) {
       console.warn(
-        "Rate limiting disabled: Supabase credentials not available"
+        "Rate limiting disabled: Supabase credentials not available",
       );
       return true; // Allow request if rate limiter is unavailable
     }
@@ -185,7 +231,7 @@ export async function checkRateLimit(
  */
 export function createRateLimitIdentifier(
   userId: string | undefined,
-  ip: string
+  ip: string,
 ): string {
   if (userId) {
     return `user:${userId}`;
@@ -203,7 +249,7 @@ export function createRateLimitIdentifier(
  */
 export async function checkRateLimitStatus(
   identifier: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<{
   allowed: boolean;
   remaining?: number;
@@ -235,7 +281,7 @@ export async function checkRateLimitStatus(
 export async function resetRateLimit(
   identifier: string,
   supabaseUrl?: string,
-  supabaseKey?: string
+  supabaseKey?: string,
 ): Promise<void> {
   try {
     const url =
@@ -268,7 +314,7 @@ export async function resetRateLimit(
 export async function getRateLimitStatus(
   identifier: string,
   supabaseUrl?: string,
-  supabaseKey?: string
+  supabaseKey?: string,
 ): Promise<{
   count: number;
   windowStart: Date | null;

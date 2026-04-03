@@ -1,0 +1,1 @@
+export { handler } from "../../functions/agents/task-record-create.ts";

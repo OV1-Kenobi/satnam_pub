@@ -1,0 +1,108 @@
+﻿SATNAM.PUB BACKUP SNAPSHOT — 20260305-013047
+Tag  : backup-before-automation-20260305-013047
+SHA  : af80ce939d8d1dbabc8778eb39210ee91f7174cc
+Date : 2026-03-05 01:30:47 UTC
+
+── LAST 5 COMMITS ──────────────────────────────────────────────────────────
+7847f2c Noble import update 5a23a0d Add comprehensive integration and unit tests for password recovery/changes, high volume onboarding and NFC features 6a144a5 Implement password reset functionality with Nostr identity verification 846467b Adjusted database RLS to allow recording of OTS attestations into the data tables 4956336  refactor CEPS to lazy load pattern with secure session registry
+
+── ACTIVE NETLIFY FUNCTIONS (*.ts in functions_active/) ────────────────────
+admin-account-control.ts
+admin-account-verification.ts
+admin-auth.ts
+admin-dashboard.ts
+admin-monitoring.ts
+agent-session-create.ts
+agent-session-event.ts
+agent-session-manage.ts
+agent-session-query.ts
+assess-task-verifiability.ts
+bitcoin-fee-estimate.ts
+btc-price.ts
+did-json.ts
+domain.server.ts
+enhanced-rate-limiter.ts
+env.ts
+error-handler.ts
+federation-client.ts
+input-validation.ts
+iroh-proxy.ts
+issuer-registry.ts
+jwt-validation.ts
+key-rotation-unified.ts
+llm-proxy.ts
+lnbits-proxy.ts
+log-verification-failure.ts
+nfc-enable-signing.ts
+nfc-resolver.ts
+nfc-unified.ts
+nfc-verify-contact.ts
+nip05-resolver.ts
+nostr.ts
+onboarding-batch-insert.ts
+payment-verification.ts
+performance-report.ts
+pkarr-proxy.ts
+pkarr-publish.ts
+pkarr-resolve.ts
+platform-admin.ts
+proof-compression.ts
+register-identity.ts
+scheduled-orphan-detection.ts
+scheduled-pkarr-republish.ts
+security-config.ts
+security-headers.ts
+session-cleanup.ts
+session-manager.ts
+session-validation.ts
+signing-permissions.ts
+simpleproof-timestamp.ts
+simpleproof-verify.ts
+steward-policy.ts
+tapsigner-unified.ts
+trust-metrics-comparison.ts
+trust-provider-marketplace.ts
+trust-provider-ratings.ts
+trust-score.ts
+unified-profiles.ts
+verification-health-check.ts
+webauthn-authenticate.ts
+webauthn-register.ts
+
+── FEATURE FLAGS (netlify.toml) ─────────────────────────────────────────────
+  VITE_BIFROST_ENABLED = "false"
+  VITE_FEDIMINT_INTEGRATION_ENABLED = "false"
+  VITE_FAMILY_FEDERATION_ENABLED = "true"
+  VITE_FROST_SIGNING_ENABLED = "true"
+  VITE_PAYMENT_AUTOMATION_ENABLED = "true"
+  VITE_LNBITS_INTEGRATION_ENABLED = "true"
+  VITE_NWC_ENABLED = "true"
+  VITE_PUBLIC_PROFILES_ENABLED = "false"
+  VITE_PROFILE_SEARCH_ENABLED = "false"
+  VITE_PROFILE_ANALYTICS_ENABLED = "false"
+  VITE_PROFILE_CUSTOMIZATION_ENABLED = "false"
+  VITE_PKARR_ENABLED = "true"                           # Master PKARR feature flag
+  VITE_HYBRID_IDENTITY_ENABLED = "false"                # Hybrid verification (PKARR + kind:0 + DNS)
+  VITE_PKARR_AUTO_VERIFY_ON_ADD = "false"               # Auto-verify contacts on creation
+  VITE_PKARR_ADMIN_ENABLED = "false"                    # Admin analytics dashboard
+  VITE_MULTI_METHOD_VERIFICATION_ENABLED = "false"      # Parallel multi-method verification
+  VITE_SIMPLEPROOF_ENABLED = "true"                     # Master SimpleProof feature flag
+  VITE_IROH_ENABLED = "true"                            # Master Iroh feature flag
+  VITE_TAPSIGNER_ENABLED = "true"                       # Master Tapsigner feature flag
+  VITE_TAPSIGNER_LNBITS_ENABLED = "true"                # LNbits integration for Tapsigner
+  VITE_TAPSIGNER_TAP_TO_SPEND_ENABLED = "true"          # Tap-to-spend payment functionality
+  VITE_TAPSIGNER_DEBUG = "true"                         # Debug logging (disable in production)
+    VITE_API_BASE_URL = "/api"
+    VITE_API_BASE_URL = "/api"
+    VITE_API_BASE_URL = "/api"
+    VITE_API_BASE_URL = "/api"
+
+── BUILD CONFIG ─────────────────────────────────────────────────────────────
+Build command : npm ci --legacy-peer-deps --include=dev && npm run build
+Publish dir   : dist
+Functions dir : netlify/functions_active
+Node version  : 22.16.0
+Bundler       : esbuild
+
+── UNCOMMITTED FILES AT SNAPSHOT TIME ──────────────────────────────────────
+ M docs/development/DEVELOPMENT.md  M netlify.toml  M netlify/functions_active/utils/enhanced-rate-limiter.ts  M netlify/functions_active/utils/error-handler.ts  M package-lock.json  M package.json  M planning/Agent_Implementation_Plan.md  M src/config/env.client.ts  M types/index.ts  M utils/privacy-logger.js ?? ".augment/rules/Master Context (Concise).md" ?? ".augment/rules/Subagent - Netlify Security Reviewer.md" ?? ".augment/rules/Subagent - Nostr Auth Protocol Reviewer.md" ?? ".augment/rules/Subagent - Privacy DB Reviewer.md" ?? ".augment/rules/Subagent - Vite Build Reviewer.md" ?? components/ ?? database/util/snapshot-schema-dump.sql ?? docs/BIP321_IMPLEMENTATION.md ?? docs/planning/NIP-Triumvirate-Implementation-Roadmap.md ?? docs/planning/rebuilding-camelot.md ?? docs/testing/span-of-control-testing-checklist.md ?? netlify/functions/agent-llm-proxy.ts ?? netlify/functions/agents/ ?? netlify/functions/examples/agentic-identity-trust-architect.md ?? netlify/functions/platform/ ?? netlify/functions/utils/anthropic-provider.ts ?? netlify/functions/utils/bip321-uri-generator.ts ?? netlify/functions/utils/btc-usd-pricing.ts ?? netlify/functions/utils/error-handler.ts ?? netlify/functions/utils/llm-provider-types.ts ?? netlify/functions/utils/openai-provider.ts ?? netlify/functions/webhooks/ ?? netlify/functions_active/agent-session-create.ts ?? netlify/functions_active/agent-session-event.ts ?? netlify/functions_active/agent-session-manage.ts ?? netlify/functions_active/agent-session-query.ts ?? netlify/functions_active/agents/ ?? netlify/functions_active/assess-task-verifiability.ts ?? netlify/functions_active/scheduled/ ?? netlify/functions_active/utils/payment-verification.ts ?? netlify/functions_active/utils/session-validation.ts ?? planning/Phase_2.5_Agent_Session_Observability_Plan.md ?? planning/adult_agent_llm_cost_tracking_plan.md ?? rebuilding-camelot/ ?? scripts/backup-snapshot.ps1 ?? scripts/decrypt-env.ps1 ?? src/components/AgentHealthDashboard.tsx ?? src/components/AgentSessionMonitor.tsx ?? src/components/AgentsDashboard.tsx ?? src/components/SpanOfControlMeter.tsx ?? src/components/agents/ ?? src/lib/agent-sdk/ ?? src/lib/crypto/blind-signatures.ts ?? src/lib/crypto/blind-tokens.ts ?? src/pages/ ?? src/services/agent-session-manager.ts ?? src/services/session-channel-sync.ts ?? src/types/agents.ts ?? supabase/migrations/20260212_agent_autonomy_config.sql ?? supabase/migrations/20260212_agent_profiles.sql ?? supabase/migrations/20260212_blinded_authentication.sql ?? supabase/migrations/20260212_platform_monetization.sql ?? supabase/migrations/20260212_reputation_infrastructure.sql ?? supabase/migrations/20260212_sig4sats_locks.sql ?? supabase/migrations/20260213_agent_operational_state.sql ?? supabase/migrations/20260213_agent_task_records.sql ?? supabase/migrations/20260213_confidence_calibration.sql ?? supabase/migrations/20260213_span_of_control.sql ?? supabase/migrations/20260213_task_verifiability.sql ?? supabase/migrations/20260214_agent_sessions.sql ?? supabase/migrations/20260215_agent_session_cleanup.sql ?? supabase/migrations/20260215_agent_session_functions.sql ?? supabase/migrations/20260215_agent_session_integration.sql ?? supabase/migrations/20260215_agent_session_nostr.sql ?? supabase/migrations/20260215_agent_session_views.sql ?? supabase/migrations/20260223_bip321_payment_uris.sql ?? supabase/migrations/20260303_agent_llm_credentials.sql ?? supabase/migrations/20260303_agent_performance_reporting_views.sql ?? supabase/migrations/20260303_agent_task_records_llm_tracking.sql ?? supabase/migrations/20260303_llm_model_pricing.sql ?? supabase/sql/20260303_seed_llm_model_pricing.sql ?? tests/components/AgentPerformanceReport.test.tsx ?? tests/netlify/agent-llm-proxy.test.ts ?? tests/netlify/agents-performance-report.test.ts ?? tests/netlify/btc-usd-pricing.test.ts ?? tests/netlify/enhanced-rate-limiter.llm-proxy-config.test.ts ?? tests/netlify/llm-providers.test.ts ?? types/agent-sessions.ts ?? types/agent-tokens.ts ?? utils/session-logger.ts
