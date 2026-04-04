@@ -5,6 +5,7 @@
 import { OpenTimestampsClient } from "@alexalves87/opentimestamps-client";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
+import { createLogger } from "../../utils/logger";
 import {
     captureSimpleProofError,
     initializeSentry,
@@ -16,9 +17,8 @@ import {
     RATE_LIMITS,
 } from "./utils/enhanced-rate-limiter.js";
 import { getEnvVar } from "./utils/env.js";
-import { createLogger } from "./utils/logger.js";
 
-const logger = createLogger({ component: "ots-proof-generator" });
+const logger = createLogger("ots-proof-generator");
 
 // Initialize Sentry once at module load time
 initializeSentry();
