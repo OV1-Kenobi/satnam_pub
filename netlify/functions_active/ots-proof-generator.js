@@ -9,7 +9,6 @@ import { createLogger } from "../../utils/logger";
 import {
     captureSimpleProofError,
     initializeSentry,
-    logError,
 } from "../functions/utils/sentry.server.js";
 import {
     checkRateLimit,
@@ -17,6 +16,7 @@ import {
     RATE_LIMITS,
 } from "./utils/enhanced-rate-limiter.js";
 import { getEnvVar } from "./utils/env.js";
+import { logError } from "./utils/error-handler";
 
 const logger = createLogger("ots-proof-generator");
 
